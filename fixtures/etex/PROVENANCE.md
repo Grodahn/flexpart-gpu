@@ -58,7 +58,9 @@ modern Hanna (1982) Markov formulation that `flexpart-gpu` ports, while
 negative values select the legacy normalized formulation with forced
 single sub-stepping. All comparison scenarios in this repository use the
 modern formulation (`CTL = 5.0`) so that both sides integrate the same
-equations. This is a formulation choice, not a measured value.
+equations. This is a formulation choice, not a measured value. Historical
+figures labeled 3651 m were produced with the legacy path (`CTL = -5.0`)
+and must not be compared directly with modern-formulation candidate runs.
 
 ## Guard rails
 

@@ -233,8 +233,10 @@ PATHEOF
     docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
         -v "${ETEX_DIR}:/workspace/etex" \
         flexpart-fortran bash -c "
+            set -euo pipefail; \
             cd ${C_FLEXPART}/src && make -f makefile_gfortran clean 2>/dev/null; \
             FC=gfortran make -f makefile_gfortran eta=no -j\"$(nproc)\" 2>&1 | tail -5; \
+            test -x ${C_FLEXPART}/src/FLEXPART; \
             rm -f gitversion.txt
         "
 

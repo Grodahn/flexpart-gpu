@@ -124,8 +124,10 @@ do_setup() {
 
   log_info "Compiling FLEXPART Fortran..."
   fortran_exec "$mode" bash -c "
+    set -euo pipefail; \
     cd ${C_FLEXPART}/src && make -f makefile_gfortran clean 2>/dev/null; \
     FC=gfortran make -f makefile_gfortran eta=no -j\"$(nproc)\" 2>&1 | tail -3; \
+    test -x ${C_FLEXPART}/src/FLEXPART; \
     rm -f gitversion.txt
   "
 
@@ -329,8 +331,10 @@ do_validate_setup() {
 
   log_info "Compiling FLEXPART Fortran..."
   fortran_exec "$mode" bash -c "
+    set -euo pipefail; \
     cd ${C_FLEXPART}/src && make -f makefile_gfortran clean 2>/dev/null; \
     FC=gfortran make -f makefile_gfortran eta=no -j\"$(nproc)\" 2>&1 | tail -3; \
+    test -x ${C_FLEXPART}/src/FLEXPART; \
     rm -f gitversion.txt
   "
 

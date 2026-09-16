@@ -510,7 +510,7 @@ fn diagnose_profile_mixing_heights(
         *warned = true;
         log::warn!(
             "Richardson mixing-height diagnosis failed for {} of {} cells; \
-             existing fallback applies (see docs/reference-environment.md)",
+             existing fallback applies (see docs/scientific-changelog.md)",
             outcome.failed,
             outcome.diagnosed + outcome.provided + outcome.failed,
         );

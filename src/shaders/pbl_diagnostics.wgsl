@@ -12,8 +12,10 @@
 //   - Mixing height hmix (clamp met-provided or fallback)
 //   - Convective velocity scale w* for unstable conditions
 //
-// TODO: Bulk Richardson diagnostics from optional profile points (requires
-//       additional input buffers; see pbl_params.rs profile_point path)
+// NOTE: Bulk Richardson diagnosis lives driver-side on the CPU
+// (`io/pbl_oracle.rs`, wired in `simulation/timeloop.rs`) and arrives here
+// through the provided-mixing-height channel. This shader keeps the
+// fallback path for cells where diagnosis is unavailable or fails.
 
 // ---------------------------------------------------------------------------
 // Physical constants (must match src/lib.rs constants module)

@@ -38,7 +38,9 @@ pub use pbl_oracle::{
     diagnose_missing_mixing_heights, profile_method_ustar_heat_flux, richardson_mixing_height,
     saturation_vapor_pressure_pa, stability_correction_heat_m, stability_correction_momentum_m,
     MixingHeightDiagnosisOutcome, ProfileMethodInput, RichardsonColumnLevel, RichardsonInput,
-    RICHARDSON_CONVKE, RICHARDSON_CRITICAL, RICHARDSON_SHEAR_COEFFICIENT,
+    ORACLE_HMIX_MAX_M, ORACLE_HMIX_MIN_M, PROFILE_METHOD_MAX_ITER, RICHARDSON_CONVKE,
+    RICHARDSON_CRITICAL, RICHARDSON_DENOMINATOR_FLOOR, RICHARDSON_MAX_ITER,
+    RICHARDSON_SHEAR_COEFFICIENT, RICHARDSON_SUBDIVISIONS,
 };
 pub use pbl_params::{
     bulk_richardson_number, compute_pbl_cell_parameters, compute_pbl_parameters_from_met,

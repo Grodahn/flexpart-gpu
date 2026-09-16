@@ -4,6 +4,11 @@
 //! state from the meteorological column (Richardson, oracle-conformant)
 //! instead of falling back silently: a stable inversion column traps the
 //! plume near the ground, matching the FLEXPART 11.1 stable regime.
+//!
+//! This is a confinement check for the new wiring, not a full oracle parity
+//! proof: it uses one synthetic inversion column, one seed, and a 1 h window.
+//! A matched-formulation oracle rerun with manifests and multi-seed
+//! statistics is still required before claiming vertical parity.
 
 use std::collections::BTreeMap;
 
@@ -96,13 +101,20 @@ fn undiagnosed_surface() -> SurfaceFields {
 }
 
 fn velocity_scale() -> VelocityToGridScale {
+    // Grid spacing in meters at the release latitude, mirroring the
+    // SW-WGPU-ADVECTION-001 derivation instead of magic constants.
+    const EARTH_RADIUS_M: f64 = 6_371_000.0;
+    const RELEASE_LAT_DEG: f64 = 49.0;
+    let lat_rad = (RELEASE_LAT_DEG as f32).to_radians();
+    let dx_m = EARTH_RADIUS_M * f64::from(lat_rad.cos()) * (DX_DEG * std::f64::consts::PI / 180.0);
+    let dy_m = EARTH_RADIUS_M * (DY_DEG * std::f64::consts::PI / 180.0);
     let mut level_heights_m = [0.0_f32; 16];
     for (i, &v) in HEIGHTS_M.iter().enumerate() {
         level_heights_m[i] = v;
     }
     VelocityToGridScale {
-        x_grid_per_meter: 1.0 / 7140.0,
-        y_grid_per_meter: 1.0 / 11119.0,
+        x_grid_per_meter: (1.0 / dx_m) as f32,
+        y_grid_per_meter: (1.0 / dy_m) as f32,
         z_grid_per_meter: 1.0,
         level_heights_m,
     }
@@ -110,8 +122,10 @@ fn velocity_scale() -> VelocityToGridScale {
 
 #[test]
 fn test_diagnosed_stable_pbl_traps_plume_near_ground() {
-    // Reference diagnosis on the identical inputs (self-calibrating bound:
-    // the run must respect the diagnosed ceiling, whatever its value).
+    // Independent expectation first: this strong inversion column must
+    // diagnose near the oracle minimum (hmixmin = 100 m). The 100-250 m band
+    // below is anchored to that oracle bound, not just to whatever the
+    // function under test returns.
     let (_, column_field) = build_column_wind();
     let probe_surface = undiagnosed_surface();
     let mut probe_hmix = probe_surface.mixing_height_m.clone();
@@ -144,6 +158,10 @@ fn test_diagnosed_stable_pbl_traps_plume_near_ground() {
         "{}: diagnosed hmix out of oracle bounds: {}",
         TEST_ID,
         diagnosed_hmix
+    );
+    assert!(
+        (100.0..=250.0).contains(&diagnosed_hmix),
+        "{TEST_ID}: strong inversion must diagnose near hmixmin, got {diagnosed_hmix:.1} m",
     );
 
     let release_grid = GridDomain {
@@ -190,8 +208,11 @@ fn test_diagnosed_stable_pbl_traps_plume_near_ground() {
     )) {
         Ok(d) => d,
         Err(TimeLoopError::Gpu(GpuError::NoAdapter)) => {
-            eprintln!("{TEST_ID}: no WGSL adapter - skipping test");
-            return;
+            panic!(
+                "{TEST_ID}: no WGSL adapter found; run with a software fallback \
+                 (FLEXPART_GPU_SOFTWARE=1 / WGPU_FORCE_FALLBACK_ADAPTER=1). \
+                 Skipping would turn the confinement gate green without a dispatch."
+            );
         }
         Err(err) => panic!("{TEST_ID}: driver init failed: {err}"),
     };
@@ -221,12 +242,18 @@ fn test_diagnosed_stable_pbl_traps_plume_near_ground() {
     );
     // The plume must respect the diagnosed ceiling (plus one output level of
     // numerical margin) and stay trapped far below the neutral baseline.
+    // The absolute 250 m bound below anchors the strong-inversion scenario
+    // to the oracle hmixmin regime independently of the self-computed ceiling.
     assert!(
         max_z <= diagnosed_hmix + 100.0,
         "{}: plume escaped the diagnosed PBL: max_z={:.1}, hmix={:.1}",
         TEST_ID,
         max_z,
         diagnosed_hmix
+    );
+    assert!(
+        max_z <= 250.0,
+        "{TEST_ID}: stable plume must stay near hmixmin, got max_z={max_z:.1} m",
     );
     assert!(
         mean_z < diagnosed_hmix,

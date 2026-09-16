@@ -179,7 +179,8 @@ def main():
     parser.add_argument("--v-wind", type=float, default=-0.3)
     parser.add_argument("--w-wind", type=float, default=0.0)
     parser.add_argument("--sshf", type=float, default=40.0,
-                        help="surface sensible heat flux [W/m2] (GRIB sign convention)")
+                        help="surface sensible heat flux [W/m2], ECMWF sign "
+                             "(positive DOWNWARD = stable, negative = convective)")
     parser.add_argument("--stress", type=float, default=0.1,
                         help="surface stress component magnitude [N/m2], applied to EWSS+NSSS")
     parser.add_argument("--start-date", default="20240101")

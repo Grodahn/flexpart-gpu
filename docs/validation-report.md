@@ -139,28 +139,36 @@ oracle with temporally matched output:
 
 No kernel change was needed. The standard validation setup now yields
 end-covering output so future comparisons cannot repeat the smear artifact.
-Vertical differences (oracle mean z 3651 m vs GPU 1416 m) are out of scope
-here and belong to RISK-03.3G-04 (PBL/vertical transport).
+Vertical differences (oracle mean z 3651 m with `CTL = -5.0` legacy vs GPU
+1416 m) are out of scope here and belong to RISK-03.3G-04 (PBL/vertical
+transport).
 
-### 3.5 Addendum (RISK-03.3G-04): vertical gap attributed
+### 3.5 Addendum (RISK-03.3G-04): vertical gap attributed, parity still open
 
 The vertical gap decomposed as follows (validation scenario, 6 h):
 
-- The oracle runs used `CTL = -5.0`, which selects the legacy normalized
-  turbulence formulation with forced single sub-stepping - while
-  `flexpart-gpu` ports the modern Hanna formulation. With the matched
-  formulation (`CTL = 5.0`), the oracle is surface-trapped (mean z = 117 m),
-  not deeply mixed: the 3651 m figure belongs to the legacy path.
-- Against the matched formulation, the remaining gap (117 m vs 1416 m) is a
-  stability-classification difference: identical heat-flux input classified
-  opposite regimes, because the GPU path assumed positive-upward flux while
-  the oracle and GRIB input use positive-downward (ECMWF). The PBL diagnosis
-  now follows the oracle convention (`io/pbl_oracle.rs`), with Richardson
-  mixing-height diagnosis wired through the provided channel.
-- A diagnosed stable-column run traps the plume under the diagnosed ceiling
-  (mean 49.9 m at hmix = 100 m in `tests/integration/pbl_vertical_parity.rs`).
+- The earlier oracle runs used `CTL = -5.0` (legacy normalized turbulence
+  formulation with forced single sub-stepping) - while `flexpart-gpu` ports
+  the modern Hanna formulation. With the matched formulation (`CTL = 5.0`),
+  the oracle is surface-trapped (mean z = 117 m), not deeply mixed: the
+  3651 m figure belongs to the legacy path (`CTL = -5.0`).
+- Against the matched formulation, much of the remaining gap (117 m vs
+  1416 m before the fix) is a stability-classification difference: identical
+  heat-flux input classified opposite regimes, because the GPU path assumed
+  positive-upward flux while the oracle and GRIB input use positive-downward
+  (ECMWF, verified in `windfields_mod.f90:2351-2355` with no negation on
+  ingest). The PBL diagnosis now follows the oracle convention
+  (`io/pbl_oracle.rs`), with Richardson mixing-height diagnosis wired through
+  the provided channel.
+- A diagnosed stable-column confinement run traps the plume under the
+  diagnosed ceiling (mean 49.9 m at hmix = 100 m in
+  `tests/integration/pbl_vertical_parity.rs`). This is a confinement check
+  for the new wiring, not a rerun of the 6 h validation scenario.
 - Open (spiked, not guessed): soft-top escape above diagnosed hmix and CBL
   orchestration; both are inactive in the matched runs on both sides.
+  A matched-formulation rerun with machine-readable manifests, multi-seed
+  particle-space statistics, and the predeclared regime matrix is still
+  required before claiming vertical parity.
 
 ### 3.4 Progression of vertical accuracy
 
@@ -177,7 +185,7 @@ The vertical gap decomposed as follows (validation scenario, 6 h):
 |-----------------------------|----------------------|-------------------------------|-----------------------|
 | Sub-stepping (ifine)        | 4 sub-steps/step     | 4 sub-steps/step              | Aligned               |
 | hanna_short between sub-steps | Recalculates sigma_w(z) | Recalculates sigma_w(z)   | **Aligned**           |
-| hmix computation            | Richardson from T profile | BLH from surface field    | Calibration needed    |
+| hmix computation            | Richardson from T profile | Richardson via driver, provided wins | Wired; ustar-profile fallback deferred |
 | Advection scheme            | Petterssen predictor-corrector | Petterssen predictor-corrector | Identical |
 | turb_w in advection         | Separate displacement | Separate (Langevin sub-step)  | Aligned               |
 | RNG                         | Fortran intrinsic     | Philox4x32-10                 | Different sequences   |

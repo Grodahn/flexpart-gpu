@@ -3,13 +3,14 @@
 //! This module ports the FLEXPART 11.1 PBL diagnostic chain so identical
 //! meteorological input yields the identical PBL state on both sides:
 //!
-//! - saturation vapor pressure `ew` (Goff-Gratch, `qvsat_mod.f90`),
+//! - saturation vapor pressure `ew` (Goff-Gratch, `qvsat_mod.f90:144-196`),
 //! - momentum/heat stability corrections `psim`/`psih`
-//!   (`pbl_profile_mod.f90`; Paulson 1970, Beljaars-Holtslag 1991),
+//!   (`pbl_profile_mod.f90:9-89`; Paulson 1970, Beljaars-Holtslag 1991),
 //! - profile-method friction velocity and heat flux (Berkovicz and Prahm
-//!   1982, `pbl_profile` in `pbl_profile_mod.f90`),
+//!   1982, `pbl_profile` in `pbl_profile_mod.f90:91-198`),
 //! - mixing height and convective scale via the bulk Richardson loop
-//!   (Vogelezang and Holtslag 1996, `richardson` in `getfields_mod.f90`).
+//!   (Vogelezang and Holtslag 1996, `richardson` in
+//!   `getfields_mod.f90:1459-1701`).
 //!
 //! Heat-flux sign convention follows the oracle and GRIB input (ECMWF:
 //! positive DOWNWARD into the surface). Positive flux is stable, negative
@@ -17,15 +18,22 @@
 //! earlier revisions of `pbl_params.rs`, which assumed positive-upward.
 //!
 //! Documented adaptations (no silent changes):
-//! - The oracle integrates over pressure levels (`akz`/`bkz`); this port
-//!   takes explicit per-level heights and pressures, which callers derive
-//!   identically. Relative humidity diagnostics of the oracle loop are not
-//!   used by the Richardson exit and are omitted.
-//! - The oracle aborts the whole run when no stable layer is found; the port
-//!   returns [`PblParameterError::NoStableLayerFound`] so callers choose an
-//!   explicit, logged fallback policy instead.
-//! - `ew` returns `0.0` for non-positive temperature (debug-asserted) instead
-//!   of aborting like the oracle.
+//! - The oracle integrates over pressure levels (`akz`/`bkz`,
+//!   `getfields_mod.f90:1596-1607`); this port takes explicit per-level
+//!   heights and pressures, which callers derive identically. Relative
+//!   humidity diagnostics of the oracle loop are not used by the Richardson
+//!   exit and are omitted.
+//! - The oracle aborts the whole run when no stable layer is found
+//!   (`getfields_mod.f90:1629-1633`); the port returns
+//!   [`PblParameterError::NoStableLayerFound`] so callers choose an explicit,
+//!   logged fallback policy instead.
+//! - `ew` returns `0.0` for non-positive temperature instead of aborting like
+//!   the oracle (`qvsat_mod.f90:156`).
+//! - `richardson` `wst` reproduces the oracle formula verbatim
+//!   (`-h*g/theta*hf/cpa`, `getfields_mod.f90:1682-1684`), which omits the
+//!   air-density divisor used by the prescribed-path `w*` in `pbl_params.rs`.
+//!   The dimensional difference is ~`rho^(1/3)`; it is kept for oracle parity
+//!   and documented here instead of silently "fixed".
 
 use crate::constants::{CPA, GA, R_AIR, VON_KARMAN};
 use crate::io::pbl_params::PblParameterError;
@@ -38,9 +46,9 @@ pub const RICHARDSON_SHEAR_COEFFICIENT: f32 = 100.0;
 pub const RICHARDSON_CONVKE: f32 = 2.0;
 /// Minimum denominator guard shared by the Richardson loop.
 pub const RICHARDSON_DENOMINATOR_FLOOR: f32 = 0.1;
-/// Oracle PBL height bounds [m] (`hmixmin`/`hmixmax` in `par_mod.f90`).
+/// Oracle PBL height minimum [m] (`hmixmin` in `par_mod.f90:79`).
 pub const ORACLE_HMIX_MIN_M: f32 = 100.0;
-/// Oracle PBL height bounds [m] (`hmixmin`/`hmixmax` in `par_mod.f90`).
+/// Oracle PBL height maximum [m] (`hmixmax` in `par_mod.f90:79`).
 pub const ORACLE_HMIX_MAX_M: f32 = 4500.0;
 /// Iteration cap of the profile method (`maxiter`).
 pub const PROFILE_METHOD_MAX_ITER: usize = 10;
@@ -151,9 +159,18 @@ pub fn profile_method_ustar_heat_flux(input: ProfileMethodInput) -> (f32, f32) {
     const MAX_ITER: usize = PROFILE_METHOD_MAX_ITER;
     const R1: f32 = 0.74;
 
+    if !input.surface_pressure_pa.is_finite() || input.surface_pressure_pa <= 0.0 {
+        return (0.01, 0.0);
+    }
     let vapor = saturation_vapor_pressure_pa(input.dewpoint_2m_k);
     let virtual_temp = input.temperature_2m_k * (1.0 + 0.378 * vapor / input.surface_pressure_pa);
+    if !virtual_temp.is_finite() || virtual_temp <= 0.0 {
+        return (0.01, 0.0);
+    }
     let air_density = input.surface_pressure_pa / (R_AIR * virtual_temp);
+    if !air_density.is_finite() || air_density <= 0.0 {
+        return (0.01, 0.0);
+    }
 
     let wind_diff = input.level_wind_m_s - input.wind_10m_m_s;
     if wind_diff <= 0.001 {
@@ -167,12 +184,23 @@ pub fn profile_method_ustar_heat_flux(input: ProfileMethodInput) -> (f32, f32) {
             / ((input.level_height_m / 10.0).ln()
                 - stability_correction_momentum_m(input.level_height_m, 9999.0)
                 + stability_correction_momentum_m(10.0, 9999.0));
+        if !ustar.is_finite() || ustar <= 0.0 {
+            return (0.01, 0.0);
+        }
         return (ustar, 0.0);
     }
 
     let mean_temp = 0.5 * (input.temperature_2m_k + input.level_temperature_k);
-    let crit = (0.0219 * mean_temp * (input.level_height_m - 2.0) * wind_diff * wind_diff)
-        / (temp_diff * (input.level_height_m - 10.0).powi(2));
+    // Guard the `(zml1-10)^2` divisor: at exactly 10 m the oracle quotient is
+    // undefined; fall through to the iterative branch instead of producing
+    // an infinite `crit` that would force the stable approximation.
+    let height_offset = input.level_height_m - 10.0;
+    let crit = if height_offset.abs() < 1.0e-6 {
+        f32::INFINITY
+    } else {
+        (0.0219 * mean_temp * (input.level_height_m - 2.0) * wind_diff * wind_diff)
+            / (temp_diff * height_offset.powi(2))
+    };
     if temp_diff > 0.0 && crit <= 1.0 {
         let obukhov_l = 50.0;
         let ustar = VON_KARMAN * wind_diff
@@ -200,10 +228,19 @@ pub fn profile_method_ustar_heat_flux(input: ProfileMethodInput) -> (f32, f32) {
             / ((input.level_height_m * 0.5).ln()
                 - stability_correction_heat_m(input.level_height_m, obukhov_l)
                 + stability_correction_heat_m(2.0, obukhov_l));
+        if !ustar.is_finite() || !theta_star.is_finite() || theta_star == 0.0 {
+            return (0.01, 0.0);
+        }
         obukhov_l = (mean_temp * ustar * ustar) / (GA * VON_KARMAN * theta_star);
+        if !obukhov_l.is_finite() || !previous.is_finite() || previous == 0.0 {
+            break;
+        }
         if ((obukhov_l - previous) / previous).abs() < 0.01 {
             break;
         }
+    }
+    if !ustar.is_finite() || !theta_star.is_finite() {
+        return (0.01, 0.0);
     }
     let heat_flux = air_density * CPA * ustar * theta_star;
     // NOTE: the oracle clamps a dead local Obukhov copy here; omitted as it
@@ -293,17 +330,31 @@ pub fn richardson_mixing_height(
 
     for _ in 0..RICHARDSON_MAX_ITER {
         let theta_ref = theta_ref_base + excess;
+        if !theta_ref.is_finite() || theta_ref <= 0.0 {
+            return Err(PblParameterError::NoStableLayerFound);
+        }
         // Integrate upward from the 2 m reference; the shear reference is the
-        // second column level, mirroring ulev(2)/vlev(2).
+        // second column level, mirroring ulev(2)/vlev(2)
+        // (`getfields_mod.f90:1615-1616`). The low bracket point starts at the
+        // 2 m reference with the first-level wind, mirroring `ulev(kcheck-1)`
+        // for an exit at the first integrated level
+        // (`getfields_mod.f90:1641-1648`).
         let shear_u_ref = input.levels[1].wind_u_m_s;
         let shear_v_ref = input.levels[1].wind_v_m_s;
         let mut z_old = 2.0_f32;
         let mut theta_old = theta_ref;
-        let mut u_old = input.levels[1].wind_u_m_s;
-        let mut v_old = input.levels[1].wind_v_m_s;
+        let mut u_old = input.levels[0].wind_u_m_s;
+        let mut v_old = input.levels[0].wind_v_m_s;
         let mut found: Option<(BracketPoint, BracketPoint)> = None;
 
         for level in input.levels.iter().skip(1) {
+            if !level.temperature_k.is_finite()
+                || !level.pressure_pa.is_finite()
+                || !level.wind_u_m_s.is_finite()
+                || !level.wind_v_m_s.is_finite()
+            {
+                return Err(PblParameterError::NoStableLayerFound);
+            }
             let virtual_temp = level.temperature_k * (1.0 + 0.608 * level.specific_humidity_kg_kg);
             let theta = virtual_temp * (100_000.0 / level.pressure_pa.max(1.0)).powf(R_AIR / CPA);
             let shear_sq = (level.wind_u_m_s - shear_u_ref).powi(2)
@@ -384,8 +435,14 @@ pub fn richardson_mixing_height(
         };
 
         if input.heat_flux_w_m2 < 0.0 {
-            diagnosed_wstar =
-                (-diagnosed_h * GA / theta_ref * input.heat_flux_w_m2 / CPA).powf(1.0 / 3.0);
+            let wstar_base = -diagnosed_h * GA / theta_ref * input.heat_flux_w_m2 / CPA;
+            if !wstar_base.is_finite() || wstar_base <= 0.0 {
+                return Err(PblParameterError::NoStableLayerFound);
+            }
+            diagnosed_wstar = wstar_base.powf(1.0 / 3.0);
+            if !diagnosed_wstar.is_finite() || diagnosed_wstar <= 0.0 {
+                return Err(PblParameterError::NoStableLayerFound);
+            }
             excess = -8.5 * input.heat_flux_w_m2 / CPA / diagnosed_wstar.max(1.0e-6);
         } else {
             diagnosed_wstar = 0.0;
@@ -393,6 +450,9 @@ pub fn richardson_mixing_height(
         }
     }
 
+    if !diagnosed_h.is_finite() {
+        return Err(PblParameterError::NoStableLayerFound);
+    }
     diagnosed_h = diagnosed_h.clamp(ORACLE_HMIX_MIN_M, ORACLE_HMIX_MAX_M);
     Ok((diagnosed_h, diagnosed_wstar, diagnosed_hmixplus))
 }
@@ -420,8 +480,9 @@ pub struct MixingHeightDiagnosisOutcome {
 ///
 /// Level heights must contain at least three usable (strictly positive,
 /// ascending) entries; leading surface placeholders (`<= 0`) are skipped.
-/// Otherwise the whole grid is skipped (legacy grid-index vertical mode) and
-/// everything counts as `provided` to keep the call a no-op.
+/// Otherwise the whole grid is skipped (legacy grid-index vertical mode).
+/// The skip is reported by counting every cell as `provided` so the call
+/// stays a no-op for legacy callers; it does not mean diagnosis succeeded.
 // clippy::similar_names: grid/column array parameters share met-naming roots.
 // clippy::too_many_arguments: one array per met field keeps call sites explicit.
 #[allow(clippy::similar_names, clippy::too_many_arguments)]
@@ -517,8 +578,12 @@ pub fn diagnose_missing_mixing_heights(
             };
             match richardson_mixing_height(&input) {
                 Ok((hmix, _, _)) => {
-                    mixing_height_m[[i, j]] = hmix;
-                    outcome.diagnosed += 1;
+                    if hmix.is_finite() && hmix > 0.0 {
+                        mixing_height_m[[i, j]] = hmix;
+                        outcome.diagnosed += 1;
+                    } else {
+                        outcome.failed += 1;
+                    }
                 }
                 Err(_) => outcome.failed += 1,
             }

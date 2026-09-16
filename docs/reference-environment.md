@@ -47,10 +47,20 @@ scripts/compare-fortran.sh compose setup
 ```
 
 The setup compiles with the v11.1 build system (`make -f makefile_gfortran
-eta=no`; the legacy `make serial` recipe does not exist in v11.1) and removes
+eta=no arch=x86-64`; the legacy `make serial` recipe does not exist in v11.1)
+and removes
 the generated `gitversion.txt` stamp afterwards so the checkout stays clean
 for re-verification. Native Windows builds are not supported: use the
 manifest/checkout verification above plus Docker for the actual oracle runs.
+
+The Dockerfile pins the Ubuntu 22.04 image digest and the Ubuntu package
+snapshot dated 2026-09-10. The compiler uses the Fortran makefile's
+`arch=x86-64` profile instead of host-specific `-march=native`. Each Docker
+comparison writes `run_manifest.json` with the resolved image ID, package
+versions, compiler version and flags, source revisions, adapter, and SHA-256
+hashes of executable, inputs and outputs. Runners that do not expose a random
+seed record it as unavailable; such a run cannot support a multi-seed parity
+claim.
 
 ## 4. What the oracle is used for
 

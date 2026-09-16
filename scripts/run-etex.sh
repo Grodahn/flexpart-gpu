@@ -46,6 +46,10 @@ ERA5_RAW="${ETEX_DIR}/era5_raw"
 METEO_DIR="${ETEX_DIR}/meteo"
 FORTRAN_RUN="${ETEX_DIR}/fortran_run"
 GPU_OUTPUT="${ETEX_DIR}/gpu_output.json"
+GPU_BINARY="${PROJECT_ROOT}/target/release/etex-run"
+if [ "${OS:-}" = "Windows_NT" ]; then
+    GPU_BINARY="${GPU_BINARY}.exe"
+fi
 MEASUREMENTS="${ETEX_DIR}/measurements.json"
 REPORT="${ETEX_DIR}/comparison_report.json"
 DATA_DIR="${PROJECT_ROOT}/fixtures/etex/data"
@@ -215,7 +219,7 @@ PATHEOF
             set -euo pipefail
             cd ${C_FLEXPART}/src
             make -f makefile_gfortran clean >/dev/null 2>&1 || true
-            FC=gfortran make -f makefile_gfortran eta=no -j\"$(nproc)\" 2>&1 | tail -5
+            FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4 2>&1 | tail -5
             test -x FLEXPART
             rm -f gitversion.txt
         "
@@ -256,7 +260,7 @@ step_gpu() {
     OUTPUT_PATH="${GPU_OUTPUT}" \
     ETEX_MANIFEST="${ETEX_DIR}/gpu_meteo/manifest.json" \
     RUST_LOG=info \
-        "${PROJECT_ROOT}/target/release/etex-run" 2>&1 \
+        "${GPU_BINARY}" 2>&1 \
         | tee "${ETEX_DIR}/gpu.log"
 
     test -s "${GPU_OUTPUT}"
@@ -305,6 +309,26 @@ step_compare() {
         --candidate-revision "${candidate_revision}" \
         "${candidate_dirty_args[@]}" \
         --output "${REPORT}"
+
+    python3 "${PROJECT_ROOT}/scripts/write_oracle_run_manifest.py" \
+        --output "${ETEX_DIR}/run_manifest.json" \
+        --scenario ETEX-1 \
+        --oracle-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+        --oracle-checkout "${FLEXPART_DIR}" \
+        --oracle-executable "${FLEXPART_DIR}/src/FLEXPART" \
+        --candidate-checkout "${PROJECT_ROOT}" \
+        --candidate-executable "${GPU_BINARY}" \
+        --candidate-log "${ETEX_DIR}/gpu.log" \
+        --input "${ERA5_RAW}" \
+        --input "${METEO_DIR}" \
+        --input "${ETEX_DIR}/gpu_meteo" \
+        --input "${CONFIG_DIR}" \
+        --input "${DATA_DIR}" \
+        --artifact "${FORTRAN_RUN}/output" \
+        --artifact "${GPU_OUTPUT}" \
+        --artifact "${REPORT}" \
+        --artifact "${ETEX_DIR}/fortran.log" \
+        --artifact "${ETEX_DIR}/gpu.log"
 }
 
 # ---------------------------------------------------------------------------
@@ -336,6 +360,7 @@ step_status() {
     fi
     check_file "${GPU_OUTPUT}"                                   "GPU run"
     check_file "${REPORT}"                                       "Comparison report"
+    check_file "${ETEX_DIR}/run_manifest.json"                     "Run provenance manifest"
 
     echo ""
 

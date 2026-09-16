@@ -36,6 +36,10 @@ FORTRAN_COMPOSE_FILE="${PROJECT_ROOT}/docker/docker-compose.fortran.yml"
 C_FLEXPART="/workspace/flexpart"
 C_GPU="/workspace/flexpart-gpu"
 C_DATA="/workspace/comparison"
+CANDIDATE_BINARY="${PROJECT_ROOT}/target/release/fortran-validation"
+if [ "${OS:-}" = "Windows_NT" ]; then
+  CANDIDATE_BINARY="${CANDIDATE_BINARY}.exe"
+fi
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 log_info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
@@ -124,8 +128,11 @@ do_setup() {
 
   log_info "Compiling FLEXPART Fortran..."
   fortran_exec "$mode" bash -c "
-    cd ${C_FLEXPART}/src && make -f makefile_gfortran clean 2>/dev/null; \
-    FC=gfortran make -f makefile_gfortran eta=no -j\"$(nproc)\" 2>&1 | tail -3; \
+    set -euo pipefail
+    cd ${C_FLEXPART}/src
+    make -f makefile_gfortran clean >/dev/null 2>&1 || true
+    FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4 2>&1 | tail -3
+    test -x FLEXPART
     rm -f gitversion.txt
   "
 
@@ -329,8 +336,11 @@ do_validate_setup() {
 
   log_info "Compiling FLEXPART Fortran..."
   fortran_exec "$mode" bash -c "
-    cd ${C_FLEXPART}/src && make -f makefile_gfortran clean 2>/dev/null; \
-    FC=gfortran make -f makefile_gfortran eta=no -j\"$(nproc)\" 2>&1 | tail -3; \
+    set -euo pipefail
+    cd ${C_FLEXPART}/src
+    make -f makefile_gfortran clean >/dev/null 2>&1 || true
+    FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4 2>&1 | tail -3
+    test -x FLEXPART
     rm -f gitversion.txt
   "
 
@@ -462,6 +472,7 @@ do_validate() {
   # Step 2: Run Fortran FLEXPART
   log_info "Running FLEXPART Fortran (validation)..."
   fortran_exec "$mode" bash -c "
+    set -euo pipefail
     cd ${C_DATA}/validate_run && ${C_FLEXPART}/src/FLEXPART
   " 2>&1 | tee "${PROJECT_ROOT}/target/validation/fortran.log"
 
@@ -481,6 +492,7 @@ do_validate() {
   log_info "Running GPU validation..."
   OUTPUT_PATH="${PROJECT_ROOT}/target/validation/gpu_concentration.json" \
     PARTICLES=${V_PARTICLES} \
+    RUST_LOG=info \
     cargo run --release --bin fortran-validation 2>&1 \
     | tee "${PROJECT_ROOT}/target/validation/gpu.log"
 
@@ -500,6 +512,25 @@ do_validate() {
     --gpu-output "${PROJECT_ROOT}/target/validation/gpu_concentration.json" \
     --output-json "${PROJECT_ROOT}/target/validation/comparison_report.json" \
     --verbose 2>&1 | tee "${PROJECT_ROOT}/target/validation/comparison.log"
+
+  if [ "$mode" != "local" ]; then
+    python3 "${SCRIPT_DIR}/write_oracle_run_manifest.py" \
+      --output "${PROJECT_ROOT}/target/validation/run_manifest.json" \
+      --scenario synthetic-uniform-wind \
+      --oracle-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+      --oracle-checkout "${FLEXPART_DIR}" \
+      --oracle-executable "${FLEXPART_DIR}/src/FLEXPART" \
+      --candidate-checkout "${PROJECT_ROOT}" \
+      --candidate-executable "${CANDIDATE_BINARY}" \
+      --candidate-log "${PROJECT_ROOT}/target/validation/gpu.log" \
+      --input "${PROJECT_ROOT}/target/comparison/meteo" \
+      --input "${PROJECT_ROOT}/target/comparison/validate_run/options" \
+      --artifact "${FORTRAN_OUTPUT}" \
+      --artifact "${PROJECT_ROOT}/target/validation/gpu_concentration.json" \
+      --artifact "${PROJECT_ROOT}/target/validation/comparison_report.json" \
+      --artifact "${PROJECT_ROOT}/target/validation/fortran.log" \
+      --artifact "${PROJECT_ROOT}/target/validation/gpu.log"
+  fi
 
   log_info "Validation complete. Results in target/validation/"
 }

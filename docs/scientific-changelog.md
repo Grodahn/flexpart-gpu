@@ -27,6 +27,16 @@ missing fields, and incomplete station coverage. Focused synthetic comparator
 tests and a release build passed. A real ERA5/ETEX run is still required
 before reporting observational metrics or a parity result.
 
+### 2026-09-16 — Pin oracle environment and capture run provenance
+**Impact**: none (Fortran build environment and comparison reporting)
+**Files**: `docker/Dockerfile.fortran`, `scripts/compare-fortran.sh`,
+`scripts/run-etex.sh`, `scripts/write_oracle_run_manifest.py`
+**Validation**: The image uses a digest-pinned Ubuntu base, a dated apt
+snapshot and the portable `arch=x86-64` Fortran build profile. Both Docker
+comparison paths record the image, installed packages, executable hash,
+revision, adapter and raw-artifact hashes. The manifest states when a random
+seed is unavailable; it does not claim scientific parity.
+
 ### 2026-03-06 — Fused Hanna+Langevin default production path
 **Impact**: none (identical physics, different execution path)
 **Files**: `langevin_fused.wgsl`, `gpu/langevin_fused.rs`, `simulation/timeloop.rs`

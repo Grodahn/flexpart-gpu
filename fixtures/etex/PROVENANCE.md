@@ -48,6 +48,10 @@ public ARCO-ERA5 arrays from Google Cloud Storage using
 models. The downloader records its request parameters, and the comparison
 report hashes the downloaded arrays, generated model outputs, manifests, and
 observations. It also records the pinned oracle and candidate revisions.
+The companion `target/etex/run_manifest.json` records the exact oracle image,
+installed packages, compiler profile, executables, adapter, and raw-artifact
+hashes. The candidate runner does not currently expose a random seed; the
+manifest marks it unavailable and must not be used for a multi-seed claim.
 
 ## Reference outputs (not bundled)
 

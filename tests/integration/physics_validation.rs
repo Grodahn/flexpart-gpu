@@ -134,6 +134,7 @@ fn physics_validation_advection_turbulence_pbl() {
         z_max: RELEASE_Z,
         mass_kg: MASS_KG,
         particle_count: PARTICLE_COUNT,
+        species_masses_kg: None,
         raw: BTreeMap::new(),
     }];
 

@@ -1,11 +1,14 @@
-// WGSL wet deposition probability kernel (D-04).
+// WGSL per-species wet deposition probability kernel (D-04).
 //
-// Ported from FLEXPART `wetdepo.f90` mass-loss update form:
-//   p = grfraction * (1 - exp(-wetscav * |dt|))
+// Ported from FLEXPART `wetdepo.f90` mass-loss update form, applied per
+// species slot `s`:
+//   p_s = grfraction * (1 - exp(-wetscav_s * |dt|))
 //
 // Here:
-// - wetscav is provided as per-particle scavenging coefficient [1/s]
-// - grfraction is provided as per-particle precipitating fraction [-]
+// - wetscav_s is provided as per-particle per-species scavenging coefficient [1/s]
+// - grfraction is provided as per-particle precipitating fraction [-] (shared
+//   across species: the precipitating sub-grid area is geometric, see
+//   `get_wetscav.f90` `grfraction` logic)
 // - dt is a dispatch-wide timestep [s]
 //
 // MVP assumption:
@@ -13,13 +16,13 @@
 //   (D-03 CPU formulas), and this kernel only applies the wetdepo step.
 //
 // Side effect:
-//   particle.mass[species] *= (1 - p) for all species slots.
+//   particle.mass[s] *= (1 - p_s) for each species slot.
 //
 // Buffer contract:
 // - binding(0): particles storage buffer (read_write)
-// - binding(1): scavenging_coefficient_s_inv per particle (read)
+// - binding(1): scavenging_coefficient_s_inv per particle per species as vec4 (read)
 // - binding(2): precipitating_fraction per particle (read)
-// - binding(3): wet_deposition_probability per particle (read_write)
+// - binding(3): wet_deposition_probability per particle per species as vec4 (read_write)
 // - binding(4): uniform params (particle_count, dt_seconds, pad0, pad1)
 //
 const FLAG_ACTIVE: u32 = 1u;
@@ -59,13 +62,13 @@ struct WetDepositionDispatchParams {
 var<storage, read_write> particles: array<Particle>;
 
 @group(0) @binding(1)
-var<storage, read> scavenging_coefficient_s_inv: array<f32>;
+var<storage, read> scavenging_coefficient_s_inv: array<vec4<f32>>;
 
 @group(0) @binding(2)
 var<storage, read> precipitating_fraction: array<f32>;
 
 @group(0) @binding(3)
-var<storage, read_write> wet_deposition_probability: array<f32>;
+var<storage, read_write> wet_deposition_probability: array<vec4<f32>>;
 
 @group(0) @binding(4)
 var<uniform> params: WetDepositionDispatchParams;
@@ -90,21 +93,18 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
 
     var particle = particles[particle_id];
     if ((particle.flags & FLAG_ACTIVE) == 0u) {
-        wet_deposition_probability[particle_id] = 0.0;
+        wet_deposition_probability[particle_id] = vec4<f32>(0.0);
         return;
     }
 
-    let probability = wet_probability(
-        scavenging_coefficient_s_inv[particle_id],
-        params.dt_seconds,
-        precipitating_fraction[particle_id],
-    );
-    let survival = 1.0 - probability;
-
-    particle.mass[0] = particle.mass[0] * survival;
-    particle.mass[1] = particle.mass[1] * survival;
-    particle.mass[2] = particle.mass[2] * survival;
-    particle.mass[3] = particle.mass[3] * survival;
+    let lambda = scavenging_coefficient_s_inv[particle_id];
+    let fraction = precipitating_fraction[particle_id];
+    var probability = vec4<f32>(0.0);
+    for (var s = 0; s < 4; s++) {
+        let p = wet_probability(lambda[s], params.dt_seconds, fraction);
+        probability[s] = p;
+        particle.mass[s] = particle.mass[s] * (1.0 - p);
+    }
 
     particles[particle_id] = particle;
     wet_deposition_probability[particle_id] = probability;

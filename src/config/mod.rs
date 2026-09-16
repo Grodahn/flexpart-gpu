@@ -15,6 +15,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+use crate::particles::MAX_SPECIES;
+
 type ConfigMap = BTreeMap<String, String>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -45,6 +47,15 @@ pub struct ReleaseConfig {
     pub z_max: f64,
     pub mass_kg: f64,
     pub particle_count: u64,
+    /// Per-species release masses [kg], slot `s` ↔ simulation species `s`.
+    ///
+    /// Mirrors FLEXPART's `xmass(numpoint, nspec)` release matrix
+    /// (`readoptions_mod.f90:2446-2448`); positional mapping replaces the
+    /// Fortran `SPECNUM_REL` number mapping for now (see follow-up note in
+    /// [`crate::release`]). `None` keeps the legacy single-species behavior
+    /// (all mass into slot 0). When present, slot masses replace `mass_kg`
+    /// for particle injection.
+    pub species_masses_kg: Option<Vec<f64>>,
     pub raw: ConfigMap,
 }
 
@@ -320,6 +331,7 @@ impl ReleaseConfig {
         let particle_count =
             parse_optional_u64(&raw, context, &["particle_count", "particles", "npart"])?
                 .unwrap_or(1);
+        let species_masses_kg = parse_species_masses_kg(&raw, context)?;
 
         let release = Self {
             name,
@@ -331,6 +343,7 @@ impl ReleaseConfig {
             z_max,
             mass_kg,
             particle_count,
+            species_masses_kg,
             raw,
         };
         release.validate()?;
@@ -380,8 +393,75 @@ impl ReleaseConfig {
                 message: format!("release `{}` particle_count must be > 0", self.name),
             });
         }
+        if let Some(masses) = &self.species_masses_kg {
+            if masses.is_empty() || masses.len() > MAX_SPECIES {
+                return Err(ConfigError::Validation {
+                    message: format!(
+                        "release `{}` species_masses_kg needs 1..={MAX_SPECIES} entries, got {}",
+                        self.name,
+                        masses.len()
+                    ),
+                });
+            }
+            if masses.iter().any(|m| !m.is_finite() || *m < 0.0) {
+                return Err(ConfigError::Validation {
+                    message: format!(
+                        "release `{}` species_masses_kg must be finite and >= 0",
+                        self.name
+                    ),
+                });
+            }
+            if masses.iter().sum::<f64>() <= 0.0 {
+                return Err(ConfigError::Validation {
+                    message: format!(
+                        "release `{}` species_masses_kg total must be > 0",
+                        self.name
+                    ),
+                });
+            }
+        }
         Ok(())
     }
+}
+
+/// Parse the optional per-species release mass list (`mass_species`).
+///
+/// Accepts comma- and/or whitespace-separated values, e.g.
+/// `mass_species="1.0, 0.5"` (quotes keep the tokenizer from splitting the
+/// list). Mirrors one row of FLEXPART's `xmass(numpoint, nspec)` matrix.
+fn parse_species_masses_kg(
+    raw: &ConfigMap,
+    context: &str,
+) -> Result<Option<Vec<f64>>, ConfigError> {
+    let Some(text) = get_first(raw, &["mass_species", "species_mass", "species_masses"]) else {
+        return Ok(None);
+    };
+    let mut masses = Vec::new();
+    for token in text.split([',', ' ', '\t']) {
+        let token = token.trim();
+        if token.is_empty() {
+            continue;
+        }
+        masses.push(
+            token
+                .parse::<f64>()
+                .map_err(|_| ConfigError::InvalidValue {
+                    context: context.to_string(),
+                    key: "mass_species".to_string(),
+                    value: text.to_string(),
+                    message: "expected comma-separated floating-point masses".to_string(),
+                })?,
+        );
+    }
+    if masses.is_empty() {
+        return Err(ConfigError::InvalidValue {
+            context: context.to_string(),
+            key: "mass_species".to_string(),
+            value: text.to_string(),
+            message: "expected at least one species mass".to_string(),
+        });
+    }
+    Ok(Some(masses))
 }
 
 impl OutputGridConfig {
@@ -769,6 +849,19 @@ impl SpeciesConfig {
             return Err(ConfigError::Validation {
                 message: format!(
                     "species `{}` cannot be both gas (PRELDIFF > 0) and particle (PDENSITY > 0)",
+                    self.name
+                ),
+            });
+        }
+        // Gas below-cloud scavenging without a Henry constant is a hard error
+        // in FLEXPART (see `readspecies` error 996, `readoptions_mod.f90:3087-3091`).
+        if self.species_kind() == SpeciesKind::Gas
+            && (self.wet_a_gas.is_some_and(|v| v > 0.0) || self.wet_b_gas.is_some_and(|v| v > 0.0))
+            && !self.henry.is_some_and(|v| v > 0.0)
+        {
+            return Err(ConfigError::Validation {
+                message: format!(
+                    "species `{}` gas wet removal requires PHENRY > 0",
                     self.name
                 ),
             });
@@ -1375,6 +1468,47 @@ mod tests {
         assert_eq!(release.name, "stack");
         assert_eq!(release.particle_count, 1000);
         assert_eq!(release.lon, 7.25);
+        assert_eq!(release.species_masses_kg, None);
+    }
+
+    #[test]
+    fn parse_release_with_species_masses() {
+        let input = r#"
+            &RELEASE
+              NAME='multi',
+              START='20240101120000',
+              END='20240101150000',
+              LON=7.25,
+              LAT=46.1,
+              Z1=10,
+              Z2=120,
+              MASS_SPECIES="1.0, 0.5, 0.25",
+              PARTICLES=1000
+            /
+        "#;
+        let releases =
+            ReleaseConfig::parse_many(input, Path::new("<inline>")).expect("parse release");
+        assert_eq!(releases.len(), 1);
+        assert_eq!(releases[0].species_masses_kg, Some(vec![1.0, 0.5, 0.25]));
+    }
+
+    #[test]
+    fn release_with_too_many_species_masses_rejected() {
+        let input = r#"
+            &RELEASE
+              NAME='too-many',
+              START='20240101120000',
+              END='20240101150000',
+              LON=7.25,
+              LAT=46.1,
+              Z1=10,
+              Z2=120,
+              MASS_SPECIES="1,1,1,1,1",
+              PARTICLES=1000
+            /
+        "#;
+        let result = ReleaseConfig::parse_many(input, Path::new("<inline>"));
+        assert!(result.is_err(), "more than MAX_SPECIES masses must fail");
     }
 
     #[test]
@@ -1424,6 +1558,7 @@ mod tests {
                 z_max: 100.0,
                 mass_kg: 1.0,
                 particle_count: 1000,
+                species_masses_kg: None,
                 raw: ConfigMap::new(),
             }],
             outgrid: OutputGridConfig {

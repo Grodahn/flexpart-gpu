@@ -1,10 +1,11 @@
-// WGSL dry deposition probability kernel (D-02).
+// WGSL per-species dry deposition probability kernel (D-02).
 //
 // Ported from FLEXPART `advance.f90` / `get_vdep_prob.f90`.
 //
-// For active particles in the dry-deposition layer (z < 2*href), compute:
-//   survival = exp(-max(vdep, 0) * |dt| / (2*href))
-//   probability = 1 - survival
+// For active particles in the dry-deposition layer (z < 2*href), compute per
+// species slot `s`:
+//   survival_s = exp(-max(vdep_s, 0) * |dt| / (2*href))
+//   probability_s = 1 - survival_s
 //
 // Units:
 //   vdep: [m/s]
@@ -13,12 +14,12 @@
 //   exponent argument: dimensionless
 //
 // Side effect:
-//   particle.mass[species] *= survival for all species slots.
+//   particle.mass[s] *= survival_s for each species slot.
 //
 // Buffer contract:
 // - binding(0): particles storage buffer (read_write)
-// - binding(1): deposition_velocity_m_s per particle (read)
-// - binding(2): deposition_probability per particle (read_write)
+// - binding(1): deposition_velocity_m_s per particle per species as vec4 (read)
+// - binding(2): deposition_probability per particle per species as vec4 (read_write)
 // - binding(3): uniform params (particle_count, dt_seconds, reference_height_m, pad)
 
 const FLAG_ACTIVE: u32 = 1u;
@@ -59,10 +60,10 @@ struct DryDepositionDispatchParams {
 var<storage, read_write> particles: array<Particle>;
 
 @group(0) @binding(1)
-var<storage, read> deposition_velocity_m_s: array<f32>;
+var<storage, read> deposition_velocity_m_s: array<vec4<f32>>;
 
 @group(0) @binding(2)
-var<storage, read_write> deposition_probability: array<f32>;
+var<storage, read_write> deposition_probability: array<vec4<f32>>;
 
 @group(0) @binding(3)
 var<uniform> params: DryDepositionDispatchParams;
@@ -82,24 +83,23 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
 
     var particle = particles[particle_id];
     if ((particle.flags & FLAG_ACTIVE) == 0u) {
-        deposition_probability[particle_id] = 0.0;
+        deposition_probability[particle_id] = vec4<f32>(0.0);
         return;
     }
 
     let href = max(params.reference_height_m, HREF_MIN_M);
     if (particle.pos_z >= 2.0 * href) {
-        deposition_probability[particle_id] = 0.0;
+        deposition_probability[particle_id] = vec4<f32>(0.0);
         return;
     }
 
     let vdep = deposition_velocity_m_s[particle_id];
-    let survival = compute_survival_factor(vdep, params.dt_seconds, href);
-    let probability = 1.0 - survival;
-
-    particle.mass[0] = particle.mass[0] * survival;
-    particle.mass[1] = particle.mass[1] * survival;
-    particle.mass[2] = particle.mass[2] * survival;
-    particle.mass[3] = particle.mass[3] * survival;
+    var probability = vec4<f32>(0.0);
+    for (var s = 0; s < 4; s++) {
+        let survival = compute_survival_factor(vdep[s], params.dt_seconds, href);
+        probability[s] = 1.0 - survival;
+        particle.mass[s] = particle.mass[s] * survival;
+    }
 
     particles[particle_id] = particle;
     deposition_probability[particle_id] = probability;

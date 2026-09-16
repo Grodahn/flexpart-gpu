@@ -11,6 +11,7 @@ pub mod hanna;
 pub mod interpolation;
 pub mod langevin;
 pub mod rng;
+pub mod species;
 pub mod wet_scavenging;
 
 pub use advection::{
@@ -52,6 +53,11 @@ pub use langevin::{
 pub use rng::{
     philox4x32, philox4x32_uniforms, philox4x32_with_rounds, philox_counter_add, u32_to_uniform01,
     PhiloxCounter, PhiloxKey, PhiloxRng, PHILOX_ROUNDS,
+};
+pub use species::{
+    aerosol_below_cloud_params, aerosol_in_cloud_params, apply_decay_mass_step,
+    apply_decay_to_species_masses, decay_constant_s_inv, decay_survival_factor,
+    gas_below_cloud_params, gas_deposition_input, gas_in_cloud_params, species_decay_constants,
 };
 pub use wet_scavenging::{
     apply_wet_scavenging_mass_step, below_cloud_scavenging_coefficient_aerosol,

@@ -6,6 +6,12 @@
 //! - sample deterministic positions in source lon/lat/z bounds
 //! - inject particles into [`crate::particles::ParticleStore`]
 //! - optionally upload only changed slots to GPU storage buffers
+//!
+//! Multi-species releases distribute per-species masses across particle mass
+//! slots: slot `s` of each emitted particle carries
+//! `species_masses_kg[s] / particle_count` (one row of FLEXPART's
+//! `xmass(numpoint, nspec)` matrix, positionally mapped). Releases without
+//! `species_masses_kg` keep the legacy behavior (all mass into slot 0).
 
 use std::collections::BTreeMap;
 
@@ -107,8 +113,7 @@ impl ReleaseManager {
             }
 
             let to_emit = target_count - state.released_count;
-            let mass_per_particle =
-                (state.config.mass_kg / state.config.particle_count as f64) as f32;
+            let mass_per_slot = state.mass_per_species_slot(state.config.particle_count);
 
             for offset in 0..to_emit {
                 let sample_index = state.released_count + offset;
@@ -125,16 +130,13 @@ impl ReleaseManager {
                 }
                 let rel = grid_coord.to_relative();
 
-                let mut mass = [0.0_f32; MAX_SPECIES];
-                mass[0] = mass_per_particle;
-
                 let particle = Particle::new(&ParticleInit {
                     cell_x: rel.cell_x,
                     cell_y: rel.cell_y,
                     pos_x: rel.frac_x,
                     pos_y: rel.frac_y,
                     pos_z: z_m as f32,
-                    mass,
+                    mass: mass_per_slot,
                     release_point: state.release_point,
                     class: 0,
                     time: particle_time,
@@ -193,6 +195,28 @@ impl ReleaseState {
         let duration = (self.end_seconds - self.start_seconds) as u64;
         ((u128::from(self.config.particle_count) * u128::from(elapsed)) / u128::from(duration))
             as u64
+    }
+
+    /// Per-particle mass per species slot [kg].
+    ///
+    /// With `species_masses_kg`, slot `s` carries `masses[s] / particle_count`
+    /// (missing trailing slots stay `0`); otherwise all of `mass_kg` goes
+    /// into slot 0 (legacy single-species behavior).
+    ///
+    /// Particle counts always fit `f64`/`f32` exactly in practice (far below
+    /// 2^24 representable integers for the `f32` mass split).
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+    fn mass_per_species_slot(&self, particle_count: u64) -> [f32; MAX_SPECIES] {
+        let mut mass = [0.0_f32; MAX_SPECIES];
+        let count = particle_count.max(1) as f64;
+        if let Some(species_masses) = &self.config.species_masses_kg {
+            for (slot, slot_mass_kg) in species_masses.iter().enumerate().take(MAX_SPECIES) {
+                mass[slot] = (slot_mass_kg / count) as f32;
+            }
+        } else {
+            mass[0] = (self.config.mass_kg / count) as f32;
+        }
+        mass
     }
 }
 
@@ -373,6 +397,7 @@ mod tests {
             z_max: 200.0,
             mass_kg: 1.0,
             particle_count: 12,
+            species_masses_kg: None,
             raw,
         }
     }
@@ -451,6 +476,48 @@ mod tests {
                 "z out of bounds: {}",
                 particle.pos_z
             );
+        }
+    }
+
+    #[test]
+    fn legacy_release_puts_all_mass_into_slot_zero() {
+        let release = sample_release();
+        let mut manager = ReleaseManager::new(&[release], sample_grid()).expect("manager");
+        let mut store = ParticleStore::with_capacity(32);
+
+        let report = manager
+            .inject_for_time("20240101020000", &mut store)
+            .expect("emit full release");
+        assert_eq!(report.released_count, 12);
+
+        // mass_kg=1 over 12 particles; unused slots stay zero.
+        for slot in report.released_slots {
+            let particle = store.get(slot).expect("valid slot");
+            assert!((particle.mass[0] - 1.0 / 12.0).abs() < 1.0e-7);
+            for mass in particle.mass.iter().skip(1) {
+                assert!(mass.abs() < f32::EPSILON);
+            }
+        }
+    }
+
+    #[test]
+    fn multi_species_release_distributes_mass_per_slot() {
+        let mut release = sample_release();
+        release.species_masses_kg = Some(vec![1.0, 0.5, 0.25]);
+        let mut manager = ReleaseManager::new(&[release], sample_grid()).expect("manager");
+        let mut store = ParticleStore::with_capacity(32);
+
+        let report = manager
+            .inject_for_time("20240101020000", &mut store)
+            .expect("emit full release");
+        assert_eq!(report.released_count, 12);
+
+        for slot in report.released_slots {
+            let particle = store.get(slot).expect("valid slot");
+            assert!((particle.mass[0] - 1.0 / 12.0).abs() < 1.0e-7);
+            assert!((particle.mass[1] - 0.5 / 12.0).abs() < 1.0e-7);
+            assert!((particle.mass[2] - 0.25 / 12.0).abs() < 1.0e-7);
+            assert!(particle.mass[3].abs() < f32::EPSILON);
         }
     }
 }

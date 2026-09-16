@@ -81,6 +81,7 @@ fn main() {
         z_max: (GRID_NZ.saturating_sub(2)) as f64,
         mass_kg: 1.0,
         particle_count: particle_count as u64,
+        species_masses_kg: None,
         raw,
     }];
     let release_grid = GridDomain {
@@ -140,23 +141,25 @@ fn main() {
 
     let forcing = match forcing_mode {
         ForcingMode::PerParticle => ForwardStepForcing {
-            dry_deposition_velocity_m_s: ParticleForcingField::PerParticle(
+            dry_deposition_velocity_m_s: vec![ParticleForcingField::PerParticle(
                 deterministic_scalar_field(particle_count, 0.001, 0.00001, 23),
-            ),
-            wet_scavenging_coefficient_s_inv: ParticleForcingField::PerParticle(
+            )],
+            wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::PerParticle(
                 deterministic_scalar_field(particle_count, 0.0005, 0.00001, 29),
-            ),
+            )],
             wet_precipitating_fraction: ParticleForcingField::PerParticle(
                 (0..particle_count)
                     .map(|idx| ((idx % 100) as f32) / 100.0)
                     .collect(),
             ),
+            decay_constant_s_inv: vec![0.0],
             rho_grad_over_rho: 2.5e-4,
         },
         ForcingMode::Uniform => ForwardStepForcing {
-            dry_deposition_velocity_m_s: ParticleForcingField::Uniform(0.001),
-            wet_scavenging_coefficient_s_inv: ParticleForcingField::Uniform(0.0005),
+            dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.001)],
+            wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(0.0005)],
             wet_precipitating_fraction: ParticleForcingField::Uniform(0.5),
+            decay_constant_s_inv: vec![0.0],
             rho_grad_over_rho: 2.5e-4,
         },
     };

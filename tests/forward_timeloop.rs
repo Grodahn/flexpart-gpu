@@ -71,6 +71,7 @@ fn test_forward_timeloop_synthetic_uniform_wind_is_deterministic() {
         z_max: 1.0,
         mass_kg: 1.0,
         particle_count: 1,
+        species_masses_kg: None,
         raw: BTreeMap::new(),
     }];
     let release_grid = GridDomain {
@@ -127,14 +128,14 @@ fn test_forward_timeloop_synthetic_uniform_wind_is_deterministic() {
             report
                 .dry_deposition_probability
                 .iter()
-                .all(|p| p.abs() < 1.0e-8),
+                .all(|p| p.iter().all(|v| v.abs() < 1.0e-8)),
             "dry deposition should be zero for zero forcing"
         );
         assert!(
             report
                 .wet_deposition_probability
                 .iter()
-                .all(|p| p.abs() < 1.0e-8),
+                .all(|p| p.iter().all(|v| v.abs() < 1.0e-8)),
             "wet deposition should be zero for zero forcing"
         );
     }
@@ -209,6 +210,7 @@ fn test_forward_timeloop_optional_spatial_sort_reorders_particle_slots() {
             z_max: 1.0,
             mass_kg: 1.0,
             particle_count: 1,
+            species_masses_kg: None,
             raw: BTreeMap::new(),
         },
         ReleaseConfig {
@@ -221,6 +223,7 @@ fn test_forward_timeloop_optional_spatial_sort_reorders_particle_slots() {
             z_max: 1.0,
             mass_kg: 1.0,
             particle_count: 1,
+            species_masses_kg: None,
             raw: BTreeMap::new(),
         },
     ];

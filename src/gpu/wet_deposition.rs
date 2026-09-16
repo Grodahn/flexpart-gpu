@@ -1,23 +1,24 @@
-//! GPU wet deposition probability dispatch (D-04).
+//! GPU per-species wet deposition probability dispatch (D-04).
 //!
 //! Ported from FLEXPART wet-deposition mass-loss update in `wetdepo.f90`:
-//! `p = grfraction * (1 - exp(-wetscav * |dt|))`.
+//! `p = grfraction * (1 - exp(-wetscav * |dt|))`, applied per species slot.
 //!
-//! This kernel computes per-particle wet-deposition probability and applies the
-//! corresponding survival factor to all species masses:
-//! `mass_new = mass_old * (1 - p)`.
+//! This kernel computes per-particle per-species wet-deposition probability
+//! and applies the corresponding survival factor to each species mass slot:
+//! `mass_new[s] = mass_old[s] * (1 - p_s)`.
 //!
 //! MVP assumption:
-//! - D-03 CPU logic supplies per-particle `wetscav` and `grfraction` inputs.
+//! - D-03 CPU logic supplies per-particle per-species `wetscav` and shared
+//!   per-particle `grfraction` inputs.
 //! - This GPU stage applies only the shared wetdepo mass-loss contract, which
 //!   keeps parity for probability/mass attenuation while deferring full
 //!   below-cloud/in-cloud coefficient branching to upstream CPU code.
 //!
 //! Buffer contract:
 //! - binding 0: `array<Particle>` read-write storage buffer.
-//! - binding 1: `array<f32>` scavenging coefficient (`wetscav`) per particle [1/s].
-//! - binding 2: `array<f32>` precipitating fraction (`grfraction`) per particle [-].
-//! - binding 3: `array<f32>` wet-deposition probability output per particle [-].
+//! - binding 1: `array<vec4<f32>>` scavenging coefficient (`wetscav`) per particle per species [1/s].
+//! - binding 2: `array<f32>` precipitating fraction (`grfraction`) per particle [-], shared across species.
+//! - binding 3: `array<vec4<f32>>` wet-deposition probability output per particle per species [-].
 //! - binding 4: uniform params `(particle_count, dt_seconds, pad0, pad1)`.
 
 use std::mem::size_of;
@@ -26,7 +27,7 @@ use bytemuck::{Pod, Zeroable};
 use thiserror::Error;
 use wgpu::util::DeviceExt;
 
-use crate::particles::ParticleStore;
+use crate::particles::{ParticleStore, MAX_SPECIES};
 
 use super::{
     download_buffer_typed, render_shader_with_workgroup_size, runtime_workgroup_size,
@@ -142,6 +143,11 @@ impl WetDepositionDispatchKernel {
 }
 
 /// Typed IO buffers for wet deposition dispatch.
+///
+/// Scavenging-coefficient and probability buffers hold one `vec4` per particle
+/// slot, lane `s` carrying species slot `s` ([`MAX_SPECIES`] lanes, unused
+/// lanes zero). The precipitating fraction is geometric (shared sub-grid
+/// precipitating area) and stays a single scalar per particle.
 pub struct WetDepositionIoBuffers {
     pub scavenging_coefficient_s_inv: wgpu::Buffer,
     pub precipitating_fraction: wgpu::Buffer,
@@ -152,7 +158,7 @@ pub struct WetDepositionIoBuffers {
 impl WetDepositionIoBuffers {
     pub fn from_inputs(
         ctx: &GpuContext,
-        scavenging_coefficient_s_inv: &[f32],
+        scavenging_coefficient_s_inv: &[[f32; MAX_SPECIES]],
         precipitating_fraction: &[f32],
     ) -> Result<Self, GpuWetDepositionError> {
         if scavenging_coefficient_s_inv.len() != precipitating_fraction.len() {
@@ -164,7 +170,7 @@ impl WetDepositionIoBuffers {
         }
 
         let particle_count = scavenging_coefficient_s_inv.len();
-        let scavenging_buffer = create_storage_input_buffer(
+        let scavenging_buffer = create_species_input_buffer(
             &ctx.device,
             "wet_dep_scavenging_coefficient_s_inv",
             scavenging_coefficient_s_inv,
@@ -176,7 +182,7 @@ impl WetDepositionIoBuffers {
         );
 
         let probability_byte_len =
-            checked_byte_len::<f32>(particle_count, "wet_deposition_probability")?;
+            checked_byte_len::<[f32; MAX_SPECIES]>(particle_count, "wet_deposition_probability")?;
         let probability_size = if probability_byte_len == 0 {
             4
         } else {
@@ -211,7 +217,7 @@ impl WetDepositionIoBuffers {
     pub fn upload_scavenging_coefficient(
         &self,
         ctx: &GpuContext,
-        scavenging_coefficient_s_inv: &[f32],
+        scavenging_coefficient_s_inv: &[[f32; MAX_SPECIES]],
     ) -> Result<(), GpuWetDepositionError> {
         if scavenging_coefficient_s_inv.len() != self.particle_count {
             return Err(GpuWetDepositionError::LengthMismatch {
@@ -257,11 +263,11 @@ impl WetDepositionIoBuffers {
     pub async fn download_probabilities(
         &self,
         ctx: &GpuContext,
-    ) -> Result<Vec<f32>, GpuWetDepositionError> {
+    ) -> Result<Vec<[f32; MAX_SPECIES]>, GpuWetDepositionError> {
         if self.particle_count == 0 {
             return Ok(Vec::new());
         }
-        download_buffer_typed::<f32>(
+        download_buffer_typed::<[f32; MAX_SPECIES]>(
             ctx,
             &self.wet_deposition_probability,
             self.particle_count,
@@ -270,6 +276,26 @@ impl WetDepositionIoBuffers {
         .await
         .map_err(Into::into)
     }
+}
+
+fn create_species_input_buffer(
+    device: &wgpu::Device,
+    label: &str,
+    data: &[[f32; MAX_SPECIES]],
+) -> wgpu::Buffer {
+    if data.is_empty() {
+        return device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: 16,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+    }
+    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(label),
+        contents: bytemuck::cast_slice(data),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+    })
 }
 
 fn create_storage_input_buffer(device: &wgpu::Device, label: &str, data: &[f32]) -> wgpu::Buffer {
@@ -448,16 +474,16 @@ pub fn encode_wet_deposition_probability_gpu_with_kernel(
 /// This convenience helper:
 /// 1. creates typed scavenging/fraction/probability IO buffers,
 /// 2. dispatches the WGSL wet-deposition kernel,
-/// 3. returns per-particle wet-deposition probability output.
+/// 3. returns per-particle per-species wet-deposition probability output.
 ///
 /// Particle masses are attenuated in place on the GPU particle buffer.
 pub async fn apply_wet_deposition_step_gpu(
     ctx: &GpuContext,
     particles: &ParticleBuffers,
-    scavenging_coefficient_s_inv: &[f32],
+    scavenging_coefficient_s_inv: &[[f32; MAX_SPECIES]],
     precipitating_fraction: &[f32],
     params: WetDepositionStepParams,
-) -> Result<Vec<f32>, GpuWetDepositionError> {
+) -> Result<Vec<[f32; MAX_SPECIES]>, GpuWetDepositionError> {
     if scavenging_coefficient_s_inv.len() != particles.particle_count() {
         return Err(GpuWetDepositionError::LengthMismatch {
             field: "scavenging_coefficient_s_inv",
@@ -489,10 +515,10 @@ pub async fn apply_wet_deposition_step_gpu(
 /// - `Ok(None)` when no GPU adapter is available (graceful skip).
 pub async fn apply_wet_deposition_step_workflow(
     particles: &mut ParticleStore,
-    scavenging_coefficient_s_inv: &[f32],
+    scavenging_coefficient_s_inv: &[[f32; MAX_SPECIES]],
     precipitating_fraction: &[f32],
     params: WetDepositionStepParams,
-) -> Result<Option<Vec<f32>>, GpuWetDepositionWorkflowError> {
+) -> Result<Option<Vec<[f32; MAX_SPECIES]>>, GpuWetDepositionWorkflowError> {
     let ctx = match GpuContext::new().await {
         Ok(ctx) => ctx,
         Err(GpuError::NoAdapter) => return Ok(None),
@@ -561,39 +587,48 @@ mod tests {
         ];
         particles[3].deactivate();
 
-        let scavenging_coefficient_s_inv = vec![0.02, 0.0, 0.15, 0.03, -1.0];
+        let scavenging_coefficient_s_inv: Vec<[f32; MAX_SPECIES]> = vec![
+            [0.02, 0.01, 0.0, 0.05],
+            [0.0, 0.0, 0.0, 0.0],
+            [0.15, 0.2, 0.1, 0.0],
+            [0.03, 0.03, 0.03, 0.03],
+            [-1.0, 0.04, 0.04, 0.04],
+        ];
         let precipitating_fraction = vec![0.5, 1.0, 1.2, 0.7, 0.9];
         let params = WetDepositionStepParams { dt_seconds: 60.0 };
 
-        let expected_prob: Vec<f32> = particles
+        let expected_prob: Vec<[f32; MAX_SPECIES]> = particles
             .iter()
             .zip(
                 scavenging_coefficient_s_inv
                     .iter()
                     .zip(precipitating_fraction.iter()),
             )
-            .map(|(particle, (&lambda, &fraction))| {
+            .map(|(particle, (lambdas, &fraction))| {
+                let mut prob = [0.0; MAX_SPECIES];
                 if particle.is_active() {
-                    wet_scavenging_probability_step(WetScavengingStep {
-                        scavenging_coefficient_s_inv: lambda,
-                        dt_seconds: params.dt_seconds,
-                        precipitating_fraction: fraction,
-                    })
-                } else {
-                    0.0
+                    for s in 0..MAX_SPECIES {
+                        prob[s] = wet_scavenging_probability_step(WetScavengingStep {
+                            scavenging_coefficient_s_inv: lambdas[s],
+                            dt_seconds: params.dt_seconds,
+                            precipitating_fraction: fraction,
+                        });
+                    }
                 }
+                prob
             })
             .collect();
 
-        let expected_mass0: Vec<f32> = particles
+        let expected_mass: Vec<[f32; MAX_SPECIES]> = particles
             .iter()
             .zip(expected_prob.iter())
-            .map(|(particle, prob)| particle.mass[0] * (1.0 - prob))
-            .collect();
-        let expected_mass1: Vec<f32> = particles
-            .iter()
-            .zip(expected_prob.iter())
-            .map(|(particle, prob)| particle.mass[1] * (1.0 - prob))
+            .map(|(particle, prob)| {
+                let mut mass = [0.0; MAX_SPECIES];
+                for s in 0..MAX_SPECIES {
+                    mass[s] = particle.mass[s] * (1.0 - prob[s]);
+                }
+                mass
+            })
             .collect();
 
         let particle_buffers = ParticleBuffers::from_particles(&ctx, &particles);
@@ -608,28 +643,22 @@ mod tests {
 
         assert_eq!(probabilities.len(), expected_prob.len());
         for (gpu, cpu) in probabilities.iter().zip(expected_prob.iter()) {
-            assert_relative_eq!(*gpu, *cpu, epsilon = 1.0e-6, max_relative = 1.0e-6);
+            for s in 0..MAX_SPECIES {
+                assert_relative_eq!(gpu[s], cpu[s], epsilon = 1.0e-6, max_relative = 1.0e-6);
+            }
         }
 
         let updated = pollster::block_on(particle_buffers.download_particles(&ctx))
             .expect("particle readback succeeds");
-        for ((particle, m0), m1) in updated
-            .iter()
-            .zip(expected_mass0.iter())
-            .zip(expected_mass1.iter())
-        {
-            assert_relative_eq!(
-                particle.mass[0],
-                *m0,
-                epsilon = 1.0e-6,
-                max_relative = 1.0e-6
-            );
-            assert_relative_eq!(
-                particle.mass[1],
-                *m1,
-                epsilon = 1.0e-6,
-                max_relative = 1.0e-6
-            );
+        for (particle, expected) in updated.iter().zip(expected_mass.iter()) {
+            for s in 0..MAX_SPECIES {
+                assert_relative_eq!(
+                    particle.mass[s],
+                    expected[s],
+                    epsilon = 1.0e-6,
+                    max_relative = 1.0e-6
+                );
+            }
         }
     }
 
@@ -642,7 +671,7 @@ mod tests {
         store.add(p1).expect("slot 1 available");
 
         let initial_mass: Vec<f32> = store.as_slice().iter().map(|p| p.mass[0]).collect();
-        let scavenging = vec![0.01, 0.02];
+        let scavenging = vec![[0.01; MAX_SPECIES], [0.02; MAX_SPECIES]];
         let precipitating_fraction = vec![0.3, 0.7];
         let result = pollster::block_on(apply_wet_deposition_step_workflow(
             &mut store,

@@ -203,6 +203,7 @@ impl SourceReceptorConsistencyHarness {
             z_max: SOURCE_Z_M,
             mass_kg: PARTICLE_MASS_KG,
             particle_count: 1,
+            species_masses_kg: None,
             raw: BTreeMap::new(),
         }]
     }

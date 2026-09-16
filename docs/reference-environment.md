@@ -73,9 +73,12 @@ claim.
   diagnostics and input checksums; it does not assert scientific parity.
 - Checked-in ETEX-1 mini smoke run (`scripts/run-etex.sh mini`): verify six
   native ERA5 snapshots in `fixtures/etex/native-mini/`, derive Fortran and
-  GPU inputs, run both models over 12 hours, and pair their outputs with
-  independent station observations. See `fixtures/etex/mini/README.md` for
-  the remaining vertical-representation limitation. Metrics are diagnostic.
+  GPU inputs, audit their actual prepared fields and scenario settings, run
+  both models over 12 hours, and pair their outputs with independent station
+  observations. The audit is available separately with
+  `ETEX_PROFILE=mini scripts/run-etex.sh audit`; its report is recorded in
+  the run manifest. See `fixtures/etex/mini/README.md` for the remaining
+  scientific differences. Metrics are diagnostic.
 - Future parity gates in issues RISK-03.3G-03 and later.
 
 Oracle outputs are produced at validation time and compared, never vendored

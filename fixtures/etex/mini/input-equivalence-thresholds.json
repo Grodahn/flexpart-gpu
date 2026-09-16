@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "purpose": "Technical decoding/packing tolerances only; these are not scientific parity thresholds.",
+  "scenario_abs_tolerance": 0.00001,
+  "gpu_mapping_abs_tolerance": {
+    "u_m_s": 0.01,
+    "v_m_s": 0.01,
+    "temperature_k": 0.02,
+    "specific_humidity": 0.000001,
+    "pressure_pa": 1.0,
+    "w_m_s": 0.001
+  },
+  "gpu_surface_abs_tolerance": {
+    "surface_pressure": 0.01,
+    "10m_u_component_of_wind": 0.00001,
+    "10m_v_component_of_wind": 0.00001,
+    "2m_temperature": 0.0001,
+    "2m_dewpoint_temperature": 0.0001,
+    "large_scale_precipitation": 0.0001,
+    "convective_precipitation": 0.0001,
+    "surface_sensible_heat_flux": 0.0001,
+    "surface_net_solar_radiation": 0.0001,
+    "boundary_layer_height": 0.01
+  },
+  "fortran_surface_abs_tolerance": {
+    "surface_pressure": 2.0,
+    "10m_u_component_of_wind": 0.05,
+    "10m_v_component_of_wind": 0.05,
+    "2m_temperature": 0.05,
+    "2m_dewpoint_temperature": 0.05,
+    "boundary_layer_height": 2.0,
+    "surface_sensible_heat_flux": 1.0,
+    "surface_net_solar_radiation": 1.0,
+    "mean_eastward_turbulent_surface_stress": 0.01,
+    "mean_northward_turbulent_surface_stress": 0.01,
+    "convective_precipitation": 0.1,
+    "large_scale_precipitation": 0.1,
+    "forecast_surface_roughness": 0.01,
+    "geopotential_at_surface": 10.0,
+    "land_sea_mask": 0.01
+  }
+}

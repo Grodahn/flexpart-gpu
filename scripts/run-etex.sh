@@ -23,6 +23,7 @@ ETEX_PROFILE="${ETEX_PROFILE:-full}"
 #   prepare          Prepare both model inputs from ERA5
 #   parse        Parse ETEX measurements
 #   fortran      Run Fortran FLEXPART
+#   audit        Check paired mini-run inputs and list unresolved differences
 #   gpu          Run flexpart-gpu
 #   compare      Compare outputs against observations
 #   report       Print final report
@@ -307,6 +308,28 @@ step_gpu() {
 }
 
 # ---------------------------------------------------------------------------
+step_audit() {
+    if [ "${ETEX_PROFILE}" != "mini" ]; then
+        log_error "The input equivalence audit currently supports only the native ERA5 mini profile"
+        return 2
+    fi
+    log_step "Audit paired ETEX inputs"
+    if [ ! -f "${FORTRAN_RUN}/options/SPECIES/SPECIES_024" ] || \
+        [ ! -f "${ETEX_DIR}/gpu_meteo/manifest.json" ]; then
+        log_error "Prepare inputs and run the Fortran step before auditing"
+        return 1
+    fi
+    docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran python3 \
+        /workspace/flexpart-gpu/scripts/etex/audit_input_equivalence.py \
+        --native-dir /workspace/flexpart-gpu/fixtures/etex/native-mini \
+        --meteo-dir "${C_ETEX}/meteo" \
+        --gpu-dir "${C_ETEX}/gpu_meteo" \
+        --config-dir "${C_ETEX}/fortran_run/options" \
+        --thresholds /workspace/flexpart-gpu/fixtures/etex/mini/input-equivalence-thresholds.json \
+        --output "${C_ETEX}/input_equivalence_report.json"
+}
+
+# ---------------------------------------------------------------------------
 step_compare() {
     log_step "Compare with observations"
 
@@ -332,8 +355,13 @@ step_compare() {
     fi
     candidate_revision="$(git -C "${PROJECT_ROOT}" rev-parse HEAD)"
     local -a candidate_dirty_args=()
+    local -a audit_artifact_args=()
     if [ -n "$(git -C "${PROJECT_ROOT}" status --porcelain)" ]; then
         candidate_dirty_args=(--candidate-dirty)
+    fi
+    if [ "${ETEX_PROFILE}" = "mini" ]; then
+        test -s "${ETEX_DIR}/input_equivalence_report.json"
+        audit_artifact_args=(--artifact "${ETEX_DIR}/input_equivalence_report.json")
     fi
 
     "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/compare_oracle_observations.py" \
@@ -366,6 +394,7 @@ step_compare() {
         --artifact "${FORTRAN_RUN}/output" \
         --artifact "${GPU_OUTPUT}" \
         --artifact "${REPORT}" \
+        "${audit_artifact_args[@]}" \
         --artifact "${ETEX_DIR}/fortran.log" \
         --artifact "${ETEX_DIR}/gpu.log"
 }
@@ -407,6 +436,9 @@ step_status() {
     fi
     check_file "${GPU_OUTPUT}"                                   "GPU run"
     check_file "${REPORT}"                                       "Comparison report"
+    if [ "${ETEX_PROFILE}" = "mini" ]; then
+        check_file "${ETEX_DIR}/input_equivalence_report.json"   "Input equivalence audit"
+    fi
     check_file "${ETEX_DIR}/run_manifest.json"                     "Run provenance manifest"
 
     echo ""
@@ -442,6 +474,7 @@ case "${STEP}" in
     prepare)  step_prepare ;;
     parse)    step_parse ;;
     fortran)  step_fortran ;;
+    audit)    step_audit ;;
     gpu)      step_gpu ;;
     compare)  step_compare ;;
     report)   step_report ;;
@@ -451,12 +484,13 @@ case "${STEP}" in
         step_download
         step_prepare
         step_fortran
+        if [ "${ETEX_PROFILE}" = "mini" ]; then step_audit; fi
         step_gpu
         step_compare
         step_report
         ;;
     *)
-        echo "Usage: scripts/run-etex.sh [all|all-with-fortran|status|download|prepare|parse|fortran|gpu|compare|report]"
+        echo "Usage: scripts/run-etex.sh [all|all-with-fortran|status|download|prepare|parse|fortran|audit|gpu|compare|report]"
         exit 2
         ;;
 esac

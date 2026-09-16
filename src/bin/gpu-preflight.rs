@@ -5,19 +5,27 @@ const USAGE: &str = "\
 GPU runtime preflight check.
 
 Usage:
-  cargo run --bin gpu-preflight -- [--backend <value>] [--no-smoke]
+  cargo run --bin gpu-preflight -- [--backend <value>] [--software] [--no-smoke]
   cargo run --bin gpu-preflight -- --help
 
 Options:
   --backend <value>  Override backend selector (auto|vulkan|metal|dx12|gl|webgpu)
+  --software         Request the software fallback adapter (same as FLEXPART_GPU_SOFTWARE=1).
+                     Runs the real WGSL compute path on Lavapipe/WARP; timings must
+                     not be used as GPU performance values.
+  --force-fallback   Alias for --software
   --no-smoke         Skip tiny compute dispatch/readback smoke test
   -h, --help         Show this help
+
+Environment:
+  FLEXPART_GPU_SOFTWARE=1 or WGPU_FORCE_FALLBACK_ADAPTER=1 selects the software adapter.
 ";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CliOptions {
     backend_override: Option<String>,
     run_smoke_test: bool,
+    force_software_fallback: bool,
 }
 
 impl Default for CliOptions {
@@ -25,6 +33,7 @@ impl Default for CliOptions {
         Self {
             backend_override: None,
             run_smoke_test: true,
+            force_software_fallback: false,
         }
     }
 }
@@ -46,6 +55,12 @@ where
             "-h" | "--help" => return Ok(CliCommand::Help),
             "--no-smoke" => options.run_smoke_test = false,
             "--smoke" => options.run_smoke_test = true,
+            "--software" | "--force-fallback" | "--fallback" => {
+                options.force_software_fallback = true;
+            }
+            "--no-software" | "--no-fallback" => {
+                options.force_software_fallback = false;
+            }
             "--backend" => {
                 let value = iter
                     .next()
@@ -72,6 +87,11 @@ fn print_report(report: &flexpart_gpu::gpu::GpuPreflightReport) {
         "adapter: {} ({:?}, {:?})",
         report.adapter_name, report.adapter_backend, report.adapter_type
     );
+    println!("software fallback requested: {}", report.fallback_requested);
+    println!("software adapter: {}", report.is_software_adapter);
+    if report.is_software_adapter {
+        println!("note: software WGSL adapter in use; timings must not be used as GPU performance values");
+    }
     println!(
         "device ids: vendor=0x{:04x} device=0x{:04x}",
         report.vendor_id, report.device_id
@@ -120,6 +140,7 @@ fn run() -> Result<()> {
             let report = pollster::block_on(run_preflight(GpuPreflightOptions {
                 backend_override: cli.backend_override,
                 run_smoke_test: cli.run_smoke_test,
+                force_software_fallback: cli.force_software_fallback,
             }))?;
             print_report(&report);
         }
@@ -148,7 +169,8 @@ mod tests {
             parsed,
             CliCommand::Run(CliOptions {
                 backend_override: None,
-                run_smoke_test: true
+                run_smoke_test: true,
+                force_software_fallback: false
             })
         );
     }
@@ -165,7 +187,33 @@ mod tests {
             parsed,
             CliCommand::Run(CliOptions {
                 backend_override: Some("vulkan".to_string()),
-                run_smoke_test: false
+                run_smoke_test: false,
+                force_software_fallback: false
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_cli_args_software_flag() {
+        let parsed =
+            parse_cli_args(vec!["--software".to_string()]).expect("software flag should parse");
+        assert_eq!(
+            parsed,
+            CliCommand::Run(CliOptions {
+                backend_override: None,
+                run_smoke_test: true,
+                force_software_fallback: true
+            })
+        );
+
+        let parsed = parse_cli_args(vec!["--force-fallback".to_string()])
+            .expect("fallback alias should parse");
+        assert_eq!(
+            parsed,
+            CliCommand::Run(CliOptions {
+                backend_override: None,
+                run_smoke_test: true,
+                force_software_fallback: true
             })
         );
     }

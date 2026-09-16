@@ -82,6 +82,37 @@ Interpretation tip:
 - Adapter `llvmpipe` / `Cpu` means CPU fallback (no physical GPU exposed).
 - Use `scripts/gpu-preflight.sh nvidia` when you need explicit NVIDIA passthrough in Docker.
 
+## Software adapter (machines without a hardware GPU)
+
+Development machines without a suitable hardware GPU can still run the real
+WGSL compute path through a software rasterizer:
+
+- Linux: Mesa Lavapipe / LLVMpipe (Vulkan software rasterizer),
+- Windows: D3D12 WARP (software rasterizer).
+
+Request the software fallback adapter explicitly:
+
+```bash
+# One-shot CLI flag (works for gpu-preflight and the smoke test below)
+cargo run --bin gpu-preflight -- --software
+
+# Or persistent environment toggle (honored by GpuContext and preflight)
+FLEXPART_GPU_SOFTWARE=1 cargo run --bin gpu-preflight
+WGPU_FORCE_FALLBACK_ADAPTER=1 cargo run --bin gpu-preflight
+```
+
+The fallback adapter executes the same WGSL shaders as hardware. No separate
+CPU replacement path is used. Wall-clock timings measured on a software
+adapter must never be reported as GPU performance values.
+
+End-to-end infrastructure smoke test through the WGSL advection kernel:
+
+```bash
+# 4096 particles, uniform +10 m/s wind, 3600 s at dt=60 s.
+# Analytical expectation: 36 km eastward displacement, no N/S or vertical drift.
+FLEXPART_GPU_SOFTWARE=1 cargo test --test integration software_advection
+```
+
 ## Running Tests
 
 ```bash
@@ -114,7 +145,8 @@ tests/
     ├── physics_validation.rs       # CI gate: advection, PBL, dispersion
     ├── scientific_invariants.rs    # Positivity, determinism
     ├── deposition_decay.rs         # Exponential decay verification
-    └── source_receptor_consistency.rs  # Forward/backward symmetry
+    ├── source_receptor_consistency.rs  # Forward/backward symmetry
+    └── software_advection.rs       # SW-WGPU-ADVECTION-001 infrastructure smoke test
 ```
 
 ### What the CI gate checks
@@ -227,6 +259,8 @@ See [AGENTS.md](../AGENTS.md) for the full coding guidelines. Key points:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WGPU_BACKEND` | `vulkan` | GPU backend (`vulkan`, `metal`, `gl`) |
+| `FLEXPART_GPU_SOFTWARE` | unset (hardware) | Set to `1`/`true` to request the software fallback adapter (real WGSL path on Lavapipe/WARP) |
+| `WGPU_FORCE_FALLBACK_ADAPTER` | unset (hardware) | Alias for `FLEXPART_GPU_SOFTWARE` |
 | `RUST_LOG` | — | Logging level (`info`, `debug`, `trace`) |
 
 ### Benchmarks

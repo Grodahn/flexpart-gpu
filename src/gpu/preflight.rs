@@ -8,6 +8,8 @@ use std::sync::mpsc;
 use thiserror::Error;
 use wgpu::util::DeviceExt;
 
+use super::adapter::{is_software_adapter_requested_from_env, GpuAdapterOptions};
+
 const SMOKE_SENTINEL_VALUE: u32 = 0x00C0_FFEE;
 
 /// Runtime options for the GPU preflight probe.
@@ -17,6 +19,35 @@ pub struct GpuPreflightOptions {
     pub backend_override: Option<String>,
     /// If true, run the tiny compute smoke test.
     pub run_smoke_test: bool,
+    /// If true, request the software fallback adapter (`force_fallback_adapter`).
+    ///
+    /// The fallback path still runs the real WGSL compute shader. Timings on
+    /// such adapters must not be reported as GPU performance values.
+    pub force_software_fallback: bool,
+}
+
+impl GpuPreflightOptions {
+    /// Resolve options from the process environment.
+    ///
+    /// Reads `WGPU_BACKEND` for the backend selector and
+    /// `FLEXPART_GPU_SOFTWARE` / `WGPU_FORCE_FALLBACK_ADAPTER` for the
+    /// software fallback request.
+    #[must_use]
+    pub fn from_env() -> Self {
+        let backend_override = std::env::var("WGPU_BACKEND").ok();
+        Self {
+            backend_override,
+            run_smoke_test: true,
+            force_software_fallback: is_software_adapter_requested_from_env(),
+        }
+    }
+
+    /// Whether a software fallback adapter is requested either explicitly or
+    /// through `FLEXPART_GPU_SOFTWARE` / `WGPU_FORCE_FALLBACK_ADAPTER`.
+    #[must_use]
+    pub fn software_fallback_requested(&self) -> bool {
+        self.force_software_fallback || is_software_adapter_requested_from_env()
+    }
 }
 
 impl Default for GpuPreflightOptions {
@@ -24,6 +55,7 @@ impl Default for GpuPreflightOptions {
         Self {
             backend_override: None,
             run_smoke_test: true,
+            force_software_fallback: false,
         }
     }
 }
@@ -70,6 +102,10 @@ pub struct GpuPreflightReport {
     pub limits: DeviceLimitsSummary,
     pub supports_wind_texture_sampling: bool,
     pub smoke_test_value: Option<u32>,
+    /// Whether the software fallback adapter was requested.
+    pub fallback_requested: bool,
+    /// Whether the selected adapter is a software (CPU) rasterizer.
+    pub is_software_adapter: bool,
 }
 
 #[derive(Debug, Error)]
@@ -156,6 +192,11 @@ fn resolve_requested_backend(options: &GpuPreflightOptions) -> Result<String, Gp
 /// 1. discover adapter and create device via wgpu
 /// 2. collect adapter/device diagnostics
 /// 3. run tiny compute smoke test (optional)
+///
+/// The software fallback adapter can be requested explicitly through
+/// [`GpuPreflightOptions::force_software_fallback`] or through the
+/// `FLEXPART_GPU_SOFTWARE` / `WGPU_FORCE_FALLBACK_ADAPTER` environment
+/// variables. The fallback still executes the real WGSL compute shader.
 pub async fn run_preflight(
     options: GpuPreflightOptions,
 ) -> Result<GpuPreflightReport, GpuPreflightError> {
@@ -163,14 +204,15 @@ pub async fn run_preflight(
     if options.backend_override.is_some() {
         std::env::set_var("WGPU_BACKEND", &requested_backend);
     }
+    let fallback_requested = options.software_fallback_requested();
+    let adapter_options = GpuAdapterOptions {
+        force_software_fallback: fallback_requested,
+        backend_override: None,
+    };
 
     let instance = wgpu::Instance::default();
     let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        })
+        .request_adapter(&adapter_options.to_request_adapter_options())
         .await
         .ok_or_else(|| GpuPreflightError::NoAdapter {
             requested_backend: requested_backend.clone(),
@@ -203,18 +245,20 @@ pub async fn run_preflight(
 
     Ok(GpuPreflightReport {
         requested_backend,
-        adapter_name: info.name,
+        adapter_name: info.name.clone(),
         adapter_backend: info.backend,
         adapter_type: info.device_type,
         vendor_id: info.vendor,
         device_id: info.device,
-        driver: info.driver,
-        driver_info: info.driver_info,
+        driver: info.driver.clone(),
+        driver_info: info.driver_info.clone(),
         limits: DeviceLimitsSummary::from(device.limits()),
         supports_wind_texture_sampling: device
             .features()
             .contains(wgpu::Features::FLOAT32_FILTERABLE),
         smoke_test_value,
+        fallback_requested,
+        is_software_adapter: super::adapter::is_software_adapter(&info),
     })
 }
 
@@ -392,5 +436,24 @@ mod tests {
             Some(SMOKE_SENTINEL_VALUE),
             "smoke test should write expected sentinel value"
         );
+    }
+
+    #[test]
+    fn test_software_fallback_requested_combines_flag_and_env() {
+        std::env::remove_var(super::super::adapter::SOFTWARE_ADAPTER_ENV);
+        std::env::remove_var(super::super::adapter::SOFTWARE_ADAPTER_ENV_ALIAS);
+        let explicit = GpuPreflightOptions {
+            backend_override: None,
+            run_smoke_test: true,
+            force_software_fallback: true,
+        };
+        assert!(explicit.software_fallback_requested());
+
+        let implicit = GpuPreflightOptions::default();
+        assert!(!implicit.software_fallback_requested());
+
+        std::env::set_var(super::super::adapter::SOFTWARE_ADAPTER_ENV, "1");
+        assert!(implicit.software_fallback_requested());
+        std::env::remove_var(super::super::adapter::SOFTWARE_ADAPTER_ENV);
     }
 }

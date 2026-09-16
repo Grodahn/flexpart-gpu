@@ -8,3 +8,5 @@ mod physics_validation;
 mod scientific_invariants;
 #[path = "integration/source_receptor_consistency.rs"]
 mod source_receptor_consistency;
+#[path = "integration/software_advection.rs"]
+mod software_advection;

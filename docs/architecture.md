@@ -235,6 +235,7 @@ over Vulkan, Metal, DX12, and OpenGL. Compute shaders are written in WGSL.
 | Intel (Linux) | Vulkan (ANV) | `vulkan` |
 | Apple Silicon | Metal | `metal` |
 | No GPU (CI) | CPU software | `gl` |
+| No hardware GPU (dev) | Software WGSL fallback (Lavapipe/WARP) | any backend + `FLEXPART_GPU_SOFTWARE=1` (real WGSL path; timings are not GPU performance values) |
 
 ## Docker Environment
 

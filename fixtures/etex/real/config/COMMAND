@@ -9,7 +9,7 @@
  LOUTSAMPLE=          900,
  ITSPLIT=        99999999,
  LSYNCTIME=           900,
- CTL=          -5.0000000,
+ CTL=           5.0000000,
  IFINE=                 4,
  IOUT=                  1,
  IPOUT=                 2,

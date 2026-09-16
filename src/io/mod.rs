@@ -15,6 +15,7 @@ pub mod grib2_async;
 pub mod netcdf;
 #[cfg(feature = "netcdf")]
 pub mod netcdf_output;
+pub mod pbl_oracle;
 pub mod pbl_params;
 pub mod temporal;
 pub mod vertical_transform;
@@ -32,6 +33,12 @@ pub use netcdf::{
 pub use netcdf_output::{
     write_gridded_output_netcdf, DepositionGridOutput, DepositionGridShape, GriddedOutputMetadata,
     GriddedOutputSnapshot, NetcdfOutputError,
+};
+pub use pbl_oracle::{
+    diagnose_missing_mixing_heights, profile_method_ustar_heat_flux, richardson_mixing_height,
+    saturation_vapor_pressure_pa, stability_correction_heat_m, stability_correction_momentum_m,
+    MixingHeightDiagnosisOutcome, ProfileMethodInput, RichardsonColumnLevel, RichardsonInput,
+    RICHARDSON_CONVKE, RICHARDSON_CRITICAL, RICHARDSON_SHEAR_COEFFICIENT,
 };
 pub use pbl_params::{
     bulk_richardson_number, compute_pbl_cell_parameters, compute_pbl_parameters_from_met,

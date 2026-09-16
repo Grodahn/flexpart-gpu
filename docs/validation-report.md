@@ -142,6 +142,26 @@ end-covering output so future comparisons cannot repeat the smear artifact.
 Vertical differences (oracle mean z 3651 m vs GPU 1416 m) are out of scope
 here and belong to RISK-03.3G-04 (PBL/vertical transport).
 
+### 3.5 Addendum (RISK-03.3G-04): vertical gap attributed
+
+The vertical gap decomposed as follows (validation scenario, 6 h):
+
+- The oracle runs used `CTL = -5.0`, which selects the legacy normalized
+  turbulence formulation with forced single sub-stepping - while
+  `flexpart-gpu` ports the modern Hanna formulation. With the matched
+  formulation (`CTL = 5.0`), the oracle is surface-trapped (mean z = 117 m),
+  not deeply mixed: the 3651 m figure belongs to the legacy path.
+- Against the matched formulation, the remaining gap (117 m vs 1416 m) is a
+  stability-classification difference: identical heat-flux input classified
+  opposite regimes, because the GPU path assumed positive-upward flux while
+  the oracle and GRIB input use positive-downward (ECMWF). The PBL diagnosis
+  now follows the oracle convention (`io/pbl_oracle.rs`), with Richardson
+  mixing-height diagnosis wired through the provided channel.
+- A diagnosed stable-column run traps the plume under the diagnosed ceiling
+  (mean 49.9 m at hmix = 100 m in `tests/integration/pbl_vertical_parity.rs`).
+- Open (spiked, not guessed): soft-top escape above diagnosed hmix and CBL
+  orchestration; both are inactive in the matched runs on both sides.
+
 ### 3.4 Progression of vertical accuracy
 
 | Version                     | Dz mean | sigma_z ratio | Key change                    |

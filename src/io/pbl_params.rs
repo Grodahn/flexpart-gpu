@@ -93,7 +93,8 @@ pub struct PblCellInput {
     pub wind_v_10m_m_s: f32,
     /// Surface stress magnitude [N/m²].
     pub surface_stress_n_m2: f32,
-    /// Surface sensible heat flux [W/m²] (positive upward).
+    /// Surface sensible heat flux [W/m²], ECMWF/oracle sign convention
+    /// (positive DOWNWARD into the surface).
     pub sensible_heat_flux_w_m2: f32,
     /// Surface solar radiation [W/m²].
     pub solar_radiation_w_m2: f32,
@@ -179,6 +180,8 @@ pub enum PblParameterError {
         expected: (usize, usize),
         actual: (usize, usize),
     },
+    #[error("no Richardson number above critical found in column (oracle aborts the run here)")]
+    NoStableLayerFound,
 }
 
 /// Inputs for friction velocity estimation.
@@ -207,7 +210,8 @@ pub struct ObukhovInput {
     pub near_surface_temperature_k: f32,
     /// Air density [kg/m³].
     pub air_density_kg_m3: f32,
-    /// Surface sensible heat flux [W/m²], positive upward.
+    /// Surface sensible heat flux [W/m²], ECMWF/oracle sign convention
+    /// (positive DOWNWARD into the surface).
     pub sensible_heat_flux_w_m2: f32,
     /// Neutrality threshold on |H| [W/m²].
     pub heat_flux_neutral_threshold_w_m2: f32,
@@ -279,8 +283,15 @@ pub fn estimate_friction_velocity_m_s(input: FrictionVelocityInput) -> f32 {
 
 /// Estimate Obukhov length `L` [m] from sensible heat flux and `u*`.
 ///
-/// Formula:
-/// `L = -(rho * cp * T * u*^3) / (kappa * g * H)`, with `H` positive upward.
+/// Heat-flux sign convention follows the FLEXPART oracle and GRIB input
+/// (ECMWF: positive DOWNWARD into the surface):
+/// positive `H` cools the surface layer from above and is STABLE (`L > 0`),
+/// negative `H` heats from below and is UNSTABLE (`L < 0`).
+///
+/// Formula (Wotawa/Stohl `obukhov`, `getfields_mod.f90`):
+/// `L = theta * u*^2 / (kappa * g * theta*)` with
+/// `theta* = H / (rho * cp * u*)`, i.e. `L = theta*u*^3*rho*cp / (kappa*g*H)`.
+/// Near-surface air temperature stands in for potential temperature here.
 #[must_use]
 pub fn obukhov_length_from_surface_flux_m(input: ObukhovInput) -> f32 {
     let heat_flux = sanitize_finite(input.sensible_heat_flux_w_m2, 0.0);
@@ -292,7 +303,7 @@ pub fn obukhov_length_from_surface_flux_m(input: ObukhovInput) -> f32 {
     let temperature_k = sanitize_positive(input.near_surface_temperature_k, 300.0);
     let air_density = sanitize_positive(input.air_density_kg_m3, 1.225);
 
-    let numerator = -(air_density * CPA * temperature_k * ustar.powi(3));
+    let numerator = air_density * CPA * temperature_k * ustar.powi(3);
     let denominator = VON_KARMAN * GA * heat_flux;
     if denominator.abs() < 1.0e-9 {
         return f32::INFINITY;
@@ -518,13 +529,17 @@ fn compute_convective_velocity_scale_m_s(
     temperature_k: f32,
     mixing_height_m: f32,
 ) -> f32 {
-    if sensible_heat_flux_w_m2 <= 0.0 {
+    // Oracle/ECMWF sign convention: heat flux is positive DOWNWARD, so only
+    // negative (upward, convective) flux drives w* (FLEXPART `richardson`:
+    // `wst = (-h*g/theta*hf/cp)^1/3` for `hf < 0`, else 0).
+    if sensible_heat_flux_w_m2 >= 0.0 {
         return 0.0;
     }
     let density = sanitize_positive(air_density_kg_m3, 1.225);
     let temp = sanitize_positive(temperature_k, 300.0);
     let hmix = sanitize_positive(mixing_height_m, HMIX_MIN);
-    let buoyancy_flux_m2_s3 = sensible_heat_flux_w_m2 / (density * CPA) * GA / temp;
+    let upward_flux = -sensible_heat_flux_w_m2;
+    let buoyancy_flux_m2_s3 = upward_flux / (density * CPA) * GA / temp;
     if buoyancy_flux_m2_s3 <= 0.0 || !buoyancy_flux_m2_s3.is_finite() {
         return 0.0;
     }
@@ -732,18 +747,20 @@ mod tests {
 
     #[test]
     fn obukhov_length_sign_matches_flux_regime() {
+        // ECMWF/oracle sign convention: heat flux is positive DOWNWARD.
+        // Negative (upward, convective) flux gives L < 0; positive gives L > 0.
         let unstable = obukhov_length_from_surface_flux_m(ObukhovInput {
             friction_velocity_m_s: 0.4,
             near_surface_temperature_k: 300.0,
             air_density_kg_m3: 1.2,
-            sensible_heat_flux_w_m2: 150.0,
+            sensible_heat_flux_w_m2: -150.0,
             heat_flux_neutral_threshold_w_m2: 1.0,
         });
         let stable = obukhov_length_from_surface_flux_m(ObukhovInput {
             friction_velocity_m_s: 0.4,
             near_surface_temperature_k: 300.0,
             air_density_kg_m3: 1.2,
-            sensible_heat_flux_w_m2: -150.0,
+            sensible_heat_flux_w_m2: 150.0,
             heat_flux_neutral_threshold_w_m2: 1.0,
         });
         let neutral = obukhov_length_from_surface_flux_m(ObukhovInput {
@@ -855,7 +872,7 @@ mod tests {
     fn gridded_computation_populates_pbl_state_and_regime_classes() {
         let mut surface = SurfaceFields::zeros(2, 2);
 
-        // (0,0): unstable from positive sensible heat flux.
+        // (0,0): stable from downward (positive, ECMWF sign) sensible heat flux.
         surface.surface_pressure_pa[[0, 0]] = 101_325.0;
         surface.temperature_2m_k[[0, 0]] = 300.0;
         surface.u10_ms[[0, 0]] = 4.0;
@@ -865,7 +882,8 @@ mod tests {
         surface.solar_radiation_w_m2[[0, 0]] = 350.0;
         surface.mixing_height_m[[0, 0]] = 1500.0;
 
-        // (1,0): stable from negative sensible heat flux, hmix clipped to min.
+        // (1,0): unstable from upward (negative, ECMWF sign) sensible heat
+        // flux, hmix clipped to min.
         surface.surface_pressure_pa[[1, 0]] = 100_900.0;
         surface.temperature_2m_k[[1, 0]] = 295.0;
         surface.u10_ms[[1, 0]] = 2.0;
@@ -913,8 +931,8 @@ mod tests {
         .expect("grid inputs are shape-consistent");
 
         assert_eq!(output.pbl_state.shape(), (2, 2));
-        assert_eq!(output.stability_at(0, 0), StabilityClass::Unstable);
-        assert_eq!(output.stability_at(1, 0), StabilityClass::Stable);
+        assert_eq!(output.stability_at(0, 0), StabilityClass::Stable);
+        assert_eq!(output.stability_at(1, 0), StabilityClass::Unstable);
         assert_eq!(output.stability_at(1, 1), StabilityClass::Unstable);
         assert_abs_diff_eq!(output.pbl_state.hmix[[1, 0]], HMIX_MIN, epsilon = 1.0e-6);
         assert_abs_diff_eq!(output.pbl_state.hmix[[0, 1]], HMIX_MAX, epsilon = 1.0e-6);

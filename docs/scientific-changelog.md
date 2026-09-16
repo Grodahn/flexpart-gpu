@@ -16,6 +16,22 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-16 — Oracle-conformant PBL diagnosis (sign convention, Richardson hmix)
+**Impact**: physics (stability classification, w*, and mixing height for
+meteorology-driven runs; prescribed PBL state is unaffected)
+**Files**: `io/pbl_oracle.rs` (new), `io/pbl_params.rs`, `shaders/pbl_diagnostics.wgsl`,
+`simulation/timeloop.rs`, `scripts/generate_synthetic_grib.py`
+**Validation**: The sensible-heat-flux sign convention now follows the
+FLEXPART 11.1 oracle and GRIB input (ECMWF: positive DOWNWARD). Previously,
+identical input classified opposite stability regimes on the two sides,
+which explained the observed vertical gap (oracle surface-trapped at
+mean z = 117 m vs GPU mixed to 1416 m in the validation scenario).
+`pbl_profile` (Berkovicz-Prahm) and `richardson` (Vogelezang-Holtslag)
+diagnosis are ported with oracle-conformance unit tests; the driver fills
+unavailable mixing heights from profile columns (operator values always win).
+A diagnosed stable-column run traps the plume under the diagnosed ceiling
+(mean 49.9 m, max 99.9 m at hmix = 100 m). Full suite green on WARP.
+
 ### 2026-03-06 — Fused Hanna+Langevin default production path
 **Impact**: none (identical physics, different execution path)
 **Files**: `langevin_fused.wgsl`, `gpu/langevin_fused.rs`, `simulation/timeloop.rs`

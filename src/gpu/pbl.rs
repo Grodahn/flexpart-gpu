@@ -482,7 +482,7 @@ mod tests {
     fn make_test_surface_fields() -> SurfaceFields {
         let mut surface = SurfaceFields::zeros(3, 2);
 
-        // Cell (0,0): unstable — positive sensible heat flux, valid hmix
+        // Cell (0,0): stable - downward (positive, ECMWF sign) heat flux, valid hmix
         surface.surface_pressure_pa[[0, 0]] = 101_325.0;
         surface.temperature_2m_k[[0, 0]] = 300.0;
         surface.u10_ms[[0, 0]] = 4.0;
@@ -492,7 +492,7 @@ mod tests {
         surface.solar_radiation_w_m2[[0, 0]] = 350.0;
         surface.mixing_height_m[[0, 0]] = 1500.0;
 
-        // Cell (1,0): stable — negative sensible heat flux, low hmix
+        // Cell (1,0): unstable - upward (negative, ECMWF sign) heat flux, low hmix
         surface.surface_pressure_pa[[1, 0]] = 100_900.0;
         surface.temperature_2m_k[[1, 0]] = 295.0;
         surface.u10_ms[[1, 0]] = 2.0;

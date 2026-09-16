@@ -4,6 +4,8 @@ mod deposition_decay;
 mod horizontal_dispersion;
 #[path = "integration/mass_conservation.rs"]
 mod mass_conservation;
+#[path = "integration/pbl_vertical_parity.rs"]
+mod pbl_vertical_parity;
 #[path = "integration/physics_validation.rs"]
 mod physics_validation;
 #[path = "integration/reference_environment.rs"]

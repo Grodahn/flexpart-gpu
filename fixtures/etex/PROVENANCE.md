@@ -51,6 +51,15 @@ FLEXPART Fortran oracle outputs are produced at validation time by the pinned
 reference environment (`reference/flexpart-11.1.json`,
 `docs/reference-environment.md`) and are never stored as fixtures.
 
+## Turbulence formulation (CTL)
+
+`CTL` selects the oracle's turbulence formulation: `CTL >= 0.1` engages the
+modern Hanna (1982) Markov formulation that `flexpart-gpu` ports, while
+negative values select the legacy normalized formulation with forced
+single sub-stepping. All comparison scenarios in this repository use the
+modern formulation (`CTL = 5.0`) so that both sides integrate the same
+equations. This is a formulation choice, not a measured value.
+
 ## Guard rails
 
 - The validation harness rejects candidate-derived references for any claimed

@@ -52,8 +52,8 @@ use crate::gpu::{
     WetDepositionStepParams, WindBuffers, WindSamplingPath,
 };
 use crate::io::{
-    compute_pbl_parameters_from_met, interpolate_surface_fields_linear, Era5GribGridMetadata,
-    Era5MvpSnapshot, Grib2ReaderError,
+    compute_pbl_parameters_from_met, diagnose_missing_mixing_heights,
+    interpolate_surface_fields_linear, Era5GribGridMetadata, Era5MvpSnapshot, Grib2ReaderError,
     GribPrefetchHandle, PblComputationOptions, PblMetInputGrids, PblParameterError,
     TemporalInterpolationError, TimeBoundsBehavior,
 };
@@ -478,6 +478,45 @@ fn is_gpu_pbl_enabled() -> bool {
     })
 }
 
+/// Diagnose Richardson mixing heights for cells without operator values.
+///
+/// Builds profile columns from the current wind bracket (no temporal
+/// interpolation in this baseline, mirroring the module-level note) and
+/// fills `surface.mixing_height_m` where it is unavailable (`<= 0`).
+/// Operator-provided values always win; diagnosis failures keep the existing
+/// fallback path and are logged once per driver.
+#[allow(clippy::too_many_arguments)]
+fn diagnose_profile_mixing_heights(
+    surface: &mut SurfaceFields,
+    wind_t0: &WindField3D,
+    level_heights_m: &[f32; 16],
+    warned: &mut bool,
+) {
+    let outcome = diagnose_missing_mixing_heights(
+        &mut surface.mixing_height_m,
+        &surface.surface_pressure_pa,
+        &surface.temperature_2m_k,
+        &surface.dewpoint_2m_k,
+        &surface.surface_stress_n_m2,
+        &wind_t0.temperature_k,
+        &wind_t0.specific_humidity,
+        &wind_t0.u_ms,
+        &wind_t0.v_ms,
+        &wind_t0.pressure_pa,
+        level_heights_m,
+        &surface.sensible_heat_flux_w_m2,
+    );
+    if outcome.failed > 0 && !*warned {
+        *warned = true;
+        log::warn!(
+            "Richardson mixing-height diagnosis failed for {} of {} cells; \
+             existing fallback applies (see docs/reference-environment.md)",
+            outcome.failed,
+            outcome.diagnosed + outcome.provided + outcome.failed,
+        );
+    }
+}
+
 /// Returns `true` when the full multi-dispatch validation path is requested.
 ///
 /// Set `FLEXPART_GPU_VALIDATION=1` to use separated Hanna → Langevin
@@ -663,6 +702,8 @@ pub struct ForwardTimeLoopDriver {
     /// Set `true` after `queue.submit()`; cleared by `device.poll(Wait)` or
     /// by an async readback that internally polls.
     gpu_submission_pending: bool,
+    /// Whether a Richardson-diagnosis fallback warning was already logged.
+    pbl_diagnosis_warned: bool,
     /// `true` when running the full multi-dispatch validation path
     /// (`FLEXPART_GPU_VALIDATION=1`). Uses separated Hanna → Langevin
     /// dispatches so intermediate buffers can be inspected.
@@ -824,6 +865,7 @@ impl ForwardTimeLoopDriver {
             use_compaction,
             compaction_pipelines,
             compaction_buffers,
+            pbl_diagnosis_warned: false,
         })
     }
 
@@ -958,7 +1000,7 @@ impl ForwardTimeLoopDriver {
         let wind_interp_dur = Duration::ZERO;
 
         let t = profiling.then(Instant::now);
-        let interpolated_surface = interpolate_surface_fields_linear(
+        let mut interpolated_surface = interpolate_surface_fields_linear(
             met.surface_t0,
             met.surface_t1,
             met.time_t0_seconds,
@@ -967,6 +1009,17 @@ impl ForwardTimeLoopDriver {
             self.config.time_bounds_behavior,
         )?;
         let surf_interp_dur = t.map_or(Duration::ZERO, |t| t.elapsed());
+
+        // Richardson mixing-height diagnosis for cells without operator
+        // values (profile cues from the current wind bracket, no temporal
+        // interpolation in this baseline). Both PBL paths consume the result
+        // through the provided-mixing-height channel.
+        diagnose_profile_mixing_heights(
+            &mut interpolated_surface,
+            met.wind_t0,
+            &self.config.velocity_to_grid_scale.level_heights_m,
+            &mut self.pbl_diagnosis_warned,
+        );
 
         let use_gpu_pbl = is_gpu_pbl_enabled();
         let (pbl_dur, pbl_upload_dur) = if use_gpu_pbl {
@@ -1488,6 +1541,8 @@ pub struct BackwardTimeLoopDriver {
     wet_scavenging_uniform_cached: Option<f32>,
     /// Last uploaded uniform wet precipitating fraction, if any.
     wet_fraction_uniform_cached: Option<f32>,
+    /// Whether a Richardson-diagnosis fallback warning was already logged.
+    pbl_diagnosis_warned: bool,
 }
 
 impl BackwardTimeLoopDriver {
@@ -1567,6 +1622,7 @@ impl BackwardTimeLoopDriver {
             dry_uniform_cached: None,
             wet_scavenging_uniform_cached: None,
             wet_fraction_uniform_cached: None,
+            pbl_diagnosis_warned: false,
         })
     }
 
@@ -1627,7 +1683,7 @@ impl BackwardTimeLoopDriver {
         // O-02: upload wind_t0/t1 once per met bracket.
         self.upload_dual_wind_if_bracket_changed(met)?;
 
-        let interpolated_surface = interpolate_surface_fields_linear(
+        let mut interpolated_surface = interpolate_surface_fields_linear(
             met.surface_t0,
             met.surface_t1,
             met.time_t0_seconds,
@@ -1635,6 +1691,15 @@ impl BackwardTimeLoopDriver {
             self.current_time_seconds,
             self.config.time_bounds_behavior,
         )?;
+
+        // Richardson mixing-height diagnosis for cells without operator
+        // values (see forward path).
+        diagnose_profile_mixing_heights(
+            &mut interpolated_surface,
+            met.wind_t0,
+            &self.config.velocity_to_grid_scale.level_heights_m,
+            &mut self.pbl_diagnosis_warned,
+        );
 
         // O-04: GPU PBL by default; CPU fallback with FLEXPART_GPU_PBL_CPU=1.
         let use_gpu_pbl = is_gpu_pbl_enabled();

@@ -1,7 +1,10 @@
 // PBL diagnostics compute shader (S-02 / Tier 2.1).
 //
 // Ported from pbl_params.rs: compute_pbl_parameters_from_met()
-// Reference: calcpar.f90, obukhov.f90 (FLEXPART 10.4)
+// Reference: getfields_mod.f90 (calcpar, scalev, obukhov, richardson), FLEXPART 11.1
+//
+// Heat-flux sign convention follows the oracle and GRIB input (ECMWF:
+// positive DOWNWARD): positive flux is stable, negative flux is convective.
 //
 // Each workgroup item processes one grid cell independently, computing:
 //   - Friction velocity u* from surface stress or neutral log-law
@@ -161,7 +164,8 @@ fn estimate_friction_velocity(
 
 // ---------------------------------------------------------------------------
 // Physics: Obukhov length L [m] from surface flux
-// L = -(rho * cp * T * u*^3) / (kappa * g * H)
+// L = theta * u*^2 / (kappa * g * theta*), theta* = H / (rho * cp * u*)
+// (ECMWF sign: positive DOWNWARD flux is stable, L > 0.)
 // Ported from pbl_params.rs: obukhov_length_from_surface_flux_m()
 // ---------------------------------------------------------------------------
 
@@ -181,7 +185,7 @@ fn obukhov_length_from_flux(
     let t = sanitize_positive(temp_k, 300.0);
     let d = sanitize_positive(air_density, 1.225);
 
-    let numerator = -(d * CPA * t * u * u * u);
+    let numerator = d * CPA * t * u * u * u;
     let denominator = VON_KARMAN * GA * h;
     if (abs(denominator) < 1.0e-9) {
         return positive_infinity();
@@ -208,7 +212,7 @@ fn clamp_mixing_height(v: f32) -> f32 {
 
 // ---------------------------------------------------------------------------
 // Physics: convective velocity scale w* [m/s]
-// w* = (g/T * H/(rho*cp) * hmix)^(1/3)  for H > 0
+// w* = (g/T * (-H)/(rho*cp) * hmix)^(1/3) for upward (H < 0) flux only
 // Ported from pbl_params.rs: compute_convective_velocity_scale_m_s()
 // ---------------------------------------------------------------------------
 
@@ -218,13 +222,13 @@ fn convective_velocity_scale(
     temp_k: f32,
     hmix: f32,
 ) -> f32 {
-    if (heat_flux <= 0.0) {
+    if (heat_flux >= 0.0) {
         return 0.0;
     }
     let d = sanitize_positive(air_density, 1.225);
     let t = sanitize_positive(temp_k, 300.0);
     let h = sanitize_positive(hmix, params.hmix_min_m);
-    let buoyancy_flux = heat_flux / (d * CPA) * GA / t;
+    let buoyancy_flux = -heat_flux / (d * CPA) * GA / t;
     if (buoyancy_flux <= 0.0 || !is_finite_scalar(buoyancy_flux)) {
         return 0.0;
     }

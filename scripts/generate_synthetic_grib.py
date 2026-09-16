@@ -117,6 +117,7 @@ PARAM_LNSP = 152    # log of surface pressure
 
 def generate_one_timestep(output_path: str, nx: int, ny: int, nz: int,
                            u_wind: float, v_wind: float, w_wind: float,
+                           sshf_w_m2: float, stress_n_m2: float,
                            date: int, time: int):
     npoints = nx * ny
     uniform = lambda val: np.full(npoints, val, dtype=np.float64)
@@ -150,13 +151,13 @@ def generate_one_timestep(output_path: str, nx: int, ny: int, nz: int,
         write_grib1_message(fout, PARAM_V10M, LEVEL_SURFACE, 0, nx, ny,
                             uniform(v_wind), date, time, nz)
         write_grib1_message(fout, PARAM_SSHF, LEVEL_SURFACE, 0, nx, ny,
-                            uniform(40.0), date, time, nz)
+                            uniform(sshf_w_m2), date, time, nz)
         write_grib1_message(fout, PARAM_SSR, LEVEL_SURFACE, 0, nx, ny,
                             uniform(220.0), date, time, nz)
         write_grib1_message(fout, PARAM_EWSS, LEVEL_SURFACE, 0, nx, ny,
-                            uniform(0.1), date, time, nz)
+                            uniform(stress_n_m2), date, time, nz)
         write_grib1_message(fout, PARAM_NSSS, LEVEL_SURFACE, 0, nx, ny,
-                            uniform(0.1), date, time, nz)
+                            uniform(stress_n_m2), date, time, nz)
         write_grib1_message(fout, PARAM_LSP, LEVEL_SURFACE, 0, nx, ny,
                             uniform(0.0), date, time, nz)
         write_grib1_message(fout, PARAM_CP, LEVEL_SURFACE, 0, nx, ny,
@@ -177,6 +178,10 @@ def main():
     parser.add_argument("--u-wind", type=float, default=0.5)
     parser.add_argument("--v-wind", type=float, default=-0.3)
     parser.add_argument("--w-wind", type=float, default=0.0)
+    parser.add_argument("--sshf", type=float, default=40.0,
+                        help="surface sensible heat flux [W/m2] (GRIB sign convention)")
+    parser.add_argument("--stress", type=float, default=0.1,
+                        help="surface stress component magnitude [N/m2], applied to EWSS+NSSS")
     parser.add_argument("--start-date", default="20240101")
     parser.add_argument("--hours", type=int, default=6)
     args = parser.parse_args()
@@ -193,6 +198,7 @@ def main():
         generate_one_timestep(
             output_path, args.nx, args.ny, args.nz,
             args.u_wind, args.v_wind, args.w_wind,
+            args.sshf, args.stress,
             date, time_hhmmss,
         )
 

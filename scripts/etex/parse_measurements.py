@@ -51,7 +51,7 @@ def parse_measurements(path: str) -> list:
 
     Format: year mn dy shr dur lat lon conc stn
     - shr:  start hour (HHMM)
-    - dur:  sampling duration in minutes
+    - dur:  sampling duration as HHMM (for example 0300 = 3 hours)
     - conc: concentration in pg/m³ (pico-grams per cubic meter)
     """
     measurements = []
@@ -77,7 +77,11 @@ def parse_measurements(path: str) -> list:
                 start_hour = shr // 100
                 start_min = shr % 100
                 start_dt = datetime(year, month, day, start_hour, start_min)
-                end_dt = start_dt + timedelta(minutes=dur)
+                duration_hours, duration_minutes = divmod(dur, 100)
+                if duration_minutes >= 60 or dur <= 0:
+                    continue
+                duration_min = duration_hours * 60 + duration_minutes
+                end_dt = start_dt + timedelta(minutes=duration_min)
 
                 hours_after_release = (
                     start_dt - datetime(1994, 10, 23, 16, 0)
@@ -89,7 +93,7 @@ def parse_measurements(path: str) -> list:
                     "lon": lon,
                     "start_time": start_dt.strftime("%Y-%m-%d %H:%M"),
                     "end_time": end_dt.strftime("%Y-%m-%d %H:%M"),
-                    "duration_min": dur,
+                    "duration_min": duration_min,
                     "hours_after_release": round(hours_after_release, 2),
                     "concentration_pg_m3": conc,
                 })

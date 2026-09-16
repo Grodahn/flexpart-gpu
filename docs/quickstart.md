@@ -3,31 +3,24 @@
 This guide shows the simplest way to run an ETEX-style simulation
 with `flexpart-gpu`, without modifying the engine source code.
 
-The default quickstart is **GPU-only** and does **not** require a
-sibling `../flexpart` checkout.
+The paired ETEX workflow runs both `flexpart-gpu` and the pinned FLEXPART
+11.1 oracle. It reports diagnostics against station observations and does
+not assert scientific parity.
 
 ## 1) Prerequisites
 
 - Rust toolchain (`cargo`)
-- Python 3 (+ `numpy`, `eccodes`, `cdsapi`)
-- Copernicus CDS account (to download ERA5) with `~/.cdsapirc`
-
-Optional (only for Fortran comparison):
-
+- Python 3 with `numpy`, `eccodes`, `xarray`, `gcsfs`, and `zarr`
 - Docker + Docker Compose
-- sibling Fortran checkout at `../flexpart`
+- the unmodified FLEXPART 11.1 checkout at `../flexpart` (see
+  [reference-environment.md](reference-environment.md))
 
 Optional (for GPU execution inside Docker):
 
 - `docker/docker-compose.yml` (default GPU container)
 - `docker/docker-compose.nvidia.yml` (NVIDIA overlay)
 
-Example `~/.cdsapirc`:
-
-```yaml
-url: https://cds.climate.copernicus.eu/api
-key: <YOUR_PERSONAL_ACCESS_TOKEN>
-```
+ERA5 is downloaded from the public ARCO-ERA5 dataset. No CDS token is used.
 
 ## 2) Check pipeline status
 
@@ -40,7 +33,7 @@ scripts/run-etex.sh status
 This command reports what is missing (ETEX data, ERA5, outputs already
 produced, etc.).
 
-## 3) Run the GPU-only pipeline (recommended for a first run)
+## 3) Run the paired pipeline
 
 ```bash
 scripts/run-etex.sh all
@@ -50,10 +43,10 @@ The script chains:
 
 1. parsing ETEX measurements,
 2. downloading ERA5,
-3. preparing FLEXPART meteorological files,
-4. running `flexpart-gpu`,
-5. comparing against observations,
-6. generating the report.
+3. preparing both model inputs from the same ERA5 arrays,
+4. running the pinned FLEXPART 11.1 oracle,
+5. running the WGSL candidate,
+6. comparing paired three-hour windows with observations.
 
 ## 4) Run and debug step by step
 
@@ -63,22 +56,13 @@ If `all` fails, run individual steps:
 scripts/run-etex.sh parse
 scripts/run-etex.sh download
 scripts/run-etex.sh prepare
+scripts/run-etex.sh fortran
 scripts/run-etex.sh gpu
 scripts/run-etex.sh compare
 scripts/run-etex.sh report
 ```
 
-Optional Fortran step:
-
-```bash
-scripts/run-etex.sh fortran
-```
-
-Or run everything including Fortran in one go:
-
-```bash
-scripts/run-etex.sh all-with-fortran
-```
+`all-with-fortran` is an alias for `all`.
 
 ## 5) Scenario configuration files
 

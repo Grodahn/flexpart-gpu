@@ -69,12 +69,15 @@ struct OutputEntry {
     nz: usize,
     heights_m: Vec<f32>,
     interval_seconds: i64,
+    sampling_seconds: i64,
 }
 
 #[derive(Serialize)]
 struct EtexOutput {
     grid: GridMeta,
     timesteps: Vec<TimestepOutput>,
+    averaging_seconds: i64,
+    sampling_seconds: i64,
     total_steps: usize,
     final_active_particles: usize,
 }
@@ -95,6 +98,8 @@ struct GridMeta {
 struct TimestepOutput {
     datetime: String,
     epoch_seconds: i64,
+    window_start_epoch_seconds: i64,
+    samples: usize,
     particle_count_per_cell: Vec<u32>,
     concentration_mass_kg: Vec<f32>,
     active_particles: usize,
@@ -221,7 +226,10 @@ fn start_met_prefetch(
     let file = entry.file.clone();
     let epoch_seconds = entry.epoch_seconds;
     let handle = std::thread::spawn(move || {
-        let entry = TimestepEntry { epoch_seconds, file };
+        let entry = TimestepEntry {
+            epoch_seconds,
+            file,
+        };
         load_met_snapshot(&met_dir, &entry, nx, ny, nz)
     });
     MetSnapshotPrefetch { target_idx, handle }
@@ -296,7 +304,14 @@ fn main() {
         "simulation: {} → {}, dt={}s",
         manifest.simulation.start, manifest.simulation.end, manifest.simulation.dt_seconds
     );
-    eprintln!("met prefetch: {}", if prefetch_enabled { "enabled" } else { "disabled" });
+    eprintln!(
+        "met prefetch: {}",
+        if prefetch_enabled {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    );
 
     let center_lat = manifest.release.lat;
     let lat_rad = center_lat * std::f64::consts::PI / 180.0;
@@ -412,7 +427,13 @@ fn main() {
 
     let out_heights = {
         let mut h = [0.0_f32; MAX_OUTPUT_LEVELS];
-        for (i, &v) in manifest.output.heights_m.iter().take(MAX_OUTPUT_LEVELS).enumerate() {
+        for (i, &v) in manifest
+            .output
+            .heights_m
+            .iter()
+            .take(MAX_OUTPUT_LEVELS)
+            .enumerate()
+        {
             h[i] = v;
         }
         h
@@ -421,6 +442,15 @@ fn main() {
     let mut timestep_outputs = Vec::new();
     let mut total_steps = 0_usize;
     let output_interval = manifest.output.interval_seconds;
+    let sampling_interval = manifest.output.sampling_seconds;
+    assert!(output_interval > 0 && sampling_interval > 0);
+    assert_eq!(output_interval % sampling_interval, 0);
+    assert_eq!(sampling_interval % manifest.simulation.dt_seconds, 0);
+    let samples_per_output = (output_interval / sampling_interval) as usize;
+    let mut window_mass_sum =
+        vec![0.0_f64; manifest.output.nx * manifest.output.ny * manifest.output.nz];
+    let mut window_samples = 0_usize;
+    let mut last_particle_counts = Vec::new();
 
     // Compute simulation start epoch from the driver's internal timestamp
     let sim_start_epoch = driver.current_time_seconds();
@@ -443,20 +473,11 @@ fn main() {
         };
 
         while driver.has_remaining_steps() && driver.current_time_seconds() < t1.epoch_seconds {
-            let report = pollster::block_on(driver.run_timestep(&met, &forcing))
-                .expect("timestep failed");
+            let report =
+                pollster::block_on(driver.run_timestep(&met, &forcing)).expect("timestep failed");
             total_steps += 1;
 
-            if driver.current_time_seconds() >= next_output_time {
-                let t_h = (driver.current_time_seconds() - sim_start_epoch) as f64 / 3600.0;
-                eprintln!(
-                    "  t+{:.1}h (bracket {}/{}): {} active particles",
-                    t_h,
-                    bracket_idx,
-                    manifest.timesteps.len() - 1,
-                    report.active_particle_count
-                );
-
+            if (driver.current_time_seconds() - sim_start_epoch) % sampling_interval == 0 {
                 let conc = pollster::block_on(driver.accumulate_concentration_grid(
                     ConcentrationGridShape {
                         nx: manifest.output.nx,
@@ -470,18 +491,49 @@ fn main() {
                     },
                 ))
                 .expect("concentration gridding failed");
+                for (sum, mass) in window_mass_sum.iter_mut().zip(&conc.concentration_mass_kg) {
+                    *sum += f64::from(*mass);
+                }
+                last_particle_counts = conc.particle_count_per_cell;
+                window_samples += 1;
+            }
+
+            if driver.current_time_seconds() >= next_output_time {
+                assert_eq!(
+                    window_samples, samples_per_output,
+                    "incomplete concentration averaging window"
+                );
+                let t_h = (driver.current_time_seconds() - sim_start_epoch) as f64 / 3600.0;
+                eprintln!(
+                    "  t+{:.1}h (bracket {}/{}): {} active particles",
+                    t_h,
+                    bracket_idx,
+                    manifest.timesteps.len() - 1,
+                    report.active_particle_count
+                );
 
                 let epoch = driver.current_time_seconds();
                 let dt_str = epoch_to_flexpart_timestamp(epoch);
+                let averaged_mass = window_mass_sum
+                    .iter_mut()
+                    .map(|sum| {
+                        let averaged = (*sum / window_samples as f64) as f32;
+                        *sum = 0.0;
+                        averaged
+                    })
+                    .collect();
 
                 timestep_outputs.push(TimestepOutput {
                     datetime: dt_str,
                     epoch_seconds: epoch,
-                    particle_count_per_cell: conc.particle_count_per_cell,
-                    concentration_mass_kg: conc.concentration_mass_kg,
+                    window_start_epoch_seconds: epoch - output_interval,
+                    samples: window_samples,
+                    particle_count_per_cell: std::mem::take(&mut last_particle_counts),
+                    concentration_mass_kg: averaged_mass,
                     active_particles: report.active_particle_count,
                 });
 
+                window_samples = 0;
                 next_output_time += output_interval;
             }
         }
@@ -498,16 +550,14 @@ fn main() {
             prefetch_hits += 1;
             let t_wait = Instant::now();
             let result = consume_prefetch(handle, needed_idx)
-                .unwrap_or_else(|e| panic!("consume prefetch for index {needed_idx} failed: {e}"))
-                ;
+                .unwrap_or_else(|e| panic!("consume prefetch for index {needed_idx} failed: {e}"));
             met_wait_prefetch_ms += t_wait.elapsed().as_secs_f64() * 1_000.0;
             result
         } else {
             prefetch_misses += 1;
             let t_wait = Instant::now();
             let result = load_met_snapshot(met_dir, &manifest.timesteps[needed_idx], nx, ny, nz)
-                .unwrap_or_else(|e| panic!("load timestep {needed_idx} failed: {e}"))
-                ;
+                .unwrap_or_else(|e| panic!("load timestep {needed_idx} failed: {e}"));
             met_wait_sync_ms += t_wait.elapsed().as_secs_f64() * 1_000.0;
             result
         };
@@ -525,6 +575,14 @@ fn main() {
         }
     }
 
+    assert!(
+        !driver.has_remaining_steps(),
+        "meteorology ended before the simulation"
+    );
+    assert!(
+        !timestep_outputs.is_empty(),
+        "ETEX run produced no concentration windows"
+    );
     let active = timestep_outputs
         .last()
         .map(|t| t.active_particles)
@@ -559,6 +617,8 @@ fn main() {
             heights_m: manifest.output.heights_m.clone(),
         },
         timesteps: timestep_outputs,
+        averaging_seconds: output_interval,
+        sampling_seconds: sampling_interval,
         total_steps,
         final_active_particles: active,
     };

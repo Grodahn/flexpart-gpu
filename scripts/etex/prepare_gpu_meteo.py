@@ -16,9 +16,11 @@ Usage:
         --output-dir target/etex/gpu_meteo
 """
 import argparse
+import calendar
 import json
 import os
 import struct
+from datetime import datetime
 
 import numpy as np
 
@@ -106,10 +108,6 @@ def main():
 
     pressure_pa_3d = np.array(PRESSURE_LEVELS_HPA, dtype=np.float32) * 100.0
 
-    import calendar
-    from datetime import datetime as _dt
-    epoch_base = int(calendar.timegm(_dt(1994, 10, 23, 0, 0, 0).timetuple()))
-
     # Select timesteps at given interval
     step = args.interval_hours
     selected = list(range(0, n_times, step))
@@ -117,8 +115,7 @@ def main():
     timestep_files = []
     for idx in selected:
         time_str = str(times[idx])[:19]
-        hour = idx  # hours since epoch_base
-        epoch = epoch_base + hour * 3600
+        epoch = calendar.timegm(datetime.fromisoformat(time_str).timetuple())
 
         u_3d = prepare_3d(u, idx)
         v_3d = prepare_3d(v, idx)
@@ -232,7 +229,7 @@ def main():
         },
         "simulation": {
             "start": "19941023160000",
-            "end": "19941025160000",
+            "end": "19941026160000",
             "dt_seconds": 900,
         },
         "output": {
@@ -241,6 +238,7 @@ def main():
             "nz": 5,
             "heights_m": [100.0, 500.0, 1000.0, 2000.0, 5000.0],
             "interval_seconds": 10800,
+            "sampling_seconds": 900,
         },
     }
 

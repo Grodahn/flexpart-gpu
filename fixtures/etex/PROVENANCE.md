@@ -36,14 +36,18 @@ Ground-level ETEX-1 station observations in the original exchange format
 bundled `readme.txt`). The files are consumed read-only by
 `scripts/etex/parse_measurements.py`. They are never written by any
 `flexpart-gpu` binary, and no comparison script may overwrite them.
+The DATEM `dur` field is HHMM, so `0300` denotes a three-hour sample.
 
 ## Meteorology (not bundled)
 
-Meteorology is deliberately not vendored here. The pipeline downloads ERA5
-from the Copernicus Climate Data Store (`scripts/etex/download_era5*.py`)
-and prepares FLEXPART input (`scripts/etex/prepare_flexpart_input*.py`).
-ERA5 is produced independently of this project; the download scripts record
-request parameters for reproducibility.
+Meteorology is deliberately not vendored here. `scripts/run-etex.sh` downloads
+public ARCO-ERA5 arrays from Google Cloud Storage using
+`scripts/etex/download_era5_gcs.py`. It prepares Fortran GRIB input with
+`prepare_flexpart_input_from_npy.py` and candidate binary input with
+`prepare_gpu_meteo.py` from those same arrays. ERA5 is independent of both
+models. The downloader records its request parameters, and the comparison
+report hashes the downloaded arrays, generated model outputs, manifests, and
+observations. It also records the pinned oracle and candidate revisions.
 
 ## Reference outputs (not bundled)
 
@@ -58,3 +62,6 @@ reference environment (`reference/flexpart-11.1.json`,
   stay explicitly labeled `fixture_scaffold`.
 - The `scaffold/` directory holds synthetic plumbing fixtures only and must
   not be cited as ETEX evidence.
+- `scripts/run-etex.sh all` requires both the pinned FLEXPART 11.1 run and the
+  WGSL candidate run. Missing output or incomplete time coverage is an error.
+  The paired report is diagnostic and cannot by itself establish parity.

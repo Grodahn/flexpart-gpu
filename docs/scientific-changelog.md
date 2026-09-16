@@ -16,6 +16,17 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-16 — Pair ETEX concentration windows with the Fortran oracle
+**Impact**: output-only (three-hour mean replaces an end-time snapshot)
+**Files**: `src/bin/etex-run.rs`, `scripts/etex/compare_oracle_observations.py`,
+`fixtures/etex/real/config/COMMAND`, `fixtures/etex/real/config/OUTGRID`
+**Validation**: The ETEX driver now samples every 900 seconds and averages
+12 samples for each 10,800-second window, matching the configured FLEXPART
+`LOUTSAMPLE` and `LOUTAVER`. The paired comparator rejects unmatched windows,
+missing fields, and incomplete station coverage. Focused synthetic comparator
+tests and a release build passed. A real ERA5/ETEX run is still required
+before reporting observational metrics or a parity result.
+
 ### 2026-03-06 — Fused Hanna+Langevin default production path
 **Impact**: none (identical physics, different execution path)
 **Files**: `langevin_fused.wgsl`, `gpu/langevin_fused.rs`, `simulation/timeloop.rs`

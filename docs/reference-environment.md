@@ -56,12 +56,23 @@ manifest/checkout verification above plus Docker for the actual oracle runs.
 
 - Synthetic uniform-wind comparison (`scripts/compare-fortran.sh validate`,
   `src/bin/fortran-validation.rs`, `scripts/compare_concentrations.py`).
-- ETEX-1 side-by-side runs (`scripts/run-etex.sh all-with-fortran`).
+- ETEX-1 paired runs (`scripts/run-etex.sh all`): prepare both model inputs
+  from the same independently downloaded ERA5 arrays, execute the pinned
+  Fortran oracle and the WGSL candidate, and compare complete three-hour
+  concentration windows with DATEM observations. The report contains model
+  diagnostics and input checksums; it does not assert scientific parity.
 - Future parity gates in issues RISK-03.3G-03 and later.
 
 Oracle outputs are produced at validation time and compared, never vendored
 as fixtures. ETEX measurement/meteorology/source-term provenance is recorded
 in `fixtures/etex/PROVENANCE.md`.
+
+The ETEX workflow requires Python packages `eccodes`, `numpy`, `xarray`,
+`gcsfs`, and `zarr`, Docker Compose, and Cargo. Run `scripts/run-etex.sh status`
+to inspect local inputs and outputs. `compare` fails when either model output
+is absent or the model windows do not match. A complete ETEX run also needs
+the externally downloaded ERA5 arrays; a build or synthetic smoke test alone
+does not validate ETEX.
 
 The standard synthetic validation setup (`scripts/compare-fortran.sh`
 `validate`) uses an output cadence whose last window covers the run end, and

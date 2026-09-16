@@ -183,7 +183,7 @@ flexpart-gpu/
 │   └── scaffold/                 # Synthetic scaffold for CI
 │
 ├── scripts/
-│   ├── run-etex.sh               # ETEX pipeline (GPU-only default, optional Fortran)
+│   ├── run-etex.sh               # Paired ETEX oracle/candidate pipeline
 │   ├── compare-fortran.sh        # Synthetic Fortran comparison
 │   ├── gpu-preflight.sh          # GPU backend check
 │   └── etex/                     # ETEX helper scripts (ERA5, obs parsing)

@@ -225,8 +225,8 @@ See [quickstart.md](quickstart.md) for the step-by-step guide. Short version:
 
 ```bash
 scripts/run-etex.sh status    # check prerequisites
-scripts/run-etex.sh all       # GPU-only pipeline
-scripts/run-etex.sh all-with-fortran  # optional Fortran comparison
+scripts/run-etex.sh all       # paired FLEXPART 11.1 and WGSL runs
+scripts/run-etex.sh all-with-fortran  # alias for all
 ```
 
 ## Available Binaries
@@ -244,7 +244,7 @@ scripts/run-etex.sh all-with-fortran  # optional Fortran comparison
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/run-etex.sh` | ETEX pipeline (GPU-only by default, optional Fortran step) |
+| `scripts/run-etex.sh` | Paired ETEX oracle/candidate pipeline |
 | `scripts/compare-fortran.sh` | GPU vs Fortran synthetic comparison |
 | `scripts/gpu-preflight.sh` | GPU backend check (Docker wrapper) |
 | `scripts/validate-etex.sh` | ETEX validation runner |

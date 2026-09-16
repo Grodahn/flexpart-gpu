@@ -83,6 +83,7 @@ flexpart-gpu/
 │   │   ├── fortran-validation.rs # Synthetic Fortran comparison driver
 │   │   ├── bench-timeloop.rs     # Standalone timeloop benchmark
 │   │   └── gpu-preflight.rs      # GPU backend detection / smoke test
+│   │   └── reference-check.rs    # Pinned FLEXPART oracle checkout verification
 │   │
 │   ├── simulation/
 │   │   ├── mod.rs                # Public API
@@ -159,6 +160,7 @@ flexpart-gpu/
 │   ├── pbl/mod.rs                # PBL state structures
 │   ├── release/mod.rs            # Particle release manager
 │   ├── config/mod.rs             # Configuration file parser
+│   ├── reference/mod.rs            # Pinned FLEXPART oracle manifest + checkout verification
 │   └── validation/mod.rs         # Validation metrics (RMSE, bias, correlation)
 │
 ├── tests/                        # Integration and validation tests

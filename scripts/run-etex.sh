@@ -162,6 +162,17 @@ step_fortran() {
         log_error "Fortran step is optional. For GPU-only quickstart, run: scripts/run-etex.sh all"
         return 1
     fi
+    # Fail closed on unpinned or modified oracle sources (RISK-03.3G-01).
+    local manifest="${PROJECT_ROOT}/reference/flexpart-11.1.json"
+    local pinned actual
+    pinned="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pinned_commit"])' "${manifest}")"
+    if ! actual="$(git -C "${FLEXPART_DIR}" rev-parse HEAD 2>/dev/null)" \
+        || [ "${actual}" != "${pinned}" ] \
+        || [ -n "$(git -C "${FLEXPART_DIR}" status --porcelain)" ]; then
+        log_error "Fortran checkout is not the pinned unmodified oracle (see docs/reference-environment.md)"
+        log_error "Fortran step is optional. For GPU-only quickstart, run: scripts/run-etex.sh all"
+        return 1
+    fi
     if [ ! -f "${FORTRAN_DOCKER_DIR}/docker-compose.yml" ]; then
         log_error "Fortran Docker compose not found at ${FORTRAN_DOCKER_DIR}/docker-compose.yml"
         log_error "Fortran step is optional. For GPU-only quickstart, run: scripts/run-etex.sh all"

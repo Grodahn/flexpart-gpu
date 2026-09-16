@@ -8,6 +8,7 @@ pub mod io;
 pub mod particles;
 pub mod pbl;
 pub mod physics;
+pub mod reference;
 pub mod release;
 pub mod simulation;
 pub mod validation;

@@ -22,6 +22,7 @@ Complete documentation for the `flexpart-gpu` project.
 | Document | Description |
 |----------|-------------|
 | [validation-report.md](validation-report.md) | GPU vs Fortran comparison (synthetic uniform wind) |
+| [reference-environment.md](reference-environment.md) | Pinned FLEXPART 11.1 oracle setup and verification |
 | [benchmarks.md](benchmarks.md) | Performance measurement methodology and recipes |
 | [scientific-changelog.md](scientific-changelog.md) | Log of physics-affecting changes |
 

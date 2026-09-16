@@ -4,6 +4,8 @@ mod deposition_decay;
 mod mass_conservation;
 #[path = "integration/physics_validation.rs"]
 mod physics_validation;
+#[path = "integration/reference_environment.rs"]
+mod reference_environment;
 #[path = "integration/scientific_invariants.rs"]
 mod scientific_invariants;
 #[path = "integration/software_advection.rs"]

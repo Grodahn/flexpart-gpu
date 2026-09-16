@@ -52,6 +52,38 @@ require_fortran_stack() {
   return 0
 }
 
+# Fail-closed check: the Fortran checkout must be an unmodified upstream
+# tree at the commit pinned in reference/flexpart-11.1.json (RISK-03.3G-01).
+require_pinned_fortran() {
+  local manifest="${PROJECT_ROOT}/reference/flexpart-11.1.json"
+  if [ ! -f "${manifest}" ]; then
+    log_error "Oracle manifest not found at ${manifest}"
+    return 1
+  fi
+  local pinned
+  pinned="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pinned_commit"])' "${manifest}")"
+  if [ -z "${pinned}" ]; then
+    log_error "Could not read pinned_commit from ${manifest}"
+    return 1
+  fi
+  local actual
+  if ! actual="$(git -C "${FLEXPART_DIR}" rev-parse HEAD 2>/dev/null)"; then
+    log_error "${FLEXPART_DIR} is not a git checkout"
+    return 1
+  fi
+  if [ "${actual}" != "${pinned}" ]; then
+    log_error "Fortran checkout is at ${actual}, expected pinned ${pinned}"
+    log_error "Check out the exact pinned commit; see docs/reference-environment.md"
+    return 1
+  fi
+  if [ -n "$(git -C "${FLEXPART_DIR}" status --porcelain)" ]; then
+    log_error "Fortran checkout has uncommitted changes; the oracle must stay unmodified"
+    return 1
+  fi
+  log_info "Fortran oracle pinned at ${pinned} (clean)"
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # Fortran Docker is in a sibling directory (../flexpart-fortran-docker/)
 # GPU Docker is in this project
@@ -73,6 +105,7 @@ gpu_exec()     { local m="$1"; shift; gpu_compose_cmd "$m" run --rm flexpart-gpu
 do_setup() {
   local mode="$1"
 
+  require_pinned_fortran
   log_info "Building Docker images..."
   fortran_compose_cmd "$mode" build
   gpu_compose_cmd "$mode" build
@@ -278,6 +311,7 @@ V_DY=0.10
 do_validate_setup() {
   local mode="$1"
 
+  require_pinned_fortran
   log_info "Building Docker images..."
   fortran_compose_cmd "$mode" build
 

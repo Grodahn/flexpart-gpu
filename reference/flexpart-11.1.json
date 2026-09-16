@@ -1,0 +1,15 @@
+{
+  "name": "FLEXPART",
+  "version": "11.1",
+  "role": "Normative scientific and functional oracle for all flexpart-gpu validation comparisons.",
+  "upstream_repository": "https://gitlab.phaidra.org/flexpart/flexpart",
+  "pinned_tag": "v11.1",
+  "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+  "license": "GPL-3.0-or-later",
+  "license_url": "https://gitlab.phaidra.org/flexpart/flexpart/-/blob/v11.1/LICENSE",
+  "source_requirement": "Reference checkouts must be unmodified upstream sources at exactly the pinned commit. Any deviation (different commit, dirty work tree) fails verification.",
+  "notes": [
+    "The v11.1 tag still writes 'Version 11.0 (2023-07-11)' into its run banner. Reproducibility is anchored to the pinned tag and full commit hash, not to the banner string.",
+    "This manifest is the single source of truth for the oracle revision. Comparison scripts and harnesses must read the pinned commit from here instead of hard-coding it."
+  ]
+}

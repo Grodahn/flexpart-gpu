@@ -1,5 +1,11 @@
 # FLEXPART-GPU: Validation Report
 
+> Oracle note (RISK-03.3G-01): this report is a historical record against
+> FLEXPART v10. The normative oracle for all current and future comparisons
+> is **FLEXPART v11.1** pinned in `reference/flexpart-11.1.json`; see
+> `docs/reference-environment.md`. This report will be superseded by the
+> RISK-03.3G validation gate.
+
 Date: 2026-03-06
 Configuration: synthetic uniform wind, Fortran FLEXPART v10 vs flexpart-gpu (Rust/WebGPU)
 

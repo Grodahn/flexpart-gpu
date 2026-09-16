@@ -190,13 +190,10 @@ flexpart-gpu/
 │
 ├── docker/
 │   ├── Dockerfile.gpu            # GPU build image (Ubuntu + Vulkan + Rust)
+│   ├── Dockerfile.fortran        # Fortran oracle image (Ubuntu + gfortran + ecCodes + NetCDF)
 │   ├── docker-compose.yml        # Default compose (any Vulkan GPU)
+│   ├── docker-compose.fortran.yml # Oracle compose (pinned ../flexpart bind mount)
 │   └── docker-compose.nvidia.yml # NVIDIA overlay
-
-# Fortran Docker is in a separate sibling directory:
-# ../flexpart-fortran-docker/
-#   ├── Dockerfile
-#   └── docker-compose.yml
 ```
 
 ## Execution Paths

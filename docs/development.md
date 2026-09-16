@@ -151,6 +151,7 @@ tests/
 └── integration/
     ├── mass_conservation.rs        # Mass budget (particles + deposits = initial)
     ├── physics_validation.rs       # CI gate: advection, PBL, dispersion
+    ├── reference_environment.rs    # Oracle pin, ETEX provenance, fail-closed guard
     ├── scientific_invariants.rs    # Positivity, determinism
     ├── deposition_decay.rs         # Exponential decay verification
     ├── source_receptor_consistency.rs  # Forward/backward symmetry
@@ -189,24 +190,27 @@ FLEXPART_BENCH_MAX_PARTICLES=1000000 \
 
 ## Fortran Comparison
 
-The Fortran Docker environment lives in a **sibling directory**
-(`../flexpart-fortran-docker/`), separate from this project.
+The Fortran oracle environment lives in this repository
+(`docker/Dockerfile.fortran`, `docker/docker-compose.fortran.yml`); only the
+pinned upstream sources are a sibling checkout (`../flexpart`, see
+[reference-environment.md](reference-environment.md)).
 
 ```bash
-# 1) Run Fortran (from ../flexpart-fortran-docker/)
-cd ../flexpart-fortran-docker
-docker compose run --rm flexpart-fortran bash -lc \
+# 1) Verify the oracle pin, build the image, compile FLEXPART
+cargo run --bin reference-check -- verify --checkout ../flexpart
+scripts/compare-fortran.sh compose setup
+
+# 2) Run Fortran (from flexpart-gpu/)
+docker compose -f docker/docker-compose.fortran.yml run --rm flexpart-fortran bash -lc \
   'cd /workspace/comparison/validate_run && /workspace/flexpart/src/FLEXPART'
 
-# 2) Run GPU (from flexpart-gpu/)
-cd ../flexpart-gpu
+# 3) Run GPU (from flexpart-gpu/)
 OUTPUT_PATH=target/validation/gpu_concentration.json \
   PARTICLES=1000000 SYNC_READBACK=1 \
   cargo run --release --bin fortran-validation
 
-# 3) Compare (from ../flexpart-fortran-docker/)
-cd ../flexpart-fortran-docker
-docker compose run --rm flexpart-fortran python3 \
+# 4) Compare (from flexpart-gpu/)
+docker compose -f docker/docker-compose.fortran.yml run --rm flexpart-fortran python3 \
   /workspace/flexpart-gpu/scripts/compare_concentrations.py \
   --fortran-output /workspace/comparison/validate_run/output \
   --gpu-output /workspace/flexpart-gpu/target/validation/gpu_concentration.json \

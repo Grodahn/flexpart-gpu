@@ -1,0 +1,28 @@
+# FLEXPART Fortran oracle service (RISK-03.3G-01).
+#
+# The oracle sources are bind-mounted from the pinned sibling checkout
+# (../flexpart -> /workspace/flexpart); they are never copied into the image.
+# Host output directories are bind-mounted so comparison scripts can read
+# Fortran results directly from target/.
+services:
+  flexpart-fortran:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.fortran
+    image: flexpart-fortran:latest
+    working_dir: /workspace/flexpart/src
+    user: "${UID:-1000}:${GID:-1000}"
+    stdin_open: true
+    tty: true
+    volumes:
+      # Pinned oracle sources (must pass `reference-check -- verify`).
+      # NOTE: paths are relative to this file's directory (docker/).
+      - ../../flexpart:/workspace/flexpart
+      # This repository (comparison scripts, fixtures).
+      - ..:/workspace/flexpart-gpu
+      # Host-visible result directories for the comparison scripts.
+      - ../target/comparison:/workspace/comparison
+      - ../target/etex:/workspace/etex
+    environment:
+      FC: "gfortran"
+    command: ["bash"]

@@ -25,9 +25,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 FLEXPART_DIR="${PROJECT_ROOT}/../flexpart"
-FORTRAN_DOCKER_DIR="${PROJECT_ROOT}/../flexpart-fortran-docker"
+# Optional override for the legacy external sibling layout
+# (../flexpart-fortran-docker/docker-compose.yml). When unset, the in-fork
+# oracle environment (docker/docker-compose.fortran.yml) is used.
+FORTRAN_DOCKER_DIR="${FORTRAN_DOCKER_DIR:-}"
 GPU_COMPOSE_FILE="${PROJECT_ROOT}/docker/docker-compose.yml"
 GPU_NVIDIA_COMPOSE_FILE="${PROJECT_ROOT}/docker/docker-compose.nvidia.yml"
+FORTRAN_COMPOSE_FILE="${PROJECT_ROOT}/docker/docker-compose.fortran.yml"
 
 C_FLEXPART="/workspace/flexpart"
 C_GPU="/workspace/flexpart-gpu"
@@ -41,12 +45,18 @@ log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 require_fortran_stack() {
   if [ ! -d "${FLEXPART_DIR}" ] || [ ! -d "${FLEXPART_DIR}/src" ]; then
     log_error "Fortran checkout not found at ${FLEXPART_DIR}"
-    log_error "Clone FLEXPART as sibling directory to use compare-fortran workflows."
+    log_error "Clone the pinned oracle as sibling directory (see docs/reference-environment.md)."
     return 1
   fi
-  if [ ! -f "${FORTRAN_DOCKER_DIR}/docker-compose.yml" ]; then
-    log_error "Fortran Docker compose not found at ${FORTRAN_DOCKER_DIR}/docker-compose.yml"
-    log_error "Expected sibling repository: ../flexpart-fortran-docker"
+  if [ -n "${FORTRAN_DOCKER_DIR}" ]; then
+    if [ ! -f "${FORTRAN_DOCKER_DIR}/docker-compose.yml" ]; then
+      log_error "FORTRAN_DOCKER_DIR is set but has no docker-compose.yml: ${FORTRAN_DOCKER_DIR}"
+      return 1
+    fi
+    FORTRAN_COMPOSE_FILE="${FORTRAN_DOCKER_DIR}/docker-compose.yml"
+  fi
+  if [ ! -f "${FORTRAN_COMPOSE_FILE}" ]; then
+    log_error "Fortran compose file not found at ${FORTRAN_COMPOSE_FILE}"
     return 1
   fi
   return 0
@@ -85,10 +95,11 @@ require_pinned_fortran() {
 }
 
 # ---------------------------------------------------------------------------
-# Fortran Docker is in a sibling directory (../flexpart-fortran-docker/)
+# Fortran Docker comes from this repository (docker/docker-compose.fortran.yml);
+# a legacy external sibling layout can be selected via FORTRAN_DOCKER_DIR.
 # GPU Docker is in this project
 fortran_compose_cmd() { local m="$1"; shift
-  docker compose -f "${FORTRAN_DOCKER_DIR}/docker-compose.yml" "$@"
+  docker compose -f "${FORTRAN_COMPOSE_FILE}" "$@"
 }
 gpu_compose_cmd() { local m="$1"; shift
   case "$m" in
@@ -105,6 +116,7 @@ gpu_exec()     { local m="$1"; shift; gpu_compose_cmd "$m" run --rm flexpart-gpu
 do_setup() {
   local mode="$1"
 
+  mkdir -p "${PROJECT_ROOT}/target/comparison" "${PROJECT_ROOT}/target/etex"
   require_pinned_fortran
   log_info "Building Docker images..."
   fortran_compose_cmd "$mode" build
@@ -112,13 +124,9 @@ do_setup() {
 
   log_info "Compiling FLEXPART Fortran..."
   fortran_exec "$mode" bash -c "
-    cd ${C_FLEXPART}/src && make clean 2>/dev/null; \
-    make serial \
-      INCPATH1=/usr/lib/x86_64-linux-gnu/fortran/x86_64-linux-gnu-gfortran-11 \
-      INCPATH2=/usr/include \
-      LIBPATH1=/usr/lib/x86_64-linux-gnu \
-      LIBS='-leccodes_f90 -leccodes -lm' \
-      2>&1 | tail -3
+    cd ${C_FLEXPART}/src && make -f makefile_gfortran clean 2>/dev/null; \
+    FC=gfortran make -f makefile_gfortran eta=no -j\"$(nproc)\" 2>&1 | tail -3; \
+    rm -f gitversion.txt
   "
 
   log_info "Generating synthetic GRIB data..."
@@ -311,19 +319,16 @@ V_DY=0.10
 do_validate_setup() {
   local mode="$1"
 
+  mkdir -p "${PROJECT_ROOT}/target/comparison" "${PROJECT_ROOT}/target/etex"
   require_pinned_fortran
   log_info "Building Docker images..."
   fortran_compose_cmd "$mode" build
 
   log_info "Compiling FLEXPART Fortran..."
   fortran_exec "$mode" bash -c "
-    cd ${C_FLEXPART}/src && make clean 2>/dev/null; \
-    make serial \
-      INCPATH1=/usr/lib/x86_64-linux-gnu/fortran/x86_64-linux-gnu-gfortran-11 \
-      INCPATH2=/usr/include \
-      LIBPATH1=/usr/lib/x86_64-linux-gnu \
-      LIBS='-leccodes_f90 -leccodes -lm' \
-      2>&1 | tail -3
+    cd ${C_FLEXPART}/src && make -f makefile_gfortran clean 2>/dev/null; \
+    FC=gfortran make -f makefile_gfortran eta=no -j\"$(nproc)\" 2>&1 | tail -3; \
+    rm -f gitversion.txt
   "
 
   log_info "Generating synthetic GRIB data (u=${V_U_WIND}, v=${V_V_WIND})..."

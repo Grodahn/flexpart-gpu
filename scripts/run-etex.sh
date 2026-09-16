@@ -40,7 +40,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 FLEXPART_DIR="${PROJECT_ROOT}/../flexpart"
-FORTRAN_DOCKER_DIR="${PROJECT_ROOT}/../flexpart-fortran-docker"
+# Optional override for the legacy external sibling layout
+# (../flexpart-fortran-docker/docker-compose.yml). When unset, the in-fork
+# oracle environment (docker/docker-compose.fortran.yml) is used.
+FORTRAN_DOCKER_DIR="${FORTRAN_DOCKER_DIR:-}"
+FORTRAN_COMPOSE_FILE="${PROJECT_ROOT}/docker/docker-compose.fortran.yml"
+if [ -n "${FORTRAN_DOCKER_DIR}" ]; then
+    FORTRAN_COMPOSE_FILE="${FORTRAN_DOCKER_DIR}/docker-compose.yml"
+fi
 
 ETEX_DIR="${PROJECT_ROOT}/target/etex"
 ERA5_RAW="${ETEX_DIR}/era5_raw"
@@ -173,8 +180,8 @@ step_fortran() {
         log_error "Fortran step is optional. For GPU-only quickstart, run: scripts/run-etex.sh all"
         return 1
     fi
-    if [ ! -f "${FORTRAN_DOCKER_DIR}/docker-compose.yml" ]; then
-        log_error "Fortran Docker compose not found at ${FORTRAN_DOCKER_DIR}/docker-compose.yml"
+    if [ ! -f "${FORTRAN_COMPOSE_FILE}" ]; then
+        log_error "Fortran compose file not found at ${FORTRAN_COMPOSE_FILE}"
         log_error "Fortran step is optional. For GPU-only quickstart, run: scripts/run-etex.sh all"
         return 1
     fi
@@ -214,23 +221,19 @@ PATHEOF
 
     log_info "Building Docker images..."
     cd "${PROJECT_ROOT}"
-    docker compose -f "${FORTRAN_DOCKER_DIR}/docker-compose.yml" build flexpart-fortran
+    docker compose -f "${FORTRAN_COMPOSE_FILE}" build flexpart-fortran
 
     log_info "Compiling FLEXPART Fortran..."
-    docker compose -f "${FORTRAN_DOCKER_DIR}/docker-compose.yml" run --rm \
+    docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
         -v "${ETEX_DIR}:/workspace/etex" \
         flexpart-fortran bash -c "
-            cd ${C_FLEXPART}/src && make clean 2>/dev/null; \
-            make serial \
-                INCPATH1=/usr/lib/x86_64-linux-gnu/fortran/x86_64-linux-gnu-gfortran-11 \
-                INCPATH2=/usr/include \
-                LIBPATH1=/usr/lib/x86_64-linux-gnu \
-                LIBS='-leccodes_f90 -leccodes -lm' \
-                2>&1 | tail -5
+            cd ${C_FLEXPART}/src && make -f makefile_gfortran clean 2>/dev/null; \
+            FC=gfortran make -f makefile_gfortran eta=no -j\"$(nproc)\" 2>&1 | tail -5; \
+            rm -f gitversion.txt
         "
 
     log_info "Running FLEXPART Fortran (ETEX-1)..."
-    docker compose -f "${FORTRAN_DOCKER_DIR}/docker-compose.yml" run --rm \
+    docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
         -v "${ETEX_DIR}:/workspace/etex" \
         flexpart-fortran bash -c "
             cd /workspace/etex/fortran_run && ${C_FLEXPART}/src/FLEXPART

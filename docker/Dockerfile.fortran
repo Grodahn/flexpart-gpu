@@ -1,0 +1,47 @@
+# FLEXPART Fortran oracle image (RISK-03.3G-01).
+#
+# Builds the environment needed to compile the pinned, unmodified FLEXPART
+# 11.1 sources (see reference/flexpart-11.1.json). The sources themselves are
+# provided at run time via a bind mount (../flexpart -> /workspace/flexpart)
+# and are never copied into the image, so the oracle revision stays exactly
+# what `reference-check -- verify` approved.
+#
+# Build it with:
+#   docker compose -f docker/docker-compose.fortran.yml build flexpart-fortran
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  bash \
+  ca-certificates \
+  curl \
+  pkg-config \
+  make \
+  git \
+  # Fortran toolchain
+  gfortran \
+  # Scientific I/O (ecCodes with Fortran interface, NetCDF C + Fortran)
+  libeccodes-dev \
+  libnetcdf-dev \
+  libnetcdff-dev \
+  # Python helpers (synthetic GRIB, ETEX parsing, comparisons)
+  python3 \
+  python3-numpy \
+  python3-eccodes \
+  python3-pip \
+  && rm -rf /var/lib/apt/lists/*
+
+# cdsapi is only needed for the ERA5 download step (requires user credentials).
+RUN pip3 install --no-cache-dir cdsapi
+
+# FLEXPART 11.1's makefile_gfortran consumes CPATH/LIBRARY_PATH and FC.
+ENV FC=gfortran
+ENV CPATH=/usr/include:/usr/include/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu/fortran/gfortran-mod-15
+ENV LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
+
+WORKDIR /workspace/flexpart/src
+
+CMD ["bash"]

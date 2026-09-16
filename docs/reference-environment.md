@@ -38,11 +38,19 @@ run this check before any Fortran build.
 
 ## 3. Build the oracle (Linux/Docker)
 
-The Fortran worker needs gfortran, ecCodes, and NetCDF-Fortran. The
-recommended path is the sibling `../flexpart-fortran-docker` environment;
-see `scripts/compare-fortran.sh compose setup`. Native Windows builds are
-not supported: use the manifest/checkout verification above plus CI or
-Docker for the actual oracle runs.
+The Fortran worker needs gfortran, ecCodes, and NetCDF-Fortran. Build the
+in-fork oracle image and compile the pinned sources:
+
+```bash
+docker compose -f docker/docker-compose.fortran.yml build flexpart-fortran
+scripts/compare-fortran.sh compose setup
+```
+
+The setup compiles with the v11.1 build system (`make -f makefile_gfortran
+eta=no`; the legacy `make serial` recipe does not exist in v11.1) and removes
+the generated `gitversion.txt` stamp afterwards so the checkout stays clean
+for re-verification. Native Windows builds are not supported: use the
+manifest/checkout verification above plus Docker for the actual oracle runs.
 
 ## 4. What the oracle is used for
 

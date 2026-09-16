@@ -156,7 +156,8 @@ fn test_sw_wgpu_advection_001_constant_wind_displacement() {
     // Explicitly request the software fallback adapter so this smoke test
     // exercises the SW-WGPU path even on machines with a hardware GPU.
     // Skip when no adapter is available at all.
-    let context = match pollster::block_on(GpuContext::with_options(GpuAdapterOptions::software())) {
+    let context = match pollster::block_on(GpuContext::with_options(GpuAdapterOptions::software()))
+    {
         Ok(context) => context,
         Err(GpuError::NoAdapter) => {
             eprintln!("{TEST_ID}: no WGSL adapter found — skipping smoke test");
@@ -215,12 +216,17 @@ fn test_sw_wgpu_advection_001_constant_wind_displacement() {
         },
         end,
     ) * (end.lat - start.lat).signum() as f32;
-    let mean_z: f32 =
-        advected.iter().map(|p| p.pos_z).sum::<f32>() / advected.len() as f32;
+    let mean_z: f32 = advected.iter().map(|p| p.pos_z).sum::<f32>() / advected.len() as f32;
 
     let expected_east_m = U_WIND_MS * TOTAL_SECONDS;
-    eprintln!("{TEST_ID}: start=({:.5}E, {:.5}N, {:.1}m)", start.lon, start.lat, START_Z_M);
-    eprintln!("{TEST_ID}: end=({:.5}E, {:.5}N, {:.3}m)", end.lon, end.lat, mean_z);
+    eprintln!(
+        "{TEST_ID}: start=({:.5}E, {:.5}N, {:.1}m)",
+        start.lon, start.lat, START_Z_M
+    );
+    eprintln!(
+        "{TEST_ID}: end=({:.5}E, {:.5}N, {:.3}m)",
+        end.lon, end.lat, mean_z
+    );
     eprintln!("{TEST_ID}: east={east_m:.2}m expected={expected_east_m:.2}m north={north_m:.4}m");
     eprintln!(
         "{TEST_ID}: software_adapter={} (timings must not be used as GPU performance values)",

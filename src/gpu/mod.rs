@@ -82,6 +82,10 @@ pub use langevin_fused::{
 // Mega-kernel (particle_step) is abandoned due to register pressure.
 // The production path uses langevin_fused + separate advection/deposition.
 // Kept for reference and testing only.
+pub use adapter::{
+    is_software_adapter_requested_from_env, GpuAdapterOptions, SOFTWARE_ADAPTER_ENV,
+    SOFTWARE_ADAPTER_ENV_ALIAS,
+};
 pub use particle_step::{
     dispatch_particle_step_gpu, encode_particle_step_gpu,
     encode_particle_step_gpu_persistent, supports_mega_kernel,
@@ -96,10 +100,6 @@ pub use pbl::{
 };
 pub use pbl_reflection::{
     encode_pbl_reflection_gpu_with_kernel, GpuPblReflectionError, PblReflectionDispatchKernel,
-};
-pub use adapter::{
-    is_software_adapter_requested_from_env, GpuAdapterOptions, SOFTWARE_ADAPTER_ENV,
-    SOFTWARE_ADAPTER_ENV_ALIAS,
 };
 pub use preflight::{
     normalize_backend_selector, run_preflight, DeviceLimitsSummary, GpuPreflightError,

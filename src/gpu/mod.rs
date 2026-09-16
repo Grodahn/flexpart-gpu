@@ -171,6 +171,8 @@ impl GpuContext {
     /// measured on a software adapter must not be reported as GPU
     /// performance values.
     ///
+    /// # Errors
+    ///
     /// Returns `GpuError::NoAdapter` if no suitable adapter is found.
     pub async fn new() -> Result<Self, GpuError> {
         Self::with_options(GpuAdapterOptions::from_env()).await
@@ -180,6 +182,10 @@ impl GpuContext {
     ///
     /// Use [`GpuAdapterOptions::software`] to force the software fallback
     /// adapter on machines without a hardware GPU.
+    ///
+    /// # Errors
+    ///
+    /// Returns `GpuError::NoAdapter` if no suitable adapter is found.
     pub async fn with_options(options: GpuAdapterOptions) -> Result<Self, GpuError> {
         if let Some(backend) = options.backend_override.as_deref() {
             std::env::set_var("WGPU_BACKEND", backend);

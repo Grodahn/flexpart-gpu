@@ -2,7 +2,7 @@
 //!
 //! This module centralises how `flexpart-gpu` requests a `wgpu` adapter so that
 //! development machines without a hardware GPU can still run the real
-//! WGSL compute path through a software rasterizer (Mesa Lavapipe / LLVMpipe
+//! WGSL compute path through a software rasterizer (Mesa Lavapipe / `LLVMpipe`
 //! on Linux, D3D12 WARP on Windows).
 //!
 //! The software adapter executes the same WGSL shaders as hardware. It must
@@ -26,7 +26,7 @@ pub const SOFTWARE_ADAPTER_ENV: &str = "FLEXPART_GPU_SOFTWARE";
 pub const SOFTWARE_ADAPTER_ENV_ALIAS: &str = "WGPU_FORCE_FALLBACK_ADAPTER";
 
 /// Options controlling `wgpu` adapter selection.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GpuAdapterOptions {
     /// When `true`, request the software fallback adapter
     /// (`force_fallback_adapter: true`).
@@ -34,15 +34,6 @@ pub struct GpuAdapterOptions {
     /// Optional backend override forwarded through `WGPU_BACKEND`.
     /// `None` leaves backend selection to `wgpu` defaults.
     pub backend_override: Option<String>,
-}
-
-impl Default for GpuAdapterOptions {
-    fn default() -> Self {
-        Self {
-            force_software_fallback: false,
-            backend_override: None,
-        }
-    }
 }
 
 impl GpuAdapterOptions {
@@ -78,7 +69,9 @@ impl GpuAdapterOptions {
 
     /// Build the `wgpu` request options for these settings.
     #[must_use]
-    pub const fn to_request_adapter_options(&self) -> wgpu::RequestAdapterOptions<'static> {
+    pub const fn to_request_adapter_options(
+        &self,
+    ) -> wgpu::RequestAdapterOptions<'static, 'static> {
         wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: None,

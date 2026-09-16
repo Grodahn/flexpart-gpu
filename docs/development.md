@@ -105,6 +105,14 @@ The fallback adapter executes the same WGSL shaders as hardware. No separate
 CPU replacement path is used. Wall-clock timings measured on a software
 adapter must never be reported as GPU performance values.
 
+Known limitation: the Windows software rasterizer (WARP) can crash with
+`STATUS_ACCESS_VIOLATION` when many GPU test binaries run back to back in one
+`cargo test` invocation. Running targets serially is stable:
+
+```bash
+FLEXPART_GPU_SOFTWARE=1 cargo test --test integration -- --test-threads=1
+```
+
 End-to-end infrastructure smoke test through the WGSL advection kernel:
 
 ```bash

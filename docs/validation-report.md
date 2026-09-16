@@ -114,6 +114,34 @@ the GPU uses a prescribed friction velocity (ust=0.35 m/s) while Fortran
 computes ust from the wind profile and surface roughness, yielding a different
 effective turbulence intensity. This is a parameterization difference, not a bug.
 
+### 3.5 Addendum (RISK-03.3G-03): re-measurement against FLEXPART 11.1
+
+The 2x claim above did not survive re-measurement against the pinned v11.1
+oracle with temporally matched output:
+
+- The old comparison read the single `grid_conc` file of a `LOUTSTEP=21600`
+  run, which FLEXPART centers mid-run (averaging window, here stamped 03:15),
+  and compared it against the instantaneous GPU end state (06:00). The oracle
+  number therefore contained ~2.6 km of along-track time-averaging smear on
+  top of a 69 km mean-position lag.
+- With matched output cadence (`LOUTSTEP=1800`, last window covering the run
+  end; see `scripts/compare-fortran.sh` validation setup), the end-window
+  spreads agree: oracle lon 10.944 +/- 0.055 deg, lat 9.442 +/- 0.045 deg
+  versus GPU lon 11.029 +/- 0.056 deg, lat 9.392 +/- 0.056 deg on the
+  identical 0.1 deg grid (6 h, uniform 5/-3 m/s wind, 10k particles).
+- The oracle diagnoses ustar ~0.34 from the synthetic surface-stress fields
+  (`ustar = sqrt(|stress|/rho)`, `getfields_mod.f90:scalev`), nearly identical
+  to the GPU's prescribed 0.35 - the suspected ustar gap does not exist in
+  this scenario.
+- The horizontal Langevin application itself matches the exact discrete
+  Ornstein-Uhlenbeck variance within ~1% across turbulence regimes
+  (`tests/integration/horizontal_dispersion.rs`).
+
+No kernel change was needed. The standard validation setup now yields
+end-covering output so future comparisons cannot repeat the smear artifact.
+Vertical differences (oracle mean z 3651 m vs GPU 1416 m) are out of scope
+here and belong to RISK-03.3G-04 (PBL/vertical transport).
+
 ### 3.4 Progression of vertical accuracy
 
 | Version                     | Dz mean | sigma_z ratio | Key change                    |
@@ -158,7 +186,8 @@ effective turbulence intensity. This is a parameterization difference, not a bug
 - **Identical vertical mixing profile**: sigma_z ratio = 0.94
 
 Remaining known differences:
-- Horizontal spread (2x) due to different ust parameterization
+- Horizontal spread: re-measured against v11.1, spreads agree (§3.5 above);
+  the old 2x figure was a comparison artifact, not a model difference.
 - Hard vs soft PBL ceiling (~7% of particles)
 - hmix computation method (GPU uses prescribed value vs Fortran's Richardson)
 

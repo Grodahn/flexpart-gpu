@@ -63,6 +63,12 @@ Oracle outputs are produced at validation time and compared, never vendored
 as fixtures. ETEX measurement/meteorology/source-term provenance is recorded
 in `fixtures/etex/PROVENANCE.md`.
 
+The standard synthetic validation setup (`scripts/compare-fortran.sh`
+`validate`) uses an output cadence whose last window covers the run end, and
+the comparison reads that last file - never a mid-run time average against an
+instantaneous end state (see the RISK-03.3G-03 addendum in
+`docs/validation-report.md`).
+
 ## 5. Software-adapter note
 
 Oracle comparisons must run on a hardware GPU or document the adapter. Runs

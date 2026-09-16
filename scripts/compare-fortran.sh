@@ -71,8 +71,8 @@ require_pinned_fortran() {
     return 1
   fi
   local pinned
-  pinned="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pinned_commit"])' "${manifest}")"
-  if [ -z "${pinned}" ]; then
+  pinned="$(sed -n 's/^[[:space:]]*"pinned_commit": *"\([0-9a-f]*\)".*/\1/p' "${manifest}" | head -1)"
+  if ! printf '%s' "${pinned}" | grep -qE '^[0-9a-f]{40}$'; then
     log_error "Could not read pinned_commit from ${manifest}"
     return 1
   fi
@@ -168,6 +168,8 @@ EOF
  IOUT=                  1,
  IPOUT=                 0,
  LSUBGRID=              0,
+ NXSHIFT=               0,
+ LNETCDFOUT=            0,
  LCONVECTION=           0,
  LAGESPECTRA=           0,
  IPIN=                  0,
@@ -242,13 +244,14 @@ EOF
 
     # Copy static data (landuse, surface params)
     cp ${C_FLEXPART}/options/IGBP_int1.dat  ${C_DATA}/fortran_run/options/
-    cp ${C_FLEXPART}/options/surfdata.t     ${C_DATA}/fortran_run/options/
-    cp ${C_FLEXPART}/options/surfdepo.t     ${C_DATA}/fortran_run/options/
+    cp ${C_FLEXPART}/options/sfcdata.t     ${C_DATA}/fortran_run/options/
+    cp ${C_FLEXPART}/options/sfcdepo.t     ${C_DATA}/fortran_run/options/
+    cp ${C_FLEXPART}/options/PARTOPTIONS   ${C_DATA}/fortran_run/options/
 
-    # Copy SPECIES definitions
-    if [ -d ${C_FLEXPART}/options/SPECIES ]; then
-      cp -r ${C_FLEXPART}/options/SPECIES/* ${C_DATA}/fortran_run/options/SPECIES/
-    fi
+    # Inert tracer species from the upstream Tracer example (all removal
+    # disabled). v11.1 ships name-based SPECIES files, so copy the exact
+    # numbered file the RELEASES (SPECNUM_REL) refers to.
+    cp ${C_FLEXPART}/examples/Tracer/SPECIES/SPECIES_024 ${C_DATA}/fortran_run/options/SPECIES/
   "
 
   log_info "Setup complete."
@@ -359,7 +362,7 @@ EOF
  IBTIME=           000000,
  IEDATE=         20240101,
  IETIME=           060000,
- LOUTSTEP=          21600,
+ LOUTSTEP=           1800,
  LOUTAVER=           1800,
  LOUTSAMPLE=          900,
  ITSPLIT=        99999999,
@@ -369,6 +372,8 @@ EOF
  IOUT=                  1,
  IPOUT=                 2,
  LSUBGRID=              0,
+ NXSHIFT=               0,
+ LNETCDFOUT=            0,
  LCONVECTION=           0,
  LAGESPECTRA=           0,
  IPIN=                  0,
@@ -438,11 +443,10 @@ EOF
 EOF
 
     cp ${C_FLEXPART}/options/IGBP_int1.dat  ${C_DATA}/validate_run/options/
-    cp ${C_FLEXPART}/options/surfdata.t     ${C_DATA}/validate_run/options/
-    cp ${C_FLEXPART}/options/surfdepo.t     ${C_DATA}/validate_run/options/
-    if [ -d ${C_FLEXPART}/options/SPECIES ]; then
-      cp -r ${C_FLEXPART}/options/SPECIES/* ${C_DATA}/validate_run/options/SPECIES/
-    fi
+    cp ${C_FLEXPART}/options/sfcdata.t     ${C_DATA}/validate_run/options/
+    cp ${C_FLEXPART}/options/sfcdepo.t     ${C_DATA}/validate_run/options/
+    cp ${C_FLEXPART}/options/PARTOPTIONS   ${C_DATA}/validate_run/options/
+    cp ${C_FLEXPART}/examples/Tracer/SPECIES/SPECIES_024 ${C_DATA}/validate_run/options/SPECIES/
   "
 
   log_info "Validation setup complete."

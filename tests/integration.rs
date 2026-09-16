@@ -1,5 +1,7 @@
 #[path = "integration/deposition_decay.rs"]
 mod deposition_decay;
+#[path = "integration/horizontal_dispersion.rs"]
+mod horizontal_dispersion;
 #[path = "integration/mass_conservation.rs"]
 mod mass_conservation;
 #[path = "integration/physics_validation.rs"]

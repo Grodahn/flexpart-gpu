@@ -172,7 +172,12 @@ step_fortran() {
     # Fail closed on unpinned or modified oracle sources (RISK-03.3G-01).
     local manifest="${PROJECT_ROOT}/reference/flexpart-11.1.json"
     local pinned actual
-    pinned="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pinned_commit"])' "${manifest}")"
+    pinned="$(sed -n 's/^[[:space:]]*"pinned_commit": *"\([0-9a-f]*\)".*/\1/p' "${manifest}" | head -1)"
+    if ! printf '%s' "${pinned}" | grep -qE '^[0-9a-f]{40}$'; then
+        log_error "Could not read pinned_commit from ${manifest}"
+        log_error "Fortran step is optional. For GPU-only quickstart, run: scripts/run-etex.sh all"
+        return 1
+    fi
     if ! actual="$(git -C "${FLEXPART_DIR}" rev-parse HEAD 2>/dev/null)" \
         || [ "${actual}" != "${pinned}" ] \
         || [ -n "$(git -C "${FLEXPART_DIR}" status --porcelain)" ]; then
@@ -209,11 +214,12 @@ PATHEOF
     cp "${CONFIG_DIR}/OUTGRID"     "${FORTRAN_RUN}/options/"
     cp "${CONFIG_DIR}/AGECLASSES"  "${FORTRAN_RUN}/options/"
     cp "${CONFIG_DIR}/RECEPTORS"   "${FORTRAN_RUN}/options/"
+    cp "${FLEXPART_DIR}/options/PARTOPTIONS" "${FORTRAN_RUN}/options/"
 
-    if [ -d "${FLEXPART_DIR}/options/SPECIES" ]; then
-        cp -r "${FLEXPART_DIR}/options/SPECIES/"* "${FORTRAN_RUN}/options/SPECIES/"
-    fi
-    for f in IGBP_int1.dat surfdata.t surfdepo.t; do
+    # Inert tracer species from the upstream Tracer example (all removal
+    # disabled; PMCH analog for ETEX-1 dispersion comparison).
+    cp "${FLEXPART_DIR}/examples/Tracer/SPECIES/SPECIES_024" "${FORTRAN_RUN}/options/SPECIES/"
+    for f in IGBP_int1.dat sfcdata.t sfcdepo.t; do
         if [ -f "${FLEXPART_DIR}/options/${f}" ]; then
             cp "${FLEXPART_DIR}/options/${f}" "${FORTRAN_RUN}/options/"
         fi

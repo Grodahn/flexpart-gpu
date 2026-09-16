@@ -16,6 +16,20 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-16 — Add a checked-in real ERA5 ETEX mini run
+**Impact**: output-only (ETEX forcing conversion, grid and averaging windows)
+**Files**: `scripts/etex/prepare_flexpart_input_from_npy.py`,
+`scripts/etex/prepare_gpu_meteo.py`, `src/bin/etex-run.rs`,
+`fixtures/etex/mini/`, `fixtures/etex/real/config/OUTGRID`
+**Validation**: A SHA-256-verified 16-hour ERA5 subset drives the pinned
+FLEXPART 11.1 oracle and software-WGSL candidate for 12 hours. The four
+three-hour candidate windows now use 13 endpoint-inclusive samples with
+half-weighted endpoints and stop after exactly 48 steps. The paired ETEX
+comparison matched 108 station records. The pressure-level to hybrid-level
+conversion for Fortran is approximate, while the candidate retains pressure
+levels, so these concentration metrics are pipeline diagnostics only and do
+not establish scientific parity.
+
 ### 2026-09-16 — Align synthetic comparison time windows
 **Impact**: output-only (validation runner timing and concentration averaging)
 **Files**: `src/bin/fortran-validation.rs`,
@@ -41,8 +55,9 @@ execution is used during development.
 **Files**: `src/bin/etex-run.rs`, `scripts/etex/compare_oracle_observations.py`,
 `fixtures/etex/real/config/COMMAND`, `fixtures/etex/real/config/OUTGRID`
 **Validation**: The ETEX driver now samples every 900 seconds and averages
-12 samples for each 10,800-second window, matching the configured FLEXPART
-`LOUTSAMPLE` and `LOUTAVER`. The paired comparator rejects unmatched windows,
+12 post-step samples for each 10,800-second window. The later mini-run entry
+above corrects this to FLEXPART's 13 endpoint-inclusive, half-weighted
+samples. The paired comparator rejects unmatched windows,
 missing fields, and incomplete station coverage. Focused synthetic comparator
 tests and a release build passed. A real ERA5/ETEX run is still required
 before reporting observational metrics or a parity result.

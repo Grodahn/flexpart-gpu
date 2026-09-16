@@ -38,10 +38,12 @@ bundled `readme.txt`). The files are consumed read-only by
 `flexpart-gpu` binary, and no comparison script may overwrite them.
 The DATEM `dur` field is HHMM, so `0300` denotes a three-hour sample.
 
-## Meteorology (not bundled)
+## Meteorology
 
-Meteorology is deliberately not vendored here. `scripts/run-etex.sh` downloads
-public ARCO-ERA5 arrays from Google Cloud Storage using
+The full ETEX meteorology is not bundled. A small real ERA5 subset is bundled
+in `mini/era5-subset.zip`, with hashes, source and licence details in
+`mini/README.md`. `scripts/run-etex.sh mini` uses this checked-in subset;
+the full `scripts/run-etex.sh all` downloads public ARCO-ERA5 arrays using
 `scripts/etex/download_era5_gcs.py`. It prepares Fortran GRIB input with
 `prepare_flexpart_input_from_npy.py` and candidate binary input with
 `prepare_gpu_meteo.py` from those same arrays. ERA5 is independent of both
@@ -52,6 +54,9 @@ The companion `target/etex/run_manifest.json` records the exact oracle image,
 installed packages, compiler profile, executables, adapter, and raw-artifact
 hashes. The candidate runner does not currently expose a random seed; the
 manifest marks it unavailable and must not be used for a multi-seed claim.
+The mini Fortran GRIB converter approximates terrain-following levels from
+pressure-level ERA5, while the candidate uses pressure levels directly.
+Consequently its concentration metrics test plumbing, not scientific parity.
 
 ## Reference outputs (not bundled)
 

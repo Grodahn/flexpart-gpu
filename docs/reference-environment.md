@@ -71,6 +71,11 @@ claim.
   Fortran oracle and the WGSL candidate, and compare complete three-hour
   concentration windows with DATEM observations. The report contains model
   diagnostics and input checksums; it does not assert scientific parity.
+- Checked-in ETEX-1 mini smoke run (`scripts/run-etex.sh mini`): use the
+  SHA-256-verified ERA5 subset in `fixtures/etex/mini/`, run both models over
+  12 hours, and pair their output with independent station observations.
+  See `fixtures/etex/mini/README.md` for source, licence, and the pressure-level
+  conversion limitation. Its metrics are diagnostic only.
 - Future parity gates in issues RISK-03.3G-03 and later.
 
 Oracle outputs are produced at validation time and compared, never vendored

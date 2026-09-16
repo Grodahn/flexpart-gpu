@@ -60,7 +60,7 @@ def gpu_windows(path):
     for timestep in output["timesteps"]:
         start = timestep["window_start_epoch_seconds"]
         end = timestep["epoch_seconds"]
-        if end - start != averaging or timestep["samples"] != averaging // sampling:
+        if end - start != averaging or timestep["samples"] != averaging // sampling + 1:
             raise ValueError("GPU concentration window is incomplete")
         if len(timestep["concentration_mass_kg"]) != grid["nx"] * grid["ny"] * grid["nz"]:
             raise ValueError("GPU concentration field has the wrong shape")

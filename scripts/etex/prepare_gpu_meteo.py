@@ -69,6 +69,9 @@ def main():
     parser.add_argument("--output-dir", default="target/etex/gpu_meteo")
     parser.add_argument("--interval-hours", type=int, default=3,
                         help="Met bracket interval in hours (default: 3)")
+    parser.add_argument("--simulation-end", default="19941026160000",
+                        help="Simulation end timestamp (YYYYMMDDHHMMSS)")
+    parser.add_argument("--particle-count", type=int, default=100000)
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -97,7 +100,7 @@ def main():
     lons = load_npy(args.era5_dir, "longitudes")
 
     n_times, nz, nlat, nlon = u.shape
-    print(f"Grid: {nlon}×{nlat}×{nz}, {n_times} hourly timesteps")
+    print(f"Grid: {nlon}x{nlat}x{nz}, {n_times} hourly timesteps")
     print(f"Lon: [{lons[0]:.2f}, {lons[-1]:.2f}], Lat: [{lats[-1]:.2f}, {lats[0]:.2f}]")
 
     # After S→N flip: ylat0 = lats[-1] (southernmost)
@@ -201,7 +204,7 @@ def main():
             "epoch_seconds": epoch,
             "file": fname,
         })
-        print(f"  [{idx:3d}] {time_str} → {fname} "
+        print(f"  [{idx:3d}] {time_str} -> {fname} "
               f"(u=[{u_3d.min():.1f},{u_3d.max():.1f}], "
               f"hmix=[{hmix_2d.min():.0f},{hmix_2d.max():.0f}])")
 
@@ -225,16 +228,16 @@ def main():
             "z_min": 5.0,
             "z_max": 15.0,
             "mass_kg": 340.0,
-            "particle_count": 100000,
+            "particle_count": args.particle_count,
         },
         "simulation": {
             "start": "19941023160000",
-            "end": "19941026160000",
+            "end": args.simulation_end,
             "dt_seconds": 900,
         },
         "output": {
-            "nx": int(nlon),
-            "ny": int(nlat),
+            "nx": int(nlon - 1),
+            "ny": int(nlat - 1),
             "nz": 5,
             "heights_m": [100.0, 500.0, 1000.0, 2000.0, 5000.0],
             "interval_seconds": 10800,

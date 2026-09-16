@@ -449,7 +449,9 @@ fn main() {
     let samples_per_output = (output_interval / sampling_interval) as usize;
     let mut window_mass_sum =
         vec![0.0_f64; manifest.output.nx * manifest.output.ny * manifest.output.nz];
-    let mut window_samples = 0_usize;
+    // FLEXPART averages concentration with half-weighted window endpoints.
+    // At release start the concentration is zero; count that endpoint too.
+    let mut window_samples = 1_usize;
     let mut last_particle_counts = Vec::new();
 
     // Compute simulation start epoch from the driver's internal timestamp
@@ -459,7 +461,9 @@ fn main() {
     eprintln!("running simulation...");
 
     let mut bracket_idx = 0_usize;
-    while driver.has_remaining_steps() && bracket_idx + 1 < manifest.timesteps.len() {
+    while driver.current_time_seconds() < driver.end_time_seconds()
+        && bracket_idx + 1 < manifest.timesteps.len()
+    {
         let t0 = &current_snapshot;
         let t1 = &next_snapshot;
 
@@ -472,10 +476,13 @@ fn main() {
             time_t1_seconds: t1.epoch_seconds,
         };
 
-        while driver.has_remaining_steps() && driver.current_time_seconds() < t1.epoch_seconds {
+        while driver.current_time_seconds() < driver.end_time_seconds()
+            && driver.current_time_seconds() < t1.epoch_seconds
+        {
             let report =
                 pollster::block_on(driver.run_timestep(&met, &forcing)).expect("timestep failed");
             total_steps += 1;
+            let mut closing_mass = None;
 
             if (driver.current_time_seconds() - sim_start_epoch) % sampling_interval == 0 {
                 let conc = pollster::block_on(driver.accumulate_concentration_grid(
@@ -491,16 +498,20 @@ fn main() {
                     },
                 ))
                 .expect("concentration gridding failed");
+                let at_window_end = driver.current_time_seconds() >= next_output_time;
                 for (sum, mass) in window_mass_sum.iter_mut().zip(&conc.concentration_mass_kg) {
-                    *sum += f64::from(*mass);
+                    *sum += if at_window_end { 0.5 } else { 1.0 } * f64::from(*mass);
                 }
                 last_particle_counts = conc.particle_count_per_cell;
                 window_samples += 1;
+                if at_window_end {
+                    closing_mass = Some(conc.concentration_mass_kg);
+                }
             }
 
             if driver.current_time_seconds() >= next_output_time {
                 assert_eq!(
-                    window_samples, samples_per_output,
+                    window_samples, samples_per_output + 1,
                     "incomplete concentration averaging window"
                 );
                 let t_h = (driver.current_time_seconds() - sim_start_epoch) as f64 / 3600.0;
@@ -517,7 +528,7 @@ fn main() {
                 let averaged_mass = window_mass_sum
                     .iter_mut()
                     .map(|sum| {
-                        let averaged = (*sum / window_samples as f64) as f32;
+                        let averaged = (*sum / samples_per_output as f64) as f32;
                         *sum = 0.0;
                         averaged
                     })
@@ -533,7 +544,13 @@ fn main() {
                     active_particles: report.active_particle_count,
                 });
 
-                window_samples = 0;
+                // Reuse the closing endpoint as the half-weighted start of
+                // the next interval.
+                let closing_mass = closing_mass.expect("missing window endpoint sample");
+                for (sum, mass) in window_mass_sum.iter_mut().zip(&closing_mass) {
+                    *sum = 0.5 * f64::from(*mass);
+                }
+                window_samples = 1;
                 next_output_time += output_interval;
             }
         }
@@ -576,7 +593,7 @@ fn main() {
     }
 
     assert!(
-        !driver.has_remaining_steps(),
+        driver.current_time_seconds() == driver.end_time_seconds(),
         "meteorology ended before the simulation"
     );
     assert!(

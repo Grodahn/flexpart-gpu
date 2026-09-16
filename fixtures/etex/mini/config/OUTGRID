@@ -1,8 +1,8 @@
 &OUTGRID
- OUTLON0=     -15.00,
- OUTLAT0=      35.00,
- NUMXGRID=      200,
- NUMYGRID=      120,
+ OUTLON0=      -8.00,
+ OUTLAT0=      43.00,
+ NUMXGRID=       64,
+ NUMYGRID=       40,
  DXOUT=        0.25,
  DYOUT=        0.25,
  OUTHEIGHTS=  100.0, 500.0, 1000.0, 2000.0, 5000.0,

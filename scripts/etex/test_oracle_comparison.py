@@ -49,7 +49,7 @@ class EtexComparisonTest(unittest.TestCase):
                          "xlon0": -2.0, "ylat0": 48.0, "heights_m": [100.0]},
                 "averaging_seconds": 10800, "sampling_seconds": 900,
                 "timesteps": [{"window_start_epoch_seconds": 782928000,
-                               "epoch_seconds": 782938800, "samples": 12,
+                               "epoch_seconds": 782938800, "samples": 13,
                                "concentration_mass_kg": [1.0] * 4}]}))
             gpu_log = root / "gpu.log"
             gpu_log.write_text("[INFO] wgpu adapter: WARP (Dx12, Cpu)\n")
@@ -99,7 +99,7 @@ class EtexComparisonTest(unittest.TestCase):
             path.write_text(json.dumps(output))
             with self.assertRaisesRegex(ValueError, "incomplete"):
                 gpu_windows(path)
-            output["timesteps"][0]["samples"] = 12
+            output["timesteps"][0]["samples"] = 13
             output["timesteps"][0]["concentration_mass_kg"] = [0.0] * 3
             path.write_text(json.dumps(output))
             with self.assertRaisesRegex(ValueError, "wrong shape"):

@@ -839,6 +839,12 @@ impl ForwardTimeLoopDriver {
         self.current_time_seconds
     }
 
+    /// Inclusive configured end time [s since epoch].
+    #[must_use]
+    pub fn end_time_seconds(&self) -> i64 {
+        self.end_time_seconds
+    }
+
     /// Read-only access to host-side particle storage.
     #[must_use]
     pub fn particle_store(&self) -> &ParticleStore {

@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
+if [ "${1:-}" = "mini" ]; then
+    ETEX_PROFILE=mini
+    set -- all
+fi
+ETEX_PROFILE="${ETEX_PROFILE:-full}"
 
 # ===========================================================================
 # ETEX-1 Real Data Validation Pipeline
@@ -42,6 +47,9 @@ if [ -n "${FORTRAN_DOCKER_DIR}" ]; then
 fi
 
 ETEX_DIR="${PROJECT_ROOT}/target/etex"
+if [ "${ETEX_PROFILE}" = "mini" ]; then
+    ETEX_DIR="${ETEX_DIR}/mini"
+fi
 ERA5_RAW="${ETEX_DIR}/era5_raw"
 METEO_DIR="${ETEX_DIR}/meteo"
 FORTRAN_RUN="${ETEX_DIR}/fortran_run"
@@ -50,12 +58,23 @@ GPU_BINARY="${PROJECT_ROOT}/target/release/etex-run"
 if [ "${OS:-}" = "Windows_NT" ]; then
     GPU_BINARY="${GPU_BINARY}.exe"
 fi
+HOST_PYTHON="${ETEX_PYTHON:-python3}"
+if [ "${OS:-}" = "Windows_NT" ]; then
+    HOST_PYTHON="${ETEX_PYTHON:-python}"
+fi
 MEASUREMENTS="${ETEX_DIR}/measurements.json"
 REPORT="${ETEX_DIR}/comparison_report.json"
 DATA_DIR="${PROJECT_ROOT}/fixtures/etex/data"
 CONFIG_DIR="${PROJECT_ROOT}/fixtures/etex/real/config"
+if [ "${ETEX_PROFILE}" = "mini" ]; then
+    CONFIG_DIR="${PROJECT_ROOT}/fixtures/etex/mini/config"
+fi
 
 C_FLEXPART="/workspace/flexpart"
+C_ETEX="/workspace/etex"
+if [ "${ETEX_PROFILE}" = "mini" ]; then
+    C_ETEX="${C_ETEX}/mini"
+fi
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
 log_info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
@@ -68,12 +87,16 @@ fortran_run_succeeded() {
 
 # ---------------------------------------------------------------------------
 check_prereqs() {
-    if ! command -v python3 &>/dev/null; then
-        log_error "python3 not found"
+    if ! command -v "${HOST_PYTHON}" &>/dev/null; then
+        log_error "${HOST_PYTHON} not found"
         return 1
     fi
-    if ! python3 -c "import eccodes, numpy, xarray, gcsfs, zarr" 2>/dev/null; then
-        log_error "Python needs eccodes, numpy, xarray, gcsfs and zarr"
+    local modules="eccodes, numpy, xarray, gcsfs, zarr"
+    if [ "${ETEX_PROFILE}" = "mini" ]; then
+        modules="numpy"
+    fi
+    if ! "${HOST_PYTHON}" -c "import ${modules}" 2>/dev/null; then
+        log_error "Python needs ${modules}"
         return 1
     fi
     if ! command -v docker &>/dev/null; then
@@ -91,18 +114,26 @@ step_download() {
     log_step "Download ERA5 data"
     mkdir -p "${ERA5_RAW}"
 
+    if [ "${ETEX_PROFILE}" = "mini" ]; then
+        "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/mini_fixture.py" unpack \
+            --archive "${PROJECT_ROOT}/fixtures/etex/mini/era5-subset.zip" \
+            --manifest "${PROJECT_ROOT}/fixtures/etex/mini/sha256.json" \
+            --output "${ERA5_RAW}"
+        return 0
+    fi
+
     if [ -f "${ERA5_RAW}/metadata.json" ] && [ -f "${ERA5_RAW}/times.npy" ] \
         && [ -f "${ERA5_RAW}/u_component_of_wind.npy" ]; then
         log_info "ERA5 data already downloaded. Skipping."
         return 0
     fi
 
-    if ! python3 -c "import numpy, xarray, gcsfs, zarr" 2>/dev/null; then
+    if ! "${HOST_PYTHON}" -c "import numpy, xarray, gcsfs, zarr" 2>/dev/null; then
         log_error "ERA5 download needs numpy, xarray, gcsfs and zarr"
         return 1
     fi
 
-    python3 "${PROJECT_ROOT}/scripts/etex/download_era5_gcs.py" \
+    "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/download_era5_gcs.py" \
         --output-dir "${ERA5_RAW}"
 }
 
@@ -116,12 +147,20 @@ step_prepare() {
         return 1
     fi
 
-    python3 "${PROJECT_ROOT}/scripts/etex/prepare_flexpart_input_from_npy.py" \
-        --era5-dir "${ERA5_RAW}" \
-        --output-dir "${METEO_DIR}"
-    python3 "${PROJECT_ROOT}/scripts/etex/prepare_gpu_meteo.py" \
-        --era5-dir "${ERA5_RAW}" \
-        --output-dir "${ETEX_DIR}/gpu_meteo"
+    if [ "${ETEX_PROFILE}" = "mini" ]; then
+        docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
+            flexpart-fortran python3 \
+            /workspace/flexpart-gpu/scripts/etex/prepare_flexpart_input_from_npy.py \
+            --era5-dir "${C_ETEX}/era5_raw" --output-dir "${C_ETEX}/meteo"
+        "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/prepare_gpu_meteo.py" \
+            --era5-dir "${ERA5_RAW}" --output-dir "${ETEX_DIR}/gpu_meteo" \
+            --simulation-end 19941024040000 --particle-count 10000
+    else
+        "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/prepare_flexpart_input_from_npy.py" \
+            --era5-dir "${ERA5_RAW}" --output-dir "${METEO_DIR}"
+        "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/prepare_gpu_meteo.py" \
+            --era5-dir "${ERA5_RAW}" --output-dir "${ETEX_DIR}/gpu_meteo"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -133,7 +172,7 @@ step_parse() {
         return 1
     fi
 
-    python3 "${PROJECT_ROOT}/scripts/etex/parse_measurements.py" \
+    "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/parse_measurements.py" \
         --data-dir "${DATA_DIR}" \
         --output "${MEASUREMENTS}"
 }
@@ -214,7 +253,6 @@ PATHEOF
 
     log_info "Compiling FLEXPART Fortran..."
     docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
-        -v "${ETEX_DIR}:/workspace/etex" \
         flexpart-fortran bash -c "
             set -euo pipefail
             cd ${C_FLEXPART}/src
@@ -226,10 +264,9 @@ PATHEOF
 
     log_info "Running FLEXPART Fortran (ETEX-1)..."
     docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
-        -v "${ETEX_DIR}:/workspace/etex" \
         flexpart-fortran bash -c "
             set -euo pipefail
-            cd /workspace/etex/fortran_run && ${C_FLEXPART}/src/FLEXPART
+            cd ${C_ETEX}/fortran_run && ${C_FLEXPART}/src/FLEXPART
         " 2>&1 | tee "${ETEX_DIR}/fortran.log"
 
     if grep -q "CONGRATULATIONS" "${ETEX_DIR}/fortran.log" 2>/dev/null; then
@@ -259,7 +296,7 @@ step_gpu() {
     rm -f "${GPU_OUTPUT}"
     OUTPUT_PATH="${GPU_OUTPUT}" \
     ETEX_MANIFEST="${ETEX_DIR}/gpu_meteo/manifest.json" \
-    RUST_LOG=info \
+    RUST_LOG=flexpart_gpu=info \
         "${GPU_BINARY}" 2>&1 \
         | tee "${ETEX_DIR}/gpu.log"
 
@@ -297,7 +334,7 @@ step_compare() {
         candidate_dirty_args=(--candidate-dirty)
     fi
 
-    python3 "${PROJECT_ROOT}/scripts/etex/compare_oracle_observations.py" \
+    "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/compare_oracle_observations.py" \
         --measurements "${MEASUREMENTS}" \
         --fortran-output "${FORTRAN_RUN}/output" \
         --gpu-output "${GPU_OUTPUT}" \
@@ -310,7 +347,7 @@ step_compare() {
         "${candidate_dirty_args[@]}" \
         --output "${REPORT}"
 
-    python3 "${PROJECT_ROOT}/scripts/write_oracle_run_manifest.py" \
+    "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/write_oracle_run_manifest.py" \
         --output "${ETEX_DIR}/run_manifest.json" \
         --scenario ETEX-1 \
         --oracle-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
@@ -371,12 +408,16 @@ step_status() {
 step_report() {
     log_step "Validation Report"
     if [ -f "${REPORT}" ]; then
-        python3 -c "
+        local report_path="${REPORT}"
+        if [ "${OS:-}" = "Windows_NT" ]; then
+            report_path="$(cygpath -w "${REPORT}")"
+        fi
+        "${HOST_PYTHON}" -c '
 import json, sys
-with open('${REPORT}') as f:
+with open(sys.argv[1]) as f:
     r = json.load(f)
-print(json.dumps({key: value for key, value in r.items() if key != 'pairs'}, indent=2))
-"
+print(json.dumps({key: value for key, value in r.items() if key != "pairs"}, indent=2))
+' "${report_path}"
     else
         log_error "No report found. Run: scripts/run-etex.sh compare"
     fi

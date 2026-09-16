@@ -16,6 +16,19 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-16 — Replace mini pressure-level weather with native ERA5
+**Impact**: numerics (meteorological forcing and vertical interpolation)
+**Files**: `fixtures/etex/native-mini/`,
+`scripts/etex/prepare_native_era5.py`, `scripts/run-etex.sh`
+**Validation**: Six 137-level ERA5 snapshots and separate eta-coordinate
+velocity fields were SHA-256 verified. The pinned FLEXPART 11.1 oracle ran
+with the native hybrid levels; the software-WGSL candidate ran with 16
+interpolated AGL levels. The end-to-end ETEX mini workflow completed 48 GPU
+steps, four paired three-hour output windows and 108 observation matches.
+The candidate's ETEX station concentrations still differ substantially from
+the oracle; vertical-coordinate equivalence and scientific parity are not
+established by this smoke run.
+
 ### 2026-09-16 — Add a checked-in real ERA5 ETEX mini run
 **Impact**: output-only (ETEX forcing conversion, grid and averaging windows)
 **Files**: `scripts/etex/prepare_flexpart_input_from_npy.py`,

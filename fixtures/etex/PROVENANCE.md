@@ -40,13 +40,13 @@ The DATEM `dur` field is HHMM, so `0300` denotes a three-hour sample.
 
 ## Meteorology
 
-The full ETEX meteorology is not bundled. A small real ERA5 subset is bundled
-in `mini/era5-subset.zip`, with hashes, source and licence details in
-`mini/README.md`. `scripts/run-etex.sh mini` uses this checked-in subset;
-`native-mini/` additionally contains a three-timestep, 137-model-level ERA5
-Complete GRIB extract with an exact CDS request, SHA-256 hash, and field
-verifier. It is the input for a future equivalent-forcing conversion and is
-not yet used by the mini runner. See `native-mini/README.md`.
+The full ETEX meteorology is not bundled. A six-snapshot native ERA5 subset
+is bundled in `native-mini/`: 137 hybrid model levels, the separate
+eta-coordinate velocity required by FLEXPART, and matching surface fields.
+Exact CDS/ARCO requests, SHA-256 hashes, licensing, and field checks are
+documented in `native-mini/README.md` and its manifests. `scripts/run-etex.sh
+mini` verifies these inputs and generates both model inputs. The former
+pressure-level mini archive has been removed.
 The full `scripts/run-etex.sh all` downloads public ARCO-ERA5 arrays using
 `scripts/etex/download_era5_gcs.py`. It prepares Fortran GRIB input with
 `prepare_flexpart_input_from_npy.py` and candidate binary input with
@@ -58,9 +58,12 @@ The companion `target/etex/run_manifest.json` records the exact oracle image,
 installed packages, compiler profile, executables, adapter, and raw-artifact
 hashes. The candidate runner does not currently expose a random seed; the
 manifest marks it unavailable and must not be used for a multi-seed claim.
-The mini Fortran GRIB converter approximates terrain-following levels from
-pressure-level ERA5, while the candidate uses pressure levels directly.
-Consequently its concentration metrics test plumbing, not scientific parity.
+Fortran reads the native 137-level hybrid fields and ERA5 eta-coordinate
+velocity; the GPU uses 16 fixed AGL levels sampled from the same native
+fields and ERA5 pressure velocity converted to m/s. This shared source removes
+the previous pressure-level approximation, but quantitative equivalence of
+the vertical representations and velocities is not yet established. The
+mini concentration metrics remain diagnostic, not a scientific parity claim.
 
 ## Reference outputs (not bundled)
 

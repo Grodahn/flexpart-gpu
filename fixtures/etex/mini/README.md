@@ -1,42 +1,23 @@
-# ETEX-1 mini weather fixture
+# ETEX-1 mini run
 
-`era5-subset.zip` is a small, real ERA5 subset for a reproducible 12-hour
-ETEX-1 smoke run. The archive is checked by `sha256.json` before extraction.
-It contains 16 hourly fields from 1994-10-23 15:00 through 1994-10-24 06:00
-UTC over 43–53° N and 8° W–8° E on a 0.25° grid. Five atmospheric fields are
-stored at 14 pressure levels; 15 surface fields are also included. The
-uncompressed arrays are about 15 MB. `metadata.json` inside the archive lists
-the exact variables, shapes, levels, and source store.
+`scripts/run-etex.sh mini` runs the pinned FLEXPART 11.1 oracle and the WGSL
+candidate from the six native-level ERA5 snapshots in `../native-mini/`.
+The meteorology covers 1994-10-23 15:00 through 1994-10-24 06:00 UTC, which
+brackets the 16:00–04:00 simulation. The old pressure-level weather archive
+has been retired. The independent ETEX station observations remain in
+`../data/`.
 
-Source: Google ARCO-ERA5, public Zarr store
-`gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3`,
-accessed 2026-09-16. The downloader is
-`scripts/etex/download_era5_gcs.py`; it can reproduce the subset with:
+`scripts/etex/verify_native_model_levels.py` checks all ERA5 input hashes,
+grids, fields and times. `scripts/etex/prepare_native_era5.py` writes Fortran
+GRIB files and the GPU binary meteorology from these inputs. The Fortran files
+retain the 137 native hybrid model levels and include ERA5 eta-coordinate
+velocity (`etadot`); the GPU receives 16 fixed AGL levels sampled from the
+native fields and uses ERA5 pressure velocity (`omega`) converted to m/s.
+Both runs use the same ERA5 dates, area and surface fields, but their vertical
+representations and velocity coordinates still require a quantitative
+equivalence check before claiming concentration parity.
 
-```bash
-python scripts/etex/download_era5_gcs.py --output-dir target/etex/mini_raw \
-  --time-start 1994-10-23T15:00 --time-end 1994-10-24T06:00 \
-  --lon-west -8 --lon-east 8 --lat-north 53 --lat-south 43
-python scripts/etex/mini_fixture.py pack --source target/etex/mini_raw \
-  --archive fixtures/etex/mini/era5-subset.zip \
-  --manifest fixtures/etex/mini/sha256.json
-```
-
-Contains modified Copernicus Climate Change Service information 2026.
-Neither the European Commission nor ECMWF is responsible for any use that may
-be made of this information. Licence:
-https://cds.climate.copernicus.eu/licences/licence-to-use-copernicus-products
-
-Run `scripts/run-etex.sh mini` to unpack, prepare, execute both models, and
-compare with the independent ETEX station data in `../data/`. This requires
-the unmodified pinned FLEXPART checkout, Docker Compose, Cargo, and Python
-with NumPy. Set `FLEXPART_GPU_SOFTWARE=1` for a software WGSL adapter.
-`ETEX_PYTHON` may name a Python executable with NumPy installed.
-
-**Interpretation limit:** ERA5 pressure-level fields are interpolated to an
-approximate terrain-following coordinate for the Fortran input. The candidate
-uses the original pressure-level subset and simplified level heights. These
-are different meteorological representations. This mini fixture verifies the
-data pipeline, model execution, provenance, output windows, and observation
-pairing. Its concentration metrics are diagnostics, not a scientific parity
-claim or a substitute for native FLEXPART model-level forcing.
+Run `scripts/run-etex.sh mini` with Docker Compose, Cargo, NumPy and a software
+WGSL adapter (`FLEXPART_GPU_SOFTWARE=1` where needed). The paired report and
+raw outputs are written under `target/etex/mini/`; they are diagnostic data,
+not a scientific parity verdict.

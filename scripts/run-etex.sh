@@ -51,6 +51,9 @@ if [ "${ETEX_PROFILE}" = "mini" ]; then
     ETEX_DIR="${ETEX_DIR}/mini"
 fi
 ERA5_RAW="${ETEX_DIR}/era5_raw"
+if [ "${ETEX_PROFILE}" = "mini" ]; then
+    ERA5_RAW="${PROJECT_ROOT}/fixtures/etex/native-mini"
+fi
 METEO_DIR="${ETEX_DIR}/meteo"
 FORTRAN_RUN="${ETEX_DIR}/fortran_run"
 GPU_OUTPUT="${ETEX_DIR}/gpu_output.json"
@@ -115,10 +118,9 @@ step_download() {
     mkdir -p "${ERA5_RAW}"
 
     if [ "${ETEX_PROFILE}" = "mini" ]; then
-        "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/mini_fixture.py" unpack \
-            --archive "${PROJECT_ROOT}/fixtures/etex/mini/era5-subset.zip" \
-            --manifest "${PROJECT_ROOT}/fixtures/etex/mini/sha256.json" \
-            --output "${ERA5_RAW}"
+        docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
+            flexpart-fortran python3 \
+            /workspace/flexpart-gpu/scripts/etex/verify_native_model_levels.py
         return 0
     fi
 
@@ -142,7 +144,8 @@ step_prepare() {
     log_step "Prepare FLEXPART input"
     mkdir -p "${METEO_DIR}"
 
-    if [ ! -f "${ERA5_RAW}/metadata.json" ] || [ ! -f "${ERA5_RAW}/times.npy" ]; then
+    if [ "${ETEX_PROFILE}" != "mini" ] && \
+        { [ ! -f "${ERA5_RAW}/metadata.json" ] || [ ! -f "${ERA5_RAW}/times.npy" ]; }; then
         log_error "ERA5 data not downloaded. Run: scripts/run-etex.sh download"
         return 1
     fi
@@ -150,11 +153,10 @@ step_prepare() {
     if [ "${ETEX_PROFILE}" = "mini" ]; then
         docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
             flexpart-fortran python3 \
-            /workspace/flexpart-gpu/scripts/etex/prepare_flexpart_input_from_npy.py \
-            --era5-dir "${C_ETEX}/era5_raw" --output-dir "${C_ETEX}/meteo"
-        "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/prepare_gpu_meteo.py" \
-            --era5-dir "${ERA5_RAW}" --output-dir "${ETEX_DIR}/gpu_meteo" \
-            --simulation-end 19941024040000 --particle-count 10000
+            /workspace/flexpart-gpu/scripts/etex/prepare_native_era5.py \
+            --native-dir /workspace/flexpart-gpu/fixtures/etex/native-mini \
+            --meteo-dir "${C_ETEX}/meteo" \
+            --gpu-dir "${C_ETEX}/gpu_meteo"
     else
         "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/prepare_flexpart_input_from_npy.py" \
             --era5-dir "${ERA5_RAW}" --output-dir "${METEO_DIR}"
@@ -385,8 +387,16 @@ step_status() {
 
     check_file "${DATA_DIR}/meas-t1.txt"                        "ETEX measurements (DATEM)"
     check_file "${DATA_DIR}/stations.txt"                        "ETEX stations (DATEM)"
-    check_file "${ERA5_RAW}/metadata.json"                      "ERA5 source metadata"
-    check_file "${ERA5_RAW}/times.npy"                          "ERA5 time axis"
+    if [ "${ETEX_PROFILE}" = "mini" ]; then
+        check_file "${ERA5_RAW}/era5-19941023-151821-ml.grib"   "ERA5 model levels, day 1"
+        check_file "${ERA5_RAW}/era5-19941024-000306-ml.grib"   "ERA5 model levels, day 2"
+        check_file "${ERA5_RAW}/era5-19941023-151821-etadot.grib" "ERA5 eta velocity, day 1"
+        check_file "${ERA5_RAW}/era5-19941024-000306-etadot.grib" "ERA5 eta velocity, day 2"
+        check_file "${ERA5_RAW}/era5-surface-19941023-24.npz"  "ERA5 surface fields"
+    else
+        check_file "${ERA5_RAW}/metadata.json"                  "ERA5 source metadata"
+        check_file "${ERA5_RAW}/times.npy"                      "ERA5 time axis"
+    fi
     check_file "${METEO_DIR}/AVAILABLE"                          "FLEXPART input prepared"
     check_file "${ETEX_DIR}/gpu_meteo/manifest.json"             "GPU input prepared"
     check_file "${MEASUREMENTS}"                                 "Measurements parsed"

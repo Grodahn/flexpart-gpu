@@ -1,35 +1,38 @@
-# Native ERA5 model-level mini extract
+# Native ERA5 meteorology for the ETEX-1 mini run
 
-This fixture contains a small ERA5 Complete GRIB extract for the first ETEX-1
-day. It is **real reanalysis data**, retrieved through the Copernicus Climate
-Data Store API on 2026-09-16, and is independent of `flexpart-gpu` output.
-`request.json` records the exact request, byte count, and SHA-256 digest.
+This checked-in fixture contains real ERA5 meteorology for the ETEX-1 release
+window. The native model-level GRIB files were retrieved from ERA5 Complete
+through the CDS API on 2026-09-16. The surface archive contains six matching
+snapshots selected from independently downloaded ARCO-ERA5 hourly arrays.
+The request and SHA-256 records are in `request.json`,
+`request-next-day.json`, `request-etadot.json` and `surface-request.json`.
 
 | Property | Value |
 | --- | --- |
-| Times | 1994-10-23 15:00, 18:00, 21:00 UTC |
-| Region | 43–53° N, 8° W–8° E (the existing ETEX mini grid) |
+| Times | 1994-10-23 15/18/21 and 1994-10-24 00/03/06 UTC |
+| Region | 43–53° N, 8° W–8° E |
 | Horizontal grid | 0.25°, 65 × 41 points |
-| Vertical coordinate | All 137 native ERA5 hybrid model levels, with GRIB PV coefficients |
-| Fields | Temperature (130), east/west wind (131), north/south wind (132), specific humidity (133), vertical velocity (135) |
-| Size | 13,624,650 bytes |
+| Vertical coordinate | All 137 ERA5 hybrid model levels, with 276 PV coefficients |
+| Native fields | Temperature (130), u (131), v (132), humidity (133), pressure velocity (135), eta-coordinate velocity (77) |
+| Surface fields | 15 fields including pressure, near-surface weather, PBL height, fluxes and precipitation |
 
-Reproduce the extract with `python scripts/etex/download_native_model_levels.py`
-after configuring a personal CDS API token and accepting the ERA5 Complete
-dataset terms. The script uses `CDS_API` if provided; otherwise it uses the
-standard `cdsapi` configuration. Keep the token outside the repository.
+The GRIB files express the western longitude as 352°, equivalent to −8° in
+the surface archive. The converter checks both grids and normalizes the GPU
+domain to −8°–8°. Run `scripts/etex/verify_native_model_levels.py` in the
+Fortran container to check source hashes and complete field coverage before
+preparing a run.
 
-The surface fields for these times and the same area are already in the
-SHA-256-checked `../mini/era5-subset.zip`. The native GRIB uses 352°–8° for
-longitude, equivalent to −8°–8° in the existing mini arrays. A downstream
-converter must normalize this convention and use the GRIB hybrid coefficients
-with the surface pressure field. The current ETEX runner still consumes the
-older pressure-level fixture; **adding this extract does not yet establish
-equivalent forcing or scientific parity**. It is the independent input needed
-to implement and test that conversion. Its three timestamps support a short
-meteorological comparison, not the existing 12-hour ETEX run.
+To reproduce the native retrieval, use
+`scripts/etex/download_native_model_levels.py` with a personal CDS API token
+after accepting the ERA5 Complete terms. To reproduce the surface archive,
+download the same 16 hourly ARCO-ERA5 subset with
+`scripts/etex/download_era5_gcs.py`, then select six times using
+`scripts/etex/build_native_surface_fixture.py`. Keep credentials outside this
+repository. The former pressure-level archive hash is recorded in
+`surface-request.json` for source lineage; that archive is no longer needed by
+the run.
 
 Contains modified Copernicus Climate Change Service information 2026.
 Neither the European Commission nor ECMWF is responsible for any use that may
-be made of this information. Dataset and licence:
+be made of this information. ERA5 Complete:
 https://cds.climate.copernicus.eu/datasets/reanalysis-era5-complete

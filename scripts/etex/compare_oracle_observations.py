@@ -260,10 +260,18 @@ def compare(measurements_path, gpu_path, fortran_dir, era5_dir=None,
     }
     if era5_dir is not None:
         arrays = sorted(Path(era5_dir).glob("*.npy"))
-        if not arrays or not (Path(era5_dir) / "metadata.json").is_file():
-            raise ValueError("ERA5 source arrays or metadata are missing")
-        report["input_sha256"]["era5_metadata"] = sha256(Path(era5_dir) / "metadata.json")
-        report["input_sha256"]["era5_arrays"] = {p.name: sha256(p) for p in arrays}
+        if arrays:
+            if not (Path(era5_dir) / "metadata.json").is_file():
+                raise ValueError("ERA5 source metadata are missing")
+            report["input_sha256"]["era5_metadata"] = sha256(Path(era5_dir) / "metadata.json")
+            report["input_sha256"]["era5_arrays"] = {p.name: sha256(p) for p in arrays}
+        else:
+            native = sorted(Path(era5_dir).glob("*.grib"))
+            surface = sorted(Path(era5_dir).glob("*.npz"))
+            if len(native) != 4 or len(surface) != 1:
+                raise ValueError("native ERA5 model-level or surface files are missing")
+            report["input_sha256"]["era5_native"] = {
+                p.name: sha256(p) for p in native + surface}
     if gpu_manifest is not None:
         report["input_sha256"]["gpu_meteorology_manifest"] = sha256(gpu_manifest)
     if gpu_log is not None:

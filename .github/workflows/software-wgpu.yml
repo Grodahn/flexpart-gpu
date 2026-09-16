@@ -1,0 +1,25 @@
+name: Software WGSL smoke
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  software-wgpu:
+    runs-on: ubuntu-22.04
+    env:
+      FLEXPART_GPU_SOFTWARE: "1"
+      WGPU_BACKEND: vulkan
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lavapipe
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers vulkan-tools
+          icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          test -n "$icd"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+      - name: Run required software WGSL advection smoke test
+        run: cargo test --test integration software_advection::test_sw_wgpu_advection_001_constant_wind_displacement -- --exact --nocapture

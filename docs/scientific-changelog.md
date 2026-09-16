@@ -16,6 +16,15 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-16 — Enforce the software WGSL advection acceptance gate
+**Impact**: none (test coverage and CI)
+**Files**: `tests/integration/software_advection.rs`,
+`.github/workflows/software-wgpu.yml`
+**Validation**: The required software adapter is asserted before dispatch.
+The test measures signed eastward motion and individual particle end positions
+against the #139 200 m bound. Lavapipe CI runs the same WGSL path; local WARP
+execution is used during development.
+
 ### 2026-09-16 — Pair ETEX concentration windows with the Fortran oracle
 **Impact**: output-only (three-hour mean replaces an end-time snapshot)
 **Files**: `src/bin/etex-run.rs`, `scripts/etex/compare_oracle_observations.py`,

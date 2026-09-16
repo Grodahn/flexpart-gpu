@@ -93,7 +93,7 @@ WGSL compute path through a software rasterizer:
 Request the software fallback adapter explicitly:
 
 ```bash
-# One-shot CLI flag (works for gpu-preflight and the smoke test below)
+# One-shot CLI flag for gpu-preflight
 cargo run --bin gpu-preflight -- --software
 
 # Or persistent environment toggle (honored by GpuContext and preflight)
@@ -104,6 +104,12 @@ WGPU_FORCE_FALLBACK_ADAPTER=1 cargo run --bin gpu-preflight
 The fallback adapter executes the same WGSL shaders as hardware. No separate
 CPU replacement path is used. Wall-clock timings measured on a software
 adapter must never be reported as GPU performance values.
+
+`SW-WGPU-ADVECTION-001` is a required execution gate: it fails if the
+software adapter is absent or the selected device is not a software
+rasterizer. It checks signed eastward displacement for every particle against
+the 36.0 ± 0.2 km bound. The `software-wgpu` CI job runs this test through
+Lavapipe on Ubuntu; local Windows runs can use WARP.
 
 Known limitation: the Windows software rasterizer (WARP) can crash with
 `STATUS_ACCESS_VIOLATION` when many GPU test binaries run back to back in one

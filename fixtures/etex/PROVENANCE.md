@@ -43,7 +43,11 @@ The DATEM `dur` field is HHMM, so `0300` denotes a three-hour sample.
 The full ETEX meteorology is not bundled. A small real ERA5 subset is bundled
 in `mini/era5-subset.zip`, with hashes, source and licence details in
 `mini/README.md`. `scripts/run-etex.sh mini` uses this checked-in subset;
-the full `scripts/run-etex.sh all` downloads public ARCO-ERA5 arrays using
+`native-mini/` additionally contains a three-timestep, 137-model-level ERA5
+Complete GRIB extract with an exact CDS request, SHA-256 hash, and field
+verifier. It is the input for a future equivalent-forcing conversion and is
+not yet used by the mini runner. See `native-mini/README.md`.
+The full `scripts/run-etex.sh all` downloads public ARCO-ERA5 arrays using
 `scripts/etex/download_era5_gcs.py`. It prepares Fortran GRIB input with
 `prepare_flexpart_input_from_npy.py` and candidate binary input with
 `prepare_gpu_meteo.py` from those same arrays. ERA5 is independent of both

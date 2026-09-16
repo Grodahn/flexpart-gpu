@@ -76,6 +76,10 @@ claim.
   12 hours, and pair their output with independent station observations.
   See `fixtures/etex/mini/README.md` for source, licence, and the pressure-level
   conversion limitation. Its metrics are diagnostic only.
+- Native ERA5 model-level input (`fixtures/etex/native-mini/`): a small,
+  independently retrieved and verified 137-level GRIB extract for three ETEX
+  timepoints. The current runner does not yet consume it; equivalent forcing
+  preparation for both models remains a separate validation step.
 - Future parity gates in issues RISK-03.3G-03 and later.
 
 Oracle outputs are produced at validation time and compared, never vendored

@@ -1,16 +1,9 @@
-//! Horizontal dispersion tests (RISK-03.3G-03).
+//! Isolated horizontal Langevin tests (RISK-03.3G-02).
 //!
-//! The GPU plume was reported ~2x too wide versus Fortran. These tests pin
-//! the horizontal Langevin application to the exact discrete theory so that
-//! any remaining plume-width difference can only come from turbulence INPUT
-//! sourcing (ustar/PBL), never from the kernel math.
-//!
-//! Established during the investigation (see docs/validation-report.md
-//! addendum): against FLEXPART 11.1 with temporally matched output, the
-//! spreads agree. The historical factor came from comparing a time-averaged
-//! mid-run oracle snapshot against the instantaneous GPU end state, while
-//! the oracle diagnosed ustar ~0.34 from the synthetic stress fields -
-//! nearly identical to the GPU's prescribed 0.35.
+//! These tests check a standalone horizontal update against discrete
+//! Ornstein-Uhlenbeck theory. They do not exercise the fused production
+//! trajectory or establish parity with FLEXPART 11.1. See the status and
+//! remaining validation work in docs/validation-report.md.
 
 use flexpart_gpu::gpu::{
     advect_particles_gpu_with_sampling, update_particles_turbulence_langevin_gpu,
@@ -21,7 +14,7 @@ use flexpart_gpu::pbl::HannaParams;
 use flexpart_gpu::physics::{compute_hanna_params, HannaInputs, LangevinStep, VelocityToGridScale};
 use flexpart_gpu::wind::WindField3D;
 
-const TEST_ID: &str = "RISK-03.3G-03";
+const TEST_ID: &str = "RISK-03.3G-02";
 
 const PARTICLE_COUNT: usize = 16384;
 const START_X: f32 = 20.0;

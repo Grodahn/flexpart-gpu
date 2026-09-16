@@ -37,8 +37,10 @@ C_FLEXPART="/workspace/flexpart"
 C_GPU="/workspace/flexpart-gpu"
 C_DATA="/workspace/comparison"
 CANDIDATE_BINARY="${PROJECT_ROOT}/target/release/fortran-validation"
+HOST_PYTHON=python3
 if [ "${OS:-}" = "Windows_NT" ]; then
   CANDIDATE_BINARY="${CANDIDATE_BINARY}.exe"
+  HOST_PYTHON=python
 fi
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -507,14 +509,22 @@ do_validate() {
 
   # Step 5: Run comparison
   log_info "Comparing concentration fields..."
-  python3 "${SCRIPT_DIR}/compare_concentrations.py" \
-    --fortran-output "${FORTRAN_OUTPUT}" \
-    --gpu-output "${PROJECT_ROOT}/target/validation/gpu_concentration.json" \
-    --output-json "${PROJECT_ROOT}/target/validation/comparison_report.json" \
-    --verbose 2>&1 | tee "${PROJECT_ROOT}/target/validation/comparison.log"
+  if [ "$mode" = "local" ]; then
+    "${HOST_PYTHON}" "${SCRIPT_DIR}/compare_concentrations.py" \
+      --fortran-output "${FORTRAN_OUTPUT}" \
+      --gpu-output "${PROJECT_ROOT}/target/validation/gpu_concentration.json" \
+      --output-json "${PROJECT_ROOT}/target/validation/comparison_report.json" \
+      --verbose 2>&1 | tee "${PROJECT_ROOT}/target/validation/comparison.log"
+  else
+    fortran_exec "$mode" python3 "${C_GPU}/scripts/compare_concentrations.py" \
+      --fortran-output "${C_DATA}/validate_run/output" \
+      --gpu-output "${C_GPU}/target/validation/gpu_concentration.json" \
+      --output-json "${C_GPU}/target/validation/comparison_report.json" \
+      --verbose 2>&1 | tee "${PROJECT_ROOT}/target/validation/comparison.log"
+  fi
 
   if [ "$mode" != "local" ]; then
-    python3 "${SCRIPT_DIR}/write_oracle_run_manifest.py" \
+    "${HOST_PYTHON}" "${SCRIPT_DIR}/write_oracle_run_manifest.py" \
       --output "${PROJECT_ROOT}/target/validation/run_manifest.json" \
       --scenario synthetic-uniform-wind \
       --oracle-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \

@@ -16,6 +16,17 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-16 — Align synthetic comparison time windows
+**Impact**: output-only (validation runner timing and concentration averaging)
+**Files**: `src/bin/fortran-validation.rs`,
+`scripts/compare_concentrations.py`, `scripts/compare-fortran.sh`
+**Validation**: The candidate now runs exactly 24 900-second steps and
+averages its 05:30, 05:45, and 06:00 concentration samples with FLEXPART's
+half-weight endpoints for the oracle's 05:30–06:00 window. The comparator
+rejects mismatched output windows. A local 10,000-particle run against pinned
+FLEXPART 11.1 measures gridded covariance and center differences; these are
+diagnostics from one run, so RISK-03.3G-02 parity remains unverified.
+
 ### 2026-09-16 — Enforce the software WGSL advection acceptance gate
 **Impact**: none (test coverage and CI)
 **Files**: `tests/integration/software_advection.rs`,

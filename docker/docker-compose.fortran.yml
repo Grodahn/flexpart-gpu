@@ -23,6 +23,7 @@ services:
       # Host-visible result directories for the comparison scripts.
       - ../target/comparison:/workspace/comparison
       - ../target/etex:/workspace/etex
+      - ../target/corpus:/workspace/corpus
     environment:
       FC: "gfortran"
     command: ["bash"]

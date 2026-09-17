@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "case_id": "WIND-SHEAR-003",
+  "description": "Sheared wind u(z) = u0 + shear * z with horizontal and vertical turbulence through the production driver.",
+  "domain": {
+    "nx": 32,
+    "ny": 32,
+    "nz": 8,
+    "dx_deg": 0.1,
+    "dy_deg": 0.1,
+    "xlon0_deg": 9.5,
+    "ylat0_deg": 8.5,
+    "wind_heights_m": [50.0, 100.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0]
+  },
+  "release": {
+    "lon_deg": 10.0,
+    "lat_deg": 10.0,
+    "z_m": 50.0,
+    "particle_count": 1000,
+    "mass_kg_total": 1.0
+  },
+  "wind": {
+    "profile": "linear_shear",
+    "u0_m_s": 2.0,
+    "u_shear_per_s": 0.004,
+    "v_m_s": 0.0,
+    "w_m_s": 0.0,
+    "note": "u(z) = 2.0 + 0.004*z; 2 m/s at surface, about 14 m/s at 3000 m"
+  },
+  "surface": {
+    "surface_pressure_pa": 101325.0,
+    "temperature_2m_k": 289.0,
+    "dewpoint_2m_k": 284.0,
+    "sensible_heat_flux_w_m2": 40.0,
+    "solar_radiation_w_m2": 220.0,
+    "surface_stress_n_m2": 0.2,
+    "friction_velocity_m_s": 0.35,
+    "convective_velocity_scale_m_s": 0.1,
+    "mixing_height_m": 1500.0,
+    "tropopause_height_m": 10000.0,
+    "inv_obukhov_length_per_m": 0.0,
+    "precip_large_scale_mm_h": 0.0,
+    "precip_convective_mm_h": 0.0
+  },
+  "integration": {
+    "start": "20240101000000",
+    "dt_s": 300,
+    "steps": 12,
+    "total_s": 3600
+  },
+  "physics_switches": {
+    "turbulence": true,
+    "convection": false,
+    "dry_deposition": false,
+    "wet_deposition": false,
+    "decay": false
+  },
+  "units": {
+    "wind": "m/s",
+    "shear": "1/s",
+    "height": "m",
+    "mass": "kg"
+  },
+  "seeds": {
+    "base_philox_key": [3737180555, 305419896],
+    "base_counter": [0, 0, 0, 0],
+    "count": 10,
+    "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
+  },
+  "oracle_command_overrides": {
+    "LTURBULENCE": 1,
+    "CTL": 5.0,
+    "IFINE": 4,
+    "LCONVECTION": 0
+  },
+  "oracle_meteo_note": "Sheared synthetic GRIB via scripts/generate_synthetic_grib.py --u-shear-per-m 0.004 (same single reference path, extended generator)."
+}

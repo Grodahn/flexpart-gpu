@@ -16,6 +16,17 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-17 — Reproducible Issue #6 test corpus (point 2)
+**Impact**: none (new fixtures, runners and documentation; no shader or physics change)
+**Files**: `fixtures/corpus/`, `docs/corpus-matrix.md`, `src/bin/corpus-run.rs`,
+`tests/integration/corpus.rs`, `scripts/run-corpus.sh`, `scripts/corpus/`,
+`scripts/generate_synthetic_grib.py` (optional shear/surface overrides)
+**Validation**: 6/6 corpus CI tests pass on software WGSL (18.9 s);
+full synthetic candidate (8 cases, 10 Philox seeds) runs on the Microsoft Basic
+Render Driver with mass conserved, PBL-confined and regime-separated vertical
+mixing; restart/decay/convection stay blocked with verifiable causes; ETEX mini
+remains `INPUT_EQUIVALENCE_NOT_DEMONSTRATED`.
+
 ### 2026-09-16 — Replace mini pressure-level weather with native ERA5
 **Impact**: numerics (meteorological forcing and vertical interpolation)
 **Files**: `fixtures/etex/native-mini/`,

@@ -117,14 +117,25 @@ PARAM_LNSP = 152    # log of surface pressure
 
 def generate_one_timestep(output_path: str, nx: int, ny: int, nz: int,
                            u_wind: float, v_wind: float, w_wind: float,
-                           date: int, time: int):
+                           date: int, time: int,
+                           u_shear_per_m: float = 0.0,
+                           sshf: float = 40.0,
+                           blh: float = 800.0,
+                           lsp: float = 0.0,
+                           cp: float = 0.0):
     npoints = nx * ny
     uniform = lambda val: np.full(npoints, val, dtype=np.float64)
 
     with open(output_path, "wb") as fout:
         for k in range(1, nz + 1):
+            # Approximate level height for shear mapping. Hybrid-eta levels
+            # have no fixed height; use a linear proxy so the corpus shear
+            # case is reproducible. The candidate uses true height u(z), so
+            # shear input equivalence remains an open comparison item.
+            level_height_proxy_m = float(k) / float(nz) * 8000.0
+            u_level = u_wind + u_shear_per_m * level_height_proxy_m
             write_grib1_message(fout, PARAM_U, LEVEL_HYBRID, k, nx, ny,
-                                uniform(u_wind), date, time, nz)
+                                uniform(u_level), date, time, nz)
             write_grib1_message(fout, PARAM_V, LEVEL_HYBRID, k, nx, ny,
                                 uniform(v_wind), date, time, nz)
             write_grib1_message(fout, PARAM_W, LEVEL_HYBRID, k, nx, ny,
@@ -150,7 +161,7 @@ def generate_one_timestep(output_path: str, nx: int, ny: int, nz: int,
         write_grib1_message(fout, PARAM_V10M, LEVEL_SURFACE, 0, nx, ny,
                             uniform(v_wind), date, time, nz)
         write_grib1_message(fout, PARAM_SSHF, LEVEL_SURFACE, 0, nx, ny,
-                            uniform(40.0), date, time, nz)
+                            uniform(sshf), date, time, nz)
         write_grib1_message(fout, PARAM_SSR, LEVEL_SURFACE, 0, nx, ny,
                             uniform(220.0), date, time, nz)
         write_grib1_message(fout, PARAM_EWSS, LEVEL_SURFACE, 0, nx, ny,
@@ -158,11 +169,11 @@ def generate_one_timestep(output_path: str, nx: int, ny: int, nz: int,
         write_grib1_message(fout, PARAM_NSSS, LEVEL_SURFACE, 0, nx, ny,
                             uniform(0.1), date, time, nz)
         write_grib1_message(fout, PARAM_LSP, LEVEL_SURFACE, 0, nx, ny,
-                            uniform(0.0), date, time, nz)
+                            uniform(lsp), date, time, nz)
         write_grib1_message(fout, PARAM_CP, LEVEL_SURFACE, 0, nx, ny,
-                            uniform(0.0), date, time, nz)
+                            uniform(cp), date, time, nz)
         write_grib1_message(fout, PARAM_BLH, LEVEL_SURFACE, 0, nx, ny,
-                            uniform(800.0), date, time, nz)
+                            uniform(blh), date, time, nz)
 
 
 def main():
@@ -177,6 +188,16 @@ def main():
     parser.add_argument("--u-wind", type=float, default=0.5)
     parser.add_argument("--v-wind", type=float, default=-0.3)
     parser.add_argument("--w-wind", type=float, default=0.0)
+    parser.add_argument("--u-shear-per-m", type=float, default=0.0,
+                        help="Linear u shear per meter applied to the level-height proxy (corpus shear cases).")
+    parser.add_argument("--sshf", type=float, default=40.0,
+                        help="Uniform sensible heat flux [W/m2] for corpus PBL cases.")
+    parser.add_argument("--blh", type=float, default=800.0,
+                        help="Uniform boundary-layer height [m] for corpus PBL cases.")
+    parser.add_argument("--lsp", type=float, default=0.0,
+                        help="Uniform large-scale precipitation for corpus wet-deposition cases.")
+    parser.add_argument("--cp", type=float, default=0.0,
+                        help="Uniform convective precipitation for corpus wet-deposition cases.")
     parser.add_argument("--start-date", default="20240101")
     parser.add_argument("--hours", type=int, default=6)
     args = parser.parse_args()
@@ -194,6 +215,11 @@ def main():
             output_path, args.nx, args.ny, args.nz,
             args.u_wind, args.v_wind, args.w_wind,
             date, time_hhmmss,
+            u_shear_per_m=args.u_shear_per_m,
+            sshf=args.sshf,
+            blh=args.blh,
+            lsp=args.lsp,
+            cp=args.cp,
         )
 
     available_path = os.path.join(args.output_dir, "AVAILABLE")

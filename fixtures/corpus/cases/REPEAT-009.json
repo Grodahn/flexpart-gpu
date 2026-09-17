@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "case_id": "REPEAT-009",
+  "description": "Repeatability: same neutral-driver configuration run twice with identical Philox key/counter must give identical particle states.",
+  "based_on": "PBL-NEUTRAL-005",
+  "domain": {
+    "nx": 32,
+    "ny": 32,
+    "nz": 8,
+    "dx_deg": 0.1,
+    "dy_deg": 0.1,
+    "xlon0_deg": 9.5,
+    "ylat0_deg": 8.5,
+    "wind_heights_m": [50.0, 100.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0]
+  },
+  "release": {
+    "lon_deg": 10.0,
+    "lat_deg": 10.0,
+    "z_m": 50.0,
+    "particle_count": 500,
+    "mass_kg_total": 1.0
+  },
+  "wind": {
+    "u_m_s": 5.0,
+    "v_m_s": -3.0,
+    "w_m_s": 0.0,
+    "profile": "uniform"
+  },
+  "integration": {
+    "start": "20240101000000",
+    "dt_s": 300,
+    "steps": 12,
+    "total_s": 3600
+  },
+  "seeds": {
+    "base_philox_key": [3737180555, 305419896],
+    "base_counter": [0, 0, 0, 0],
+    "repeats": 2,
+    "requirement": "bit-identical particle states across repeats"
+  },
+  "units": {
+    "positions": "grid units and m",
+    "mass": "kg"
+  },
+  "fortran_repeatability_note": "The Fortran oracle exposes no seed control: random_mod.f90 alloc_random hard-codes iseed1=-7-i and iseed2=-88-i per OpenMP thread, with no COMMAND namelist override. Repeated oracle runs are therefore not a controlled multi-seed experiment; no multi-seed oracle parity is claimed."
+}

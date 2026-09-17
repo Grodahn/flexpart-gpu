@@ -1,0 +1,1 @@
+--nx 32 --ny 32 --nz 12 --u-wind 5.0 --v-wind -3.0 --w-wind 0.0 --u-shear-per-m 0.0 --sshf 0.0 --blh 1500.0 --lsp 2.0 --cp 1.0 --start-date 20240101 --hours 3

@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "case_id": "ADV-ANA-001",
+  "description": "Analytic advection without turbulence. Isolated production WGSL advection kernel; turbulence, convection and deposition disabled by construction.",
+  "domain": {
+    "nx": 64,
+    "ny": 64,
+    "nz": 8,
+    "dx_deg": 0.1,
+    "dy_deg": 0.1,
+    "xlon0_deg": 6.0,
+    "ylat0_deg": 47.0,
+    "wind_heights_m": [0.0, 50.0, 100.0, 200.0, 500.0, 1500.0, 3000.0, 5000.0]
+  },
+  "release": {
+    "lon_deg": 10.0,
+    "lat_deg": 50.0,
+    "z_m": 100.0,
+    "particle_count": 1024,
+    "mass_kg_per_particle": 1.0
+  },
+  "wind": {
+    "u_m_s": 10.0,
+    "v_m_s": 0.0,
+    "w_m_s": 0.0,
+    "profile": "uniform"
+  },
+  "integration": {
+    "dt_s": 60.0,
+    "steps": 60,
+    "total_s": 3600.0
+  },
+  "physics_switches": {
+    "turbulence": false,
+    "convection": false,
+    "dry_deposition": false,
+    "wet_deposition": false,
+    "decay": false
+  },
+  "analytic_expectation": {
+    "east_displacement_m": 36000.0,
+    "north_displacement_m": 0.0,
+    "vertical_displacement_m": 0.0,
+    "plume_spread": "zero (identical wind for all particles)"
+  },
+  "units": {
+    "wind": "m/s",
+    "displacement": "m",
+    "mass": "kg",
+    "time": "s"
+  },
+  "seeds": "deterministic (no RNG consumed)",
+  "oracle_command_overrides": {
+    "LTURBULENCE": 0,
+    "LCONVECTION": 0,
+    "CTL": 5.0,
+    "IFINE": 4
+  }
+}

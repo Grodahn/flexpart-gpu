@@ -312,8 +312,14 @@ def mass_proportional_fractions(conc_cells, header: dict):
 
 
 def test_center_of_mass_unequal_layers():
-    """Test center_of_mass with unequal layer thicknesses and known expected result."""
-    # Simple 2x2x3 grid with known mass distribution
+    """Test center_of_mass with unequal layer thicknesses and known expected result.
+    
+    Tests a 2x2x3 grid with unequal layer thicknesses (100, 400, 1500).
+    Places nonzero concentration in two layers (kz=0 and kz=1) with known masses.
+    Verifies the mass-weighted COM height and cell-center coordinates.
+    Fails if layer-thickness weighting is removed.
+    """
+    # 2x2x3 grid with unequal layer thicknesses: 100, 400, 1500
     header = {
         "numxgrid": 2,
         "numygrid": 2,
@@ -322,14 +328,21 @@ def test_center_of_mass_unequal_layers():
         "outlat0": 0.0,
         "dxout": 1.0,
         "dyout": 1.0,
-        "outheights": [100.0, 500.0, 2000.0],  # unequal thicknesses: 100, 400, 1500
+        "outheights": [100.0, 500.0, 2000.0],  # thicknesses: 100, 400, 1500
     }
     nx, ny, nz = 2, 2, 3
-    # Put all mass in one cell: ix=0, jy=0, kz=1 (middle layer, midpoint=300)
+    
+    # Put mass in TWO layers at cell (0,0):
+    # - Layer 0 (kz=0): thickness=100, midpoint=50, concentration=1.0
+    # - Layer 1 (kz=1): thickness=400, midpoint=300, concentration=2.0
+    # Layer 2 (kz=2) has zero concentration
     cells = [0.0] * ((3 + 1) * 2 * 2)
-    # Concentration at layer kz=1 (middle), cell (0,0)
-    cells[0 + 0 * 2 + 2 * 2 * 2] = 1.0  # kz=1 -> index (1+1)*2*2=8, ix=0,jy=0 -> 8
-    # Expected: layer 1 midpoint = (100+500)/2 = 300, lat/lon at cell center (0.5, 0.5)
+    # Layer 0 (kz=0): index (0+1)*2*2 = 4, cell (0,0) -> index 4
+    cells[4] = 1.0
+    # Layer 1 (kz=1): index (1+1)*2*2 = 8, cell (0,0) -> index 8
+    cells[8] = 2.0
+    # Layer 2 (kz=2): index (2+1)*2*2 = 12, cell (0,0) -> index 12 (stays 0)
+    
     header = {
         "numxgrid": 2,
         "numygrid": 2,
@@ -338,23 +351,41 @@ def test_center_of_mass_unequal_layers():
         "outlat0": 0.0,
         "dxout": 1.0,
         "dyout": 1.0,
-        "outheights": [100.0, 500.0, 2000.0],
+        "outheights": [100.0, 500.0, 2000.0],  # thicknesses: 100, 400, 1500
     }
+    
     com = center_of_mass(cells, header)
     assert com is not None, "center_of_mass should not return None"
-    # Lat/lon at cell center: 0.5, 0.5
+    
+    # Cell center coordinates: (0.5, 0.5) degrees
     assert abs(com["lon_deg"] - 0.5) < 1e-10, f"lon: {com['lon_deg']}"
     assert abs(com["lat_deg"] - 0.5) < 1e-10, f"lat: {com['lat_deg']}"
-    # Layer 1 midpoint = (100 + 500) / 2 = 300
-    assert abs(com["z_m"] - 300.0) < 1e-6, f"z_m: {com['z_m']}"
+    
+    # Expected z_m = (mass1 * z1 + mass2 * z2) / (mass1 + mass2)
+    # mass1 = conc1 * thick0 * cos(lat) = 1.0 * 100 * cos(0) = 100
+    # mass2 = conc2 * thick1 * cos(lat) = 2.0 * 400 * cos(0) = 800
+    # z1 = 100/2 = 50, z2 = (100 + 500)/2 = 300
+    # z_m = (100*50 + 800*300) / (100 + 800) = (5000 + 240000) / 900 = 245000/900 = 272.222...
+    expected_z = (100.0 * 50.0 + 800.0 * 300.0) / 900.0
+    assert abs(com["z_m"] - expected_z) < 1e-6, f"z_m: {com['z_m']}, expected: {expected_z}"
+    assert abs(com["lon_deg"] - 0.5) < 1e-10, f"lon: {com['lon_deg']}"
+    assert abs(com["lat_deg"] - 0.5) < 1e-10, f"lat: {com['lat_deg']}"
+    
+    # Verify test would fail without layer-thickness weighting
+    # If we used uniform weighting, z would be (50 + 300) / 2 = 175, not 272.22...
+    uniform_z = (50.0 + 300.0) / 2.0
+    assert abs(com["z_m"] - uniform_z) > 10.0, "Test should fail without layer-thickness weighting"
+    
     print("center_of_mass test passed!")
 
 
 def main() -> None:
-    # Check for test mode first (before argparse)
+    # Handle test mode before argparse to avoid required argument errors
     if len(sys.argv) > 1 and sys.argv[1] == "test":
         test_center_of_mass_unequal_layers()
         return
+
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw-dir", required=True)
     parser.add_argument("--releases", required=True)
     parser.add_argument("--output", required=True)
@@ -432,49 +463,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-# Test for center_of_mass with unequal layer thicknesses
-def test_center_of_mass_unequal_layers():
-    """Test center_of_mass with unequal layer thicknesses and known expected result."""
-    # Simple 2x2x3 grid with known mass distribution
-    header = {
-        "numxgrid": 2,
-        "numygrid": 2,
-        "numzgrid": 3,
-        "outlon0": 0.0,
-        "outlat0": 0.0,
-        "dxout": 1.0,
-        "dyout": 1.0,
-        "outheights": [100.0, 500.0, 2000.0],  # unequal thicknesses: 100, 400, 1500
-    }
-    nx, ny, nz = 2, 2, 3
-    # Put all mass in one cell: ix=0, jy=0, kz=1 (middle layer, midpoint=300)
-    cells = [0.0] * ((3 + 1) * 2 * 2)
-    # Concentration at layer kz=1 (middle), cell (0,0)
-    cells[0 + 0 * 2 + 2 * 2 * 2] = 1.0  # kz=1 -> index (1+1)*2*2=8, ix=0,jy=0 -> 8
-    # Expected: layer 1 midpoint = (100+500)/2 = 300, lat/lon at cell center (0.5, 0.5)
-    header = {
-        "numxgrid": 2,
-        "numygrid": 2,
-        "numzgrid": 3,
-        "outlon0": 0.0,
-        "outlat0": 0.0,
-        "dxout": 1.0,
-        "dyout": 1.0,
-        "outheights": [100.0, 500.0, 2000.0],
-    }
-    com = center_of_mass(cells, header)
-    assert com is not None, "center_of_mass should not return None"
-    # Lat/lon at cell center: 0.5, 0.5
-    assert abs(com["lon_deg"] - 0.5) < 1e-10, f"lon: {com['lon_deg']}"
-    assert abs(com["lat_deg"] - 0.5) < 1e-10, f"lat: {com['lat_deg']}"
-    # Layer 1 midpoint = (100 + 500) / 2 = 300
-    assert abs(com["z_m"] - 300.0) < 1e-6, f"z_m: {com['z_m']}"
-    print("center_of_mass test passed!")
-
-if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "test":
-        test_center_of_mass_unequal_layers()
-    else:
-        main()

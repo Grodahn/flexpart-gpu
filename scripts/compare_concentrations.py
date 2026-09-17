@@ -28,6 +28,8 @@ from pathlib import Path
 
 import numpy as np
 
+EARTH_RADIUS_M = 6_371_000.0  # FLEXPART par_mod.f90:r_earth
+
 
 # ---------------------------------------------------------------------------
 # Fortran binary reader
@@ -288,6 +290,50 @@ def read_gpu_output(filepath):
     }
 
 
+def concentration_to_cell_mass(concentration, header):
+    """Convert FLEXPART concentration per volume to mass per output cell.
+
+    FLEXPART's forward binary output divides accumulated particle mass by
+    ``volume(ix,jy,kz)`` (binary_output_mod.f90:concoutput). The GPU output is
+    already mass per cell. Use the same spherical cell area and layer thickness
+    as outgrid_mod.f90 before normalizing or computing spatial moments.
+    The common FLEXPART output-unit factor cancels on normalization.
+    """
+    nx, ny, nz = concentration.shape
+    if (nx, ny, nz) != (header["numxgrid"], header["numygrid"], header["numzgrid"]):
+        raise ValueError("concentration shape does not match FLEXPART header")
+    heights = np.asarray(header["outheights"], dtype=np.float64)
+    thickness = np.diff(np.concatenate(([0.0], heights)))
+    if np.any(thickness <= 0) or header["dxout"] <= 0 or header["dyout"] <= 0:
+        raise ValueError("output cells must have positive area and layer thickness")
+    south = header["outlat0"] + np.arange(ny) * header["dyout"]
+    north = south + header["dyout"]
+    if np.any(south < -90) or np.any(north > 90):
+        raise ValueError("output grid latitude is outside [-90, 90] degrees")
+    # outgrid_mod.f90 uses meridional arc length for cells crossing the
+    # equator and the spherical-zone formula elsewhere.
+    zone_height = np.where(
+        (south < 0) & (north > 0),
+        np.deg2rad(header["dyout"]),
+        np.sin(np.deg2rad(north)) - np.sin(np.deg2rad(south)),
+    )
+    area = EARTH_RADIUS_M ** 2 * np.deg2rad(header["dxout"]) * zone_height
+    volume = area[None, :, None] * thickness[None, None, :]
+    return concentration.astype(np.float64) * volume
+
+
+def validate_shared_grid(header, grid_info):
+    """Reject grids whose matching shapes hide different cell locations."""
+    pairs = (("numxgrid", "nx"), ("numygrid", "ny"), ("numzgrid", "nz"),
+             ("outlon0", "xlon0"), ("outlat0", "ylat0"),
+             ("dxout", "dx"), ("dyout", "dy"))
+    for oracle_key, gpu_key in pairs:
+        if not np.isclose(header[oracle_key], grid_info[gpu_key], rtol=1e-6, atol=1e-6):
+            raise ValueError(f"output grid mismatch: {oracle_key} and {gpu_key}")
+    if not np.allclose(header["outheights"], grid_info["heights_m"], rtol=1e-6, atol=1e-6):
+        raise ValueError("output grid mismatch: vertical layer boundaries")
+
+
 # ---------------------------------------------------------------------------
 # Comparison metrics
 # ---------------------------------------------------------------------------
@@ -331,7 +377,7 @@ def compute_metrics(field_a, field_b, label=""):
 
 
 def compute_center_of_mass(grid, xlon0, ylat0, dx, dy, heights):
-    """Compute 3D center of mass of a concentration field."""
+    """Compute the 3D center of mass of a mass-per-cell field."""
     nx, ny, nz = grid.shape
     total = np.sum(grid)
     if total <= 0:
@@ -340,6 +386,7 @@ def compute_center_of_mass(grid, xlon0, ylat0, dx, dy, heights):
     com_x = 0.0
     com_y = 0.0
     com_z = 0.0
+    layer_midpoints = (np.asarray(heights) + np.r_[0.0, heights[:-1]]) / 2
     for ix in range(nx):
         for iy in range(ny):
             for iz in range(nz):
@@ -347,7 +394,7 @@ def compute_center_of_mass(grid, xlon0, ylat0, dx, dy, heights):
                 if w > 0:
                     com_x += w * (xlon0 + (ix + 0.5) * dx)
                     com_y += w * (ylat0 + (iy + 0.5) * dy)
-                    com_z += w * heights[iz]
+                    com_z += w * layer_midpoints[iz]
 
     return {
         "lon": com_x / total,
@@ -504,16 +551,21 @@ def main():
         print(f"ERROR: Shape mismatch: Fortran={fortran_grid.shape}, GPU={gpu_counts.shape}",
               file=sys.stderr)
         sys.exit(1)
+    validate_shared_grid(header, gi)
 
-    # Normalize both fields for comparison (spatial distribution)
-    f_sum = np.sum(fortran_grid)
+    # Both sides must represent mass per cell before spatial normalization.
+    # FLEXPART's binary grid is concentration per volume; the GPU grid is
+    # already mass per cell. Normalizing raw concentration distorts thick
+    # vertical layers even when the timestamps and sample weights match.
+    fortran_mass = concentration_to_cell_mass(fortran_grid, header)
+    f_sum = np.sum(fortran_mass)
     g_count_sum = np.sum(gpu_counts.astype(np.float64))
     g_mass_sum = np.sum(np.abs(gpu_mass).astype(np.float64))
 
     if f_sum > 0:
-        fortran_norm = fortran_grid / f_sum
+        fortran_norm = fortran_mass / f_sum
     else:
-        fortran_norm = fortran_grid.copy()
+        fortran_norm = fortran_mass.copy()
         print("WARNING: Fortran field is all zeros!")
 
     if g_count_sum > 0:
@@ -556,7 +608,7 @@ def main():
     # Center of mass
     heights = gi["heights_m"]
     com_fortran = compute_center_of_mass(
-        fortran_grid, header["outlon0"], header["outlat0"],
+        fortran_mass, header["outlon0"], header["outlat0"],
         header["dxout"], header["dyout"], header["outheights"]
     )
     com_gpu = compute_center_of_mass(
@@ -585,7 +637,7 @@ def main():
         print(f"  Horizontal distance: {dist_km:.2f} km")
 
     moments_fortran = horizontal_grid_moments(
-        fortran_grid, header["outlon0"], header["outlat0"],
+        fortran_mass, header["outlon0"], header["outlat0"],
         header["dxout"], header["dyout"])
     moments_gpu = horizontal_grid_moments(
         gpu_mass, gi["xlon0"], gi["ylat0"], gi["dx"], gi["dy"])
@@ -727,6 +779,7 @@ def main():
             "horizontal_grid_moments_fortran": moments_fortran,
             "horizontal_grid_moments_gpu": moments_gpu,
             "parity_verdict": "NOT_EVALUATED",
+            "comparison_quantity": "normalized mass per output cell; FLEXPART concentration multiplied by spherical cell area and layer thickness",
             "time_window_matched": True,
             "fortran_header": header,
             "gpu_grid_info": gi,

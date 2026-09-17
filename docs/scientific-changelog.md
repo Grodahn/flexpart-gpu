@@ -16,6 +16,16 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-17 — Compare output-cell mass on both sides
+**Impact**: output-only (comparison analysis; no trajectory or GPU calculation change)
+**Files**: `scripts/compare_concentrations.py`,
+`scripts/test_compare_concentrations.py`, `docs/validation-report.md`
+**Validation**: The pinned FLEXPART 11.1 and GPU 10,000-particle outputs for
+05:30–06:00 UTC were reanalyzed after converting the oracle concentration to
+mass per cell using FLEXPART's output-cell area and layer thickness. Normalized field
+correlation is 0.919 and the GPU-minus-oracle vertical center difference is
+-5.2 m. Four focused regression tests pass. Scientific parity remains open.
+
 ### 2026-09-17 — Reproducible Issue #6 test corpus (point 2)
 **Impact**: none (new fixtures, runners and documentation; no shader or physics change)
 **Files**: `fixtures/corpus/`, `docs/corpus-matrix.md`, `src/bin/corpus-run.rs`,

@@ -16,6 +16,16 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-17 — Align versioned evaluation moments with cell mass
+**Impact**: output-only (evaluation metrics; no trajectory or GPU calculation change)
+**Files**: `scripts/evaluate/io_gpu.py`, `scripts/evaluate/metrics.py`,
+`scripts/evaluate/evaluate_case.py`, `scripts/evaluate/test_metrics.py`,
+`docs/evaluation.md`
+**Validation**: The pinned 10,000-particle paired output gives a mass-weighted
+horizontal center distance of 0.204 km, vertical center difference of -5.2 m,
+and covariance eigenvalue ratios of 1.68 and 1.18. Concentration shape remains
+a separately labeled diagnostic. The evaluator tests pass.
+
 ### 2026-09-17 — Compare output-cell mass on both sides
 **Impact**: output-only (comparison analysis; no trajectory or GPU calculation change)
 **Files**: `scripts/compare_concentrations.py`,

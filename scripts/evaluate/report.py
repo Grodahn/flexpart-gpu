@@ -219,8 +219,17 @@ def render_summary(report):
     oracle = report.get("oracle", {})
     candidate = report.get("candidate", {})
     lines.append(f"Oracle: {oracle.get('name')} {oracle.get('version')} "
-                 f"commit {oracle.get('pinned_commit')}")
-    lines.append(f"Candidate: revision {candidate.get('revision')} "
+                 f"commit {oracle.get('pinned_commit')} "
+                 f"(attribution: {oracle.get('attribution')})")
+    revision = candidate.get("revision")
+    source = candidate.get("revision_source")
+    if revision is None:
+        revision_label = "unknown (not tied to artifacts)"
+    elif source:
+        revision_label = f"{revision} via {source}"
+    else:
+        revision_label = str(revision)
+    lines.append(f"Candidate: revision {revision_label} "
                  f"dirty={candidate.get('worktree_dirty')} "
                  f"adapter={candidate.get('adapter')} seed={candidate.get('seed')}")
     particle = report.get("particle_metrics")
@@ -239,6 +248,13 @@ def render_summary(report):
                 f"nrmse={fc['normalized_rmse']}")
         if grid_m.get("center_distance_km") is not None:
             lines.append(f"Center distance: {grid_m['center_distance_km']:.3f} km")
+    multiseed = report.get("multiseed")
+    if multiseed and multiseed.get("mass_budget_gate"):
+        gate = multiseed["mass_budget_gate"]
+        lines.append(
+            f"Mass-closure gate over seeds: {gate.get('gate')} "
+            f"(worst abs rel err {gate.get('worst_abs_relative_error')}, "
+            f"failed seeds {gate.get('failed_seed_count')})")
     etex = report.get("etex")
     if etex:
         for key in ("fortran_vs_observations", "gpu_vs_observations"):

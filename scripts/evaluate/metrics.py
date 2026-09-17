@@ -371,6 +371,33 @@ def vertical_quantiles(heights_m, masses, quantiles=(0.05, 0.25, 0.5, 0.75, 0.95
     return {"quantiles_m": result, "total_mass_kg": total, "unit": "m"}
 
 
+def unweighted_quantiles_linear(values, quantiles=(0.1, 0.5, 0.9)):
+    """Unweighted linear-index quantiles (corpus-runner convention).
+
+    Values are sorted ascending; the quantile q is read at position
+    ``q * (n - 1)`` with linear interpolation between bracketing values.
+    This matches ``compute_metrics`` in ``src/bin/corpus-run.rs`` exactly
+    and is used only to cross-check the two implementations. Scientific
+    reporting uses :func:`vertical_quantiles`, whose mass-weighted
+    first-reach convention also handles non-uniform particle masses.
+    """
+    flat = [float(v) for v in values]
+    if not flat:
+        raise ValueError("quantiles need at least one value")
+    for q in quantiles:
+        if not 0.0 <= q <= 1.0:
+            raise ValueError(f"quantile out of [0, 1]: {q}")
+    ordered = sorted(flat)
+    n = len(ordered)
+    result = {}
+    for q in quantiles:
+        pos = q * (n - 1)
+        low = int(math.floor(pos))
+        high = int(math.ceil(pos))
+        result[str(q)] = ordered[low] + (ordered[high] - ordered[low]) * (pos - low)
+    return {"quantiles": result, "count": n}
+
+
 def footprint_overlap(observed, modeled, threshold=0.0):
     """Overlap of binary footprints where the field exceeds a threshold.
 

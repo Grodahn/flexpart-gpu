@@ -57,13 +57,37 @@ python scripts/evaluate/test_evaluate.py
 The evaluation needs only the Python standard library. A non-zero exit
 means failure: incompatible inputs or missing oracle artifacts produce an
 `INTEGRITY_ERROR` report instead of silently interpolating or substituting
-values.
+values. Exit code 2 marks integrity errors, exit code 1 a violated
+in-scope gate.
 
-Useful provenance flags: `--candidate-log` (extracts the single unambiguous
-wgpu adapter line), `--seed` / `--oracle-seed`, `--candidate-checkout`,
-`--oracle-checkout` (fail-closed verification of the pinned unmodified
-oracle), `--candidate-executable` / `--oracle-executable` (hashes),
-`--candidate-revision`, `--note`.
+Provenance flags: `--candidate-log` (extracts the single unambiguous wgpu
+adapter line), `--seed` / `--oracle-seed`, `--oracle-checkout`
+(fail-closed verification of the pinned unmodified oracle),
+`--run-manifest` (hash-verified execution provenance, see below),
+`--input-equivalence-report` (ETEX input audit to consume, see below),
+`--candidate-executable` / `--oracle-executable` (hashes),
+`--candidate-revision` (explicitly declared, labeled as unverified),
+`--note`.
+
+## Execution provenance (no misattribution)
+
+The candidate revision is only reported when it is tied to the supplied
+artifacts, with an explicit `revision_source`:
+
+- `embedded-in-artifact`: every supplied file embeds the same revision
+  (corpus `seed_*.json` carry `candidate_revision`; mixed revisions are an
+  integrity error);
+- `run-manifest-hash-verified`: `--run-manifest` points at an oracle run
+  manifest whose input/output hashes match the supplied files;
+- `declared-flag`: `--candidate-revision` was given explicitly and is
+  labeled as not hash-verified.
+
+Otherwise the revision is `null` with a `candidate.revision` missing entry.
+The evaluator checkout's HEAD is never attributed to previously generated
+outputs. Likewise the oracle output is only attributed to the pinned oracle
+(`attribution: verified-checkout` or `run-manifest`); otherwise it stays
+`unverified`, and the pinned commit is documented as the normative
+requirement, not as an attribution.
 
 ## Report schema (version 1.0.0)
 
@@ -72,9 +96,9 @@ Top-level keys: `schema_version`, `case_id`, `created_utc`,
 `status_detail`, `time_window` (ISO-8601 UTC bounds, averaging/sampling
 seconds, sample count, endpoint weight, window count), `grid` (nx/ny/nz,
 origin in degrees, resolution in degrees, heights in metres), `oracle`
-(name, version, pinned commit, checkout verification, seed and seed
-controllability), `candidate` (revision, worktree dirtiness, adapter, seed
-and seed controllability), `input_sha256`, `alignment` (grid and window
+(name, version, pinned commit, attribution, checkout verification, seed and
+seed controllability), `candidate` (revision, revision source, worktree
+dirtiness, adapter, seed and seed controllability), `input_sha256`, `alignment` (grid and window
 checks), `particle_metrics`, `grid_metrics`, `etex`, `multiseed`,
 `thresholds` (version plus per-criterion verdicts), `missing_metrics`
 (name plus reason for every unavailable metric), `notes`.
@@ -102,10 +126,14 @@ in the older helpers (`compare_etex_fortran_obs.py`, `compare_gpu_obs.py`,
 
 Particle metrics and grid metrics are strictly separated:
 
-- `particle_metrics` holds the kilogram mass budget (remaining plus dry,
-  wet and decayed deposition versus released mass), particle-space center
-  of mass, horizontal covariance/eigenvalues, vertical quantiles and, when
-  the oracle wrote a `partposit` dump, the oracle particle ensemble.
+- `particle_metrics` holds the per-seed kilogram mass budgets (remaining
+  plus dry, wet and decayed deposition versus released mass, each with a
+  per-seed PASS/FAIL verdict), particle-space center of mass, horizontal
+  covariance/eigenvalues, vertical quantiles and, when the oracle wrote a
+  `partposit` dump, the oracle particle ensemble. The mass-closure gate
+  evaluates every seed and the worst absolute error governs, so
+  opposite-sign errors cannot cancel into a pass (verified: -40%/+40%
+  seeds report `MASS_BUDGET_CLOSE: FAIL` with worst error 0.4).
 - `grid_metrics` holds the time-averaged concentration shape diagnostic
   (correlation, normalized RMSE, footprint overlap as Figure of Merit in
   Space, concentration-weighted center distance, covariances, per-level
@@ -120,9 +148,12 @@ Particle metrics and grid metrics are strictly separated:
 - ETEX `etex` holds independent model-versus-observation metrics for both
   models (FB, NMSE, correlation, FAC2 with positive-pair counts) plus
   arrival-time and peak diagnostics in hours (detection threshold
-  10 pg/m3). Pairs with incomplete model coverage are excluded and counted
-  as skipped; negative concentrations are integrity errors. Missing
-  measurements are never interpolated.
+  10 pg/m3), plus the consumed `input_equivalence_audit` record (status and
+  SHA-256 of the `--input-equivalence-report` file). Pairs with incomplete
+  model coverage are excluded and counted as skipped; negative
+  concentrations are integrity errors. Missing measurements are never
+  interpolated. Without the audit flag, input equivalence is recorded as
+  unverified rather than asserted.
 
 ## Thresholds (versioned separately)
 
@@ -136,11 +167,19 @@ all gridded shape and ETEX observation comparisons stay diagnostic.
 ## Multi-seed policy
 
 Stochastic parity needs at least 10 independent seeds with a controllable
-oracle seed. Aggregation reports mean, sample standard deviation, min, max,
-median and an approximate 95% confidence interval per metric. Runs without
-a controllable oracle seed are labeled `NOT_SUITABLE_FOR_MULTISEED_PARITY`
-and stay diagnostic. The current runners do not expose seeds, so all
-present results are single-seed diagnostics.
+oracle seed. Seed files are validated as distinct, correctly derived Philox
+identities before any statistics are computed: every file must carry a
+unique `seed_index` and a key/counter matching the case derivation
+(`[base0 + index, base1]`, zeroed counter; `ADV-ANA-001` uses `[0, 0]`),
+and duplicate identities are an integrity error. The only exception is
+`REPEAT-009`, whose designed repeat reruns one identity across its files.
+`aggregate-seeds` applies the same rule to recorded candidate seeds and
+marks independence `unverified` when reports record no seeds. Aggregation
+reports mean, sample standard deviation, min, max, median and an approximate
+95% confidence interval per metric. Runs without a controllable oracle seed
+are labeled `NOT_SUITABLE_FOR_MULTISEED_PARITY` and stay diagnostic. The
+current runners do not expose seeds, so all present results are single-seed
+diagnostics.
 
 ## Artifact contract with the parallel test-corpus work
 
@@ -176,14 +215,16 @@ python scripts/evaluate/evaluate_case.py --case corpus-seeds \
 ```
 
 Definition mapping (single canonical meaning, two implementations that are
-cross-checked per seed and reported as `runner_metrics_cross_check`):
+cross-checked per seed on an unweighted basis with unit-aware tolerances;
+the check verdict is `CONSISTENT` or `DIVERGENT`, and a divergence is an
+integrity error for the whole report):
 
 | Runner `metrics` (m^2) | Evaluation (`metrics.py`, km^2 unless noted) |
 |---|---|
-| `total_mass_kg`, `mass_conservation_rel_error` | `mass_budget` (kg; gate `MASS_BUDGET_CLOSE` 1e-5 matches corpus `mass_conservation_rel`) |
-| `com_lon_deg`, `com_lat_deg`, `com_z_m` | `center_of_mass_particles` (deg, deg, m) |
-| `cov_east_m2`, `cov_north_m2`, `horizontal_eigenvalues_m2` | `horizontal_covariance` (km^2; 1 km^2 = 1e6 m^2) |
-| `z_p10_m`, `z_p50_m`, `z_p90_m`, `z_mean_m`, `z_std_m` | `vertical_quantiles` (mass-weighted first-reach convention; the runner uses unweighted linear-index interpolation, so small differences up to one inter-particle spacing are expected and reported, not hidden) |
+| `total_mass_kg`, `mass_conservation_rel_error` | `mass_budget` (kg; gate `MASS_BUDGET_CLOSE` 1e-5 matches corpus `mass_conservation_rel`; worst seed governs) |
+| `com_lon_deg`, `com_lat_deg`, `com_z_m` | `center_of_mass_particles` (deg, deg, m; unweighted basis for the check) |
+| `cov_east_m2`, `cov_north_m2`, `horizontal_eigenvalues_m2` | `horizontal_covariance` (km^2; 1 km^2 = 1e6 m^2; unweighted basis for the check) |
+| `z_p10_m`, `z_p50_m`, `z_p90_m`, `z_mean_m`, `z_std_m` | `unweighted_quantiles_linear` for the check (formula-identical to the runner); scientific reporting uses mass-weighted `vertical_quantiles` |
 
 Threshold mapping: corpus `mass_conservation_rel` 1e-5 is the same gate as
 `MASS_BUDGET_CLOSE`; corpus `oracle_parity_gates: null` matches this
@@ -214,8 +255,21 @@ Synthetic uniform-wind evaluation (`overall_status: DIAGNOSTIC`):
   diagnostic, no parity verdict.
 - Vertical level fractions are reported per layer; the candidate puts more
   mass into the 1500-3000 m layers than the oracle in this run.
-- Missing as named: oracle `partposit` (no dump written), candidate adapter
-  (no log supplied), candidate seed (not exposed).
+- Missing as named: oracle `partposit` (no dump written), candidate revision
+  (not tied to the artifacts), candidate adapter (no log supplied),
+  candidate seed (not exposed).
+
+Review-fix verification (all reproduced locally against the reference
+artifacts):
+
+- Canceling mass errors (-40%/+40% across two seeds) report
+  `MASS_BUDGET_CLOSE: FAIL` with worst error 0.4 and overall `FAIL`.
+- Ten files repeating one seed identity are rejected with
+  `INTEGRITY_ERROR` (duplicate `seed_index` / Philox identity).
+- A 1.5e6 m^2 eigenvalue perturbation in a runner block reports
+  `runner cross-check DIVERGENT` with overall `INTEGRITY_ERROR`.
+- A nonexistent `--fortran-output` directory fails closed with
+  `INTEGRITY_ERROR` instead of a candidate-only `DIAGNOSTIC`.
 
 ETEX path verification used a minimal synthetic 2x2 fixture (one window,
 one station pair): oracle-versus-observation FB 0.0 / NMSE 0.0 / FAC2 1.0
@@ -230,5 +284,7 @@ regression. Its input audit still reports `INPUT_EQUIVALENCE_NOT_DEMONSTRATED`
 (137 native hybrid levels with eta-coordinate velocity versus 16 fixed AGL
 levels with omega-derived velocity, plus differing timesteps and PBL
 diagnostics); see `fixtures/etex/mini/README.md` and
-`scripts/etex/audit_input_equivalence.py`. This evaluation does not change
-that audit and claims no concentration parity.
+`scripts/etex/audit_input_equivalence.py`. This evaluation consumes that
+audit via `--input-equivalence-report` (recording its status and hash) but
+does not change it, and claims no concentration parity. Without the audit
+flag, input equivalence is recorded as unverified rather than asserted.

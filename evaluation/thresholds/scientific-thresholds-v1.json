@@ -17,7 +17,7 @@
       "operator": "abs_lt",
       "value": 1e-05,
       "unit": "dimensionless",
-      "rationale": "Candidate mass budget (remaining plus deposited plus decayed versus released mass) must close to single-precision summation order. Mirrors the Rust mass-conservation tests (relative tolerance 2e-6 plus absolute floor) and matches fixtures/corpus/thresholds.json mass_conservation_rel (1e-5); the slightly wider 1e-5 covers JSON f32 round-trips. A normalized concentration field comparison never satisfies this criterion. Skipped for deposition/decay cases whose removed-mass reservoirs are not recorded."
+      "rationale": "Candidate mass budget (remaining plus deposited plus decayed versus released mass) must close to single-precision summation order. The gate evaluates every seed and the worst absolute error governs, so opposite-sign errors cannot cancel into a pass. Mirrors the Rust mass-conservation tests (relative tolerance 2e-6 plus absolute floor) and matches fixtures/corpus/thresholds.json mass_conservation_rel (1e-5); the slightly wider 1e-5 covers JSON f32 round-trips. A normalized concentration field comparison never satisfies this criterion. Skipped for deposition/decay cases whose removed-mass reservoirs are not recorded."
     },
     {
       "id": "MASS_POSITIVITY",

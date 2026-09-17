@@ -193,5 +193,21 @@ class SeedAggregationTest(unittest.TestCase):
             metrics.aggregate_seed_values([])
 
 
+class UnweightedQuantilesTest(unittest.TestCase):
+    def test_linear_index_convention(self):
+        # Runner convention: position q*(n-1) with linear interpolation.
+        result = metrics.unweighted_quantiles_linear([30, 0, 10, 20],
+                                                     quantiles=(0.5,))
+        self.assertAlmostEqual(result["quantiles"]["0.5"], 15.0)
+
+    def test_single_value(self):
+        result = metrics.unweighted_quantiles_linear([7.0])
+        self.assertAlmostEqual(result["quantiles"]["0.1"], 7.0)
+
+    def test_empty_raises(self):
+        with self.assertRaises(ValueError):
+            metrics.unweighted_quantiles_linear([])
+
+
 if __name__ == "__main__":
     unittest.main()

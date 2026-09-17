@@ -76,28 +76,151 @@ def load_oracle_manifest(path):
     return manifest
 
 
-def build_provenance(args, oracle_manifest):
-    candidate_checkout = Path(args.candidate_checkout) if args.candidate_checkout else REPO_ROOT
-    candidate_revision, candidate_dirty = report_lib.git_revision(candidate_checkout)
-    if args.candidate_revision:
+def _load_run_manifest(path):
+    """Load an oracle run-manifest (write_oracle_run_manifest.py output)."""
+    with open(path, encoding="utf-8") as stream:
+        manifest = json.load(stream)
+    for key in ("oracle", "candidate"):
+        if key not in manifest:
+            raise ValueError(f"run manifest lacks {key}: {path}")
+    return manifest
+
+
+def _verify_artifacts_against_manifest(manifest, labeled_paths):
+    """Verify supplied files against manifest hashes.
+
+    ``labeled_paths`` holds ``(label, path, kind)`` triples; kind is only
+    carried through for the caller. Returns ``(verified, uncovered)`` label
+    lists. A hash mismatch raises ValueError; files with no manifest entry
+    are reported as uncovered (not verified, not failed).
+    """
+    digests = {}
+    for section in ("input_sha256", "output_sha256"):
+        section_hashes = manifest.get(section, {})
+        if isinstance(section_hashes, dict):
+            digests.update(section_hashes)
+    by_basename = {}
+    for key, value in digests.items():
+        by_basename.setdefault(Path(key).name, []).append(value)
+    verified, uncovered = [], []
+    for label, path, _kind in labeled_paths:
+        actual = report_lib.sha256_file(path)
+        resolved = str(Path(path).resolve())
+        if resolved in digests:
+            if digests[resolved] != actual:
+                raise ValueError(
+                    f"artifact {label} hash differs from run manifest {resolved}")
+            verified.append(label)
+        elif Path(path).name in by_basename:
+            if actual not in by_basename[Path(path).name]:
+                raise ValueError(
+                    f"artifact {label} hash differs from run manifest entries")
+            verified.append(label)
+        else:
+            uncovered.append(label)
+    return verified, uncovered
+
+
+def build_provenance(args, oracle_manifest, embedded_revisions=None,
+                     embedded_adapters=None, artifact_paths=None):
+    """Build oracle/candidate provenance without misattribution.
+
+    The candidate revision is only reported when it is tied to the supplied
+    artifacts: embedded in them, hash-verified through ``--run-manifest``,
+    or explicitly declared with ``--candidate-revision`` (labeled as
+    declared). The evaluator checkout's HEAD is never attributed to
+    previously generated outputs. Likewise the oracle output is only
+    attributed to the pinned oracle through a verified checkout or a
+    hash-verified run manifest; otherwise it stays explicitly unverified.
+
+    Returns ``(oracle, candidate, prov_missing, prov_notes)``.
+    """
+    missing = []
+    notes = []
+    artifact_paths = artifact_paths or []
+    manifest = _load_run_manifest(args.run_manifest) if args.run_manifest else None
+    if args.run_manifest:
+        notes.append(f"Run manifest consumed: {args.run_manifest}")
+
+    candidate_revision = None
+    revision_source = None
+    if embedded_revisions:
+        unique = set(embedded_revisions)
+        usable = {r for r in unique if r not in (None, "unknown")}
+        if len(usable) > 1:
+            raise ValueError(
+                f"candidate artifacts mix revisions: {sorted(usable)}")
+        if usable:
+            candidate_revision = usable.pop()
+            revision_source = "embedded-in-artifact"
+    if candidate_revision is None and manifest is not None:
+        verified, uncovered = _verify_artifacts_against_manifest(
+            manifest, [t for t in artifact_paths if t[2] == "candidate"])
+        for label in uncovered:
+            missing.append({"name": f"provenance.{label}",
+                            "reason": "artifact is not covered by the run manifest"})
+        if verified:
+            candidate_revision = manifest["candidate"].get("commit")
+            revision_source = "run-manifest-hash-verified"
+            notes.append(f"Candidate revision hash-verified via run manifest "
+                         f"({len(verified)} artifacts)")
+    if candidate_revision is None and args.candidate_revision:
         candidate_revision = args.candidate_revision
+        revision_source = "declared-flag"
+        notes.append("Candidate revision is declared via --candidate-revision "
+                     "and is not hash-verified")
+    candidate_dirty = None
+    if manifest is not None and revision_source == "run-manifest-hash-verified":
+        candidate_dirty = manifest["candidate"].get("worktree_dirty")
+    if candidate_revision is None:
+        missing.append({"name": "candidate.revision",
+                        "reason": "no revision tied to the supplied artifacts "
+                                  "(use embedded revisions, --run-manifest or "
+                                  "--candidate-revision); the evaluator checkout HEAD "
+                                  "is deliberately not attributed"})
     adapter = None
-    if args.candidate_log:
+    if embedded_adapters:
+        unique_adapters = set(embedded_adapters)
+        if len(unique_adapters) != 1:
+            raise ValueError(
+                f"candidate artifacts mix adapters: {sorted(unique_adapters)}")
+        adapter = unique_adapters.pop()
+    elif args.candidate_log:
         adapter = report_lib.read_adapter_from_log(args.candidate_log)
+
     oracle_checkout = Path(args.oracle_checkout) if args.oracle_checkout else None
-    oracle_commit_verified = None
+    attribution = "unverified"
+    checkout_verified = False
     if oracle_checkout is not None:
         actual, dirty = report_lib.git_revision(oracle_checkout)
         if actual != oracle_manifest["pinned_commit"] or dirty:
             raise ValueError(
                 "oracle checkout is not the pinned unmodified FLEXPART source "
                 f"(expected {oracle_manifest['pinned_commit']}, got {actual}, dirty={dirty})")
-        oracle_commit_verified = actual
+        attribution = "verified-checkout"
+        checkout_verified = True
+    elif manifest is not None:
+        oracle_state = manifest.get("oracle", {})
+        verified, _uncovered = _verify_artifacts_against_manifest(
+            manifest, [t for t in artifact_paths if t[2] == "oracle"])
+        if (oracle_state.get("commit") == oracle_manifest["pinned_commit"]
+                and not oracle_state.get("worktree_dirty") and verified):
+            attribution = "run-manifest"
+            notes.append(f"Oracle output hash-verified via run manifest "
+                         f"({len(verified)} artifacts)")
+        else:
+            notes.append("Oracle output is not tied to a verified pinned checkout "
+                         "or hash-verified run manifest")
+    else:
+        notes.append("Oracle output is not tied to a verified pinned checkout "
+                     "(use --oracle-checkout or --run-manifest); the pinned commit "
+                     "below is the normative requirement, not an attribution")
     oracle = {
         "name": oracle_manifest.get("name", "FLEXPART"),
         "version": oracle_manifest.get("version", "11.1"),
         "pinned_commit": oracle_manifest["pinned_commit"],
-        "checkout_verified": bool(oracle_checkout is not None),
+        "attribution": attribution,
+        "checkout_verified": checkout_verified,
         "seed": args.oracle_seed,
         "seed_controllable": bool(args.oracle_seed_controllable),
     }
@@ -106,6 +229,7 @@ def build_provenance(args, oracle_manifest):
                                "not suitable for multi-seed parity proof")
     candidate = {
         "revision": candidate_revision,
+        "revision_source": revision_source,
         "worktree_dirty": candidate_dirty,
         "adapter": adapter,
         "seed": args.seed,
@@ -118,7 +242,7 @@ def build_provenance(args, oracle_manifest):
         candidate["executable_sha256"] = report_lib.sha256_file(args.candidate_executable)
     if args.oracle_executable:
         oracle["executable_sha256"] = report_lib.sha256_file(args.oracle_executable)
-    return oracle, candidate, oracle_commit_verified
+    return oracle, candidate, missing, notes
 
 
 def _integrity_report(case_id, args, oracle, candidate, input_hashes, missing, detail, notes):
@@ -152,7 +276,7 @@ def write_outputs(built, args):
 # Synthetic uniform-wind case
 # ---------------------------------------------------------------------------
 
-def run_synthetic(args, oracle_manifest, oracle, candidate):
+def run_synthetic(args, oracle_manifest):
     missing = []
     notes = list(args.note or [])
     notes.append("Normalized concentration shape comparison is diagnostic only; "
@@ -181,6 +305,13 @@ def run_synthetic(args, oracle_manifest, oracle, candidate):
 
     gpu = io_gpu.read_fortran_validation_json(args.gpu_output)
     input_hashes["candidate_output"] = report_lib.sha256_file(args.gpu_output)
+    oracle, candidate, prov_missing, prov_notes = build_provenance(
+        args, oracle_manifest,
+        artifact_paths=[("fortran_header", str(header_path), "oracle"),
+                        ("fortran_concentration", str(last_conc), "oracle"),
+                        ("candidate_output", str(args.gpu_output), "candidate")])
+    missing.extend(prov_missing)
+    notes.extend(prov_notes)
     grid = gpu["grid"]
     candidate_grid = {
         "nx": grid["nx"], "ny": grid["ny"], "nz": grid["nz"],
@@ -441,14 +572,55 @@ def _station_mean(windows, grid, lon, lat, start, end):
     return weighted / duration
 
 
-def run_etex(args, case_id, oracle_manifest, oracle, candidate):
+def _consume_input_audit(args, case_id, missing, notes, input_hashes):
+    """Consume the ETEX input-equivalence audit instead of asserting its status.
+
+    Reads ``--input-equivalence-report`` (the ``audit_input_equivalence.py``
+    output), hashes it and records its ``status``. A missing audit is an
+    explicit gap, never a silent pass; an unreadable audit file is an
+    integrity error. Returns the audit record or None.
+    """
+    if not args.input_equivalence_report:
+        if case_id == "etex-mini":
+            missing.append(
+                {"name": "etex.input_equivalence_audit",
+                 "reason": "no --input-equivalence-report supplied; input "
+                           "equivalence is unverified by this evaluation"})
+            notes.append(
+                "Input equivalence was not evaluated by this report; see the "
+                "audit artifact (target/etex/mini/input_equivalence_report.json). "
+                "No concentration parity is claimed.")
+        return None
+    path = Path(args.input_equivalence_report)
+    if not path.is_file():
+        raise FileNotFoundError(f"missing input audit artifact: {path}")
+    with open(path, encoding="utf-8") as stream:
+        audit = json.load(stream)
+    if "status" not in audit:
+        raise ValueError(f"input audit lacks a status: {path}")
+    digest = report_lib.sha256_file(path)
+    input_hashes["input_equivalence_report"] = digest
+    status = audit["status"]
+    record = {"status": status, "sha256": digest,
+              "schema_version": audit.get("schema_version")}
+    if status == "FAIL":
+        notes.append("Input audit reports FAIL: prepared inputs or scenario checks "
+                     "violate technical tolerances; output metrics below stay diagnostic.")
+    elif status == "INPUT_EQUIVALENCE_NOT_DEMONSTRATED":
+        notes.append("Input audit reports INPUT_EQUIVALENCE_NOT_DEMONSTRATED: the "
+                     "Fortran oracle and the candidate inputs differ scientifically "
+                     "(levels, velocity, timesteps, PBL diagnostics); output metrics "
+                     "below stay diagnostic and no concentration parity is claimed.")
+    else:
+        notes.append(f"Input audit reports unexpected status {status}; input "
+                     "equivalence is treated as unverified.")
+    return record
+
+
+def run_etex(args, case_id, oracle_manifest):
     from datetime import datetime as dt
     missing = []
     notes = list(args.note or [])
-    if case_id == "etex-mini":
-        notes.append("ETEX mini remains a pipeline/observation-pairing regression; "
-                     "input audit status INPUT_EQUIVALENCE_NOT_DEMONSTRATED is unchanged "
-                     "and no concentration parity is claimed.")
     measurements_data = io_gpu.read_measurements_json(args.measurements)
     observations = measurements_data["measurements"]
     gpu_data = io_gpu.read_etex_gpu_json(args.gpu_output)
@@ -544,6 +716,16 @@ def run_etex(args, case_id, oracle_manifest, oracle, candidate):
     observed = [p["observed_pg_m3"] for p in pairs]
     gpu_values = [p["gpu_pg_m3"] for p in pairs]
     fortran_values = [p["fortran_pg_m3"] for p in pairs]
+    oracle, candidate, prov_missing, prov_notes = build_provenance(
+        args, oracle_manifest,
+        artifact_paths=[("measurements", str(args.measurements), "input"),
+                        ("candidate_output", str(args.gpu_output), "candidate"),
+                        ("fortran_header_txt", str(header_txt_path), "oracle"),
+                        ("fortran_dates", str(dates_path), "oracle")] +
+                       [("fortran_concentration", str(fortran_dir / name), "oracle")
+                        for name in conc_hashes])
+    missing.extend(prov_missing)
+    notes.extend(prov_notes)
     etex = {
         "experiment": "ETEX-1",
         "units": "pg/m3",
@@ -576,6 +758,8 @@ def run_etex(args, case_id, oracle_manifest, oracle, candidate):
     }
     for name, digest in conc_hashes.items():
         input_hashes[f"fortran_{name}"] = digest
+    audit_record = _consume_input_audit(args, case_id, missing, notes, input_hashes)
+    etex["input_equivalence_audit"] = audit_record
     time_window = {
         "start_iso": gpu_windows[0]["start"].strftime("%Y-%m-%dT%H:%M:%SZ"),
         "end_iso": gpu_windows[-1]["end"].strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -596,6 +780,10 @@ def run_etex(args, case_id, oracle_manifest, oracle, candidate):
                "integrity.non_negative_fields": True,
                "alignment.grid_and_window_match": True}
     evaluations = report_lib.evaluate_thresholds(thresholds_doc, context)
+    if audit_record is not None:
+        audit_detail = f"input audit status {audit_record['status']}"
+    else:
+        audit_detail = "input equivalence not evaluated by this report"
     return report_lib.make_report(
         case_id=case_id, time_window=time_window, grid=grid_report,
         oracle=oracle, candidate=candidate, input_hashes=input_hashes,
@@ -606,14 +794,14 @@ def run_etex(args, case_id, oracle_manifest, oracle, candidate):
         missing_metrics=missing, notes=notes,
         overall_status="DIAGNOSTIC",
         status_detail=("paired observation diagnostics computed; no parity verdict "
-                       "(ETEX mini input equivalence not demonstrated)"))
+                       f"({audit_detail})"))
 
 
 # ---------------------------------------------------------------------------
 # Multi-seed aggregation
 # ---------------------------------------------------------------------------
 
-def run_aggregate(args, oracle_manifest, oracle, candidate):
+def run_aggregate(args, oracle_manifest):
     reports = []
     for pattern in args.seed_reports:
         expanded = sorted(str(p) for p in REPO_ROOT.glob(pattern)) if any(
@@ -632,6 +820,18 @@ def run_aggregate(args, oracle_manifest, oracle, candidate):
     schemas = {doc.get("schema_version") for _, doc in reports}
     if schemas != {report_lib.SCHEMA_VERSION}:
         raise ValueError(f"seed reports mix schema versions: {sorted(schemas)}")
+    # Seed independence: files are only independent seeds when their recorded
+    # candidate seeds are distinct. Reports without a recorded seed cannot
+    # prove independence, so the aggregation stays explicitly unverified.
+    recorded_seeds = [doc.get("candidate", {}).get("seed") for _, doc in reports]
+    recorded_seeds = [s for s in recorded_seeds if s is not None]
+    if len(recorded_seeds) != len(set(recorded_seeds)):
+        raise ValueError("seed reports contain duplicate candidate seeds; "
+                         "files are not independent seeds")
+    if len(recorded_seeds) < len(reports):
+        seed_independence = "unverified"
+    else:
+        seed_independence = "verified-unique"
     scalar_paths = [
         ("grid_metrics.center_distance_km", lambda d: (d.get("grid_metrics") or {}).get("center_distance_km")),
         ("grid_metrics.field_correlation",
@@ -655,11 +855,41 @@ def run_aggregate(args, oracle_manifest, oracle, candidate):
     multiseed = {
         "n_seeds": len(reports),
         "seed_reports": [path for path, _ in reports],
+        "seed_independence": seed_independence,
+        "recorded_candidate_seeds": recorded_seeds,
         "oracle_seed_controllable": oracle_controllable,
         "metrics": aggregated,
     }
     missing = []
     notes = list(args.note or [])
+    if seed_independence == "unverified":
+        missing.append({"name": "multiseed.seed_independence",
+                        "reason": "some seed reports record no candidate seed; "
+                                  "file independence is unverified"})
+        notes.append("Seed independence is unverified: reports without recorded "
+                     "candidate seeds may repeat the same run.")
+    # Candidate revision across reports: only a unanimous revision with a
+    # trusted per-report source is attributed; legacy reports without a
+    # revision source never contribute an attribution.
+    trusted_sources = {"embedded-in-artifact", "run-manifest-hash-verified",
+                       "declared-flag"}
+    consensus = {(d.get("candidate", {}).get("revision"),
+                  d.get("candidate", {}).get("revision_source")) for _, d in reports}
+    oracle, candidate, prov_missing, prov_notes = build_provenance(
+        args, oracle_manifest)
+    missing.extend(prov_missing)
+    notes.extend(prov_notes)
+    if len(consensus) == 1:
+        revision, source = consensus.pop()
+        if revision is not None and source in trusted_sources:
+            candidate["revision"] = revision
+            candidate["revision_source"] = source
+            missing[:] = [m for m in missing if m.get("name") != "candidate.revision"]
+    else:
+        revisions = sorted({r for r, _ in consensus if r is not None})
+        if revisions:
+            notes.append(f"Seed reports mix candidate revisions {revisions}; "
+                         "no single revision is attributed.")
     if not oracle_controllable:
         missing.append({"name": "multiseed.oracle_seed_control",
                         "reason": "oracle runner does not expose a controllable seed; "
@@ -706,19 +936,91 @@ def _flexpart_stamp_to_epoch(stamp):
                .replace(tzinfo=timezone.utc).timestamp())
 
 
-def run_corpus_seeds(args, oracle_manifest, oracle, candidate):
+def _threshold_gate_value(thresholds_doc, criterion_id):
+    """Look up a numeric gate value from the versioned thresholds document."""
+    for criterion in thresholds_doc.get("criteria", []):
+        if criterion.get("id") == criterion_id:
+            return float(criterion["value"])
+    raise ValueError(f"thresholds lack criterion {criterion_id}")
+
+
+def _expected_philox_identity(case_def, case_id, seed_index):
+    """Expected (key, counter) for a seed file, or None when unchecked.
+
+    Follows the corpus runner derivation: ``ADV-ANA-001`` hardcodes key
+    ``[0, 0]``; ``REPEAT-009`` reruns the base key identically by design;
+    all other driver cases use ``[base0 + seed_index, base1]`` with a zeroed
+    counter (wrapping at 2^32). Returns None when the case definition
+    carries no seeds block, in which case only uniqueness is enforced.
+    """
+    if case_id == "ADV-ANA-001":
+        return [0, 0], [0, 0, 0, 0]
+    seeds_block = case_def.get("seeds") or {}
+    base_key = seeds_block.get("base_philox_key")
+    if base_key is None:
+        return None
+    base_counter = seeds_block.get("base_counter", [0, 0, 0, 0])
+    if case_id == "REPEAT-009":
+        expected_key = [int(base_key[0]), int(base_key[1])]
+    else:
+        expected_key = [(int(base_key[0]) + int(seed_index)) % 2**32,
+                        int(base_key[1])]
+    return expected_key, [int(v) for v in base_counter]
+
+
+def _validate_seed_identities(seeds, case_def, case_id):
+    """Reject files that are not distinct, correctly derived seeds.
+
+    Every file must carry a unique ``seed_index`` and a Philox identity
+    matching the case derivation. Duplicate (key, counter) pairs are
+    rejected, except for ``REPEAT-009`` whose designed repeat reruns one
+    identity across its files (all of which must then share it).
+    """
+    seen_indices = set()
+    seen_identities = set()
+    for path, data in seeds:
+        seed_index = data["seed_index"]
+        if seed_index in seen_indices:
+            raise ValueError(f"duplicate seed_index {seed_index} in {path}")
+        seen_indices.add(seed_index)
+        identity = (tuple(int(v) for v in data["philox_key"]),
+                    tuple(int(v) for v in data["philox_counter"]))
+        expected = _expected_philox_identity(case_def, case_id, seed_index)
+        if expected is not None and list(identity[0]) != expected[0]:
+            raise ValueError(
+                f"seed file {path} key {list(identity[0])} does not match "
+                f"the case Philox derivation (expected {expected[0]})")
+        if expected is not None and list(identity[1]) != expected[1]:
+            raise ValueError(
+                f"seed file {path} counter {list(identity[1])} does not match "
+                f"the case Philox derivation (expected {expected[1]})")
+        seen_identities.add(identity)
+    if case_id == "REPEAT-009":
+        if len(seen_identities) != 1:
+            raise ValueError("REPEAT-009 must rerun a single Philox identity; "
+                             f"found {len(seen_identities)} distinct identities")
+    elif len(seen_identities) != len(seeds):
+        raise ValueError("seed files contain duplicate Philox identities; "
+                         "files are not independent seeds")
+
+
+def run_corpus_seeds(args, oracle_manifest):
     """Evaluate corpus candidate particle ensembles over independent seeds.
 
     Consumes ``seed_*.json`` files from ``src/bin/corpus-run.rs`` together
-    with the versioned case definition. Particle metrics (kilogram mass
-    budget, center of mass, horizontal covariance/eigenvalues, vertical
-    quantiles) use :mod:`metrics` and are aggregated over seeds with means,
-    dispersion and approximate 95% confidence intervals. The runner's own
-    ``metrics`` block is cross-checked as an independent implementation.
-    An optional oracle directory contributes particle-space diagnostics from
-    ``partposit`` dumps. There is no parity verdict: the corpus thresholds
-    version no oracle-vs-candidate gate and the Fortran runner exposes no
-    controllable seed.
+    with the versioned case definition. Seed files are validated as distinct,
+    correctly derived Philox identities before any statistics are computed.
+    Particle metrics (kilogram mass budget, center of mass, horizontal
+    covariance/eigenvalues, vertical quantiles) use :mod:`metrics` and are
+    aggregated over seeds with means, dispersion and approximate 95%
+    confidence intervals. The mass-closure gate applies to every seed: the
+    worst absolute error governs, so opposite-sign errors cannot cancel into
+    a pass. The runner's own ``metrics`` block is cross-checked on an
+    unweighted basis with unit-aware tolerances; a divergence is an
+    integrity error. An optional oracle directory contributes particle-space
+    diagnostics from ``partposit`` dumps. There is no parity verdict: the
+    corpus thresholds version no oracle-vs-candidate gate and the Fortran
+    runner exposes no controllable seed.
     """
     missing = []
     notes = list(args.note or [])
@@ -729,6 +1031,8 @@ def run_corpus_seeds(args, oracle_manifest, oracle, candidate):
     deposition_on = bool(switches.get("dry_deposition") or
                          switches.get("wet_deposition") or switches.get("decay"))
     expected_seeds = int(case_def["seeds"].get("count", 0)) or None
+    thresholds_doc = json.loads(Path(args.thresholds).read_text(encoding="utf-8"))
+    gate_value = _threshold_gate_value(thresholds_doc, "MASS_BUDGET_CLOSE")
 
     seed_paths = _expand_patterns(args.candidate_seeds)
     seeds = []
@@ -742,8 +1046,29 @@ def run_corpus_seeds(args, oracle_manifest, oracle, candidate):
         input_hashes[f"candidate_{Path(path).name}"] = report_lib.sha256_file(path)
     if not seeds:
         raise ValueError("corpus-seeds needs at least one seed file")
+    _validate_seed_identities(seeds, case_def, case_id)
     notes.append("Particle metrics only: seed files carry particle ensembles, "
                  "no shared concentration grid.")
+    # Resolve oracle artifacts before provenance so the run manifest can be
+    # hash-verified against them. A supplied oracle directory must exist and
+    # hold recognized artifacts; otherwise this is an integrity error, not a
+    # silent candidate-only run.
+    partposit_files, grid_files = [], []
+    fortran_dir = None
+    if args.fortran_output:
+        fortran_dir = Path(args.fortran_output)
+        if not fortran_dir.is_dir():
+            raise FileNotFoundError(
+                f"oracle directory does not exist: {fortran_dir}")
+        partposit_files = io_fortran.find_partposit_files(fortran_dir)
+        try:
+            grid_files = io_fortran.find_grid_conc_files(fortran_dir)
+        except FileNotFoundError:
+            grid_files = []
+        if not partposit_files and not grid_files:
+            raise FileNotFoundError(
+                f"oracle directory holds no partposit_* or grid_conc_* "
+                f"artifacts: {fortran_dir}")
     if deposition_on:
         notes.append("Deposition or decay is enabled: the deposited/decayed "
                      "reservoirs are not recorded in seed files, so the kilogram "
@@ -759,20 +1084,38 @@ def run_corpus_seeds(args, oracle_manifest, oracle, candidate):
             if not math.isfinite(value) or value < 0:
                 raise ValueError(f"non-finite or negative particle mass in {path}")
         budget = metrics.mass_budget(release_mass, float(sum(masses)))
+        if deposition_on:
+            budget_verdict = "NOT_APPLICABLE"
+        else:
+            budget_verdict = ("PASS" if abs(budget["relative_error"]) < gate_value
+                              else "FAIL")
         com = metrics.center_of_mass_particles(lons, lats, heights, masses)
         cov = metrics.horizontal_covariance(lons, lats, masses)
         quantiles = metrics.vertical_quantiles(heights, masses, (0.1, 0.5, 0.9))
         mean_z = sum(heights) / len(heights)
         std_z = math.sqrt(sum((z - mean_z) ** 2 for z in heights) / len(heights))
-        cross_check = _cross_check_runner_metrics(data["metrics"], com, cov, quantiles,
-                                                  mean_z, std_z)
+        # Unweighted basis for the runner cross-check: the runner's moments
+        # are unweighted means, so the check compares like with like and only
+        # flags genuine implementation divergence (see P2 review finding).
+        count = len(masses)
+        uniform = [1.0] * count
+        uw_com = metrics.center_of_mass_particles(lons, lats, heights, uniform)
+        uw_cov = metrics.horizontal_covariance(lons, lats, uniform)
+        uw_quantiles = metrics.unweighted_quantiles_linear(heights, (0.1, 0.5, 0.9))
+        uw_mean_z = sum(heights) / count
+        uw_std_z = math.sqrt(sum((z - uw_mean_z) ** 2 for z in heights) / count)
+        uw_total = float(sum(masses))
+        cross_check = _cross_check_runner_metrics(
+            data["metrics"], uw_com, uw_cov, uw_quantiles, uw_mean_z, uw_std_z,
+            uw_total)
         per_seed.append({
             "seed_file": Path(path).name,
             "seed_index": data["seed_index"],
             "philox_key": data["philox_key"],
+            "philox_counter": data["philox_counter"],
             "adapter": data["adapter"],
             "particle_count": len(masses),
-            "mass_budget": budget,
+            "mass_budget": dict(budget, verdict=budget_verdict),
             "center_of_mass": com,
             "horizontal_covariance": cov,
             "vertical_quantiles_m": quantiles,
@@ -785,8 +1128,18 @@ def run_corpus_seeds(args, oracle_manifest, oracle, candidate):
     adapters = {entry["adapter"] for entry in per_seed}
     if len(adapters) != 1:
         raise ValueError(f"seed files mix adapters: {sorted(adapters)}")
-    if candidate.get("adapter") is None:
-        candidate["adapter"] = per_seed[0]["adapter"]
+    oracle_file = (partposit_files[-1] if partposit_files
+                   else (grid_files[-1] if grid_files else None))
+    oracle, candidate, prov_missing, prov_notes = build_provenance(
+        args, oracle_manifest,
+        embedded_revisions=[data.get("candidate_revision") for _, data in seeds],
+        embedded_adapters=[data.get("adapter") for _, data in seeds],
+        artifact_paths=[(f"candidate_{Path(p).name}", str(p), "candidate")
+                        for p, _ in seeds] +
+                       ([(f"oracle_{oracle_file.name}", str(oracle_file), "oracle")]
+                        if oracle_file is not None else []))
+    missing.extend(prov_missing)
+    notes.extend(prov_notes)
 
     series = {
         "total_mass_kg": [e["mass_budget"]["remaining_mass_kg"] for e in per_seed],
@@ -804,6 +1157,23 @@ def run_corpus_seeds(args, oracle_manifest, oracle, candidate):
     }
     aggregated = {name: metrics.aggregate_seed_values(values)
                   for name, values in series.items()}
+    # Mass-closure gate: every seed is evaluated and the worst absolute
+    # error governs, so opposite-sign errors cannot cancel into a pass.
+    if deposition_on:
+        budget_gate = {"gate": "SKIPPED",
+                       "reason": "deposition/decay reservoirs are not recorded"}
+        worst_abs_rel_error = None
+        failed_seeds = []
+    else:
+        failed_seeds = [e["seed_file"] for e in per_seed
+                        if e["mass_budget"]["verdict"] != "PASS"]
+        worst_abs_rel_error = max(abs(e["mass_budget"]["relative_error"])
+                                  for e in per_seed)
+        budget_gate = {"gate": "PASS" if not failed_seeds else "FAIL",
+                       "gate_value": gate_value,
+                       "worst_abs_relative_error": worst_abs_rel_error,
+                       "failed_seed_count": len(failed_seeds),
+                       "failed_seeds": failed_seeds}
     multiseed = {
         "n_seeds": len(seeds),
         "expected_seeds": expected_seeds,
@@ -812,6 +1182,7 @@ def run_corpus_seeds(args, oracle_manifest, oracle, candidate):
         "oracle_seed_note": ("Fortran random_mod.f90 derives seeds internally "
                              "(iseed1=-7-i, iseed2=-88-i) with no namelist override; "
                              "NOT_SUITABLE_FOR_MULTISEED_PARITY"),
+        "mass_budget_gate": budget_gate,
         "metrics": aggregated,
     }
     missing.append({"name": "multiseed.oracle_seed_control",
@@ -826,8 +1197,6 @@ def run_corpus_seeds(args, oracle_manifest, oracle, candidate):
 
     oracle_section = None
     if args.fortran_output:
-        fortran_dir = Path(args.fortran_output)
-        partposit_files = io_fortran.find_partposit_files(fortran_dir)
         if partposit_files:
             f_lons, f_lats, f_zs = io_fortran.read_partposit(str(partposit_files[-1]))
             if f_lons:
@@ -855,6 +1224,17 @@ def run_corpus_seeds(args, oracle_manifest, oracle, candidate):
             else:
                 missing.append({"name": "oracle.partposit",
                                 "reason": "oracle partposit file is empty"})
+        elif grid_files:
+            missing.append({"name": "oracle.particle_comparison",
+                            "reason": "oracle directory holds only grid_conc files "
+                                      f"({len(grid_files)}); particle-space oracle "
+                                      "comparison needs a partposit dump, and seed "
+                                      "files carry no concentration grid, so this "
+                                      "run is classified candidate-only"})
+            notes.append("Oracle grid_conc files are present but not evaluated: "
+                         "without a partposit dump there is no particle-space "
+                         "counterpart, and gridding the candidate would duplicate "
+                         "the corpus comparison script's scope.")
         else:
             missing.append({"name": "oracle.partposit",
                             "reason": "oracle wrote no partposit dump; particle-space "
@@ -889,17 +1269,38 @@ def run_corpus_seeds(args, oracle_manifest, oracle, candidate):
                               "no gridded comparison is attempted"})
     particle_section = {"per_seed": per_seed, "aggregated": aggregated,
                         "unit": "kg/m/km"}
-    thresholds_doc = json.loads(Path(args.thresholds).read_text(encoding="utf-8"))
-    mean_rel_error = aggregated["mass_rel_error"]["mean"]
     context = {"case_id": "corpus-seeds",
-               "particle_metrics.mass_budget.relative_error": mean_rel_error,
+               "particle_metrics.mass_budget.relative_error": worst_abs_rel_error,
                "integrity.non_negative_fields": True,
                "alignment.grid_and_window_match": None}
     if deposition_on:
         context["particle_metrics.mass_budget.relative_error"] = None
     evaluations = report_lib.evaluate_thresholds(thresholds_doc, context)
-    # The shared threshold file only scopes synthetic/ETEX cases, so every
-    # corpus criterion currently reports SKIP; that is recorded, not hidden.
+    divergent = [e["seed_file"] for e in per_seed
+                 if e["runner_metrics_cross_check"]["verdict"] == "DIVERGENT"]
+    failed_gates = [e["id"] for e in evaluations if e.get("verdict") == "FAIL"]
+    if divergent:
+        return report_lib.make_report(
+            case_id=case_id, time_window=time_window, grid=grid_report,
+            oracle=oracle, candidate=candidate, input_hashes=input_hashes,
+            alignment={"grid_and_window_match": None,
+                       "checks": [],
+                       "note": "particle-ensemble case: no shared concentration grid asserted"},
+            particle_metrics=particle_section, grid_metrics=None,
+            etex=None, multiseed=multiseed,
+            threshold_evaluations=evaluations,
+            thresholds_version=thresholds_doc.get("version", "unknown"),
+            missing_metrics=missing, notes=notes,
+            overall_status="INTEGRITY_ERROR",
+            status_detail=("runner cross-check DIVERGENT for seeds "
+                           f"{divergent}; the two implementations disagree, so no "
+                           "reported metric can be trusted"))
+    if failed_gates:
+        overall, detail = ("FAIL", "in-scope threshold violated: " +
+                           ", ".join(failed_gates))
+    else:
+        overall, detail = ("DIAGNOSTIC", "corpus particle-ensemble diagnostics over "
+                           f"{len(seeds)} seeds; no parity verdict")
     return report_lib.make_report(
         case_id=case_id, time_window=time_window, grid=grid_report,
         oracle=oracle, candidate=candidate, input_hashes=input_hashes,
@@ -911,37 +1312,96 @@ def run_corpus_seeds(args, oracle_manifest, oracle, candidate):
         threshold_evaluations=evaluations,
         thresholds_version=thresholds_doc.get("version", "unknown"),
         missing_metrics=missing, notes=notes,
-        overall_status="DIAGNOSTIC",
-        status_detail=("corpus particle-ensemble diagnostics over "
-                       f"{len(seeds)} seeds; no parity verdict"))
+        overall_status=overall,
+        status_detail=detail)
 
 
-def _cross_check_runner_metrics(runner, com, cov, quantiles, mean_z, std_z):
-    """Compare this evaluation against the runner's independent metrics block.
+# Unit-aware tolerances for the runner cross-check. Absolute tolerances are
+# in the stated units; relative entries use max(rel * |reference|, floor).
+# Values assume identical formulas in f64; summation-order slack dominates.
+CROSS_CHECK_TOLERANCES = {
+    "com_lon_deg": {"abs": 1e-9, "unit": "deg"},
+    "com_lat_deg": {"abs": 1e-9, "unit": "deg"},
+    "com_z_m": {"abs": 1e-6, "unit": "m"},
+    "sigma_east_m": {"abs": 1e-6, "unit": "m"},
+    "sigma_north_m": {"abs": 1e-6, "unit": "m"},
+    "eigenvalue_small_m2": {"rel": 1e-9, "abs_floor": 1e-3, "unit": "m2"},
+    "eigenvalue_large_m2": {"rel": 1e-9, "abs_floor": 1e-3, "unit": "m2"},
+    "z_p10_m": {"abs": 1e-9, "unit": "m"},
+    "z_p50_m": {"abs": 1e-9, "unit": "m"},
+    "z_p90_m": {"abs": 1e-9, "unit": "m"},
+    "z_mean_m": {"abs": 1e-9, "unit": "m"},
+    "z_std_m": {"abs": 1e-9, "unit": "m"},
+    "total_mass_kg": {"rel": 1e-9, "abs_floor": 1e-12, "unit": "kg"},
+}
 
-    The corpus runner computes its moments in metres; this evaluation uses
-    kilometres. Differences are reported, never asserted, so a divergence
-    is investigated rather than hidden.
+
+def _within_tolerance(diff, reference, spec):
+    if "abs" in spec:
+        return diff <= spec["abs"]
+    return diff <= max(spec["rel"] * abs(reference), spec["abs_floor"])
+
+
+def _cross_check_runner_metrics(runner, uw_com, uw_cov, uw_quantiles, uw_mean_z,
+                                uw_std_z, uw_total_kg):
+    """Cross-check this evaluation against the runner's metrics block.
+
+    The comparison runs on an unweighted basis because the runner's moments
+    are unweighted means while the reported scientific metrics are
+    mass-weighted; comparing like with like isolates genuine implementation
+    divergence from definition differences. Runner covariances/eigenvalues
+    are converted from m^2 with 1 km^2 = 1e6 m^2. Returns differences,
+    tolerances and a CONSISTENT/DIVERGENT verdict; a divergence is an
+    integrity error for the whole report.
     """
-    diffs = {}
-    diffs["com_lon_deg"] = abs(float(runner["com_lon_deg"]) - com["lon_deg"])
-    diffs["com_lat_deg"] = abs(float(runner["com_lat_deg"]) - com["lat_deg"])
-    diffs["com_z_m"] = abs(float(runner["com_z_m"]) - com["z_m"])
-    diffs["sigma_east_m"] = abs(
-        math.sqrt(max(float(runner["cov_east_m2"]), 0.0)) - cov["sigma_east_km"] * 1000.0)
-    diffs["sigma_north_m"] = abs(
-        math.sqrt(max(float(runner["cov_north_m2"]), 0.0)) - cov["sigma_north_km"] * 1000.0)
+    runner_reference = {
+        "com_lon_deg": float(runner["com_lon_deg"]),
+        "com_lat_deg": float(runner["com_lat_deg"]),
+        "com_z_m": float(runner["com_z_m"]),
+        "sigma_east_m": math.sqrt(max(float(runner["cov_east_m2"]), 0.0)),
+        "sigma_north_m": math.sqrt(max(float(runner["cov_north_m2"]), 0.0)),
+        "z_p10_m": float(runner["z_p10_m"]),
+        "z_p50_m": float(runner["z_p50_m"]),
+        "z_p90_m": float(runner["z_p90_m"]),
+        "z_mean_m": float(runner["z_mean_m"]),
+        "z_std_m": float(runner["z_std_m"]),
+        "total_mass_kg": float(runner["total_mass_kg"]),
+    }
     runner_eig = sorted(float(v) for v in runner["horizontal_eigenvalues_m2"])
-    mine_eig = sorted(v * 1e6 for v in cov["eigenvalues_km2"])
-    diffs["eigenvalue_small_m2"] = abs(runner_eig[0] - mine_eig[0])
-    diffs["eigenvalue_large_m2"] = abs(runner_eig[1] - mine_eig[1])
-    diffs["z_p10_m"] = abs(float(runner["z_p10_m"]) - quantiles["quantiles_m"]["0.1"])
-    diffs["z_p50_m"] = abs(float(runner["z_p50_m"]) - quantiles["quantiles_m"]["0.5"])
-    diffs["z_p90_m"] = abs(float(runner["z_p90_m"]) - quantiles["quantiles_m"]["0.9"])
-    diffs["z_mean_m"] = abs(float(runner["z_mean_m"]) - mean_z)
-    diffs["z_std_m"] = abs(float(runner["z_std_m"]) - std_z)
-    diffs["total_mass_kg"] = abs(float(runner["total_mass_kg"]) - quantiles["total_mass_kg"])
-    return diffs
+    mine_eig = sorted(v * 1e6 for v in uw_cov["eigenvalues_km2"])
+    runner_reference["eigenvalue_small_m2"] = runner_eig[0]
+    runner_reference["eigenvalue_large_m2"] = runner_eig[1]
+    mine = {
+        "com_lon_deg": uw_com["lon_deg"],
+        "com_lat_deg": uw_com["lat_deg"],
+        "com_z_m": uw_com["z_m"],
+        "sigma_east_m": uw_cov["sigma_east_km"] * 1000.0,
+        "sigma_north_m": uw_cov["sigma_north_km"] * 1000.0,
+        "eigenvalue_small_m2": mine_eig[0],
+        "eigenvalue_large_m2": mine_eig[1],
+        "z_p10_m": uw_quantiles["quantiles"]["0.1"],
+        "z_p50_m": uw_quantiles["quantiles"]["0.5"],
+        "z_p90_m": uw_quantiles["quantiles"]["0.9"],
+        "z_mean_m": uw_mean_z,
+        "z_std_m": uw_std_z,
+        "total_mass_kg": uw_total_kg,
+    }
+    differences = {}
+    violations = []
+    for name, spec in CROSS_CHECK_TOLERANCES.items():
+        diff = abs(runner_reference[name] - mine[name])
+        differences[name] = diff
+        if not _within_tolerance(diff, runner_reference[name], spec):
+            violations.append({"metric": name,
+                               "runner": runner_reference[name],
+                               "evaluation": mine[name],
+                               "abs_difference": diff,
+                               "tolerance": spec,
+                               "unit": spec["unit"]})
+    return {"differences": differences,
+            "tolerances": CROSS_CHECK_TOLERANCES,
+            "violations": violations,
+            "verdict": "DIVERGENT" if violations else "CONSISTENT"}
 
 
 def build_parser():
@@ -962,11 +1422,14 @@ def build_parser():
     parser.add_argument("--oracle-manifest", default=str(DEFAULT_ORACLE_MANIFEST))
     parser.add_argument("--oracle-checkout", default=None)
     parser.add_argument("--oracle-executable", default=None)
+    parser.add_argument("--run-manifest", default=None,
+                        help="Oracle run manifest for hash-verified provenance")
+    parser.add_argument("--input-equivalence-report", default=None,
+                        help="ETEX input-equivalence audit report to consume")
     parser.add_argument("--oracle-seed", type=int, default=None)
     parser.add_argument("--oracle-seed-controllable", action="store_true")
-    parser.add_argument("--candidate-checkout", default=None)
-    parser.add_argument("--candidate-executable", default=None)
     parser.add_argument("--candidate-log", default=None)
+    parser.add_argument("--candidate-executable", default=None)
     parser.add_argument("--candidate-revision", default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--candidate-seed-controllable", action="store_true")
@@ -979,23 +1442,22 @@ def main():
     args = parser.parse_args()
     try:
         oracle_manifest = load_oracle_manifest(args.oracle_manifest)
-        oracle, candidate, _ = build_provenance(args, oracle_manifest)
         if args.case == "synthetic-uniform-wind":
             if not args.fortran_output or not args.gpu_output:
                 parser.error("synthetic-uniform-wind needs --fortran-output and --gpu-output")
-            built = run_synthetic(args, oracle_manifest, oracle, candidate)
+            built = run_synthetic(args, oracle_manifest)
         elif args.case in ("etex-mini", "etex-full"):
             if not args.measurements or not args.fortran_output or not args.gpu_output:
                 parser.error(f"{args.case} needs --measurements, --fortran-output and --gpu-output")
-            built = run_etex(args, args.case, oracle_manifest, oracle, candidate)
+            built = run_etex(args, args.case, oracle_manifest)
         elif args.case == "aggregate-seeds":
             if not args.seed_reports:
                 parser.error("aggregate-seeds needs --seed-reports")
-            built = run_aggregate(args, oracle_manifest, oracle, candidate)
+            built = run_aggregate(args, oracle_manifest)
         elif args.case == "corpus-seeds":
             if not args.candidate_seeds or not args.case_def:
                 parser.error("corpus-seeds needs --candidate-seeds and --case-def")
-            built = run_corpus_seeds(args, oracle_manifest, oracle, candidate)
+            built = run_corpus_seeds(args, oracle_manifest)
         else:
             parser.error(f"unknown case: {args.case}")
     except (FileNotFoundError, ValueError) as exc:
@@ -1005,7 +1467,7 @@ def main():
             print(f"INTEGRITY_ERROR: {exc}", file=sys.stderr)
             sys.exit(2)
         try:
-            oracle, candidate, _ = build_provenance(args, oracle_manifest)
+            oracle, candidate, _missing, _notes = build_provenance(args, oracle_manifest)
         except (FileNotFoundError, ValueError) as inner:
             print(f"INTEGRITY_ERROR: {inner}", file=sys.stderr)
             sys.exit(2)
@@ -1020,6 +1482,8 @@ def main():
     write_outputs(built, args)
     if built["overall_status"] == "FAIL":
         sys.exit(1)
+    if built["overall_status"] == "INTEGRITY_ERROR":
+        sys.exit(2)
 
 
 if __name__ == "__main__":

@@ -16,6 +16,37 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-17 — Align versioned evaluation moments with cell mass
+**Impact**: output-only (evaluation metrics; no trajectory or GPU calculation change)
+**Files**: `scripts/evaluate/io_gpu.py`, `scripts/evaluate/metrics.py`,
+`scripts/evaluate/evaluate_case.py`, `scripts/evaluate/test_metrics.py`,
+`docs/evaluation.md`
+**Validation**: The pinned 10,000-particle paired output gives a mass-weighted
+horizontal center distance of 0.204 km, vertical center difference of -5.2 m,
+and covariance eigenvalue ratios of 1.68 and 1.18. Concentration shape remains
+a separately labeled diagnostic. The evaluator tests pass.
+
+### 2026-09-17 — Compare output-cell mass on both sides
+**Impact**: output-only (comparison analysis; no trajectory or GPU calculation change)
+**Files**: `scripts/compare_concentrations.py`,
+`scripts/test_compare_concentrations.py`, `docs/validation-report.md`
+**Validation**: The pinned FLEXPART 11.1 and GPU 10,000-particle outputs for
+05:30–06:00 UTC were reanalyzed after converting the oracle concentration to
+mass per cell using FLEXPART's output-cell area and layer thickness. Normalized field
+correlation is 0.919 and the GPU-minus-oracle vertical center difference is
+-5.2 m. Four focused regression tests pass. Scientific parity remains open.
+
+### 2026-09-17 — Reproducible Issue #6 test corpus (point 2)
+**Impact**: none (new fixtures, runners and documentation; no shader or physics change)
+**Files**: `fixtures/corpus/`, `docs/corpus-matrix.md`, `src/bin/corpus-run.rs`,
+`tests/integration/corpus.rs`, `scripts/run-corpus.sh`, `scripts/corpus/`,
+`scripts/generate_synthetic_grib.py` (optional shear/surface overrides)
+**Validation**: 6/6 corpus CI tests pass on software WGSL (18.9 s);
+full synthetic candidate (8 cases, 10 Philox seeds) runs on the Microsoft Basic
+Render Driver with mass conserved, PBL-confined and regime-separated vertical
+mixing; restart/decay/convection stay blocked with verifiable causes; ETEX mini
+remains `INPUT_EQUIVALENCE_NOT_DEMONSTRATED`.
+
 ### 2026-09-16 — Replace mini pressure-level weather with native ERA5
 **Impact**: numerics (meteorological forcing and vertical interpolation)
 **Files**: `fixtures/etex/native-mini/`,

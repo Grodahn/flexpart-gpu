@@ -1,0 +1,3 @@
+Derived from upstream examples/Aerosol/SPECIES/SPECIES_040 at sha256 b242a896429a1e1768e250d03e52e50d4dc235b328e452976aa6f9b41c3b6985 (pinned oracle reference/flexpart-11.1.json).
+Removed lines (PNDIA is not a member of the v11.1 species_params namelist; the oracle aborts on unknown keys):
+   PNDIA=11,                    ! Dry deposition (particles) - ndia

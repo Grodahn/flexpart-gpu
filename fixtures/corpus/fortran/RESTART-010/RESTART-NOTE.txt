@@ -1,0 +1,1 @@
+Oracle-only restart illustration: rerun with IPIN=1 and LOUTRESTART set after a first run that wrote restart_* files (restart_mod.f90). No paired candidate restart exists (candidate has no restart API).

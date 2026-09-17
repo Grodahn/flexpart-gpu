@@ -82,11 +82,14 @@ def read_etex_gpu_json(path):
 
 
 def cell_volume_m3(lat_deg, dx_deg, dy_deg, dz_m):
-    """Volume of a lat/lon grid cell in cubic metres."""
-    lat_rad = math.radians(lat_deg)
-    dx_m = EARTH_RADIUS_M * math.cos(lat_rad) * math.radians(dx_deg)
-    dy_m = EARTH_RADIUS_M * math.radians(dy_deg)
-    return dx_m * dy_m * dz_m
+    """Volume from FLEXPART outgrid_mod.f90's latitude-zone area."""
+    south = lat_deg - dy_deg / 2.0
+    north = lat_deg + dy_deg / 2.0
+    if dx_deg <= 0 or dy_deg <= 0 or dz_m <= 0 or south < -90 or north > 90:
+        raise ValueError("output cell has invalid bounds or dimensions")
+    zone_height = (math.radians(dy_deg) if south < 0 < north else
+                   math.sin(math.radians(north)) - math.sin(math.radians(south)))
+    return EARTH_RADIUS_M ** 2 * math.radians(dx_deg) * zone_height * dz_m
 
 
 def layer_thicknesses_m(heights_m):
@@ -115,20 +118,39 @@ def mass_to_concentration_kg_m3(mass_flat, nx, ny, nz, xlon0_deg, ylat0_deg,
     if len(mass) != nx * ny * nz:
         raise ValueError("candidate mass field has the wrong shape")
     thicknesses = layer_thicknesses_m(heights_m)
-    dy_m = EARTH_RADIUS_M * math.radians(dy_deg)
     concentration = [0.0] * len(mass)
     for ix in range(nx):
         for iy in range(ny):
             lat = ylat0_deg + (iy + 0.5) * dy_deg
-            dx_m = EARTH_RADIUS_M * math.cos(math.radians(lat)) * math.radians(dx_deg)
             for iz in range(nz):
-                volume = dx_m * dy_m * thicknesses[iz]
+                volume = cell_volume_m3(lat, dx_deg, dy_deg, thicknesses[iz])
                 flat = ((ix * ny) + iy) * nz + iz
                 concentration[flat] = mass[flat] / volume
     for value in concentration:
         if not math.isfinite(value) or value < 0:
             raise ValueError("candidate concentration has non-finite or negative values")
     return concentration
+
+
+def concentration_to_mass_per_cell(concentration_flat, nx, ny, nz,
+                                   ylat0_deg, dx_deg, dy_deg, heights_m):
+    """Reconstruct relative FLEXPART cell mass from concentration output."""
+    concentration = [float(v) for v in concentration_flat]
+    if len(concentration) != nx * ny * nz:
+        raise ValueError("oracle concentration field has the wrong shape")
+    thicknesses = layer_thicknesses_m(heights_m)
+    mass = [0.0] * len(concentration)
+    for ix in range(nx):
+        for iy in range(ny):
+            lat = ylat0_deg + (iy + 0.5) * dy_deg
+            for iz in range(nz):
+                flat = ((ix * ny) + iy) * nz + iz
+                value = concentration[flat]
+                if not math.isfinite(value) or value < 0:
+                    raise ValueError("oracle concentration must be finite and non-negative")
+                mass[flat] = value * cell_volume_m3(
+                    lat, dx_deg, dy_deg, thicknesses[iz])
+    return mass
 
 
 def gpu_mass_to_surface_concentration_pg_m3(mass_flat, nx, ny, nz, dx_deg, dy_deg,

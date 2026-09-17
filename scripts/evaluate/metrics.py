@@ -190,9 +190,8 @@ def center_of_mass_grid(flat_values, nx, ny, nz, xlon0_deg, ylat0_deg,
 
     ``flat_values`` is a flat row-major sequence with index
     ``((ix * ny) + iy) * nz + iz``. Horizontal positions are cell centers.
-    The vertical position weights each level by ``heights_m[iz]`` (the
-    FLEXPART OUTHEIGHTS layer-top convention also used by
-    ``compare_concentrations``). Returns None for an empty field.
+    The vertical position uses the midpoint between consecutive FLEXPART
+    OUTHEIGHTS layer tops, starting at zero. Returns None for an empty field.
     Finite, non-negative inputs are required.
     """
     values = [float(v) for v in flat_values]
@@ -218,7 +217,8 @@ def center_of_mass_grid(flat_values, nx, ny, nz, xlon0_deg, ylat0_deg,
                 if w > 0:
                     lon_sum += w * lon
                     lat_sum += w * lat
-                    z_sum += w * float(heights_m[iz])
+                    layer_bottom = float(heights_m[iz - 1]) if iz else 0.0
+                    z_sum += w * (layer_bottom + float(heights_m[iz])) / 2.0
     return {
         "lon_deg": lon_sum / total,
         "lat_deg": lat_sum / total,

@@ -137,22 +137,27 @@ particle positions are reported separately from the averaged concentration field
 A fresh local run with the clean pinned oracle commit
 `c70586c2b7f5258850705325881c61f557ea9bd8` and 10,000 particles produced
 the following **gridded diagnostics**, with both fields representing the
-05:30–06:00 UTC average. The GPU adapter was Intel UHD Graphics 620 (Vulkan).
+05:30–06:00 UTC average. FLEXPART's concentration per volume was first
+multiplied by each FLEXPART output cell's area and layer thickness, giving
+mass per cell on both sides. The candidate adapter was Microsoft Basic Render
+Driver (software DX12).
 The generated `target/validation/run_manifest.json` hashes the input, binaries,
 and outputs; it is a local generated artifact, not committed evidence.
 
 | Metric | FLEXPART 11.1 | GPU | GPU / oracle |
 |--------|---------------|-----|--------------|
-| East standard deviation | 6.07 km | 6.73 km | 1.11 |
-| North standard deviation | 5.06 km | 6.15 km | 1.22 |
-| Smaller covariance eigenvalue | 21.00 km² | 34.79 km² | 1.66 |
-| Larger covariance eigenvalue | 41.38 km² | 48.42 km² | 1.17 |
+| East standard deviation | 6.05 km | 6.73 km | 1.11 |
+| North standard deviation | 5.04 km | 6.15 km | 1.22 |
+| Smaller covariance eigenvalue | 20.75 km² | 34.79 km² | 1.68 |
+| Larger covariance eigenvalue | 41.17 km² | 48.41 km² | 1.18 |
 
-The horizontal center distance is 0.26 km and the normalized-field
-correlation is 0.832. Both spread axes and covariance eigenvalues
+The horizontal center distance is 0.20 km and the normalized mass-field
+correlation is 0.919. Using layer midpoints, the vertical centers are
+1415.6 m (oracle) and 1410.4 m (GPU), a GPU-minus-oracle difference of -5.2 m.
+Both spread axes and covariance eigenvalues
 remain outside issue #123's ±10% target in this single case. The oracle
-concentration sum (25.37 in its native units) and candidate mass sum (1 kg)
-are normalized before comparing spatial distributions; their raw totals are
+mass field and candidate mass field are normalized before comparing spatial
+distributions; their raw totals use different output-unit factors and are
 not a mass-conservation comparison. The oracle did not emit a `partposit_*`
 dump in this run, so particle-space moments remain unavailable.
 

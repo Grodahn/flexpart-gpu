@@ -12,6 +12,8 @@ Synthetic uniform-wind oracle comparison:
 python scripts/evaluate/evaluate_case.py --case synthetic-uniform-wind \
     --fortran-output target/comparison/validate_run/output \
     --gpu-output target/validation/gpu_concentration.json \
+    --run-manifest target/validation/run_manifest.json \
+    --candidate-log target/validation/gpu.log \
     --output results/evaluation/synthetic-uniform-wind/report.json \
     --summary results/evaluation/synthetic-uniform-wind/summary.txt
 ```
@@ -144,15 +146,16 @@ Particle metrics and grid metrics are strictly separated:
   seeds report `MASS_BUDGET_CLOSE: FAIL` with worst error 0.4).
 - `grid_metrics` holds the time-averaged concentration shape diagnostic
   (correlation, normalized RMSE, footprint overlap as Figure of Merit in
-  Space, concentration-weighted center distance, covariances, per-level
-  fractions). Grid diagnostics compare concentration against concentration:
+  Space, and per-level fractions) and mass-weighted spatial moments (center
+  distance and covariances). The shape diagnostic compares concentration:
   the candidate mass field (kg per cell) is converted to kg/m3 with
   latitude-dependent cell volumes and OUTHEIGHTS thicknesses before
   normalization. A normalized field comparison is never mass-conservation
   evidence; the legacy mass-against-concentration weighting (correlation
   0.65 on the reference artifacts) is superseded by the
-  concentration-against-concentration comparison (correlation 0.90 on the
-  same artifacts).
+  concentration-against-concentration comparison. For spatial moments, the
+  oracle concentration is multiplied by FLEXPART cell volume, the candidate
+  stays in kg per cell, and vertical centers use layer midpoints.
 - ETEX `etex` holds independent model-versus-observation metrics for both
   models (FB, NMSE, correlation, FAC2 with positive-pair counts) plus
   arrival-time and peak diagnostics in hours (detection threshold
@@ -250,23 +253,25 @@ Reference artifacts (pinned oracle `c70586c2b7f5258850705325881c61f557ea9bd8`):
 - Measurements: `fixtures/etex/data` parses to 168 stations and 3105
   records (30.3% detection rate, maximum 12570 pg/m3 at station 8021).
 
-Synthetic uniform-wind evaluation (`overall_status: DIAGNOSTIC`):
+Synthetic uniform-wind evaluation of the local paired run
+(`overall_status: DIAGNOSTIC`):
 
 - Mass budget closes: released 1.0 kg versus remaining 1.0 kg, relative
-  error -9e-10 (`MASS_BUDGET_CLOSE: PASS`).
+  error +2.1e-9 (`MASS_BUDGET_CLOSE: PASS`).
 - Grid/window alignment holds (`GRID_WINDOW_ALIGNMENT: PASS`).
-- Concentration-against-concentration shape: correlation 0.90, normalized
-  RMSE 11.6 (large because the denominator over a sparse normalized field
-  is tiny; reported as-is, not tuned), footprint overlap (FMS) 0.70 over
-  128 union cells.
-- Center distance 0.24 km; covariance eigenvalue ratios (candidate over
-  oracle) 2.08 and 1.30, outside any ±10% parity band: single-seed
+- Concentration-against-concentration shape: correlation 0.956, normalized
+  RMSE 6.59 (large because the denominator over a sparse normalized field
+  is tiny; reported as-is, not tuned), footprint overlap (FMS) 0.679 over
+  168 union cells. This shape correlation uses a different normalization
+  from the mass-per-cell correlation of 0.919 in `validation-report.md`.
+- Mass-weighted center distance 0.204 km; covariance eigenvalue ratios
+  (candidate over oracle) 1.68 and 1.18, outside the ±10% parity band: single-seed
   diagnostic, no parity verdict.
 - Vertical level fractions are reported per layer; the candidate puts more
   mass into the 1500-3000 m layers than the oracle in this run.
-- Missing as named: oracle `partposit` (no dump written), candidate revision
-  (not tied to the artifacts), candidate adapter (no log supplied),
-  candidate seed (not exposed).
+- Missing as named: oracle `partposit` (no dump written) and candidate seed
+  (not exposed). The local run manifest ties both outputs to their revisions;
+  the candidate log identifies the software adapter.
 
 Review-fix verification (all reproduced locally against the reference
 artifacts):

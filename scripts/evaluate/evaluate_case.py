@@ -407,11 +407,17 @@ def run_synthetic(args, oracle_manifest):
         footprint = None
         missing.append({"name": "grid_metrics.normalized_shape",
                         "reason": "one field is all zeros; shape comparison undefined"})
+    # Spatial moments weight physical cell mass, including layer thickness.
+    # The concentration-normalized shape metric above remains a separate
+    # diagnostic with its own quantity stated in the report.
+    oracle_mass = io_gpu.concentration_to_mass_per_cell(
+        oracle_flat, nx, ny, nz, header["outlat0"], header["dxout"],
+        header["dyout"], header["outheights"])
     oracle_com = metrics.center_of_mass_grid(
-        oracle_flat, nx, ny, nz, header["outlon0"], header["outlat0"],
+        oracle_mass, nx, ny, nz, header["outlon0"], header["outlat0"],
         header["dxout"], header["dyout"], header["outheights"])
     candidate_com = metrics.center_of_mass_grid(
-        candidate_conc, nx, ny, nz, grid["xlon0"], grid["ylat0"],
+        candidate_flat, nx, ny, nz, grid["xlon0"], grid["ylat0"],
         grid["dx"], grid["dy"], grid["heights_m"])
     center_distance_km = None
     if oracle_com and candidate_com:
@@ -421,10 +427,10 @@ def run_synthetic(args, oracle_manifest):
             dlon * metrics.DEG_TO_KM * math.cos(math.radians(oracle_com["lat_deg"])),
             dlat * metrics.DEG_TO_KM)
     oracle_cov = metrics.horizontal_covariance_grid(
-        oracle_flat, nx, ny, nz, header["outlon0"], header["outlat0"],
+        oracle_mass, nx, ny, nz, header["outlon0"], header["outlat0"],
         header["dxout"], header["dyout"])
     candidate_cov = metrics.horizontal_covariance_grid(
-        candidate_conc, nx, ny, nz, grid["xlon0"], grid["ylat0"], grid["dx"], grid["dy"])
+        candidate_flat, nx, ny, nz, grid["xlon0"], grid["ylat0"], grid["dx"], grid["dy"])
     eigenvalue_ratios = None
     if oracle_cov and candidate_cov:
         eigenvalue_ratios = [
@@ -520,6 +526,7 @@ def run_synthetic(args, oracle_manifest):
                        f"candidate={remaining_mass_kg:.6e} kg mass "
                        f"({candidate_conc_sum:.6e} kg/m3 concentration sum)."),
         "concentration_unit": "normalized dimensionless (oracle native units and candidate kg/m3)",
+        "spatial_moments_unit": "relative mass per output cell (oracle); kg per output cell (candidate)",
         "footprint_overlap": footprint,
         "oracle_center_of_mass": oracle_com,
         "candidate_center_of_mass": candidate_com,

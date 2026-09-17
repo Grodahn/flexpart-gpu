@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import metrics
+import io_gpu
 
 
 class PearsonCorrelationTest(unittest.TestCase):
@@ -78,7 +79,20 @@ class CenterOfMassTest(unittest.TestCase):
         # Active cell is ix=1, iy=0 -> lon=10+1.5=11.5, lat=20+0.5=20.5.
         self.assertAlmostEqual(com["lon_deg"], 11.5)
         self.assertAlmostEqual(com["lat_deg"], 20.5)
-        self.assertAlmostEqual(com["z_m"], 100.0)
+        self.assertAlmostEqual(com["z_m"], 50.0)
+
+    def test_unequal_layers_use_mass_and_midpoints(self):
+        concentration = [1.0, 1.0]
+        mass = io_gpu.concentration_to_mass_per_cell(
+            concentration, 1, 1, 2, 10.0, 1.0, 1.0, [100.0, 500.0])
+        self.assertAlmostEqual(mass[1] / mass[0], 4.0)
+        com = metrics.center_of_mass_grid(
+            mass, 1, 1, 2, 0.0, 10.0, 1.0, 1.0, [100.0, 500.0])
+        self.assertAlmostEqual(com["z_m"], 250.0)
+
+    def test_equator_cell_volume_matches_fortran_arc(self):
+        expected = io_gpu.EARTH_RADIUS_M ** 2 * math.radians(2.0) ** 2 * 100.0
+        self.assertAlmostEqual(io_gpu.cell_volume_m3(0.0, 2.0, 2.0, 100.0), expected)
 
     def test_empty_grid_returns_none(self):
         self.assertIsNone(metrics.center_of_mass_grid([0, 0, 0], 3, 1, 1,

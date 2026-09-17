@@ -188,11 +188,22 @@ else
   if [ ! -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" ]; then
     fail "Fortran compose file not found at docker/docker-compose.fortran.yml"
   fi
+  # The oracle compose file defaults to user 1000:1000, but GitHub runners
+  # use UID 1001. Override the run user so the bind-mounted checkout stays
+  # writable (bash UID is readonly, so pass --user instead of exporting UID).
+  DOCKER_USER_ARGS=""
+  if command -v id >/dev/null 2>&1; then
+    DOCKER_USER_ARGS="--user $(id -u):$(id -g)"
+    # shellcheck disable=SC2086
+    log_info "Docker run user override: ${DOCKER_USER_ARGS}"
+  fi
   {
     echo "=== docker compose build ==="
     docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" build flexpart-fortran
     echo "=== fortran compile ==="
+    # shellcheck disable=SC2086
     docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
+      ${DOCKER_USER_ARGS} \
       flexpart-fortran bash -c "
         set -euo pipefail
         cd /workspace/flexpart/src

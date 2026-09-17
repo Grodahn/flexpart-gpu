@@ -144,8 +144,15 @@ def audit_oracle_case(case_id: str, fort_dir: Path, oracle_dir: Path, require: b
     actual_g = float(data.get("release_mass_g", -1.0))
     check(f"{case_id} oracle summary release mass", math.isclose(actual_g, expected_g, rel_tol=1e-9),
           f"{actual_g} vs {expected_g}")
-    for key in ("raw_files", "reservoirs_native", "header"):
+    # Decoder stores reservoirs under first_slice.weighted and last_slice.weighted
+    # with keys: airborne, dry_deposited, wet_deposited
+    for key in ("raw_files", "header", "first_slice", "last_slice"):
         check(f"{case_id} oracle summary has {key}", key in data)
+    for slice_key in ("first_slice", "last_slice"):
+        if slice_key in data:
+            weighted = data[slice_key].get("weighted", {})
+            for res_key in ("airborne", "dry_deposited", "wet_deposited"):
+                check(f"{case_id} oracle {slice_key}.weighted has {res_key}", res_key in weighted)
 
 
 def main() -> None:

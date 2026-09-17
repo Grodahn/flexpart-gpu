@@ -973,14 +973,27 @@ fn parse_decay(raw: &ConfigMap, context: &str) -> Result<(Option<f64>, Option<f6
             Some(value) if value.is_finite() && value > 0.0 => {
                 let lambda = HALF_LIFE_TO_DECAY_FACTOR / value;
                 if !lambda.is_finite() || lambda <= 0.0 {
-                    return Ok((None, None));
+                    return Err(ConfigError::InvalidValue {
+                        context: context.to_string(),
+                        key: "pdecay".to_string(),
+                        value: value.to_string(),
+                        message: "positive half-life produces non-finite or invalid decay constant"
+                            .to_string(),
+                    });
                 }
                 return Ok((Some(value), Some(lambda)));
             }
             Some(value) if value.is_finite() && value <= 0.0 => {
                 return Ok((None, None));
             }
-            Some(_) => return Ok((None, None)),
+            Some(value) => {
+                return Err(ConfigError::InvalidValue {
+                    context: context.to_string(),
+                    key: "pdecay".to_string(),
+                    value: value.to_string(),
+                    message: "PDECAY must be a finite number".to_string(),
+                });
+            }
             None => {}
         }
     }
@@ -1810,5 +1823,90 @@ mod tests {
             result.is_err(),
             "non-spherical shape must fail in #126 scope"
         );
+    }
+
+    #[test]
+    fn parse_decay_rejects_nan_pdecay() {
+        let raw: ConfigMap = [
+            ("pspecies".to_string(), "NAN_DECAY".to_string()),
+            ("pdecay".to_string(), "NaN".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let result = SpeciesConfig::from_map(raw, Path::new("SPECIES_NAN"), "test");
+        assert!(result.is_err(), "NaN PDECAY must fail");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("pdecay") && err.contains("NaN"),
+            "error must identify pdecay and value: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_decay_rejects_overflow_half_life() {
+        // Half-life small enough to overflow the decay constant calculation
+        // HALF_LIFE_TO_DECAY_FACTOR = 0.693147, f64::MAX ≈ 1.8e308
+        // Overflow when 0.693147 / value > f64::MAX => value < 0.693147 / 1.8e308 ≈ 3.8e-309
+        // 1e-309 is subnormal but non-zero and causes overflow
+        let raw: ConfigMap = [
+            ("pspecies".to_string(), "OVERFLOW_DECAY".to_string()),
+            ("pdecay".to_string(), "1e-309".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let result = SpeciesConfig::from_map(raw, Path::new("SPECIES_OVERFLOW"), "test");
+        assert!(result.is_err(), "overflow half-life must fail");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("pdecay") && err.contains("non-finite"),
+            "error must identify pdecay and overflow: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_decay_sentinel_maps_to_none() {
+        // Negative sentinel values (FLEXPART convention) map to decay disabled
+        for sentinel in ["-999.9", "-9.9", "-1.0", "0.0"] {
+            let raw: ConfigMap = [
+                ("pspecies".to_string(), "SENTINEL".to_string()),
+                ("pdecay".to_string(), sentinel.to_string()),
+            ]
+            .into_iter()
+            .collect();
+            let species = SpeciesConfig::from_map(raw, Path::new("SPECIES_SENTINEL"), "test")
+                .expect("sentinel should parse");
+            assert_eq!(
+                species.half_life_s, None,
+                "sentinel {sentinel} should disable decay"
+            );
+            assert_eq!(
+                species.decay_constant, None,
+                "sentinel {sentinel} should disable decay"
+            );
+            assert!(
+                !species.decay_active(),
+                "sentinel {sentinel} should not be decay active"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_decay_valid_positive_half_life() {
+        let raw: ConfigMap = [
+            ("pspecies".to_string(), "VALID_DECAY".to_string()),
+            ("pdecay".to_string(), "453168.0".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        let species = SpeciesConfig::from_map(raw, Path::new("SPECIES_VALID"), "test")
+            .expect("valid half-life should parse");
+        assert_eq!(species.half_life_s, Some(453_168.0));
+        let lambda = species.decay_constant.expect("decay constant derived");
+        let expected = HALF_LIFE_TO_DECAY_FACTOR / 453_168.0;
+        assert!(
+            (lambda - expected).abs() < 1.0e-12,
+            "lambda: {lambda}, expected: {expected}"
+        );
+        assert!(species.decay_active());
     }
 }

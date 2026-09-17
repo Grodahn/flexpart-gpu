@@ -220,7 +220,12 @@ else
     fail "Oracle executable missing after build: ${ORACLE_EXECUTABLE}"
   fi
   # The build must leave the oracle checkout clean (gitversion.txt removed).
-  if [ -n "$(git -C "${ORACLE_CHECKOUT}" status --porcelain 2>/dev/null || true)" ]; then
+  ORACLE_POST_STATUS="$(git -C "${ORACLE_CHECKOUT}" status --porcelain 2>/dev/null || true)"
+  if [ -n "${ORACLE_POST_STATUS}" ]; then
+    log_error "Oracle status after build:"
+    echo "${ORACLE_POST_STATUS}" | head -20
+    # Untracked build leftovers that upstream does not ignore fail closed,
+    # but list them explicitly for debugging.
     fail "Oracle checkout is dirty after build; the build must remove generated stamps (see docs/reference-environment.md)"
   fi
   "${HOST_PYTHON}" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' \

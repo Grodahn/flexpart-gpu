@@ -16,6 +16,15 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-17 — Preserve constant gas dry deposition and reject excess species
+**Impact**: physics
+**Files**: `config/mod.rs`, `physics/species.rs`
+**Validation**: A positive `PDRYVEL` without `PRELDIFF` now maps to the
+constant-velocity gas branch. Species counts above the four GPU mass slots
+fail at config load and direct decay-parameter mapping instead of truncating.
+The project-owned species schema accepts explicit version 1; unversioned
+FLEXPART files retain their documented legacy interpretation.
+
 ### 2026-09-16 — Per-species deposition and radioactive decay (multi-nuclide forcing)
 **Impact**: physics
 **Files**: `dry_deposition.wgsl`, `wet_deposition.wgsl`, `decay.wgsl` (new),

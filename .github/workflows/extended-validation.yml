@@ -60,10 +60,11 @@ jobs:
           set -euo pipefail
           cd flexpart-gpu
           # GitHub runner UID/GID for Docker bind-mount write access.
-          # The compose file uses ${UID:-1000}:${GID:-1000} for the service user.
-          export UID=$(id -u)
-          export GID=$(id -g)
-          echo "Docker user override: UID=${UID} GID=${GID}"
+          # The compose file uses ${DOCKER_UID:-1000}:${DOCKER_GID:-1000} for the service user.
+          # Do not assign to Bash's readonly UID/GID variables.
+          export DOCKER_UID=$(id -u)
+          export DOCKER_GID=$(id -g)
+          echo "Docker user override: DOCKER_UID=${DOCKER_UID} DOCKER_GID=${DOCKER_GID}"
           case "${{ inputs.profile }}" in
             synthetic-validate)
               scripts/compare-fortran.sh compose validate

@@ -11,7 +11,7 @@ services:
       dockerfile: docker/Dockerfile.fortran
     image: flexpart-fortran:latest
     working_dir: /workspace/flexpart/src
-    user: "${UID:-1000}:${GID:-1000}"
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     stdin_open: true
     tty: true
     volumes:

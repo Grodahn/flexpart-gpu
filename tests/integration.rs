@@ -14,5 +14,7 @@ mod reference_environment;
 mod scientific_invariants;
 #[path = "integration/software_advection.rs"]
 mod software_advection;
+#[path = "integration/pbl_vertical_parity.rs"]
+mod pbl_vertical_parity;
 #[path = "integration/source_receptor_consistency.rs"]
 mod source_receptor_consistency;

@@ -370,6 +370,75 @@ class ProvenanceTest(unittest.TestCase):
             self.assertEqual(verified, ["candidate_output"])
             self.assertEqual(uncovered, [])
 
+    def test_mixed_unknown_embedded_revision_stays_unverified(self):
+        # P2: ["abc123", "unknown"] must not attribute abc123 to the set.
+        oracle_manifest = evaluate_case.load_oracle_manifest(
+            str(evaluate_case.DEFAULT_ORACLE_MANIFEST))
+        args = _namespaced()
+        _oracle, candidate, missing, _notes = evaluate_case.build_provenance(
+            args, oracle_manifest, embedded_revisions=["abc123", "unknown"])
+        self.assertIsNone(candidate["revision"])
+        self.assertIsNone(candidate["revision_source"])
+        gaps = [m for m in missing if m["name"] == "candidate.revision"]
+        self.assertEqual(len(gaps), 1)
+        self.assertIn("1 of 2", gaps[0]["reason"])
+
+    def test_partial_manifest_coverage_withholds_attribution(self):
+        # P1: a manifest covering only some consumed oracle outputs must not
+        # attribute the evaluated output to the pinned run.
+        oracle_manifest = evaluate_case.load_oracle_manifest(
+            str(evaluate_case.DEFAULT_ORACLE_MANIFEST))
+        pinned = oracle_manifest["pinned_commit"]
+        with tempfile.TemporaryDirectory() as directory:
+            covered = Path(directory) / "grid_conc_000"
+            covered.write_bytes(b"covered")
+            extra = Path(directory) / "grid_conc_001"
+            extra.write_bytes(b"from another run")
+            manifest = {"oracle": {"commit": pinned, "worktree_dirty": False},
+                        "candidate": {"commit": "y", "worktree_dirty": False},
+                        "output_sha256": {
+                            str(covered.resolve()): report_lib.sha256_file(covered)}}
+            manifest_path = Path(directory) / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            args = _namespaced(run_manifest=str(manifest_path))
+            oracle, _candidate, missing, _notes = evaluate_case.build_provenance(
+                args, oracle_manifest,
+                artifact_paths=[("oracle_covered", str(covered), "oracle"),
+                                ("oracle_extra", str(extra), "oracle")])
+            self.assertEqual(oracle["attribution"], "unverified")
+            self.assertTrue(any("oracle_extra" in m["name"] for m in missing))
+
+    def test_checkout_alone_leaves_output_attribution_unverified(self):
+        # P1: a verified source checkout does not link supplied outputs to a
+        # run, so output attribution stays unverified.
+        import subprocess
+        try:
+            subprocess.run(["git", "--version"], check=True, capture_output=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            self.skipTest("git is not available")
+        with tempfile.TemporaryDirectory() as directory:
+            subprocess.run(["git", "init"], cwd=directory, check=True,
+                           capture_output=True)
+            subprocess.run(["git", "config", "user.email", "t@t"], cwd=directory,
+                           check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "t"], cwd=directory,
+                           check=True, capture_output=True)
+            Path(directory, "f.txt").write_text("x", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=directory, check=True,
+                           capture_output=True)
+            subprocess.run(["git", "commit", "-m", "x"], cwd=directory, check=True,
+                           capture_output=True)
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=directory, check=True,
+                capture_output=True, text=True).stdout.strip()
+            oracle_manifest = {"pinned_commit": head, "name": "FLEXPART",
+                               "version": "11.1"}
+            args = _namespaced(oracle_checkout=directory)
+            oracle, _candidate, _missing, _notes = evaluate_case.build_provenance(
+                args, oracle_manifest)
+            self.assertTrue(oracle["checkout_verified"])
+            self.assertEqual(oracle["attribution"], "unverified")
+
 
 class CrossCheckVerdictTest(unittest.TestCase):
     """P2-2: implementation divergence gets an explicit integrity verdict."""
@@ -402,6 +471,57 @@ class CrossCheckVerdictTest(unittest.TestCase):
         runner, com, cov, quantiles, mean_z, std_z = self._basis()
         result = evaluate_case._cross_check_runner_metrics(
             runner, com, cov, quantiles, mean_z, std_z, 4.0)
+        self.assertEqual(result["verdict"], "CONSISTENT")
+        self.assertEqual(result["violations"], [])
+
+    def test_wide_spread_matches_runner_formula(self):
+        # Runner block recomputed inline from the Rust formula in
+        # src/bin/corpus-run.rs (unweighted means, R*cos/same metres per
+        # degree, population variance/covariance, linear-index quantiles),
+        # independently of metrics.horizontal_covariance. A ~0.1 degree
+        # spread must stay CONSISTENT under the shared conversion.
+        import math as _math
+        earth = 6_371_000.0
+        lons = [10.0, 10.1, 9.9, 10.05]
+        lats = [10.0, 10.0, 10.05, 9.95]
+        heights = [50.0, 60.0, 55.0, 65.0]
+        n = 4
+        com_lon = sum(lons) / n
+        com_lat = sum(lats) / n
+        com_z = sum(heights) / n
+        m_lon = earth * _math.cos(_math.radians(com_lat)) * _math.pi / 180.0
+        m_lat = earth * _math.pi / 180.0
+        east = [(lon - com_lon) * m_lon for lon in lons]
+        north = [(lat - com_lat) * m_lat for lat in lats]
+        var_ee = sum(x * x for x in east) / n
+        var_nn = sum(y * y for y in north) / n
+        cov_en = sum(x * y for x, y in zip(east, north)) / n
+        trace = var_ee + var_nn
+        disc = max(trace * trace - 4.0 * (var_ee * var_nn - cov_en ** 2), 0.0) ** 0.5
+        ordered = sorted(heights)
+
+        def quantile(p):
+            pos = p * (n - 1)
+            low = int(_math.floor(pos))
+            high = int(_math.ceil(pos))
+            return ordered[low] + (ordered[high] - ordered[low]) * (pos - low)
+
+        std_z = (sum((z - com_z) ** 2 for z in heights) / n) ** 0.5
+        runner = {
+            "com_lon_deg": com_lon, "com_lat_deg": com_lat, "com_z_m": com_z,
+            "cov_east_m2": var_ee, "cov_north_m2": var_nn,
+            "horizontal_eigenvalues_m2": [(trace + disc) / 2.0,
+                                          (trace - disc) / 2.0],
+            "z_p10_m": quantile(0.1), "z_p50_m": quantile(0.5),
+            "z_p90_m": quantile(0.9),
+            "z_mean_m": com_z, "z_std_m": std_z, "total_mass_kg": 4.0,
+        }
+        uniform = [1.0] * n
+        uw_com = metrics.center_of_mass_particles(lons, lats, heights, uniform)
+        uw_cov = metrics.horizontal_covariance(lons, lats, uniform)
+        uw_quantiles = metrics.unweighted_quantiles_linear(heights, (0.1, 0.5, 0.9))
+        result = evaluate_case._cross_check_runner_metrics(
+            runner, uw_com, uw_cov, uw_quantiles, com_z, std_z, 4.0)
         self.assertEqual(result["verdict"], "CONSISTENT")
         self.assertEqual(result["violations"], [])
 

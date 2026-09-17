@@ -82,12 +82,18 @@ artifacts, with an explicit `revision_source`:
 - `declared-flag`: `--candidate-revision` was given explicitly and is
   labeled as not hash-verified.
 
-Otherwise the revision is `null` with a `candidate.revision` missing entry.
-The evaluator checkout's HEAD is never attributed to previously generated
-outputs. Likewise the oracle output is only attributed to the pinned oracle
-(`attribution: verified-checkout` or `run-manifest`); otherwise it stays
-`unverified`, and the pinned commit is documented as the normative
-requirement, not as an attribution.
+Otherwise the revision is `null` with a `candidate.revision` missing entry
+naming the gap (including partially unattributed embedded sets: one seed
+without a usable embedded revision leaves the whole set unverified rather
+than attributing the remainder). The evaluator checkout's HEAD is never
+attributed to previously generated outputs. Likewise the oracle output is
+only attributed to the pinned oracle (`attribution: run-manifest`) when
+every consumed oracle output is hash-covered by a run manifest whose oracle
+entry is the pinned clean commit; the same complete-coverage rule applies
+to candidate outputs. A verified source checkout alone (`--oracle-checkout`)
+proves the sources, recorded as `checkout_verified`, but leaves output
+attribution `unverified` because it does not link supplied outputs to a
+run.
 
 ## Report schema (version 1.0.0)
 
@@ -119,8 +125,10 @@ in the older helpers (`compare_etex_fortran_obs.py`, `compare_gpu_obs.py`,
 - ETEX fractional bias and NMSE follow Chang and Hanna (2004) with `None`
   on non-positive denominators; FAC2 uses strictly positive pairs with
   `0.5 <= modeled/observed <= 2.0`.
-- Horizontal moments use the `111.195 km/deg` equirectangular projection
-  around the weighted mean latitude for both particle and grid weights.
+- Horizontal moments use the equirectangular projection around the weighted
+  mean latitude with metres per degree shared exactly with the corpus
+  runner (`R * pi / 180`; the legacy rounded 111.195 km/deg is superseded)
+  for both particle and grid weights.
 - Sparse FLEXPART decoding uses value-sign run detection with physical
   values `abs(value)`.
 
@@ -217,7 +225,8 @@ python scripts/evaluate/evaluate_case.py --case corpus-seeds \
 Definition mapping (single canonical meaning, two implementations that are
 cross-checked per seed on an unweighted basis with unit-aware tolerances;
 the check verdict is `CONSISTENT` or `DIVERGENT`, and a divergence is an
-integrity error for the whole report):
+integrity error for the whole report; the geographic conversion is shared
+exactly as `R * pi / 180`, verified by a test built from the Rust formula):
 
 | Runner `metrics` (m^2) | Evaluation (`metrics.py`, km^2 unless noted) |
 |---|---|

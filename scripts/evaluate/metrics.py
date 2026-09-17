@@ -31,10 +31,14 @@ Unification decisions (adopted definition first, rejected alternatives last):
 - FAC2 is the fraction of strictly positive pairs with
   ``0.5 <= modeled/observed <= 2.0``. Adopted from
   ``compare_oracle_observations.metrics``.
-- Horizontal moments use the ``111.195 km/deg`` equirectangular projection
-  around the weighted mean latitude. Adopted from
-  ``compare_concentrations.horizontal_grid_moments`` and reused for both
-  particle-space and grid-space moments so the two are directly comparable.
+- Horizontal moments use the equirectangular projection around the weighted
+  mean latitude with metres per degree shared exactly with the corpus
+  runner (``R * pi / 180``). Adopted conceptually from
+  ``compare_concentrations.horizontal_grid_moments``; the legacy rounded
+  111.195 km/deg is superseded by the exact formula so the runner
+  cross-check compares identical conversions. The same function serves
+  both particle-space and grid-space moments so the two are directly
+  comparable.
 - Sparse FLEXPART decoding uses value-sign run detection (physical values
   are ``abs(value)``). Adopted from ``compare_concentrations``; see
   ``io_fortran``.
@@ -64,7 +68,12 @@ import math
 from statistics import median
 
 EARTH_RADIUS_M = 6_371_000.0
-DEG_TO_KM = 111.195
+# Kilometres per degree of latitude, shared exactly with the corpus runner
+# (src/bin/corpus-run.rs computes metres per degree as
+# R_EARTH_M * PI / 180, i.e. this value times 1000). The legacy scripts use
+# the rounded 111.195; the exact formula governs here so the runner
+# cross-check compares identical conversions.
+DEG_TO_KM = EARTH_RADIUS_M * math.pi / 180.0 / 1000.0
 DETECTION_THRESHOLD_PG_M3 = 10.0
 
 
@@ -251,11 +260,13 @@ def horizontal_covariance(lons_deg, lats_deg, weights):
 
     Positions are in degrees, weights are non-negative (masses in kg for
     particles, column sums in field units for grids). The local projection
-    uses 111.195 km/deg in latitude and 111.195*cos(mean_lat) km/deg in
-    longitude, matching ``compare_concentrations.horizontal_grid_moments``.
-    Returns the weighted mean position, the 2x2 covariance matrix in km^2,
-    its ascending eigenvalues in km^2, and the east/north standard
-    deviations in km. Returns None when the total weight is not positive.
+    is computed in metres exactly as the corpus runner does
+    (``m_per_deg_lon = R * cos(lat) * pi / 180``,
+    ``m_per_deg_lat = R * pi / 180``) and converted to kilometres, so the
+    runner cross-check compares identical conversions. Returns the weighted
+    mean position, the 2x2 covariance matrix in km^2, its ascending
+    eigenvalues in km^2, and the east/north standard deviations in km.
+    Returns None when the total weight is not positive.
     """
     lons = [float(v) for v in lons_deg]
     lats = [float(v) for v in lats_deg]
@@ -270,9 +281,11 @@ def horizontal_covariance(lons_deg, lats_deg, weights):
         return None
     lon_mean = sum(lon * wi for lon, wi in zip(lons, w)) / total
     lat_mean = sum(lat * wi for lat, wi in zip(lats, w)) / total
-    kx = DEG_TO_KM * math.cos(math.radians(lat_mean))
-    xs = [(lon - lon_mean) * kx for lon in lons]
-    ys = [(lat - lat_mean) * DEG_TO_KM for lat in lats]
+    lat_rad = math.radians(lat_mean)
+    m_per_deg_lon = EARTH_RADIUS_M * math.cos(lat_rad) * math.pi / 180.0
+    m_per_deg_lat = EARTH_RADIUS_M * math.pi / 180.0
+    xs = [(lon - lon_mean) * m_per_deg_lon / 1000.0 for lon in lons]
+    ys = [(lat - lat_mean) * m_per_deg_lat / 1000.0 for lat in lats]
     xx = sum(wi * x * x for wi, x in zip(w, xs)) / total
     yy = sum(wi * y * y for wi, y in zip(w, ys)) / total
     xy = sum(wi * x * y for wi, x, y in zip(w, xs, ys)) / total

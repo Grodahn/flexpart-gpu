@@ -126,12 +126,15 @@ def build_provenance(args, oracle_manifest, embedded_revisions=None,
     """Build oracle/candidate provenance without misattribution.
 
     The candidate revision is only reported when it is tied to the supplied
-    artifacts: embedded in them, hash-verified through ``--run-manifest``,
-    or explicitly declared with ``--candidate-revision`` (labeled as
-    declared). The evaluator checkout's HEAD is never attributed to
-    previously generated outputs. Likewise the oracle output is only
-    attributed to the pinned oracle through a verified checkout or a
-    hash-verified run manifest; otherwise it stays explicitly unverified.
+    artifacts: embedded in them, hash-verified through ``--run-manifest``
+    covering every supplied candidate output, or explicitly declared with
+    ``--candidate-revision`` (labeled as declared). The evaluator checkout's
+    HEAD is never attributed to previously generated outputs. Likewise the
+    oracle output is only attributed to the pinned oracle when every
+    consumed oracle output is hash-covered by a run manifest whose oracle
+    entry is the pinned clean commit; a verified source checkout alone does
+    not link supplied outputs to a run, so output attribution stays
+    explicitly unverified in that case.
 
     Returns ``(oracle, candidate, prov_missing, prov_notes)``.
     """
@@ -144,26 +147,41 @@ def build_provenance(args, oracle_manifest, embedded_revisions=None,
 
     candidate_revision = None
     revision_source = None
+    embedded_gap = False
     if embedded_revisions:
         unique = set(embedded_revisions)
         usable = {r for r in unique if r not in (None, "unknown")}
-        if len(usable) > 1:
+        unattributed = len(embedded_revisions) - sum(
+            1 for r in embedded_revisions if r not in (None, "unknown"))
+        if unattributed:
+            embedded_gap = True
+            missing.append(
+                {"name": "candidate.revision",
+                 "reason": f"{unattributed} of {len(embedded_revisions)} supplied "
+                           "artifacts embed no usable revision (unknown/missing); "
+                           "the set stays explicitly unverified"})
+        elif len(usable) > 1:
             raise ValueError(
                 f"candidate artifacts mix revisions: {sorted(usable)}")
-        if usable:
+        elif usable:
             candidate_revision = usable.pop()
             revision_source = "embedded-in-artifact"
     if candidate_revision is None and manifest is not None:
+        candidates = [t for t in artifact_paths if t[2] == "candidate"]
         verified, uncovered = _verify_artifacts_against_manifest(
-            manifest, [t for t in artifact_paths if t[2] == "candidate"])
+            manifest, candidates)
         for label in uncovered:
             missing.append({"name": f"provenance.{label}",
                             "reason": "artifact is not covered by the run manifest"})
-        if verified:
+        if verified and not uncovered:
             candidate_revision = manifest["candidate"].get("commit")
             revision_source = "run-manifest-hash-verified"
             notes.append(f"Candidate revision hash-verified via run manifest "
                          f"({len(verified)} artifacts)")
+        elif verified:
+            notes.append("Candidate revision not attributed via run manifest: "
+                         f"{len(uncovered)} supplied candidate outputs are not "
+                         "covered by it")
     if candidate_revision is None and args.candidate_revision:
         candidate_revision = args.candidate_revision
         revision_source = "declared-flag"
@@ -172,7 +190,7 @@ def build_provenance(args, oracle_manifest, embedded_revisions=None,
     candidate_dirty = None
     if manifest is not None and revision_source == "run-manifest-hash-verified":
         candidate_dirty = manifest["candidate"].get("worktree_dirty")
-    if candidate_revision is None:
+    if candidate_revision is None and not embedded_gap:
         missing.append({"name": "candidate.revision",
                         "reason": "no revision tied to the supplied artifacts "
                                   "(use embedded revisions, --run-manifest or "
@@ -197,21 +215,28 @@ def build_provenance(args, oracle_manifest, embedded_revisions=None,
             raise ValueError(
                 "oracle checkout is not the pinned unmodified FLEXPART source "
                 f"(expected {oracle_manifest['pinned_commit']}, got {actual}, dirty={dirty})")
-        attribution = "verified-checkout"
         checkout_verified = True
-    elif manifest is not None:
+        notes.append("Oracle sources verified at the pinned commit, but the "
+                     "supplied outputs are not linked to that checkout run; "
+                     "output attribution stays unverified "
+                     "(use --run-manifest for output attribution)")
+    if attribution == "unverified" and manifest is not None:
         oracle_state = manifest.get("oracle", {})
-        verified, _uncovered = _verify_artifacts_against_manifest(
-            manifest, [t for t in artifact_paths if t[2] == "oracle"])
+        oracles = [t for t in artifact_paths if t[2] == "oracle"]
+        verified, uncovered = _verify_artifacts_against_manifest(
+            manifest, oracles)
+        for label in uncovered:
+            missing.append({"name": f"provenance.{label}",
+                            "reason": "artifact is not covered by the run manifest"})
         if (oracle_state.get("commit") == oracle_manifest["pinned_commit"]
-                and not oracle_state.get("worktree_dirty") and verified):
+                and not oracle_state.get("worktree_dirty")
+                and verified and not uncovered and oracles):
             attribution = "run-manifest"
             notes.append(f"Oracle output hash-verified via run manifest "
                          f"({len(verified)} artifacts)")
         else:
-            notes.append("Oracle output is not tied to a verified pinned checkout "
-                         "or hash-verified run manifest")
-    else:
+            notes.append("Oracle output is not tied to a hash-verified pinned run")
+    if attribution == "unverified" and manifest is None and oracle_checkout is None:
         notes.append("Oracle output is not tied to a verified pinned checkout "
                      "(use --oracle-checkout or --run-manifest); the pinned commit "
                      "below is the normative requirement, not an attribution")

@@ -93,7 +93,7 @@ class CenterOfMassTest(unittest.TestCase):
 class HorizontalCovarianceTest(unittest.TestCase):
     def test_axis_aligned_square(self):
         # Four unit masses at (+/-1 deg lon, 0) and (0, +/-1 deg lat)
-        # around the equator: variances are (111.195^2)/2 per axis.
+        # around the equator: variances are (km-per-deg^2)/2 per axis.
         lons = [1, -1, 0, 0]
         lats = [0, 0, 1, -1]
         cov = metrics.horizontal_covariance(lons, lats, [1, 1, 1, 1])
@@ -107,6 +107,14 @@ class HorizontalCovarianceTest(unittest.TestCase):
 
     def test_empty_weights_return_none(self):
         self.assertIsNone(metrics.horizontal_covariance([0], [0], [0]))
+
+    def test_degree_length_matches_runner_formula_exactly(self):
+        # Shared conversion with src/bin/corpus-run.rs (R * pi / 180 per
+        # degree in metres); the cross-check tolerances assume this exact
+        # formula, not the rounded 111.195.
+        self.assertEqual(metrics.DEG_TO_KM,
+                         6_371_000.0 * math.pi / 180.0 / 1000.0)
+        self.assertEqual(metrics.EARTH_RADIUS_M, 6_371_000.0)
 
 
 class VerticalQuantilesTest(unittest.TestCase):

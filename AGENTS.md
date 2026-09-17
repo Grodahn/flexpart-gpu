@@ -57,6 +57,87 @@ for emergency response (industrial accidents, Seveso sites).
 
 ---
 
+## Issue Definition & Task Slicing
+
+When creating, refining, or implementing GitHub issues, optimize for **small, atomic,
+independently verifiable claims**, not for broad feature descriptions. An issue should
+ideally prove one thing.
+
+### Split aggressively at verification boundaries
+
+Do **not** combine multiple independent claims such as:
+
+- build/reproducibility infrastructure;
+- input-equivalence or unit-conversion logic;
+- raw-output capture/decoding;
+- comparison semantics;
+- provenance/manifests;
+- CI orchestration;
+- scientific parity of a physical process.
+
+If each claim can fail independently, prefer separate issues with explicit dependencies.
+A large child issue that contains several such tracks should be treated as a sub-epic,
+not as one implementation task.
+
+### Every acceptance criterion needs a proof obligation
+
+For each acceptance criterion, define how completion is demonstrated. Prefer an explicit
+mapping of:
+
+`requirement -> implementation surface -> test/check -> required artifact/result`
+
+Avoid vague criteria such as "reproducible", "equivalent", "validated", "works in CI",
+or "parity achieved" unless the issue also states exactly what evidence makes that claim true.
+
+Examples:
+
+- "Equivalent inputs" must identify the canonical source of truth, required unit conversions,
+  normalized fields to compare, and a fail-closed equality/audit check.
+- "Reproducible oracle build" must state pinned revisions/environment, required hashes and
+  the postcondition that the oracle checkout remains clean after build/run.
+- "Workflow succeeds" must state which missing/stale artifacts or failed subprocesses make
+  the workflow exit non-zero.
+- "Scientific parity" must name the production path, cases/ensembles, metrics, thresholds,
+  uncertainty treatment, and raw evidence required for the verdict.
+
+### Test the production path when the claim is about production behavior
+
+An isolated kernel/helper test is not evidence for end-to-end production-path behavior.
+Issues and PRs must state whether evidence is:
+
+- analytical/unit-level;
+- isolated kernel-level;
+- production-path integration;
+- paired FLEXPART-11.1 oracle validation;
+- observational validation.
+
+Do not substitute a lower validation level for a higher one unless the issue explicitly
+allows it.
+
+### Fail closed
+
+Validation, CI, comparison, and provenance workflows must never turn missing prerequisites,
+skipped execution, absent adapters, absent oracle outputs, stale artifacts, decoder failures,
+or incomplete metrics into a successful result. Candidate-only execution may exist as an
+explicit mode, but it must not be reported as paired validation.
+
+### Define artifact and provenance contracts explicitly
+
+If an issue depends on generated files or manifests, enumerate the required consumed inputs
+and produced outputs. For scientific comparisons, this normally includes the case/config
+source, derived oracle/candidate inputs, meteorology, executable/revision identity, seeds,
+adapter provenance, raw outputs, decoded outputs, comparison report, and hashes where
+reproducibility requires them.
+
+### Keep PRs aligned with issue boundaries
+
+A PR should normally satisfy one atomic issue or one clearly stated slice of a sub-epic.
+Do not claim completion of adjacent scientific or infrastructure issues merely because the
+same branch contains partial work for them. If review reveals a separate independently
+verifiable problem, prefer a follow-up issue/PR rather than silently expanding scope.
+
+---
+
 ## Testing Requirements
 
 ### What Must Be Tested
@@ -117,9 +198,10 @@ renaming).
 ### Per-task protocol
 
 1. Read this file before starting any task.
-2. For benchmarking/performance tasks, read `docs/benchmarks.md` first and follow
+2. When creating or refining issues, follow **Issue Definition & Task Slicing** above before implementation starts.
+3. For benchmarking/performance tasks, read `docs/benchmarks.md` first and follow
    its methodology (scenario sizing, warm-up/sample settings, and GPU/CPU recipe separation).
-3. Read the referenced Fortran source to understand the algorithm being ported.
-4. Write tests before or alongside the implementation (not after).
-5. Run `cargo clippy` and `cargo test` before marking a task as done.
-6. Document any deviation from the Fortran reference in `docs/scientific-changelog.md`.
+4. Read the referenced Fortran source to understand the algorithm being ported.
+5. Write tests before or alongside the implementation (not after).
+6. Run `cargo clippy` and `cargo test` before marking a task as done.
+7. Document any deviation from the Fortran reference in `docs/scientific-changelog.md`.

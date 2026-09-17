@@ -205,9 +205,9 @@
       "issue_requirement": 5,
       "title": "Radioactive-decay analytic case",
       "status": "blocked",
-      "blocked_by": "Radioactive decay is not present in the candidate production path at the corpus base commit (no decay kernel, no decay forcing in ForwardStepForcing/ForwardTimeLoopDriver). Isolated deposition/decay kernels cover deposition only. The Fortran oracle supports decay via SPECIES PDECAY half-life. No analytic decay run through both production paths exists.",
+      "blocked_by": "The candidate production driver now exposes per-species decay forcing and an isolated decay kernel, but DECAY-011 has no paired candidate/Fortran analytic run or complete decayed-reservoir budget. The Fortran oracle supports decay via SPECIES PDECAY half-life. The paired corpus gate and reservoir accounting remain separate follow-up work.",
       "candidate": {
-        "path": "missing from production driver",
+        "path": "decay lane present; paired corpus case and reservoir budget missing",
         "runner": "none (dependency)",
         "fixture": "none"
       },

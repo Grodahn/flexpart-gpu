@@ -136,7 +136,7 @@ fn run_combined_cpu_evolution(initial_mass: f64) -> Vec<f64> {
 fn run_dry_gpu_evolution(ctx: &GpuContext, initial_mass: [f32; MAX_SPECIES]) -> Vec<f64> {
     let particles = vec![make_particle_with_mass(initial_mass, PARTICLE_HEIGHT_M)];
     let particle_buffers = ParticleBuffers::from_particles(ctx, &particles);
-    let dry_velocity = vec![DRY_VDEP_M_S];
+    let dry_velocity = vec![[DRY_VDEP_M_S; MAX_SPECIES]];
     let mut evolution = Vec::with_capacity(STEP_COUNT);
 
     for _ in 0..STEP_COUNT {
@@ -160,7 +160,7 @@ fn run_dry_gpu_evolution(ctx: &GpuContext, initial_mass: [f32; MAX_SPECIES]) -> 
 fn run_wet_gpu_evolution(ctx: &GpuContext, initial_mass: [f32; MAX_SPECIES]) -> Vec<f64> {
     let particles = vec![make_particle_with_mass(initial_mass, PARTICLE_HEIGHT_M)];
     let particle_buffers = ParticleBuffers::from_particles(ctx, &particles);
-    let scavenging = vec![WET_SCAVENGING_LAMBDA_S_INV];
+    let scavenging = vec![[WET_SCAVENGING_LAMBDA_S_INV; MAX_SPECIES]];
     let precipitating_fraction = vec![WET_PRECIPITATING_FRACTION];
     let mut evolution = Vec::with_capacity(STEP_COUNT);
 
@@ -185,8 +185,8 @@ fn run_wet_gpu_evolution(ctx: &GpuContext, initial_mass: [f32; MAX_SPECIES]) -> 
 fn run_combined_gpu_evolution(ctx: &GpuContext, initial_mass: [f32; MAX_SPECIES]) -> Vec<f64> {
     let particles = vec![make_particle_with_mass(initial_mass, PARTICLE_HEIGHT_M)];
     let particle_buffers = ParticleBuffers::from_particles(ctx, &particles);
-    let dry_velocity = vec![DRY_VDEP_M_S];
-    let scavenging = vec![WET_SCAVENGING_LAMBDA_S_INV];
+    let dry_velocity = vec![[DRY_VDEP_M_S; MAX_SPECIES]];
+    let scavenging = vec![[WET_SCAVENGING_LAMBDA_S_INV; MAX_SPECIES]];
     let precipitating_fraction = vec![WET_PRECIPITATING_FRACTION];
     let mut evolution = Vec::with_capacity(STEP_COUNT);
 

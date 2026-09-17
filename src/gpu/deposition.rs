@@ -1,17 +1,17 @@
-//! GPU dry deposition probability dispatch (D-02).
+//! GPU per-species dry deposition probability dispatch (D-02).
 //!
 //! Ported from FLEXPART deposition probability update:
 //! - `advance.f90`: `p = 1 - exp(-vdep * |dt| / (2*href))`
 //! - `get_vdep_prob.f90`: near-surface deposition-layer logic
 //!
-//! This kernel computes per-particle dry-deposition probability and applies the
-//! corresponding survival factor to all species masses:
-//! `mass_new = mass_old * exp(-vdep * |dt| / (2*href))`.
+//! This kernel computes per-particle per-species dry-deposition probability
+//! and applies the corresponding survival factor to each species mass slot:
+//! `mass_new[s] = mass_old[s] * exp(-vdep_s * |dt| / (2*href))`.
 //!
 //! Buffer contract:
 //! - binding 0: `array<Particle>` read-write storage buffer.
-//! - binding 1: `array<f32>` deposition velocity per particle [m/s].
-//! - binding 2: `array<f32>` deposition probability output per particle [-].
+//! - binding 1: `array<vec4<f32>>` deposition velocity per particle per species [m/s].
+//! - binding 2: `array<vec4<f32>>` deposition probability output per particle per species [-].
 //! - binding 3: uniform params `(particle_count, dt_seconds, reference_height_m, pad)`.
 
 use std::mem::size_of;
@@ -21,7 +21,7 @@ use thiserror::Error;
 use wgpu::util::DeviceExt;
 
 use crate::constants::HREF;
-use crate::particles::{Particle, ParticleStore};
+use crate::particles::{Particle, ParticleStore, MAX_SPECIES};
 
 use super::{
     download_buffer_typed, render_shader_with_workgroup_size, runtime_workgroup_size,
@@ -132,6 +132,9 @@ impl DryDepositionDispatchKernel {
 }
 
 /// Typed IO buffers for dry deposition dispatch.
+///
+/// Forcing and probability buffers hold one `vec4` per particle slot, lane `s`
+/// carrying species slot `s` ([`MAX_SPECIES`] lanes, unused lanes zero).
 pub struct DryDepositionIoBuffers {
     pub deposition_velocity_m_s: wgpu::Buffer,
     pub deposition_probability: wgpu::Buffer,
@@ -139,9 +142,9 @@ pub struct DryDepositionIoBuffers {
 }
 
 impl DryDepositionIoBuffers {
-    pub fn from_velocity(
+    pub fn from_species_velocities(
         ctx: &GpuContext,
-        deposition_velocity_m_s: &[f32],
+        deposition_velocity_m_s: &[[f32; MAX_SPECIES]],
     ) -> Result<Self, GpuDryDepositionError> {
         let particle_count = deposition_velocity_m_s.len();
         let velocity_buffer = if deposition_velocity_m_s.is_empty() {
@@ -161,7 +164,7 @@ impl DryDepositionIoBuffers {
         };
 
         let probability_byte_len =
-            checked_byte_len::<f32>(particle_count, "deposition_probability")?;
+            checked_byte_len::<[f32; MAX_SPECIES]>(particle_count, "deposition_probability")?;
         let probability_size = if probability_byte_len == 0 {
             4
         } else {
@@ -195,7 +198,7 @@ impl DryDepositionIoBuffers {
     pub fn upload_deposition_velocity(
         &self,
         ctx: &GpuContext,
-        deposition_velocity_m_s: &[f32],
+        deposition_velocity_m_s: &[[f32; MAX_SPECIES]],
     ) -> Result<(), GpuDryDepositionError> {
         if deposition_velocity_m_s.len() != self.particle_count {
             return Err(GpuDryDepositionError::LengthMismatch {
@@ -218,11 +221,11 @@ impl DryDepositionIoBuffers {
     pub async fn download_probabilities(
         &self,
         ctx: &GpuContext,
-    ) -> Result<Vec<f32>, GpuDryDepositionError> {
+    ) -> Result<Vec<[f32; MAX_SPECIES]>, GpuDryDepositionError> {
         if self.particle_count == 0 {
             return Ok(Vec::new());
         }
-        download_buffer_typed::<f32>(
+        download_buffer_typed::<[f32; MAX_SPECIES]>(
             ctx,
             &self.deposition_probability,
             self.particle_count,
@@ -398,15 +401,15 @@ pub fn encode_dry_deposition_probability_gpu_with_kernel(
 /// This convenience helper:
 /// 1. creates typed velocity/probability IO buffers,
 /// 2. dispatches the WGSL dry-deposition kernel,
-/// 3. returns per-particle deposition probability output.
+/// 3. returns per-particle per-species deposition probability output.
 ///
 /// Particle masses are attenuated in place on the GPU particle buffer.
 pub async fn apply_dry_deposition_step_gpu(
     ctx: &GpuContext,
     particles: &ParticleBuffers,
-    deposition_velocity_m_s: &[f32],
+    deposition_velocity_m_s: &[[f32; MAX_SPECIES]],
     params: DryDepositionStepParams,
-) -> Result<Vec<f32>, GpuDryDepositionError> {
+) -> Result<Vec<[f32; MAX_SPECIES]>, GpuDryDepositionError> {
     if deposition_velocity_m_s.len() != particles.particle_count() {
         return Err(GpuDryDepositionError::LengthMismatch {
             field: "deposition_velocity_m_s",
@@ -415,7 +418,7 @@ pub async fn apply_dry_deposition_step_gpu(
         });
     }
 
-    let io = DryDepositionIoBuffers::from_velocity(ctx, deposition_velocity_m_s)?;
+    let io = DryDepositionIoBuffers::from_species_velocities(ctx, deposition_velocity_m_s)?;
     dispatch_dry_deposition_probability_gpu(ctx, particles, &io, params)?;
     io.download_probabilities(ctx).await
 }
@@ -427,9 +430,9 @@ pub async fn apply_dry_deposition_step_gpu(
 /// - `Ok(None)` when no GPU adapter is available (graceful skip).
 pub async fn apply_dry_deposition_step_workflow(
     particles: &mut ParticleStore,
-    deposition_velocity_m_s: &[f32],
+    deposition_velocity_m_s: &[[f32; MAX_SPECIES]],
     params: DryDepositionStepParams,
-) -> Result<Option<Vec<f32>>, GpuDryDepositionWorkflowError> {
+) -> Result<Option<Vec<[f32; MAX_SPECIES]>>, GpuDryDepositionWorkflowError> {
     let ctx = match GpuContext::new().await {
         Ok(ctx) => ctx,
         Err(GpuError::NoAdapter) => return Ok(None),
@@ -492,40 +495,49 @@ mod tests {
         ];
         particles[3].deactivate();
 
-        let deposition_velocity_m_s = vec![0.01, 0.05, 0.0, 0.2];
+        // Per-species velocities: lanes differ per particle, including a zero
+        // lane to verify per-lane independence of the survival factors.
+        let deposition_velocity_m_s: Vec<[f32; MAX_SPECIES]> = vec![
+            [0.01, 0.02, 0.0, 0.04],
+            [0.05, 0.0, 0.03, 0.01],
+            [0.0, 0.0, 0.0, 0.0],
+            [0.2, 0.2, 0.2, 0.2],
+        ];
         let params = DryDepositionStepParams {
             dt_seconds: 60.0,
             reference_height_m: HREF,
         };
 
-        let expected_prob: Vec<f32> = particles
+        let expected_prob: Vec<[f32; MAX_SPECIES]> = particles
             .iter()
             .zip(deposition_velocity_m_s.iter())
             .map(|(particle, vdep)| {
+                let mut prob = [0.0; MAX_SPECIES];
                 if particle.is_active()
                     && in_dry_deposition_layer(particle, params.reference_height_m)
                 {
-                    dry_deposition_probability_step(
-                        *vdep,
-                        params.dt_seconds,
-                        params.reference_height_m,
-                    )
-                } else {
-                    0.0
+                    for s in 0..MAX_SPECIES {
+                        prob[s] = dry_deposition_probability_step(
+                            vdep[s],
+                            params.dt_seconds,
+                            params.reference_height_m,
+                        );
+                    }
                 }
+                prob
             })
             .collect();
 
-        let expected_mass0: Vec<f32> = particles
+        let expected_mass: Vec<[f32; MAX_SPECIES]> = particles
             .iter()
             .zip(expected_prob.iter())
-            .map(|(particle, prob)| particle.mass[0] * (1.0 - prob))
-            .collect();
-
-        let expected_mass1: Vec<f32> = particles
-            .iter()
-            .zip(expected_prob.iter())
-            .map(|(particle, prob)| particle.mass[1] * (1.0 - prob))
+            .map(|(particle, prob)| {
+                let mut mass = [0.0; MAX_SPECIES];
+                for s in 0..MAX_SPECIES {
+                    mass[s] = particle.mass[s] * (1.0 - prob[s]);
+                }
+                mass
+            })
             .collect();
 
         let particle_buffers = ParticleBuffers::from_particles(&ctx, &particles);
@@ -539,28 +551,22 @@ mod tests {
 
         assert_eq!(probabilities.len(), expected_prob.len());
         for (gpu, cpu) in probabilities.iter().zip(expected_prob.iter()) {
-            assert_relative_eq!(*gpu, *cpu, epsilon = 1.0e-6, max_relative = 1.0e-6);
+            for s in 0..MAX_SPECIES {
+                assert_relative_eq!(gpu[s], cpu[s], epsilon = 1.0e-6, max_relative = 1.0e-6);
+            }
         }
 
         let updated = pollster::block_on(particle_buffers.download_particles(&ctx))
             .expect("particle readback succeeds");
-        for ((particle, m0), m1) in updated
-            .iter()
-            .zip(expected_mass0.iter())
-            .zip(expected_mass1.iter())
-        {
-            assert_relative_eq!(
-                particle.mass[0],
-                *m0,
-                epsilon = 1.0e-6,
-                max_relative = 1.0e-6
-            );
-            assert_relative_eq!(
-                particle.mass[1],
-                *m1,
-                epsilon = 1.0e-6,
-                max_relative = 1.0e-6
-            );
+        for (particle, expected) in updated.iter().zip(expected_mass.iter()) {
+            for s in 0..MAX_SPECIES {
+                assert_relative_eq!(
+                    particle.mass[s],
+                    expected[s],
+                    epsilon = 1.0e-6,
+                    max_relative = 1.0e-6
+                );
+            }
         }
     }
 
@@ -573,7 +579,7 @@ mod tests {
         store.add(p1).expect("slot 1 available");
 
         let initial_mass: Vec<f32> = store.as_slice().iter().map(|p| p.mass[0]).collect();
-        let velocities = vec![0.01, 0.02];
+        let velocities = vec![[0.01; MAX_SPECIES], [0.02; MAX_SPECIES]];
         let result = pollster::block_on(apply_dry_deposition_step_workflow(
             &mut store,
             &velocities,

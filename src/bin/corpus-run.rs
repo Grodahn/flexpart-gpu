@@ -306,9 +306,10 @@ fn forcing_for_case(case: &serde_json::Value) -> ForwardStepForcing {
         .and_then(|v| v.as_f64())
         .unwrap_or(0.0) as f32;
     ForwardStepForcing {
-        dry_deposition_velocity_m_s: ParticleForcingField::Uniform(dry),
-        wet_scavenging_coefficient_s_inv: ParticleForcingField::Uniform(wet_lambda),
+        dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(dry)],
+        wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(wet_lambda)],
         wet_precipitating_fraction: ParticleForcingField::Uniform(wet_frac),
+        decay_constant_s_inv: vec![0.0],
         rho_grad_over_rho: 0.0,
     }
 }
@@ -615,6 +616,7 @@ fn run_driver_case(
         z_max: z,
         mass_kg: mass_total,
         particle_count: count,
+        species_masses_kg: None,
         raw: BTreeMap::new(),
     }];
     let config = ForwardTimeLoopConfig {
@@ -718,8 +720,8 @@ fn run_driver_case(
             let dry_probs = report.dry_deposition_probability;
             let wet_probs = report.wet_deposition_probability;
             for (slot, pre) in pre_masses.iter().enumerate() {
-                let p_dry = dry_probs.get(slot).copied().unwrap_or(0.0) as f64;
-                let p_wet = wet_probs.get(slot).copied().unwrap_or(0.0) as f64;
+                let p_dry = dry_probs.get(slot).map_or(0.0, |lanes| lanes[0]) as f64;
+                let p_wet = wet_probs.get(slot).map_or(0.0, |lanes| lanes[0]) as f64;
                 let removed_dry = pre * p_dry;
                 let removed_wet = (pre - removed_dry) * p_wet;
                 deposited_dry_kg += removed_dry;

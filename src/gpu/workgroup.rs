@@ -29,6 +29,7 @@ pub enum WorkgroupKernel {
     Langevin,
     DryDeposition,
     WetDeposition,
+    Decay,
     ConcentrationGridding,
     PblReflection,
     PblDiagnostics,
@@ -44,12 +45,13 @@ impl WorkgroupKernel {
         Self::WetDeposition,
         Self::ConcentrationGridding,
     ];
-    pub const ALL_KERNELS: [Self; 9] = [
+    pub const ALL_KERNELS: [Self; 10] = [
         Self::Advection,
         Self::HannaParams,
         Self::Langevin,
         Self::DryDeposition,
         Self::WetDeposition,
+        Self::Decay,
         Self::ConcentrationGridding,
         Self::PblReflection,
         Self::PblDiagnostics,
@@ -64,6 +66,7 @@ impl WorkgroupKernel {
             Self::Langevin => "langevin",
             Self::DryDeposition => "dry_deposition",
             Self::WetDeposition => "wet_deposition",
+            Self::Decay => "decay",
             Self::ConcentrationGridding => "concentration_gridding",
             Self::PblReflection => "pbl_reflection",
             Self::PblDiagnostics => "pbl_diagnostics",
@@ -79,6 +82,7 @@ impl WorkgroupKernel {
             Self::Langevin => "LANGEVIN",
             Self::DryDeposition => "DRY_DEPOSITION",
             Self::WetDeposition => "WET_DEPOSITION",
+            Self::Decay => "DECAY",
             Self::ConcentrationGridding => "CONCENTRATION_GRIDDING",
             Self::PblReflection => "PBL_REFLECTION",
             Self::PblDiagnostics => "PBL_DIAGNOSTICS",

@@ -234,6 +234,7 @@ fn neutral_driver(
         z_max: 50.0,
         mass_kg: 1.0,
         particle_count: NEUTRAL_PARTICLES as u64,
+        species_masses_kg: None,
         raw: BTreeMap::new(),
     }];
     let config = ForwardTimeLoopConfig {
@@ -423,15 +424,14 @@ fn corpus_blocked_cases_stay_blocked() {
             "{blocked} needs a verifiable dependency cause, got: {cause}"
         );
     }
-    // The production driver at this base has no decay or convection lanes:
-    // ForwardStepForcing carries only dry/wet deposition plus rho-grad.
-    // If decay/convection lands in the driver, the corresponding corpus case
-    // must be promoted to implemented in the same PR (this test then updates).
+    // The driver now has an isolated per-species decay lane. The paired
+    // DECAY-011 corpus case remains blocked until its oracle comparison and
+    // complete mass-reservoir budget are implemented.
     let forcing = ForwardStepForcing::default();
     let debug = format!("{forcing:?}");
     assert!(
-        !debug.to_lowercase().contains("decay"),
-        "driver has no decay lane at base"
+        debug.to_lowercase().contains("decay"),
+        "driver must expose the per-species decay lane"
     );
     assert!(
         !debug.to_lowercase().contains("convect"),
@@ -444,15 +444,17 @@ fn corpus_production_driver_supports_dry_and_wet_forcing_shapes() {
     // The corpus DRY-007/WET-008 driver runs only need uniform forcing lanes,
     // which the production driver already skips correctly when zero.
     let dry_only = ForwardStepForcing {
-        dry_deposition_velocity_m_s: ParticleForcingField::Uniform(0.02),
-        wet_scavenging_coefficient_s_inv: ParticleForcingField::Uniform(0.0),
+        dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.02)],
+        wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(0.0)],
         wet_precipitating_fraction: ParticleForcingField::Uniform(0.0),
+        decay_constant_s_inv: vec![0.0],
         rho_grad_over_rho: 0.0,
     };
     let wet_only = ForwardStepForcing {
-        dry_deposition_velocity_m_s: ParticleForcingField::Uniform(0.0),
-        wet_scavenging_coefficient_s_inv: ParticleForcingField::Uniform(0.005),
+        dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.0)],
+        wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(0.005)],
         wet_precipitating_fraction: ParticleForcingField::Uniform(1.0),
+        decay_constant_s_inv: vec![0.0],
         rho_grad_over_rho: 0.0,
     };
     let debug_dry = format!("{dry_only:?}");

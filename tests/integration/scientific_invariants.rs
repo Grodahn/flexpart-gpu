@@ -195,8 +195,8 @@ fn particle_mass_stays_non_negative_after_deposition() {
     ];
     let particle_buffers = ParticleBuffers::from_particles(&ctx, &particles);
 
-    let dry_velocity = vec![0.05_f32; particles.len()];
-    let scavenging = vec![0.01_f32; particles.len()];
+    let dry_velocity = vec![[0.05_f32; MAX_SPECIES]; particles.len()];
+    let scavenging = vec![[0.01_f32; MAX_SPECIES]; particles.len()];
     let precipitating_fraction = vec![1.0_f32; particles.len()];
 
     for step in 0..50 {
@@ -307,8 +307,8 @@ fn total_mass_conserved_with_deposition_gpu() {
 
     let particle_buffers = ParticleBuffers::from_particles(&ctx, &particles);
 
-    let dry_velocity = vec![0.02_f32; particles.len()];
-    let scavenging = vec![0.005_f32; particles.len()];
+    let dry_velocity = vec![[0.02_f32; MAX_SPECIES]; particles.len()];
+    let scavenging = vec![[0.005_f32; MAX_SPECIES]; particles.len()];
     let precipitating_fraction = vec![1.0_f32; particles.len()];
 
     let mut cumulative_dry_deposited = 0.0_f64;

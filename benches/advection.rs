@@ -422,8 +422,14 @@ fn maybe_run_workgroup_autotune(runtime: BenchRuntimeConfig, ctx: &GpuContext) {
             return;
         }
     };
-    let dry_velocity = deterministic_scalar_field(tuning_particles, 0.001, 0.00001, 41);
-    let wet_scavenging = deterministic_scalar_field(tuning_particles, 0.0005, 0.00001, 73);
+    let dry_velocity = deterministic_scalar_field(tuning_particles, 0.001, 0.00001, 41)
+        .iter()
+        .map(|&v| [v; MAX_SPECIES])
+        .collect::<Vec<_>>();
+    let wet_scavenging = deterministic_scalar_field(tuning_particles, 0.0005, 0.00001, 73)
+        .iter()
+        .map(|&v| [v; MAX_SPECIES])
+        .collect::<Vec<_>>();
     let wet_fraction: Vec<f32> = (0..tuning_particles)
         .map(|idx| ((idx % 100) as f32) / 100.0)
         .collect();
@@ -716,7 +722,10 @@ fn bench_gpu_deposition(c: &mut Criterion, runtime: BenchRuntimeConfig, ctx: &Gp
         let effective_particles = runtime.effective_particles(scenario);
         let particles = deterministic_particles(effective_particles);
         let particle_buffers = ParticleBuffers::from_particles(ctx, &particles);
-        let dry_velocity = deterministic_scalar_field(effective_particles, 0.001, 0.00001, 41);
+        let dry_velocity = deterministic_scalar_field(effective_particles, 0.001, 0.00001, 41)
+            .iter()
+            .map(|v| [*v; MAX_SPECIES])
+            .collect::<Vec<_>>();
         let scenario_label = runtime.scenario_label(scenario);
         dry_group.throughput(Throughput::Elements(
             u64::try_from(effective_particles).unwrap_or(u64::MAX),
@@ -748,7 +757,11 @@ fn bench_gpu_deposition(c: &mut Criterion, runtime: BenchRuntimeConfig, ctx: &Gp
         let effective_particles = runtime.effective_particles(scenario);
         let particles = deterministic_particles(effective_particles);
         let particle_buffers = ParticleBuffers::from_particles(ctx, &particles);
-        let scavenging = deterministic_scalar_field(effective_particles, 0.0005, 0.00001, 73);
+        let scavenging: Vec<[f32; MAX_SPECIES]> =
+            deterministic_scalar_field(effective_particles, 0.0005, 0.00001, 73)
+                .iter()
+                .map(|&v| [v; MAX_SPECIES])
+                .collect();
         let precip_fraction: Vec<f32> = (0..effective_particles)
             .map(|idx| ((idx % 100) as f32) / 100.0)
             .collect();
@@ -1037,6 +1050,7 @@ fn bench_forward_timeloop_e2e(c: &mut Criterion, runtime: BenchRuntimeConfig) {
             z_max: (BENCH_GRID_NZ.saturating_sub(2)) as f64,
             mass_kg: 1.0,
             particle_count: effective_particles as u64,
+            species_masses_kg: None,
             raw,
         }];
         let release_grid = GridDomain {
@@ -1083,17 +1097,18 @@ fn bench_forward_timeloop_e2e(c: &mut Criterion, runtime: BenchRuntimeConfig) {
         };
 
         let forcing = ForwardStepForcing {
-            dry_deposition_velocity_m_s: ParticleForcingField::PerParticle(
+            dry_deposition_velocity_m_s: vec![ParticleForcingField::PerParticle(
                 deterministic_scalar_field(effective_particles, 0.001, 0.00001, 23),
-            ),
-            wet_scavenging_coefficient_s_inv: ParticleForcingField::PerParticle(
+            )],
+            wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::PerParticle(
                 deterministic_scalar_field(effective_particles, 0.0005, 0.00001, 29),
-            ),
+            )],
             wet_precipitating_fraction: ParticleForcingField::PerParticle(
                 (0..effective_particles)
                     .map(|idx| ((idx % 100) as f32) / 100.0)
                     .collect(),
             ),
+            decay_constant_s_inv: vec![0.0],
             rho_grad_over_rho: 2.5e-4,
         };
 

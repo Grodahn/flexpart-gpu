@@ -16,6 +16,38 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-17 — Preserve constant gas dry deposition and reject excess species
+**Impact**: physics
+**Files**: `config/mod.rs`, `physics/species.rs`
+**Validation**: A positive `PDRYVEL` without `PRELDIFF` now maps to the
+constant-velocity gas branch. Species counts above the four GPU mass slots
+fail at config load and direct decay-parameter mapping instead of truncating.
+The project-owned species schema accepts explicit version 1; unversioned
+FLEXPART files retain their documented legacy interpretation.
+
+### 2026-09-16 — Per-species deposition and radioactive decay (multi-nuclide forcing)
+**Impact**: physics
+**Files**: `dry_deposition.wgsl`, `wet_deposition.wgsl`, `decay.wgsl` (new),
+`gpu/deposition.rs`, `gpu/wet_deposition.rs`, `gpu/decay.rs` (new),
+`physics/species.rs` (new), `config/mod.rs`, `release/mod.rs`,
+`simulation/timeloop.rs`
+**Validation**: Deposition kernels now attenuate each species mass slot with
+its own survival factor (`vec4` forcing lanes) instead of one shared factor;
+new decay kernel applies `exp(-lambda_s*|dt|)` per slot (commutes with
+deposition, dispatched last). `ForwardStepForcing` carries per-species vectors
+(zero-lane padded uploads, unchanged skip semantics for all-zero forcing).
+`SpeciesConfig` ports the FLEXPART 11.1 `SPECIES_PARAMS` set (half-life to
+decay-constant conversion with the oracle `0.693147` factor, PDRYVEL cm/s to
+m/s, PDIA m to um, gas/aerosol branching, gas+particle exclusion, PDSIGMA > 1
+rule, Henry requirement for gas wet removal). Releases distribute
+`species_masses_kg` across slots (one `xmass` row, positional mapping).
+Verified: 23/23 integration tests pass (WARP, `--test-threads=1`), including new
+`species_nuclide` per-lane CPU/GPU parity (tolerances unchanged: CPU 2e-6, GPU
+2e-5) and a closed-form timeloop mass check with explicit PBL prescription;
+234/234 lib tests pass. Out of scope (follow-ups): OH chemistry, emissions,
+temporal release variation, non-spherical settling (`PSHAPE != 0` rejected),
+`SPECNUM_REL` number mapping, spatially varying resistance/scavenging forcing
+from meteo grids.
 ### 2026-09-17 — Align versioned evaluation moments with cell mass
 **Impact**: output-only (evaluation metrics; no trajectory or GPU calculation change)
 **Files**: `scripts/evaluate/io_gpu.py`, `scripts/evaluate/metrics.py`,

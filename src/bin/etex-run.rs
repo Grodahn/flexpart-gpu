@@ -349,6 +349,7 @@ fn main() {
         z_max: manifest.release.z_max,
         mass_kg: manifest.release.mass_kg,
         particle_count,
+        species_masses_kg: None,
         raw: BTreeMap::new(),
     }];
 
@@ -419,9 +420,10 @@ fn main() {
     eprintln!("met streaming initialized");
 
     let forcing = ForwardStepForcing {
-        dry_deposition_velocity_m_s: ParticleForcingField::Uniform(0.0),
-        wet_scavenging_coefficient_s_inv: ParticleForcingField::Uniform(0.0),
+        dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.0)],
+        wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(0.0)],
         wet_precipitating_fraction: ParticleForcingField::Uniform(0.0),
+        decay_constant_s_inv: vec![0.0],
         rho_grad_over_rho: 0.0,
     };
 

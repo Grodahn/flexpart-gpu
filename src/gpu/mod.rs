@@ -10,6 +10,7 @@ pub mod buffers;
 pub mod cbl;
 pub mod compaction;
 pub mod convection;
+pub mod decay;
 pub mod deposition;
 pub mod gridding;
 pub mod hanna;
@@ -48,6 +49,11 @@ pub use compaction::{
 pub use convection::{
     apply_convective_mixing_step_workflow, dispatch_convective_mixing_gpu, GpuConvectionError,
     GpuConvectionWorkflowError,
+};
+pub use decay::{
+    apply_decay_step_gpu, apply_decay_step_workflow, decay_dispatch_needed, dispatch_decay_gpu,
+    dispatch_decay_gpu_with_kernel, encode_decay_gpu_with_kernel, DecayDispatchKernel,
+    DecayStepParams, GpuDecayError, GpuDecayWorkflowError,
 };
 pub use deposition::{
     apply_dry_deposition_step_gpu, apply_dry_deposition_step_workflow,

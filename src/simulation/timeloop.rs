@@ -33,23 +33,21 @@ use crate::config::ReleaseConfig;
 use crate::coords::GridDomain;
 use crate::gpu::{
     accumulate_concentration_grid_gpu, encode_advection_dual_wind_gpu_with_kernel,
-    encode_compaction_with_reorder, encode_dry_deposition_probability_gpu_with_kernel,
-    encode_hanna_params_gpu_with_kernel, encode_langevin_fused_gpu,
-    encode_pbl_diagnostics_gpu_with_kernel,
+    encode_compaction_with_reorder, encode_decay_gpu_with_kernel,
+    encode_dry_deposition_probability_gpu_with_kernel, encode_hanna_params_gpu_with_kernel,
+    encode_langevin_fused_gpu, encode_pbl_diagnostics_gpu_with_kernel,
     encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel,
-    encode_wet_deposition_probability_gpu_with_kernel,
-    AdvectionDispatchKernel, AdvectionDualWindDispatchKernel, CompactionBuffers,
-    CompactionPipelines, ConcentrationGridOutput, ConcentrationGridShape,
-    ConcentrationGriddingParams, DryDepositionDispatchKernel, DryDepositionIoBuffers,
+    encode_wet_deposition_probability_gpu_with_kernel, AdvectionDispatchKernel,
+    AdvectionDualWindDispatchKernel, CompactionBuffers, CompactionPipelines,
+    ConcentrationGridOutput, ConcentrationGridShape, ConcentrationGriddingParams,
+    DecayDispatchKernel, DecayStepParams, DryDepositionDispatchKernel, DryDepositionIoBuffers,
     DryDepositionStepParams, DualWindBuffers, GpuAdvectionError, GpuBufferError,
-    GpuCompactionError, GpuConcentrationGriddingError, GpuContext, GpuDryDepositionError,
-    GpuError, GpuHannaError, GpuLangevinError, GpuLangevinFusedError,
-    GpuPblDiagnosticsError, GpuPblReflectionError, GpuWetDepositionError,
-    HannaDispatchKernel, HannaParamsOutputBuffer,
-    LangevinDispatchKernel, LangevinFusedDispatchKernel, ParticleBuffers,
-    PblBuffers, PblDiagnosticsDispatchKernel,
-    SurfaceFieldBuffer, WetDepositionDispatchKernel, WetDepositionIoBuffers,
-    WetDepositionStepParams, WindBuffers, WindSamplingPath,
+    GpuCompactionError, GpuConcentrationGriddingError, GpuContext, GpuDecayError,
+    GpuDryDepositionError, GpuError, GpuHannaError, GpuLangevinError, GpuLangevinFusedError,
+    GpuPblDiagnosticsError, GpuPblReflectionError, GpuWetDepositionError, HannaDispatchKernel,
+    HannaParamsOutputBuffer, LangevinDispatchKernel, LangevinFusedDispatchKernel, ParticleBuffers,
+    PblBuffers, PblDiagnosticsDispatchKernel, SurfaceFieldBuffer, WetDepositionDispatchKernel,
+    WetDepositionIoBuffers, WetDepositionStepParams, WindBuffers, WindSamplingPath,
 };
 use crate::io::{
     compute_pbl_parameters_from_met, interpolate_surface_fields_linear, Era5GribGridMetadata,
@@ -57,6 +55,7 @@ use crate::io::{
     GribPrefetchHandle, PblComputationOptions, PblMetInputGrids, PblParameterError,
     TemporalInterpolationError, TimeBoundsBehavior,
 };
+use crate::particles::MAX_SPECIES;
 use crate::particles::{ParticleSortError, ParticleSpatialSortOptions, ParticleStore};
 use crate::physics::{LangevinStep, PhiloxCounter, PhiloxKey, VelocityToGridScale};
 use crate::release::{ReleaseError, ReleaseManager};
@@ -344,15 +343,26 @@ impl ParticleForcingField {
     }
 }
 
-/// Timestep forcing fields consumed by deposition and Langevin updates.
+/// Timestep forcing fields consumed by deposition, decay, and Langevin updates.
+///
+/// Deposition and decay forcing are per-species: entry `s` of each vector
+/// applies to particle mass slot `s` (see [`MAX_SPECIES`]). All per-species
+/// vectors must have the same length in `1..=MAX_SPECIES`; GPU uploads pad
+/// unused lanes with zeros.
 #[derive(Debug, Clone)]
 pub struct ForwardStepForcing {
-    /// Dry deposition velocity `vdep` [m/s] for all slots.
-    pub dry_deposition_velocity_m_s: ParticleForcingField,
-    /// Wet scavenging coefficient `lambda` [1/s] for all slots.
-    pub wet_scavenging_coefficient_s_inv: ParticleForcingField,
-    /// Wet precipitating-area fraction [0..1] for all slots.
+    /// Dry deposition velocity `vdep` [m/s] per species.
+    pub dry_deposition_velocity_m_s: Vec<ParticleForcingField>,
+    /// Wet scavenging coefficient `lambda` [1/s] per species.
+    pub wet_scavenging_coefficient_s_inv: Vec<ParticleForcingField>,
+    /// Wet precipitating-area fraction [0..1], shared across species.
+    ///
+    /// The precipitating sub-grid area is geometric (see `get_wetscav.f90`
+    /// `grfraction` logic) and identical for all species of one particle.
     pub wet_precipitating_fraction: ParticleForcingField,
+    /// Radioactive decay constant `lambda` [1/s] per species, uniform across
+    /// particles. Zero means stable.
+    pub decay_constant_s_inv: Vec<f32>,
     /// Density-gradient term `(1/rho) * d(rho)/dz` [1/m] for Langevin vertical drift.
     pub rho_grad_over_rho: f32,
 }
@@ -360,12 +370,188 @@ pub struct ForwardStepForcing {
 impl Default for ForwardStepForcing {
     fn default() -> Self {
         Self {
-            dry_deposition_velocity_m_s: ParticleForcingField::Uniform(0.0),
-            wet_scavenging_coefficient_s_inv: ParticleForcingField::Uniform(0.0),
+            dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.0)],
+            wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(0.0)],
             wet_precipitating_fraction: ParticleForcingField::Uniform(0.0),
+            decay_constant_s_inv: vec![0.0],
             rho_grad_over_rho: 0.0,
         }
     }
+}
+
+impl ForwardStepForcing {
+    /// Number of forced species slots.
+    #[must_use]
+    pub fn species_count(&self) -> usize {
+        self.dry_deposition_velocity_m_s.len()
+    }
+
+    /// Validate per-species vector shapes for one timestep.
+    ///
+    /// All per-species vectors must agree in length within `1..=MAX_SPECIES`.
+    fn check_species_shape(&self) -> Result<usize, TimeLoopError> {
+        let count = self.dry_deposition_velocity_m_s.len();
+        if count == 0 || count > MAX_SPECIES {
+            return Err(TimeLoopError::ForcingLengthMismatch {
+                field: "dry_deposition_velocity_m_s",
+                expected: MAX_SPECIES,
+                actual: count,
+            });
+        }
+        if self.wet_scavenging_coefficient_s_inv.len() != count {
+            return Err(TimeLoopError::ForcingLengthMismatch {
+                field: "wet_scavenging_coefficient_s_inv",
+                expected: count,
+                actual: self.wet_scavenging_coefficient_s_inv.len(),
+            });
+        }
+        if self.decay_constant_s_inv.len() != count {
+            return Err(TimeLoopError::ForcingLengthMismatch {
+                field: "decay_constant_s_inv",
+                expected: count,
+                actual: self.decay_constant_s_inv.len(),
+            });
+        }
+        Ok(count)
+    }
+
+    /// Whether dry deposition can be skipped (all species uniformly zero).
+    #[must_use]
+    fn skip_dry_deposition(&self) -> bool {
+        self.dry_deposition_velocity_m_s
+            .iter()
+            .all(ParticleForcingField::is_zero)
+    }
+
+    /// Whether wet deposition can be skipped.
+    #[must_use]
+    fn skip_wet_deposition(&self) -> bool {
+        self.wet_precipitating_fraction.is_zero()
+            || self
+                .wet_scavenging_coefficient_s_inv
+                .iter()
+                .all(ParticleForcingField::is_zero)
+    }
+
+    /// Whether radioactive decay can be skipped (all species stable).
+    #[must_use]
+    fn skip_decay(&self) -> bool {
+        self.decay_constant_s_inv
+            .iter()
+            .all(|lambda| !lambda.is_finite() || *lambda <= 0.0)
+    }
+
+    /// Decay constants padded to [`MAX_SPECIES`] lanes for GPU uniform upload.
+    #[must_use]
+    fn decay_lanes(&self) -> [f32; MAX_SPECIES] {
+        let mut lanes = [0.0_f32; MAX_SPECIES];
+        for (slot, lambda) in self
+            .decay_constant_s_inv
+            .iter()
+            .enumerate()
+            .take(MAX_SPECIES)
+        {
+            lanes[slot] = lambda.max(0.0);
+        }
+        lanes
+    }
+}
+
+/// Materialize per-species forcing into an interleaved flat buffer.
+///
+/// Layout is particle-major: `scratch[slot * MAX_SPECIES + lane]`. Each entry
+/// of `fields` covers one species lane; missing lanes (fewer entries than
+/// [`MAX_SPECIES`]) are zero-filled. Uniform fast path: when every entry is
+/// [`ParticleForcingField::Uniform`] and matches the cached lanes, the scratch
+/// is already current and `Ok(None)` skips the GPU upload.
+fn materialize_species_forcing_into<'a>(
+    fields: &'a [ParticleForcingField],
+    expected_slots: usize,
+    field: &'static str,
+    scratch: &'a mut Vec<f32>,
+    cached_uniform_lanes: &mut Option<[f32; MAX_SPECIES]>,
+) -> Result<Option<&'a [f32]>, TimeLoopError> {
+    let mut uniform_lanes: [f32; MAX_SPECIES] = [0.0; MAX_SPECIES];
+    let mut all_uniform = true;
+    for (lane, entry) in fields.iter().enumerate() {
+        match entry {
+            ParticleForcingField::Uniform(value) => uniform_lanes[lane] = *value,
+            ParticleForcingField::PerParticle(_) => all_uniform = false,
+        }
+    }
+    let lane_count = fields.len();
+    debug_assert!(lane_count <= MAX_SPECIES);
+
+    if all_uniform {
+        // Bitwise lane comparison: exact replay of the same uniform values
+        // skips the GPU upload; any bit difference re-uploads (conservative).
+        let lanes_unchanged = cached_uniform_lanes
+            .is_some_and(|prev| prev.map(f32::to_bits) == uniform_lanes.map(f32::to_bits));
+        if lanes_unchanged && scratch.len() == expected_slots * MAX_SPECIES {
+            return Ok(None);
+        }
+        if scratch.len() != expected_slots * MAX_SPECIES {
+            scratch.resize(expected_slots * MAX_SPECIES, 0.0);
+        }
+        for slot in 0..expected_slots {
+            let base = slot * MAX_SPECIES;
+            scratch[base..base + MAX_SPECIES].copy_from_slice(&uniform_lanes);
+        }
+        *cached_uniform_lanes = Some(uniform_lanes);
+        return Ok(Some(scratch.as_slice()));
+    }
+
+    *cached_uniform_lanes = None;
+    if scratch.len() != expected_slots * MAX_SPECIES {
+        scratch.resize(expected_slots * MAX_SPECIES, 0.0);
+    }
+    for (lane, entry) in fields.iter().enumerate() {
+        match entry {
+            ParticleForcingField::Uniform(value) => {
+                for slot in 0..expected_slots {
+                    scratch[slot * MAX_SPECIES + lane] = *value;
+                }
+            }
+            ParticleForcingField::PerParticle(values) => {
+                if values.len() != expected_slots {
+                    return Err(TimeLoopError::ForcingLengthMismatch {
+                        field,
+                        expected: expected_slots,
+                        actual: values.len(),
+                    });
+                }
+                for (slot, value) in values.iter().enumerate() {
+                    scratch[slot * MAX_SPECIES + lane] = *value;
+                }
+            }
+        }
+    }
+    // Zero lanes beyond the forced species count (scratch may be reused).
+    for slot in 0..expected_slots {
+        for lane in lane_count..MAX_SPECIES {
+            scratch[slot * MAX_SPECIES + lane] = 0.0;
+        }
+    }
+    Ok(Some(scratch.as_slice()))
+}
+
+/// Reinterpret interleaved species forcing lanes as fixed lane arrays.
+///
+/// `flat` must hold `slot_count * MAX_SPECIES` values in
+/// `slot * MAX_SPECIES + lane` order (see
+/// [`materialize_species_forcing_into`]).
+fn cast_species_lanes(
+    flat: &[f32],
+    slot_count: usize,
+) -> Result<&[[f32; MAX_SPECIES]], TimeLoopError> {
+    if flat.len() != slot_count * MAX_SPECIES {
+        return Err(TimeLoopError::ForcingLengthMismatch {
+            field: "species_forcing_lanes",
+            expected: slot_count * MAX_SPECIES,
+            actual: flat.len(),
+        });
+    }
+    Ok(bytemuck::cast_slice(flat))
 }
 
 /// Result of one orchestrated forward timestep.
@@ -385,10 +571,10 @@ pub struct ForwardStepReport {
     pub released_slots: Vec<usize>,
     /// Active particle count after GPU readback.
     pub active_particle_count: usize,
-    /// Dry-deposition probability per slot (GPU output).
-    pub dry_deposition_probability: Vec<f32>,
-    /// Wet-deposition probability per slot (GPU output).
-    pub wet_deposition_probability: Vec<f32>,
+    /// Dry-deposition probability per slot per species (GPU output).
+    pub dry_deposition_probability: Vec<[f32; MAX_SPECIES]>,
+    /// Wet-deposition probability per slot per species (GPU output).
+    pub wet_deposition_probability: Vec<[f32; MAX_SPECIES]>,
     /// Philox counter after the Langevin update.
     pub next_philox_counter: PhiloxCounter,
     /// Per-section timing breakdown (present only when `FLEXPART_GPU_PROFILE=1`).
@@ -609,6 +795,8 @@ pub enum TimeLoopError {
     GpuPblReflection(#[from] GpuPblReflectionError),
     #[error("GPU dry deposition dispatch failed: {0}")]
     GpuDryDeposition(#[from] GpuDryDepositionError),
+    #[error("GPU decay dispatch failed: {0}")]
+    GpuDecay(#[from] GpuDecayError),
     #[error("GPU wet deposition dispatch failed: {0}")]
     GpuWetDeposition(#[from] GpuWetDepositionError),
     #[error("GPU concentration gridding failed: {0}")]
@@ -685,16 +873,20 @@ pub struct ForwardTimeLoopDriver {
     wet_deposition_io: WetDepositionIoBuffers,
     /// Wet deposition kernel (both production and validation paths).
     wet_deposition_dispatch_kernel: WetDepositionDispatchKernel,
-    /// Reusable CPU-side scratch buffer for dry deposition forcing.
+    /// Radioactive decay kernel (both production and validation paths).
+    decay_dispatch_kernel: DecayDispatchKernel,
+    /// Reusable CPU-side scratch buffer for interleaved per-species dry
+    /// deposition forcing (`slot * MAX_SPECIES + lane` layout).
     dry_forcing_scratch: Vec<f32>,
-    /// Reusable CPU-side scratch buffer for wet scavenging forcing.
+    /// Reusable CPU-side scratch buffer for interleaved per-species wet
+    /// scavenging forcing.
     wet_scavenging_scratch: Vec<f32>,
     /// Reusable CPU-side scratch buffer for wet precipitating fraction forcing.
     wet_fraction_scratch: Vec<f32>,
-    /// Last uploaded uniform dry deposition velocity, if any.
-    dry_uniform_cached: Option<f32>,
-    /// Last uploaded uniform wet scavenging coefficient, if any.
-    wet_scavenging_uniform_cached: Option<f32>,
+    /// Last uploaded uniform dry deposition lanes, if all-species uniform.
+    dry_uniform_cached: Option<[f32; MAX_SPECIES]>,
+    /// Last uploaded uniform wet scavenging lanes, if all-species uniform.
+    wet_scavenging_uniform_cached: Option<[f32; MAX_SPECIES]>,
     /// Last uploaded uniform wet precipitating fraction, if any.
     wet_fraction_uniform_cached: Option<f32>,
     /// Active GRIB prefetch handle, if a background read is in flight.
@@ -769,10 +961,12 @@ impl ForwardTimeLoopDriver {
             };
 
         let zeros = vec![0.0_f32; particle_capacity];
-        let dry_deposition_io = DryDepositionIoBuffers::from_velocity(&gpu_context, &zeros)?;
+        let zeros_species = vec![[0.0_f32; MAX_SPECIES]; particle_capacity];
+        let dry_deposition_io =
+            DryDepositionIoBuffers::from_species_velocities(&gpu_context, &zeros_species)?;
         let dry_deposition_dispatch_kernel = DryDepositionDispatchKernel::new(&gpu_context);
         let wet_deposition_io =
-            WetDepositionIoBuffers::from_inputs(&gpu_context, &zeros, &zeros)?;
+            WetDepositionIoBuffers::from_inputs(&gpu_context, &zeros_species, &zeros)?;
         let wet_deposition_dispatch_kernel = WetDepositionDispatchKernel::new(&gpu_context);
 
         let use_compaction = is_compaction_enabled();
@@ -792,6 +986,7 @@ impl ForwardTimeLoopDriver {
             philox_counter: initial_philox_counter,
             release_manager,
             particle_store,
+            decay_dispatch_kernel: DecayDispatchKernel::new(&gpu_context),
             gpu_context,
             particle_buffers,
             wind_buffers: None,
@@ -1001,48 +1196,50 @@ impl ForwardTimeLoopDriver {
 
         let step_dt_seconds = timestep_seconds_f32(self.config.timestep_seconds)?;
 
-        let skip_dry_deposition = forcing.dry_deposition_velocity_m_s.is_zero();
-        let skip_wet_deposition = forcing.wet_scavenging_coefficient_s_inv.is_zero()
-            && forcing.wet_precipitating_fraction.is_zero();
+        forcing.check_species_shape()?;
+        let skip_dry_deposition = forcing.skip_dry_deposition();
+        let skip_wet_deposition = forcing.skip_wet_deposition();
+        let skip_decay = forcing.skip_decay();
 
         let t = profiling.then(Instant::now);
         // Use buffer capacity (not dispatch count) for forcing materialization:
         // deposition I/O buffers were pre-allocated for the full capacity.
+        // Species forcing uploads as interleaved `vec4` lanes
+        // (`slot * MAX_SPECIES + lane`); plain `&[f32]` slices need a cast
+        // through the species-lane helper first.
         let slot_count = self.particle_buffers.capacity();
         if !skip_dry_deposition {
-            let dry_velocity = forcing
-                .dry_deposition_velocity_m_s
-                .materialize_into(
-                    slot_count,
-                    "dry_deposition_velocity_m_s",
-                    &mut self.dry_forcing_scratch,
-                    &mut self.dry_uniform_cached,
-                )?;
+            let dry_velocity = materialize_species_forcing_into(
+                &forcing.dry_deposition_velocity_m_s,
+                slot_count,
+                "dry_deposition_velocity_m_s",
+                &mut self.dry_forcing_scratch,
+                &mut self.dry_uniform_cached,
+            )?;
             if let Some(dry_velocity) = dry_velocity {
+                let lanes = cast_species_lanes(dry_velocity, slot_count)?;
                 self.dry_deposition_io
-                    .upload_deposition_velocity(&self.gpu_context, dry_velocity)?;
+                    .upload_deposition_velocity(&self.gpu_context, lanes)?;
             }
         }
         if !skip_wet_deposition {
-            let wet_scavenging = forcing
-                .wet_scavenging_coefficient_s_inv
-                .materialize_into(
-                    slot_count,
-                    "wet_scavenging_coefficient_s_inv",
-                    &mut self.wet_scavenging_scratch,
-                    &mut self.wet_scavenging_uniform_cached,
-                )?;
-            let wet_fraction = forcing
-                .wet_precipitating_fraction
-                .materialize_into(
-                    slot_count,
-                    "wet_precipitating_fraction",
-                    &mut self.wet_fraction_scratch,
-                    &mut self.wet_fraction_uniform_cached,
-                )?;
+            let wet_scavenging = materialize_species_forcing_into(
+                &forcing.wet_scavenging_coefficient_s_inv,
+                slot_count,
+                "wet_scavenging_coefficient_s_inv",
+                &mut self.wet_scavenging_scratch,
+                &mut self.wet_scavenging_uniform_cached,
+            )?;
+            let wet_fraction = forcing.wet_precipitating_fraction.materialize_into(
+                slot_count,
+                "wet_precipitating_fraction",
+                &mut self.wet_fraction_scratch,
+                &mut self.wet_fraction_uniform_cached,
+            )?;
             if let Some(wet_scavenging) = wet_scavenging {
+                let lanes = cast_species_lanes(wet_scavenging, slot_count)?;
                 self.wet_deposition_io
-                    .upload_scavenging_coefficient(&self.gpu_context, wet_scavenging)?;
+                    .upload_scavenging_coefficient(&self.gpu_context, lanes)?;
             }
             if let Some(wet_fraction) = wet_fraction {
                 self.wet_deposition_io
@@ -1071,6 +1268,12 @@ impl ForwardTimeLoopDriver {
         };
         let wet_params = WetDepositionStepParams {
             dt_seconds: step_dt_seconds,
+        };
+        // Radioactive decay commutes with deposition survival factors; it runs
+        // last so deposition probability outputs reflect pre-decay masses.
+        let decay_params = DecayStepParams {
+            dt_seconds: step_dt_seconds,
+            decay_constants_s_inv: forcing.decay_lanes(),
         };
         let t = profiling.then(Instant::now);
         let next_philox_counter = {
@@ -1181,6 +1384,15 @@ impl ForwardTimeLoopDriver {
                     &self.wet_deposition_io,
                     wet_params,
                     &self.wet_deposition_dispatch_kernel,
+                    &mut encoder,
+                )?;
+            }
+            if !skip_decay {
+                encode_decay_gpu_with_kernel(
+                    &self.gpu_context,
+                    &self.particle_buffers,
+                    decay_params,
+                    &self.decay_dispatch_kernel,
                     &mut encoder,
                 )?;
             }
@@ -1482,16 +1694,20 @@ pub struct BackwardTimeLoopDriver {
     dry_deposition_dispatch_kernel: DryDepositionDispatchKernel,
     wet_deposition_io: WetDepositionIoBuffers,
     wet_deposition_dispatch_kernel: WetDepositionDispatchKernel,
-    /// Reusable CPU-side scratch buffer for dry deposition forcing.
+    /// Radioactive decay kernel.
+    decay_dispatch_kernel: DecayDispatchKernel,
+    /// Reusable CPU-side scratch buffer for interleaved per-species dry
+    /// deposition forcing (`slot * MAX_SPECIES + lane` layout).
     dry_forcing_scratch: Vec<f32>,
-    /// Reusable CPU-side scratch buffer for wet scavenging forcing.
+    /// Reusable CPU-side scratch buffer for interleaved per-species wet
+    /// scavenging forcing.
     wet_scavenging_scratch: Vec<f32>,
     /// Reusable CPU-side scratch buffer for wet precipitating fraction forcing.
     wet_fraction_scratch: Vec<f32>,
-    /// Last uploaded uniform dry deposition velocity, if any.
-    dry_uniform_cached: Option<f32>,
-    /// Last uploaded uniform wet scavenging coefficient, if any.
-    wet_scavenging_uniform_cached: Option<f32>,
+    /// Last uploaded uniform dry deposition lanes, if all-species uniform.
+    dry_uniform_cached: Option<[f32; MAX_SPECIES]>,
+    /// Last uploaded uniform wet scavenging lanes, if all-species uniform.
+    wet_scavenging_uniform_cached: Option<[f32; MAX_SPECIES]>,
     /// Last uploaded uniform wet precipitating fraction, if any.
     wet_fraction_uniform_cached: Option<f32>,
 }
@@ -1536,11 +1752,14 @@ impl BackwardTimeLoopDriver {
         let langevin_dispatch_kernel = LangevinDispatchKernel::new(&gpu_context);
 
         let zeros = vec![0.0_f32; particle_capacity];
-        let dry_deposition_io = DryDepositionIoBuffers::from_velocity(&gpu_context, &zeros)?;
+        let zeros_species = vec![[0.0_f32; MAX_SPECIES]; particle_capacity];
+        let dry_deposition_io =
+            DryDepositionIoBuffers::from_species_velocities(&gpu_context, &zeros_species)?;
         let dry_deposition_dispatch_kernel = DryDepositionDispatchKernel::new(&gpu_context);
         let wet_deposition_io =
-            WetDepositionIoBuffers::from_inputs(&gpu_context, &zeros, &zeros)?;
+            WetDepositionIoBuffers::from_inputs(&gpu_context, &zeros_species, &zeros)?;
         let wet_deposition_dispatch_kernel = WetDepositionDispatchKernel::new(&gpu_context);
+        let decay_dispatch_kernel = DecayDispatchKernel::new(&gpu_context);
 
         Ok(Self {
             config,
@@ -1567,6 +1786,7 @@ impl BackwardTimeLoopDriver {
             dry_deposition_dispatch_kernel,
             wet_deposition_io,
             wet_deposition_dispatch_kernel,
+            decay_dispatch_kernel,
             dry_forcing_scratch: Vec::with_capacity(particle_capacity),
             wet_scavenging_scratch: Vec::with_capacity(particle_capacity),
             wet_fraction_scratch: Vec::with_capacity(particle_capacity),
@@ -1661,45 +1881,44 @@ impl BackwardTimeLoopDriver {
 
         let dt_seconds = timestep_seconds_f32(self.config.timestep_seconds)?;
 
-        let skip_dry_deposition = forcing.dry_deposition_velocity_m_s.is_zero();
-        let skip_wet_deposition = forcing.wet_scavenging_coefficient_s_inv.is_zero()
-            && forcing.wet_precipitating_fraction.is_zero();
+        forcing.check_species_shape()?;
+        let skip_dry_deposition = forcing.skip_dry_deposition();
+        let skip_wet_deposition = forcing.skip_wet_deposition();
+        let skip_decay = forcing.skip_decay();
 
         let slot_count = self.particle_buffers.capacity();
         if !skip_dry_deposition {
-            let dry_velocity = forcing
-                .dry_deposition_velocity_m_s
-                .materialize_into(
-                    slot_count,
-                    "dry_deposition_velocity_m_s",
-                    &mut self.dry_forcing_scratch,
-                    &mut self.dry_uniform_cached,
-                )?;
+            let dry_velocity = materialize_species_forcing_into(
+                &forcing.dry_deposition_velocity_m_s,
+                slot_count,
+                "dry_deposition_velocity_m_s",
+                &mut self.dry_forcing_scratch,
+                &mut self.dry_uniform_cached,
+            )?;
             if let Some(dry_velocity) = dry_velocity {
+                let lanes = cast_species_lanes(dry_velocity, slot_count)?;
                 self.dry_deposition_io
-                    .upload_deposition_velocity(&self.gpu_context, dry_velocity)?;
+                    .upload_deposition_velocity(&self.gpu_context, lanes)?;
             }
         }
         if !skip_wet_deposition {
-            let wet_scavenging = forcing
-                .wet_scavenging_coefficient_s_inv
-                .materialize_into(
-                    slot_count,
-                    "wet_scavenging_coefficient_s_inv",
-                    &mut self.wet_scavenging_scratch,
-                    &mut self.wet_scavenging_uniform_cached,
-                )?;
-            let wet_fraction = forcing
-                .wet_precipitating_fraction
-                .materialize_into(
-                    slot_count,
-                    "wet_precipitating_fraction",
-                    &mut self.wet_fraction_scratch,
-                    &mut self.wet_fraction_uniform_cached,
-                )?;
+            let wet_scavenging = materialize_species_forcing_into(
+                &forcing.wet_scavenging_coefficient_s_inv,
+                slot_count,
+                "wet_scavenging_coefficient_s_inv",
+                &mut self.wet_scavenging_scratch,
+                &mut self.wet_scavenging_uniform_cached,
+            )?;
+            let wet_fraction = forcing.wet_precipitating_fraction.materialize_into(
+                slot_count,
+                "wet_precipitating_fraction",
+                &mut self.wet_fraction_scratch,
+                &mut self.wet_fraction_uniform_cached,
+            )?;
             if let Some(wet_scavenging) = wet_scavenging {
+                let lanes = cast_species_lanes(wet_scavenging, slot_count)?;
                 self.wet_deposition_io
-                    .upload_scavenging_coefficient(&self.gpu_context, wet_scavenging)?;
+                    .upload_scavenging_coefficient(&self.gpu_context, lanes)?;
             }
             if let Some(wet_fraction) = wet_fraction {
                 self.wet_deposition_io
@@ -1794,6 +2013,20 @@ impl BackwardTimeLoopDriver {
                     &self.wet_deposition_io,
                     WetDepositionStepParams { dt_seconds },
                     &self.wet_deposition_dispatch_kernel,
+                    &mut encoder,
+                )?;
+            }
+
+            // B-01 MVP: decay uses positive dt magnitude like deposition.
+            if !skip_decay {
+                encode_decay_gpu_with_kernel(
+                    &self.gpu_context,
+                    &self.particle_buffers,
+                    DecayStepParams {
+                        dt_seconds,
+                        decay_constants_s_inv: forcing.decay_lanes(),
+                    },
+                    &self.decay_dispatch_kernel,
                     &mut encoder,
                 )?;
             }
@@ -1930,6 +2163,7 @@ fn build_receptor_release_configs(
             z_max: receptor.z_m,
             mass_kg: receptor.mass_kg,
             particle_count: receptor.particle_count,
+            species_masses_kg: None,
             raw: BTreeMap::new(),
         })
         .collect()

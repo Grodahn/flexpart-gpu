@@ -430,6 +430,7 @@ fn cpu_gpu_full_pipeline_timeloop() {
         z_max: 2.0,
         mass_kg: 1.0,
         particle_count: particle_count as u64,
+        species_masses_kg: None,
         raw: BTreeMap::new(),
     }];
     let release_grid = GridDomain {
@@ -470,11 +471,14 @@ fn cpu_gpu_full_pipeline_timeloop() {
     };
 
     let forcing = ForwardStepForcing {
-        dry_deposition_velocity_m_s: flexpart_gpu::simulation::ParticleForcingField::Uniform(0.003),
-        wet_scavenging_coefficient_s_inv: flexpart_gpu::simulation::ParticleForcingField::Uniform(
-            5.0e-5,
-        ),
+        dry_deposition_velocity_m_s: vec![flexpart_gpu::simulation::ParticleForcingField::Uniform(
+            0.003,
+        )],
+        wet_scavenging_coefficient_s_inv: vec![
+            flexpart_gpu::simulation::ParticleForcingField::Uniform(5.0e-5),
+        ],
         wet_precipitating_fraction: flexpart_gpu::simulation::ParticleForcingField::Uniform(0.1),
+        decay_constant_s_inv: vec![0.0],
         rho_grad_over_rho: 0.0,
     };
 
@@ -548,6 +552,7 @@ fn gpu_pipeline_is_deterministic_across_runs() {
             z_max: 1.0,
             mass_kg: 1.0,
             particle_count: 50,
+            species_masses_kg: None,
             raw: BTreeMap::new(),
         }];
         let release_grid = GridDomain {

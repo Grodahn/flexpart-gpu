@@ -16,3 +16,5 @@ mod scientific_invariants;
 mod software_advection;
 #[path = "integration/source_receptor_consistency.rs"]
 mod source_receptor_consistency;
+#[path = "integration/species_nuclide.rs"]
+mod species_nuclide;

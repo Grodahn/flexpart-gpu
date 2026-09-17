@@ -606,15 +606,18 @@ impl EtexValidationHarness {
         };
 
         let step_forcing = ForwardStepForcing {
-            dry_deposition_velocity_m_s: crate::simulation::ParticleForcingField::Uniform(
+            dry_deposition_velocity_m_s: vec![crate::simulation::ParticleForcingField::Uniform(
                 forcing.dry_deposition_velocity_m_s,
-            ),
-            wet_scavenging_coefficient_s_inv: crate::simulation::ParticleForcingField::Uniform(
-                forcing.wet_scavenging_coefficient_s_inv,
-            ),
+            )],
+            wet_scavenging_coefficient_s_inv: vec![
+                crate::simulation::ParticleForcingField::Uniform(
+                    forcing.wet_scavenging_coefficient_s_inv,
+                ),
+            ],
             wet_precipitating_fraction: crate::simulation::ParticleForcingField::Uniform(
                 forcing.wet_precipitating_fraction,
             ),
+            decay_constant_s_inv: vec![0.0],
             rho_grad_over_rho: forcing.rho_grad_over_rho,
         };
 

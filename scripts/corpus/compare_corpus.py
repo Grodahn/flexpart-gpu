@@ -2,13 +2,25 @@
 """Compare corpus candidate outputs and, when present, Fortran oracle outputs.
 
 Reads per-seed candidate JSON from target/corpus/candidate/<CASE>/seed_*.json
-(written by src/bin/corpus-run.rs) and optional oracle particle dumps from
-target/corpus/oracle/<CASE>/particles.json (written by scripts/run-corpus.sh
-oracle step via partposit parsing or grid_conc resampling).
+(written by src/bin/corpus-run.rs, including per-seed deposited-mass
+reservoirs) and optional oracle summaries from
+target/corpus/oracle/<CASE>/oracle_summary.json (written by
+scripts/corpus/decode_oracle_output.py from the preserved raw
+``header``/``grid_conc_*`` oracle outputs).
+
+FLEXPART 11.1 writes binary concentration output only; per-particle
+partposit dumps are NetCDF-only in v11.1, so the oracle side is compared on
+the shared output grid: candidate end-state particles are binned with the
+oracle OUTGRID operator and correlated against the decoded oracle
+concentration field. Oracle budget reservoirs (airborne, dry-deposited,
+wet-deposited grid sums) come from the same decoded slices.
 
 Computes machine-readable metrics per implemented case:
   mass conservation, center of mass, covariance/eigenvalues, vertical
   quantiles, gridded overlap, field correlation and process budgets.
+Budget closure is reported per seed (candidate) and per run (oracle) and is
+only marked closed when every reservoir is present; closure never implies
+cross-model parity.
 
 Oracle comparisons are diagnostic only. No threshold in
 fixtures/corpus/thresholds.json turns them into a parity pass, and this
@@ -105,51 +117,57 @@ def ensemble_stats(described):
     return stats
 
 
-def grid_overlap_and_correlation(candidate_seeds, oracle_particles, grid):
-    """Shared coarse-grid overlap and correlation (diagnostic).
-
-    Both samples are binned with the same operator: lon/lat cells from the
-    case domain and the candidate OUTHEIGHTS levels. Returns None when no
-    oracle sample is available.
-    """
-    if not oracle_particles:
-        return None
+def bin_index(lon, lat, z, grid):
+    # Shared OUTGRID binning operator. The vertical rule mirrors the oracle:
+    # FLEXPART assigns the first level with outheight strictly greater than
+    # the particle height (output_mod.f90:725 `if (outheight(kz).gt.z)`,
+    # same rule in outgrid_mod.f90:625), so boundary heights bin upward.
     nx, ny = grid["nx"], grid["ny"]
     heights = grid["heights_m"]
     nz = len(heights)
+    ix = int((lon - grid["xlon0"]) / grid["dx"])
+    iy = int((lat - grid["ylat0"]) / grid["dy"])
+    ix = min(max(ix, 0), nx - 1)
+    iy = min(max(iy, 0), ny - 1)
+    iz = nz - 1
+    for k, h in enumerate(heights):
+        if h > z:
+            iz = k
+            break
+    return (ix * ny + iy) * nz + iz
 
-    def bin_index(lon, lat, z):
-        ix = int((lon - grid["xlon0"]) / grid["dx"])
-        iy = int((lat - grid["ylat0"]) / grid["dy"])
-        ix = min(max(ix, 0), nx - 1)
-        iy = min(max(iy, 0), ny - 1)
-        iz = nz - 1
-        for k, h in enumerate(heights):
-            if z <= h:
-                iz = k
-                break
-        return (ix * ny + iy) * nz + iz
 
-    cells = nx * ny * nz
-    oracle_counts = [0] * cells
-    for p in oracle_particles:
-        oracle_counts[bin_index(p["lon_deg"], p["lat_deg"], p["z_m"])] += 1
-    oracle_total = sum(oracle_counts) or 1
-    oracle_frac = [c / oracle_total for c in oracle_counts]
+def grid_overlap_and_correlation(candidate_seeds, oracle_frac, grid):
+    """Candidate particles vs decoded oracle concentration on one grid.
+
+    Candidate end-state particle masses are binned with the oracle OUTGRID
+    operator (mass-weighted: deposited particles carry less mass); the
+    oracle side is the decoded mass-proportional concentration field. Both
+    sides are normalized to fractions before overlap and Pearson
+    correlation. End-state snapshot vs time average is a known window
+    mismatch, so this stays diagnostic; it never gates parity.
+    """
+    cells = grid["nx"] * grid["ny"] * len(grid["heights_m"])
+    if not oracle_frac or len(oracle_frac) != cells:
+        return None
+    oracle_total = sum(oracle_frac)
+    if oracle_total <= 0:
+        return None
+    oracle_norm = [c / oracle_total for c in oracle_frac]
 
     per_seed = []
     for seed in candidate_seeds:
-        counts = [0] * cells
+        mass = [0.0] * cells
         for p in seed["particles"]:
-            counts[bin_index(p["lon_deg"], p["lat_deg"], p["z_m"])] += 1
-        total = sum(counts) or 1
-        frac = [c / total for c in counts]
-        overlap = sum(min(a, b) for a, b in zip(frac, oracle_frac))
+            mass[bin_index(p["lon_deg"], p["lat_deg"], p["z_m"], grid)] += p["mass_kg"]
+        total = sum(mass) or 1.0
+        frac = [c / total for c in mass]
+        overlap = sum(min(a, b) for a, b in zip(frac, oracle_norm))
         mean_a = sum(frac) / cells
-        mean_b = sum(oracle_frac) / cells
-        cov = sum((a - mean_a) * (b - mean_b) for a, b in zip(frac, oracle_frac)) / cells
+        mean_b = sum(oracle_norm) / cells
+        cov = sum((a - mean_a) * (b - mean_b) for a, b in zip(frac, oracle_norm)) / cells
         var_a = sum((a - mean_a) ** 2 for a in frac) / cells
-        var_b = sum((b - mean_b) ** 2 for b in oracle_frac) / cells
+        var_b = sum((b - mean_b) ** 2 for b in oracle_norm) / cells
         corr = cov / math.sqrt(var_a * var_b) if var_a > 0 and var_b > 0 else 0.0
         per_seed.append({"overlap": overlap, "field_correlation": corr})
     overlap_mean = sum(s["overlap"] for s in per_seed) / len(per_seed)
@@ -159,7 +177,109 @@ def grid_overlap_and_correlation(candidate_seeds, oracle_particles, grid):
         "per_seed": per_seed,
         "overlap_mean": overlap_mean,
         "field_correlation_mean": corr_mean,
-        "note": "Diagnostic only; not a parity gate.",
+        "window_note": "Candidate end-state snapshot vs oracle time-averaged "
+        "concentration window; diagnostic only, not a parity gate.",
+    }
+
+
+def load_oracle_summaries(oracle_dir):
+    """Load all decoded oracle summaries keyed by case id."""
+    summaries = {}
+    oracle_dir = Path(oracle_dir)
+    if not oracle_dir.is_dir():
+        return summaries
+    for summary_file in sorted(oracle_dir.glob("*/oracle_summary.json")):
+        try:
+            summaries[summary_file.parent.name] = json.loads(summary_file.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+    return summaries
+
+
+def same_grid(header_a, header_b):
+    return (
+        header_a["numxgrid"] == header_b["numxgrid"]
+        and header_a["numygrid"] == header_b["numygrid"]
+        and header_a["numzgrid"] == header_b["numzgrid"]
+        and abs(header_a["dxout"] - header_b["dxout"]) < 1e-9
+        and abs(header_a["dyout"] - header_b["dyout"]) < 1e-9
+    )
+
+
+def calibrate_oracle_scale(summaries, target_header, closure_tolerance):
+    """Calibrate mass-proportional units per released gram from an inert run.
+
+    Raw grid sums are not mass-conserving across windows when the plume
+    redistributes vertically, so no run-internal scale is used. An inert
+    tracer run (zero dry/wet reservoirs in both slices) on the identical
+    OUTGRID instead gives a conserved scale: its volume/latitude-weighted
+    airborne reservoirs coincide across windows (self-consistency gate) and
+    their mean per released gram calibrates every deposition case sharing
+    the grid. Returns (scale, source_case, self_consistency_error) or
+    (None, reason, None).
+    """
+    for case_id, summary in summaries.items():
+        header = summary["header"]
+        if not same_grid(header, target_header):
+            continue
+        first_w = summary["first_slice"]["weighted"]
+        last_w = summary["last_slice"]["weighted"]
+        if (
+            first_w["dry_deposited"] != 0.0
+            or first_w["wet_deposited"] != 0.0
+            or last_w["dry_deposited"] != 0.0
+            or last_w["wet_deposited"] != 0.0
+        ):
+            continue  # not inert; cannot calibrate
+        if first_w["airborne"] <= 0:
+            continue
+        consistency = abs(last_w["airborne"] - first_w["airborne"]) / first_w["airborne"]
+        if consistency > closure_tolerance:
+            continue
+        scale = (first_w["airborne"] + last_w["airborne"]) / 2.0 / summary["release_mass_g"]
+        return scale, case_id, consistency
+    return None, "no inert same-grid oracle run with closed self-consistency", None
+
+
+def candidate_process_budget(seeds, closure_tolerance):
+    """Per-seed airborne/deposited reservoirs with gated closure.
+
+    Reservoirs are recorded separately by the runner from driver-reported
+    per-slot removal probabilities (dry step before wet step), never inferred
+    as initial-minus-airborne. Closure is marked closed per seed only when
+    all three reservoirs are present and recover the initial mass.
+    """
+    per_seed = []
+    for seed in seeds:
+        metrics = seed["metrics"]
+        airborne = metrics["total_mass_kg"]
+        initial = metrics["initial_mass_kg"]
+        dry = seed.get("deposited_dry_kg")
+        wet = seed.get("deposited_wet_kg")
+        closure = seed.get("budget_closure_rel_error")
+        status = seed.get("budget_status", "open")
+        complete = dry is not None and wet is not None and closure is not None
+        if not complete:
+            status = "open (reservoirs missing)"
+        per_seed.append(
+            {
+                "seed_index": seed["seed_index"],
+                "initial_mass_kg": initial,
+                "airborne_kg": airborne,
+                "dry_deposited_kg": dry,
+                "wet_deposited_kg": wet,
+                "closure_rel_error": closure,
+                "status": status if complete else "open (reservoirs missing)",
+            }
+        )
+    closed = [s for s in per_seed if s["status"] == "closed"]
+    return {
+        "per_seed": per_seed,
+        "closure_tolerance_rel": closure_tolerance,
+        "closed_seeds": len(closed),
+        "total_seeds": len(per_seed),
+        "note": "Dry removal is charged before wet removal each step, matching "
+        "driver dispatch order. Closure never implies cross-model parity.",
     }
 
 
@@ -172,13 +292,10 @@ def main():
 
     candidate_dir = Path(args.candidate_dir)
     oracle_dir = Path(args.oracle_dir) if args.oracle_dir else None
-    corpus_index = json.loads(
-        (candidate_dir.parents[2] / "fixtures" / "corpus" / "corpus.json").read_text(
-            encoding="utf-8"
-        )
-        if (candidate_dir.parents[2] / "fixtures" / "corpus" / "corpus.json").exists()
-        else Path("fixtures/corpus/corpus.json").read_text(encoding="utf-8")
-    )
+    repo_root = Path(__file__).resolve().parents[2]
+    corpus_index = json.loads((repo_root / "fixtures" / "corpus" / "corpus.json").read_text(encoding="utf-8"))
+    thresholds = json.loads((repo_root / "fixtures" / "corpus" / "thresholds.json").read_text(encoding="utf-8"))
+    closure_tolerance = thresholds["thresholds"]["budget_closure_rel"]["value"]
 
     report = {
         "status": "DIAGNOSTIC_NO_PARITY_VERDICT",
@@ -186,6 +303,7 @@ def main():
         "no green corpus metric overrides it.",
         "cases": {},
     }
+    oracle_summaries = load_oracle_summaries(oracle_dir) if oracle_dir is not None else {}
     for case in corpus_index["cases"]:
         case_id = case["id"]
         if case["status"] != "implemented":
@@ -217,46 +335,79 @@ def main():
                 str(p.resolve()): sha256(p) for p in sorted(case_dir.glob("seed_*.json"))
             },
         }
-        # Process budget for deposition cases.
-        if case_id in ("DRY-007", "WET-008"):
-            initial = described[0]["total_mass_kg"]  # placeholder; runner records per-seed
-            entry["process_budget"] = {
-                "note": "Airborne mass per seed is reported; deposited = initial - airborne. "
-                "Isolated analytic checks live in tests/integration/corpus.rs and "
-                "tests/integration/deposition_decay.rs within versioned tolerances.",
-                "initial_mass_kg": seeds[0]["metrics"]["initial_mass_kg"],
-            }
-        # Oracle pairing when available.
-        oracle_particles = None
-        if oracle_dir is not None:
-            oracle_file = oracle_dir / case_id / "particles.json"
-            if oracle_file.is_file():
-                oracle_particles = json.loads(oracle_file.read_text(encoding="utf-8"))["particles"]
-                entry["oracle_files"] = {str(oracle_file.resolve()): sha256(oracle_file)}
-            else:
-                entry["oracle"] = "oracle_output_missing (run scripts/run-corpus.sh oracle)"
-        if oracle_particles is not None:
+        # Process budget with separately recorded reservoirs (all cases;
+        # deposition cases exercise non-zero removal paths).
+        entry["process_budget"] = candidate_process_budget(seeds, closure_tolerance)
+        # Oracle pairing when a decoded summary is available.
+        oracle_summary = oracle_summaries.get(case_id)
+        if oracle_summary is not None:
+            summary_file = oracle_dir / case_id / "oracle_summary.json"
+            entry["oracle_files"] = {str(summary_file.resolve()): sha256(summary_file)}
+            for raw_name, raw_hash in oracle_summary.get("raw_sha256", {}).items():
+                entry["oracle_files"][f"<raw>/{raw_name}"] = raw_hash
+        elif oracle_dir is not None:
+            entry["oracle"] = "oracle_output_missing (run scripts/run-corpus.sh oracle)"
+        if oracle_summary is not None:
+            header = oracle_summary["header"]
             grid = {
-                "nx": 32,
-                "ny": 32,
-                "dx": 0.1,
-                "dy": 0.1,
-                "xlon0": 9.5,
-                "ylat0": 8.5,
-                "heights_m": [100.0, 250.0, 500.0, 750.0, 1000.0, 1500.0, 2000.0, 2500.0, 3000.0, 5000.0],
+                "nx": header["numxgrid"],
+                "ny": header["numygrid"],
+                "dx": header["dxout"],
+                "dy": header["dyout"],
+                "xlon0": header["outlon0"],
+                "ylat0": header["outlat0"],
+                "heights_m": header["outheights"],
             }
-            if case_id == "ADV-ANA-001":
-                grid = {
-                    "nx": 64,
-                    "ny": 64,
-                    "dx": 0.1,
-                    "dy": 0.1,
-                    "xlon0": 6.0,
-                    "ylat0": 47.0,
-                    "heights_m": [100.0, 500.0, 1000.0, 2000.0, 5000.0],
-                }
-            comparison = grid_overlap_and_correlation(seeds, oracle_particles, grid)
+            last_w = oracle_summary["last_slice"]["weighted"]
+            # Primary oracle closure: mass-proportional reservoirs against
+            # the calibrated scale from an inert same-grid run. Raw grid sums
+            # are never closed directly: they mix window-averaged
+            # concentration with cumulative deposition and drift up to ~20%
+            # across windows with zero removal (WIND-UNI-002).
+            scale, calib_from, calib_consistency = calibrate_oracle_scale(
+                oracle_summaries, oracle_summary["header"], closure_tolerance
+            )
+            if scale is not None:
+                expected = scale * oracle_summary["release_mass_g"]
+                total = last_w["airborne"] + last_w["dry_deposited"] + last_w["wet_deposited"]
+                cal_closure = abs(total - expected) / expected
+                oracle_status = (
+                    "closed"
+                    if cal_closure <= closure_tolerance
+                    else "open (closure exceeds versioned bound)"
+                )
+            else:
+                cal_closure = None
+                oracle_status = f"open ({calib_from})"
+            deposited = last_w["dry_deposited"] + last_w["wet_deposited"]
+            entry["oracle_budget"] = {
+                "release_mass_g": oracle_summary["release_mass_g"],
+                "reservoirs_weighted": last_w,
+                "calibration_from": calib_from,
+                "scale_weighted_per_g": scale,
+                "calibration_self_consistency_rel_error": calib_consistency,
+                "calibrated_closure_rel_error": cal_closure,
+                "deposited_split_of_deposited": {
+                    "dry": (last_w["dry_deposited"] / deposited) if deposited > 0 else None,
+                    "wet": (last_w["wet_deposited"] / deposited) if deposited > 0 else None,
+                },
+                "status": oracle_status,
+                "closure_tolerance_rel": closure_tolerance,
+                "note": "Oracle reservoirs are mass-proportional weighted sums "
+                "(concentration by layer thickness and cos(latitude), "
+                "deposition by cos(latitude)) sharing one run scale; "
+                "candidate budgets close in kilograms. Deposited-split "
+                "fractions are exact; absolute masses are not converted "
+                "across models.",
+            }
+            # Candidate end-state particle masses binned to the oracle
+            # OUTGRID vs the decoded mass-proportional oracle field.
+            comparison = grid_overlap_and_correlation(
+                seeds, oracle_summary.get("mass_proportional_fractions"), grid
+            )
             if comparison is not None:
+                comparison["oracle_center_of_mass"] = oracle_summary.get("center_of_mass")
+                comparison["oracle_vertical_profile_native"] = oracle_summary.get("vertical_profile_native")
                 entry["oracle_comparison"] = comparison
         report["cases"][case_id] = entry
 

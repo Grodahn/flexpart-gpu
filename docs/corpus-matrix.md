@@ -21,9 +21,20 @@ overrides it.
   pipeline.
 - **Oracle path**: `production` means the pinned Fortran `FLEXPART`
   executable in the in-fork Docker image
-  (`docker/docker-compose.fortran.yml`) with versioned
-  `fixtures/corpus/fortran/<CASE>/` inputs and synthetic GRIB meteorology
-  from the single `scripts/generate_synthetic_grib.py` path.
+  (`docker/docker-compose.fortran.yml`, with `target/corpus` mounted as
+  `/workspace/corpus`) with versioned `fixtures/corpus/fortran/<CASE>/`
+  inputs and synthetic GRIB meteorology from the single
+  `scripts/generate_synthetic_grib.py` path. Every oracle
+  release/grid setting is derived from the matching case JSON
+  (`scripts/corpus/generate_fortran_fixtures.py`, recorded per case in
+  `INPUT_DERIVATION.json`, checked by
+  `scripts/corpus/audit_corpus_inputs.py`): OUTGRID mirrors the case domain,
+  RELEASES mirrors the case release with MASS converted kg to g
+  (`MASS_g = mass_kg * 1000`; FLEXPART MASS is in grams). FLEXPART 11.1
+  writes binary concentration output only (`grid_conc_*`); per-particle
+  partposit dumps are NetCDF-only in v11.1, so the decoded
+  `oracle_summary.json` (concentration, dry/wet deposition grid sums,
+  vertical profile, center of mass) is the paired oracle artifact.
 - **Status**: `implemented` runs on both programs (or documents a precise
   single-program limitation without claiming parity). `blocked` names a
   verifiable dependency and is never reported as passed.
@@ -62,12 +73,26 @@ overrides it.
 `scripts/corpus/compare_corpus.py` computes machine-readable metrics per
 implemented case: total mass and conservation error, center of mass,
 covariance with eigenvalues, vertical quantiles (p10/p50/p90, mean/std),
-gridded overlap and field correlation (where a shared grid exists), and
-process budgets (airborne vs deposited/decayed where applicable). Oracle
+gridded overlap and field correlation on the shared oracle OUTGRID
+(candidate end-state particles binned with the oracle grid operator vs the
+decoded oracle concentration field; window mismatch documented), and process
+budgets with separately recorded reservoirs. Candidate budgets charge dry
+removal before wet removal each step from driver-reported per-slot
+probabilities; oracle budgets use the cumulative dry/wet deposition grid
+sums closed against the run-internal S0 scale. Closure is gated per seed
+and per run by the versioned `budget_closure_rel` bound and only when every
+reservoir is present; it never implies cross-model parity. Oracle
 comparisons are diagnostic; no threshold in `thresholds.json` turns them
 into a parity pass.
 
-`scripts/run-corpus.sh all` records `target/corpus/run_manifest.json` with
-SHA-256 of every input and raw output, oracle commit and cleanliness,
-candidate revision and dirtiness, Fortran compiler/build, adapter identity
-and Philox seeds. Candidate outputs are never used as references.
+`scripts/run-corpus.sh compare` asserts input equality
+(`audit_corpus_inputs.py`) before comparing any output. `scripts/run-corpus.sh
+all` is fail-closed: candidate, oracle, comparison and manifest steps are
+all required, and any failure aborts the workflow (candidate-only execution
+stays under the explicit `candidate` subcommand). It records
+`target/corpus/run_manifest.json` with SHA-256 of the consumed case JSON,
+thresholds, Fortran fixtures, generated GRIB meteorology, both executables,
+every raw output and the comparison report, plus oracle commit and
+cleanliness, candidate revision and dirtiness, Fortran compiler/build,
+adapter identity and Philox seeds. Candidate outputs are never used as
+references.

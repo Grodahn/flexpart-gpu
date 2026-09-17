@@ -3,8 +3,14 @@
 
 Fails closed when candidate outputs are missing or when the oracle checkout
 is not the pinned unmodified FLEXPART 11.1 tree. Oracle artifacts are
-recorded when present; a candidate-only run records oracle_outputs as empty
+recorded when present; a candidate-only run records oracle outputs as empty
 instead of fabricating parity.
+
+Provenance covers the actually consumed inputs, not just the outputs:
+versioned case JSON, the corpus index and thresholds, the Fortran
+COMMAND/RELEASES/OUTGRID/AGECLASSES/RECEPTORS/SPECIES fixtures, the
+generated GRIB meteorology, both executables and the comparison report, so
+a corpus result can be reproduced and audited end to end.
 
 Usage:
     python3 scripts/corpus/write_corpus_manifest.py --output target/corpus/run_manifest.json ...
@@ -47,6 +53,12 @@ def git_state(path: Path):
     }
 
 
+def hash_existing(path: Path):
+    if not path.is_file():
+        return None
+    return digest(path)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True)
@@ -57,6 +69,12 @@ def main():
     parser.add_argument("--candidate-dir", required=True)
     parser.add_argument("--oracle-dir", required=True)
     parser.add_argument("--report", required=True)
+    parser.add_argument("--cases-dir", default=None)
+    parser.add_argument("--fortran-fixtures", default=None)
+    parser.add_argument("--thresholds", default=None)
+    parser.add_argument("--meteo-dir", default=None)
+    parser.add_argument("--candidate-exe", default=None)
+    parser.add_argument("--oracle-exe", default=None)
     args = parser.parse_args()
 
     reference = json.loads(Path(args.oracle_manifest).read_text(encoding="utf-8"))
@@ -72,6 +90,35 @@ def main():
         raise SystemExit(f"missing candidate artifacts under {candidate_dir}")
     oracle_dir = Path(args.oracle_dir)
     oracle_files = hash_tree(oracle_dir)
+
+    # Actually consumed inputs: versioned case definitions, thresholds and
+    # Fortran fixtures; generated meteorology; both executables; report.
+    inputs_sha256 = {}
+    for label, root in (
+        ("cases", args.cases_dir),
+        ("fortran_fixtures", args.fortran_fixtures),
+        ("meteo", args.meteo_dir),
+    ):
+        if root:
+            tree = hash_tree(Path(root))
+            if tree:
+                inputs_sha256[label] = tree
+    if args.thresholds:
+        hashed = hash_existing(Path(args.thresholds))
+        if hashed:
+            inputs_sha256["thresholds"] = hashed
+    executables_sha256 = {}
+    for label, exe in (
+        ("candidate", args.candidate_exe),
+        ("oracle", args.oracle_exe),
+    ):
+        if exe:
+            hashed = hash_existing(Path(exe))
+            executables_sha256[label] = hashed or f"missing: {exe}"
+    report_path = Path(args.report)
+    comparison_report_sha256 = hash_existing(report_path)
+    if comparison_report_sha256 is None:
+        raise SystemExit(f"comparison report missing: {report_path}")
 
     # Adapter and seeds come from the candidate per-seed outputs themselves.
     adapters = set()
@@ -105,9 +152,12 @@ def main():
         "compiler": {"version": compiler, "makefile_sha256": makefile_sha, "make_arguments": "eta=no arch=x86-64"},
         "adapter": sorted(adapters),
         "seeds": seeds,
+        "inputs_sha256": inputs_sha256,
+        "executables_sha256": executables_sha256,
         "candidate_sha256": candidate_files,
         "oracle_sha256": oracle_files,
-        "comparison_report": str(Path(args.report).resolve()),
+        "comparison_report": str(report_path.resolve()),
+        "comparison_report_sha256": comparison_report_sha256,
     }
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

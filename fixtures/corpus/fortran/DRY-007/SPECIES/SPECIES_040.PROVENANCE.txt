@@ -1,0 +1,2 @@
+Derived from upstream examples/Tracer/SPECIES/SPECIES_024 at sha256 aabf59fdd1f51192a4843272b1b5b5d67a9d15cef05663d5fb4fca94a904f723 (pinned oracle reference/flexpart-11.1.json).
+Edited assignment: `PDRYVEL=-9.99,` -> `PDRYVEL=2.0` (2.0 cm/s = 0.02 m/s, exactly the candidate DRY-007 dry_deposition_velocity_m_s; wet removal stays disabled as in the tracer).

@@ -41,6 +41,11 @@
       "value": 1.0,
       "unit": "m",
       "justification": "Hard PBL reflection tolerance for the candidate; the Fortran oracle uses a soft top and may place particles above."
+    },
+    "budget_closure_rel": {
+      "value": 1e-05,
+      "unit": "relative",
+      "justification": "Deposited-mass budget closure uses the same f32 error budget as mass conservation: per-step removal is charged from reported per-slot probabilities against pre-step masses, so only summation order and f32 rounding separate the reservoirs from the initial mass. Applies to candidate per-seed budgets; the oracle budget closes against its run-internal S0 scale within f32 sparse-packing precision and is reported with the same bound."
     }
   },
   "oracle_parity_gates": null,

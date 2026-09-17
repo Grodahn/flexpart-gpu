@@ -56,6 +56,13 @@ struct ParticleRecord {
     mass_kg: f64,
 }
 
+/// Tolerance for the deposited-mass budget closure, reusing the versioned
+/// mass-conservation bound (`fixtures/corpus/thresholds.json`,
+/// `mass_conservation_rel`): advection and turbulence conserve mass up to
+/// f32 summation order, so airborne + deposited reservoirs must recover the
+/// initial mass within the same bound.
+const BUDGET_CLOSURE_TOLERANCE_REL: f64 = 1.0e-5;
+
 #[derive(Serialize)]
 struct SeedOutput {
     case_id: String,
@@ -69,6 +76,20 @@ struct SeedOutput {
     active_particles: usize,
     particles: Vec<ParticleRecord>,
     metrics: CandidateMetrics,
+    /// Cumulative dry-deposited mass [kg] over the run, summed per step from
+    /// the driver-reported per-slot removal probabilities applied to the
+    /// pre-step slot masses (dry step runs before the wet step, so wet
+    /// removal applies to the post-dry mass). Zero when dry deposition is off.
+    deposited_dry_kg: f64,
+    /// Cumulative wet-deposited mass [kg], accounted like dry deposition.
+    /// Zero when wet deposition is off.
+    deposited_wet_kg: f64,
+    /// Relative budget closure error:
+    /// |airborne + deposited_dry + deposited_wet - initial| / initial.
+    budget_closure_rel_error: f64,
+    /// `closed` when the error is within BUDGET_CLOSURE_TOLERANCE_REL,
+    /// otherwise `open` (never silently passed as conserved).
+    budget_status: String,
 }
 
 #[derive(Serialize)]
@@ -478,6 +499,14 @@ fn run_advective_case(
         .collect();
     let initial = count as f64;
     let metrics = compute_metrics(&records, initial, xlon0, ylat0);
+    // Pure advection moves no mass between reservoirs.
+    let adv_closure = metrics.mass_conservation_rel_error;
+    let budget_status = if adv_closure <= BUDGET_CLOSURE_TOLERANCE_REL {
+        "closed"
+    } else {
+        "open"
+    }
+    .to_string();
     let output = SeedOutput {
         case_id: case_id.to_string(),
         seed_index: 0,
@@ -490,6 +519,10 @@ fn run_advective_case(
         active_particles: records.len(),
         particles: records,
         metrics,
+        deposited_dry_kg: 0.0,
+        deposited_wet_kg: 0.0,
+        budget_closure_rel_error: adv_closure,
+        budget_status,
     };
     let case_dir = out_dir.join(case_id);
     fs::create_dir_all(&case_dir).map_err(|e| format!("mkdir: {e}"))?;
@@ -593,7 +626,7 @@ fn run_driver_case(
         philox_key: key,
         initial_philox_counter: [0, 0, 0, 0],
         sync_particle_store_each_step: true,
-        collect_deposition_probabilities_each_step: false,
+        collect_deposition_probabilities_each_step: true,
         ..ForwardTimeLoopConfig::default()
     };
     // Probe the adapter that the driver will select (same env-driven
@@ -642,8 +675,61 @@ fn run_driver_case(
         time_t1_seconds: start_secs + total_s,
     };
     let forcing = forcing_for_case(case);
-    pollster::block_on(driver.run_to_end(&met, &forcing))
-        .map_err(|e| format!("run_to_end: {e}"))?;
+    // Step the driver manually so per-process deposited reservoirs can be
+    // accumulated from the reported per-slot removal probabilities. The
+    // driver applies dry deposition before wet deposition within each step,
+    // therefore wet removal is charged against the post-dry mass. Probability
+    // vectors are slot-aligned with the particle store; corpus cases neither
+    // deactivate particles nor enable compaction, so slot indices are stable
+    // across steps (asserted below).
+    let mut deposited_dry_kg = 0.0_f64;
+    let mut deposited_wet_kg = 0.0_f64;
+    pollster::block_on(async {
+        while driver.has_remaining_steps() {
+            let pre_masses: Vec<f64> = driver
+                .particle_store()
+                .as_slice()
+                .iter()
+                .filter(|p| p.is_active())
+                .map(|p| f64::from(p.mass[0]))
+                .collect();
+            let pre_active = pre_masses.len();
+            let report = driver.run_timestep(&met, &forcing).await.map_err(|e| format!("run_timestep: {e}"))?;
+            let post_active = driver
+                .particle_store()
+                .as_slice()
+                .iter()
+                .filter(|p| p.is_active())
+                .count();
+            // The release manager injects all corpus particles during the
+            // first step, so the store is empty beforehand; releases carry a
+            // uniform per-particle mass of mass_total/count.
+            let pre_masses = if pre_active == 0 && post_active > 0 {
+                vec![mass_total / post_active as f64; post_active]
+            } else {
+                pre_masses
+            };
+            if post_active != pre_masses.len() {
+                return Err(format!(
+                    "particle sink during {case_id} seed {seed_index}: {} -> {post_active} active",
+                    pre_masses.len(),
+                ));
+            }
+            let dry_probs = report.dry_deposition_probability;
+            let wet_probs = report.wet_deposition_probability;
+            for (slot, pre) in pre_masses.iter().enumerate() {
+                let p_dry = dry_probs.get(slot).copied().unwrap_or(0.0) as f64;
+                let p_wet = wet_probs.get(slot).copied().unwrap_or(0.0) as f64;
+                let removed_dry = pre * p_dry;
+                let removed_wet = (pre - removed_dry) * p_wet;
+                deposited_dry_kg += removed_dry;
+                deposited_wet_kg += removed_wet;
+            }
+            let _ = report;
+        }
+        driver.finalize().await.map_err(|e| format!("finalize: {e}"))?;
+        Ok::<(), String>(())
+    })?;
     let store = driver.particle_store();
     let records: Vec<ParticleRecord> = store
         .as_slice()
@@ -664,6 +750,17 @@ fn run_driver_case(
         return Err("no active particles after run".to_string());
     }
     let metrics = compute_metrics(&records, mass_total, xlon0, ylat0);
+    let budget_closure_rel_error = if mass_total > 0.0 {
+        (metrics.total_mass_kg + deposited_dry_kg + deposited_wet_kg - mass_total).abs() / mass_total
+    } else {
+        0.0
+    };
+    let budget_status = if budget_closure_rel_error <= BUDGET_CLOSURE_TOLERANCE_REL {
+        "closed"
+    } else {
+        "open"
+    }
+    .to_string();
     let output = SeedOutput {
         case_id: case_id.to_string(),
         seed_index,
@@ -676,14 +773,23 @@ fn run_driver_case(
         active_particles: records.len(),
         particles: records,
         metrics,
+        deposited_dry_kg,
+        deposited_wet_kg,
+        budget_closure_rel_error,
+        budget_status,
     };
     let case_dir = out_dir.join(case_id);
     fs::create_dir_all(&case_dir).map_err(|e| format!("mkdir: {e}"))?;
     let path = case_dir.join(format!("seed_{seed_index:03}.json"));
     fs::write(&path, serde_json::to_string(&output).unwrap()).map_err(|e| format!("write: {e}"))?;
     eprintln!(
-        "{case_id} seed {seed_index}: {} active, mass {:.6} kg (adapter: {adapter})",
-        output.active_particles, output.metrics.total_mass_kg
+        "{case_id} seed {seed_index}: {} active, air {:.6} kg, dry-dep {:.6} kg, wet-dep {:.6} kg, closure {:.2e} ({}) (adapter: {adapter})",
+        output.active_particles,
+        output.metrics.total_mass_kg,
+        output.deposited_dry_kg,
+        output.deposited_wet_kg,
+        output.budget_closure_rel_error,
+        output.budget_status,
     );
     Ok(())
 }

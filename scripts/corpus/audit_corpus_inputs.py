@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""Audit corpus input equality between case JSON and oracle fixtures.
+
+Checks, for every implemented synthetic case with a case JSON:
+
+- Fortran OUTGRID mirrors the case ``domain`` (origin, size, spacing).
+- Fortran RELEASES mirrors the case ``release`` (position, particle count)
+  with MASS converted kg -> g (``MASS_g = mass_kg * 1000``).
+- Fortran COMMAND switches mirror ``oracle_command_overrides``.
+- The expected SPECIES file (inert 024, depositing 040 for DRY/WET) exists.
+- The derived fixtures regenerate byte-identically (via
+  generate_fortran_fixtures verification).
+
+With ``--candidate-dir``, additionally checks every present candidate seed
+file against its case JSON (particle count, initial mass, Philox key
+derivation, non-empty adapter). With ``--oracle-dir --require-oracle``,
+requires a decoded ``oracle_summary.json`` per implemented case (except
+REPEAT-009, which has no oracle seed control) whose release mass matches
+RELEASES.
+
+Exit status is non-zero on any mismatch. Comparison and manifest steps run
+this audit first so outputs are never compared from unequal inputs.
+
+Usage:
+    python3 scripts/corpus/audit_corpus_inputs.py [--fixtures fixtures/corpus]
+    python3 scripts/corpus/audit_corpus_inputs.py --candidate-dir target/corpus/candidate
+"""
+
+import argparse
+import importlib.util
+import json
+import math
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "scripts" / "corpus"))
+
+
+def load_generator():
+    spec = importlib.util.spec_from_file_location(
+        "generate_fortran_fixtures",
+        REPO / "scripts" / "corpus" / "generate_fortran_fixtures.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+GEN = load_generator()
+
+FAILURES: list = []
+
+
+def check(name: str, ok: bool, detail: str = "") -> None:
+    print(("PASS " if ok else "FAIL ") + name + (f" ({detail})" if detail and not ok else ""))
+    if not ok:
+        FAILURES.append(name + (f": {detail}" if detail else ""))
+
+
+def audit_fixture_case(case_id: str, case: dict, fort_dir: Path) -> None:
+    outdir = fort_dir / case_id
+    if not outdir.is_dir():
+        check(f"{case_id} fortran fixture present", False, f"missing {outdir}")
+        return
+    try:
+        specnum = 40 if case_id in ("DRY-007", "WET-008") else 24
+        GEN.verify_case(case_id, case, outdir, specnum)
+        check(f"{case_id} fixture equals case JSON", True)
+    except SystemExit as exc:
+        check(f"{case_id} fixture equals case JSON", False, str(exc))
+    species = outdir / "SPECIES" / f"SPECIES_{specnum:03d}"
+    check(f"{case_id} SPECIES_{specnum:03d} present", species.is_file())
+    if species.is_file():
+        import re as _re
+
+        code = _re.sub(r"!.*", "", species.read_text(encoding="utf-8"))
+        check(
+            f"{case_id} SPECIES v11.1-readable (no PNDIA)",
+            _re.search(r"(?im)^\s*PNDIA\s*=", code) is None,
+        )
+        if case_id == "DRY-007":
+            pdryvel = GEN.namelist_value(
+                species.read_text(encoding="utf-8"), "PDRYVEL"
+            ).strip()
+            check(
+                f"{case_id} SPECIES PDRYVEL=2.0 (0.02 m/s, candidate-equivalent)",
+                pdryvel == "2.0",
+                f"found {pdryvel}",
+            )
+    if specnum == 40:
+        check(
+            f"{case_id} SPECIES_040.PROVENANCE.txt present",
+            (outdir / "SPECIES" / "SPECIES_040.PROVENANCE.txt").is_file(),
+        )
+    check(f"{case_id} METEO_ARGS.txt present", (outdir / "METEO_ARGS.txt").is_file())
+    check(f"{case_id} INPUT_DERIVATION.json present", (outdir / "INPUT_DERIVATION.json").is_file())
+
+
+def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
+    seeds = sorted(case_dir.glob("seed_*.json"))
+    release = case["release"]
+    expected_count = int(release["particle_count"])
+    expected_mass = GEN.case_total_mass_kg(case)
+    base_key = None
+    if isinstance(case.get("seeds"), dict):
+        base_key = case["seeds"].get("base_philox_key")
+    if case_id == "ADV-ANA-001":
+        check(f"{case_id} exactly one deterministic seed", len(seeds) == 1, f"found {len(seeds)}")
+    elif case_id == "REPEAT-009":
+        check(f"{case_id} exactly two repeat seeds", len(seeds) == 2, f"found {len(seeds)}")
+        if len(seeds) == 2:
+            a = json.loads(seeds[0].read_text(encoding="utf-8"))
+            b = json.loads(seeds[1].read_text(encoding="utf-8"))
+            check(f"{case_id} repeats share one Philox key", a.get("philox_key") == b.get("philox_key"))
+    else:
+        check(f"{case_id} seed files present", len(seeds) >= 1, "no seed_*.json")
+    for path in seeds:
+        seed = json.loads(path.read_text(encoding="utf-8"))
+        stem = f"{case_id}/{path.name}"
+        check(f"{stem} particle_count", seed.get("particle_count") == expected_count,
+              f"{seed.get('particle_count')} vs {expected_count}")
+        initial = seed.get("metrics", {}).get("initial_mass_kg")
+        check(f"{stem} initial mass", initial is not None and math.isclose(initial, expected_mass, rel_tol=1e-12),
+              f"{initial} vs {expected_mass}")
+        if base_key is not None and case_id != "REPEAT-009":
+            idx = seed.get("seed_index", 0)
+            expected_key = [(base_key[0] + idx) % 2**32, base_key[1]]
+            check(f"{stem} Philox derivation", seed.get("philox_key") == expected_key,
+                  f"{seed.get('philox_key')} vs {expected_key}")
+        check(f"{stem} adapter recorded", bool(seed.get("adapter")))
+
+
+def audit_oracle_case(case_id: str, fort_dir: Path, oracle_dir: Path, require: bool) -> None:
+    summary = oracle_dir / case_id / "oracle_summary.json"
+    if not summary.is_file():
+        check(f"{case_id} oracle summary present", not require,
+              "run scripts/run-corpus.sh oracle" if require else "oracle not run yet")
+        return
+    data = json.loads(summary.read_text(encoding="utf-8"))
+    releases = (fort_dir / case_id / "RELEASES").read_text(encoding="utf-8")
+    expected_g = float(GEN.namelist_value(releases, "MASS").replace("D", "E"))
+    actual_g = float(data.get("release_mass_g", -1.0))
+    check(f"{case_id} oracle summary release mass", math.isclose(actual_g, expected_g, rel_tol=1e-9),
+          f"{actual_g} vs {expected_g}")
+    for key in ("raw_files", "reservoirs_native", "header"):
+        check(f"{case_id} oracle summary has {key}", key in data)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--fixtures", default=str(REPO / "fixtures" / "corpus"))
+    parser.add_argument("--candidate-dir", default=None)
+    parser.add_argument("--oracle-dir", default=None)
+    parser.add_argument("--require-oracle", action="store_true")
+    args = parser.parse_args()
+
+    fixtures = Path(args.fixtures)
+    corpus_index = json.loads((fixtures / "corpus.json").read_text(encoding="utf-8"))
+    fort_dir = fixtures / "fortran"
+    cases = {c["id"]: c for c in corpus_index["cases"]}
+
+    for case_id, entry in cases.items():
+        if entry["status"] != "implemented" or case_id == "ETEX-MINI-013":
+            continue
+        case_path = fixtures / "cases" / f"{case_id}.json"
+        if not case_path.is_file():
+            if case_id == "RESTART-010":
+                continue
+            check(f"{case_id} case JSON present", False, f"missing {case_path}")
+            continue
+        case = json.loads(case_path.read_text(encoding="utf-8"))
+        if case_id not in ("RESTART-010", "REPEAT-009"):
+            # RESTART-010 is oracle-only documentation; REPEAT-009 reuses the
+            # neutral case on the candidate with no oracle counterpart (no
+            # oracle seed control exists).
+            audit_fixture_case(case_id, case, fort_dir)
+
+    if args.candidate_dir:
+        candidate_dir = Path(args.candidate_dir)
+        for case_id, entry in cases.items():
+            if entry["status"] != "implemented" or case_id in ("ETEX-MINI-013", "RESTART-010"):
+                continue
+            case_path = fixtures / "cases" / f"{case_id}.json"
+            if not case_path.is_file():
+                continue
+            case = json.loads(case_path.read_text(encoding="utf-8"))
+            case_dir = candidate_dir / case_id
+            if not case_dir.is_dir():
+                check(f"{case_id} candidate output present", False, "no seed files")
+                continue
+            audit_candidate_case(case_id, case, case_dir)
+
+    if args.oracle_dir or args.require_oracle:
+        oracle_dir = Path(args.oracle_dir) if args.oracle_dir else None
+        if oracle_dir is not None:
+            for case_id, entry in cases.items():
+                if entry["status"] != "implemented" or case_id in ("ETEX-MINI-013", "RESTART-010", "REPEAT-009"):
+                    continue
+                audit_oracle_case(case_id, fort_dir, oracle_dir, args.require_oracle)
+
+    if FAILURES:
+        print(f"\n{len(FAILURES)} input-equality check(s) FAILED:")
+        for failure in FAILURES:
+            print(f"  - {failure}")
+        raise SystemExit(1)
+    print("\nCorpus input audit: all checks passed.")
+
+
+if __name__ == "__main__":
+    main()

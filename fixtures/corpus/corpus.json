@@ -139,7 +139,7 @@
       },
       "expected": "Total airborne mass decays exponentially with the dry-deposition rate; deposited reservoir grows complementarily; mass budget (airborne + deposited) conserved.",
       "units": "deposition velocity m/s, rate 1/s, mass kg",
-      "thresholds": "deposition_cpu_abs / deposition_gpu_abs for isolated kernels; driver budget reported diagnostically",
+      "thresholds": "deposition_cpu_abs / deposition_gpu_abs for isolated kernels; driver/oracle reservoir budgets gated by budget_closure_rel",
       "artifacts": "target/corpus/candidate/DRY-007/ + oracle + process budgets"
     },
     {
@@ -158,7 +158,7 @@
       },
       "expected": "Total airborne mass decays exponentially with the scavenging coefficient times precipitating fraction; wet-deposited reservoir grows complementarily.",
       "units": "scavenging coefficient 1/s, precipitating fraction 1, mass kg",
-      "thresholds": "deposition_cpu_abs / deposition_gpu_abs for isolated kernels; driver budget reported diagnostically",
+      "thresholds": "deposition_cpu_abs / deposition_gpu_abs for isolated kernels; driver/oracle reservoir budgets gated by budget_closure_rel",
       "artifacts": "target/corpus/candidate/WET-008/ + oracle + process budgets"
     },
     {

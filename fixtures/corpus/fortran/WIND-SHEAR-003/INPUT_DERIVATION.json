@@ -1,0 +1,31 @@
+{
+  "case_file": "fixtures/corpus/cases/WIND-SHEAR-003.json",
+  "release_lon_deg": 10.0,
+  "release_lat_deg": 10.0,
+  "release_z_m": 50.0,
+  "particle_count": 1000,
+  "candidate_mass_kg": 1.0,
+  "mass_conversion": "MASS_g = mass_kg * 1000 (FLEXPART MASS is in grams)",
+  "oracle_mass_g": 1000.0,
+  "outgrid_from_domain": {
+    "xlon0_deg": 9.5,
+    "ylat0_deg": 8.5,
+    "nx": 32,
+    "ny": 32,
+    "dx_deg": 0.1,
+    "dy_deg": 0.1
+  },
+  "outheights_m": [
+    100.0,
+    250.0,
+    500.0,
+    750.0,
+    1000.0,
+    1500.0,
+    2000.0,
+    2500.0,
+    3000.0,
+    5000.0
+  ],
+  "outheights_note": "Standard concentration output levels shared by all synthetic cases; independent of wind-field levels."
+}

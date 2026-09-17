@@ -25,13 +25,16 @@ set -euo pipefail
 #       build, adapter, seeds). Fails closed on missing artifacts or a
 #       modified/unpinned oracle checkout.
 #   scripts/run-corpus.sh all [--seeds N]
-#       candidate + oracle (if Docker available) + compare + manifest.
+#       candidate + oracle + compare + manifest. Every step is required:
+#       any failure aborts the workflow (fail-closed). For a candidate-only
+#       run without the oracle, use the explicit `candidate` subcommand.
 #   scripts/run-corpus.sh audit
 #       Verify fixtures, pinned oracle commit and input hashes without running
 #       simulations.
 #
 # Prerequisites:
-#   - Rust toolchain (candidate), Python 3 with numpy (compare/manifest)
+#   - Rust toolchain (candidate), Python 3 without extra packages
+#     (compare/manifest/decoder use the standard library only)
 #   - Docker + docker-compose (oracle only)
 #   - FLEXPART_GPU_SOFTWARE=1 on machines without a hardware GPU
 #   - ETEX mini real-weather case stays under scripts/run-etex.sh mini
@@ -47,6 +50,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 FLEXPART_DIR="${PROJECT_ROOT}/../flexpart"
 FORTRAN_COMPOSE_FILE="${PROJECT_ROOT}/docker/docker-compose.fortran.yml"
+HOST_PYTHON="${CORPUS_PYTHON:-python3}"
+if [ "${OS:-}" = "Windows_NT" ]; then
+  HOST_PYTHON="${CORPUS_PYTHON:-python}"
+fi
 CANDIDATE_DIR="${PROJECT_ROOT}/target/corpus/candidate"
 ORACLE_DIR="${PROJECT_ROOT}/target/corpus/oracle"
 REPORT="${PROJECT_ROOT}/target/corpus/comparison_report.json"
@@ -106,22 +113,31 @@ step_oracle_case() {
   local fixture="${PROJECT_ROOT}/fixtures/corpus/fortran/${case}"
   local rundir="${PROJECT_ROOT}/target/corpus/fortran_run/${case}"
   local meteodir="${PROJECT_ROOT}/target/corpus/meteo/${case}"
+  local oracledir="${ORACLE_DIR}/${case}"
   log_step "Oracle run ${case}"
   if [ ! -d "${fixture}" ]; then
     log_error "Missing oracle fixture: ${fixture}"
     return 1
   fi
-  mkdir -p "${rundir}/options/SPECIES" "${rundir}/output" "${meteodir}"
-  # Synthetic meteorology from the single generator path.
-  # shellcheck disable=SC1091
-  local meteo_call
-  meteo_call="$(cat "${fixture}/METEO.txt")"
-  log_info "Meteo: ${meteo_call}"
+  mkdir -p "${rundir}/options/SPECIES" "${rundir}/output" "${meteodir}" "${oracledir}/raw"
+  # Synthetic meteorology from the single generator path. Flags come from the
+  # versioned METEO_ARGS.txt written by generate_fortran_fixtures.py (derived
+  # from the case JSON), so no wind/surface value is duplicated in this script.
+  # target/corpus is bind-mounted as /workspace/corpus (see
+  # docker/docker-compose.fortran.yml); without that mount the GRIB files
+  # would disappear with the container.
+  log_info "Meteo args: $(cat "${fixture}/METEO_ARGS.txt")"
+  # METEO_ARGS.txt is read from the host fixture path (command substitution
+  # runs on the host). Bare container paths use a double leading slash so
+  # MSYS2/Git Bash on Windows leaves them untouched (POSIX collapses // to /
+  # inside the Linux container); single-slash absolute args would be
+  # rewritten to a Windows MSYS root and break the container command.
   # shellcheck disable=SC2086
   docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran \
-    python3 /workspace/flexpart-gpu/scripts/generate_synthetic_grib.py \
-    --output-dir "/workspace/corpus/meteo/${case}" --nx 32 --ny 32 --nz 12 \
-    $(meteo_args_for_case "${case}") --start-date 20240101 --hours 3
+    python3 //workspace/flexpart-gpu/scripts/generate_synthetic_grib.py \
+    --output-dir "//workspace/corpus/meteo/${case}" \
+    $(cat "${fixture}/METEO_ARGS.txt")
+  test -f "${meteodir}/AVAILABLE"
   cp "${fixture}/COMMAND" "${rundir}/options/COMMAND"
   cp "${fixture}/RELEASES" "${rundir}/options/RELEASES"
   cp "${fixture}/OUTGRID" "${rundir}/options/OUTGRID"
@@ -132,11 +148,14 @@ step_oracle_case() {
   cp "${FLEXPART_DIR}/options/sfcdata.t" "${rundir}/options/" 2>/dev/null || true
   cp "${FLEXPART_DIR}/options/sfcdepo.t" "${rundir}/options/" 2>/dev/null || true
   cp "${FLEXPART_DIR}/options/PARTOPTIONS" "${rundir}/options/" 2>/dev/null || true
-  cat > "${rundir}/pathnames" <<'PATHEOF'
+  # pathnames entries are relative to the run directory
+  # target/corpus/fortran_run/<case>, so the per-case meteorology at
+  # target/corpus/meteo/<case> is ../../meteo/<case>.
+  cat > "${rundir}/pathnames" <<PATHEOF
 ./options/
 ./output/
-../meteo/
-../meteo/AVAILABLE
+../../meteo/${case}/
+../../meteo/${case}/AVAILABLE
 ============================================
 PATHEOF
   # The meteo bind-mount layout mirrors scripts/compare-fortran.sh validate.
@@ -151,39 +170,33 @@ PATHEOF
     rm -f gitversion.txt
   "
   log_info "Running pinned oracle for ${case}..."
-  docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
-    -v "${PROJECT_ROOT}/target/corpus:/workspace/corpus" \
-    flexpart-fortran bash -c "
+  docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran bash -c "
     set -euo pipefail
     cd /workspace/corpus/fortran_run/${case} && /workspace/flexpart/src/FLEXPART
-  " 2>&1 | tee "${ORACLE_DIR}/${case}.fortran.log"
-  if ! grep -q "CONGRATULATIONS" "${ORACLE_DIR}/${case}.fortran.log"; then
-    log_error "Oracle run failed for ${case}; see ${ORACLE_DIR}/${case}.fortran.log"
+  " 2>&1 | tee "${oracledir}/fortran.log"
+  if ! grep -q "CONGRATULATIONS" "${oracledir}/fortran.log"; then
+    log_error "Oracle run failed for ${case}; see ${oracledir}/fortran.log"
     return 1
   fi
-  mkdir -p "${ORACLE_DIR}/${case}"
-  # Export a minimal oracle particle dump for the Python comparison when
-  # partposit output is available; otherwise record grid outputs only.
-  if [ -f "${rundir}/output/partposit_end" ]; then
-    cp "${rundir}/output/partposit_end" "${ORACLE_DIR}/${case}/"
-  fi
-  cp "${rundir}/output/header_txt" "${ORACLE_DIR}/${case}/" 2>/dev/null || true
-  log_info "Oracle output for ${case} under ${ORACLE_DIR}/${case}/"
-}
-
-meteo_args_for_case() {
-  case "$1" in
-    ADV-ANA-001) echo "--u-wind 10 --v-wind 0 --w-wind 0 --sshf 40 --blh 1500 --lsp 0 --cp 0" ;;
-    WIND-UNI-002) echo "--u-wind 5 --v-wind -3 --w-wind 0 --sshf 40 --blh 1500 --lsp 0 --cp 0" ;;
-    WIND-SHEAR-003) echo "--u-wind 2 --v-wind 0 --w-wind 0 --u-shear-per-m 0.004 --sshf 40 --blh 1500 --lsp 0 --cp 0" ;;
-    PBL-STABLE-004) echo "--u-wind 5 --v-wind -3 --w-wind 0 --sshf -20 --blh 500 --lsp 0 --cp 0" ;;
-    PBL-NEUTRAL-005) echo "--u-wind 5 --v-wind -3 --w-wind 0 --sshf 0 --blh 1500 --lsp 0 --cp 0" ;;
-    PBL-UNSTABLE-006) echo "--u-wind 5 --v-wind -3 --w-wind 0 --sshf 150 --blh 2000 --lsp 0 --cp 0" ;;
-    DRY-007) echo "--u-wind 5 --v-wind -3 --w-wind 0 --sshf 0 --blh 1500 --lsp 0 --cp 0" ;;
-    WET-008) echo "--u-wind 5 --v-wind -3 --w-wind 0 --sshf 0 --blh 1500 --lsp 2 --cp 1" ;;
-    REPEAT-009) echo "--u-wind 5 --v-wind -3 --w-wind 0 --sshf 0 --blh 1500 --lsp 0 --cp 0" ;;
-    *) echo "--u-wind 5 --v-wind -3 --w-wind 0" ;;
-  esac
+  # Preserve the raw oracle outputs inside the hashed oracle directory:
+  # header, dates and every grid_conc_* slice, plus any partposit dumps.
+  # FLEXPART 11.1 writes binary concentration output only; per-particle
+  # partposit dumps are NetCDF-only in v11.1, so grid_conc_* is required
+  # while partposit_* is optional.
+  cp "${rundir}/output/header" "${rundir}/output/dates" "${oracledir}/raw/"
+  cp "${rundir}"/output/grid_conc_* "${oracledir}/raw/"
+  for partposit in "${rundir}"/output/partposit_*; do
+    [ -e "${partposit}" ] || continue
+    cp "${partposit}" "${oracledir}/raw/"
+  done
+  cp "${fixture}/COMMAND" "${fixture}/RELEASES" "${fixture}/OUTGRID" "${oracledir}/"
+  # Decode the raw outputs into the machine-readable summary consumed by
+  # compare_corpus.py. Fails when required artifacts are absent.
+  "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/corpus/decode_oracle_output.py" \
+    --raw-dir "${oracledir}/raw" \
+    --releases "${oracledir}/RELEASES" \
+    --output "${oracledir}/oracle_summary.json"
+  log_info "Oracle output for ${case} under ${oracledir}/"
 }
 
 step_oracle() {
@@ -206,7 +219,13 @@ step_oracle() {
 step_compare() {
   log_step "Corpus comparison"
   mkdir -p "$(dirname "${REPORT}")"
-  python3 "${PROJECT_ROOT}/scripts/corpus/compare_corpus.py" \
+  # Input equality is asserted before any output is compared: unequal
+  # release/grid inputs must fail here, never surface as model differences.
+  "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/corpus/audit_corpus_inputs.py" \
+    --fixtures "${PROJECT_ROOT}/fixtures/corpus" \
+    --candidate-dir "${CANDIDATE_DIR}" \
+    --oracle-dir "${ORACLE_DIR}"
+  "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/corpus/compare_corpus.py" \
     --candidate-dir "${CANDIDATE_DIR}" \
     --oracle-dir "${ORACLE_DIR}" \
     --output "${REPORT}"
@@ -215,7 +234,11 @@ step_compare() {
 step_manifest() {
   log_step "Corpus provenance manifest"
   require_pinned_fortran
-  python3 "${PROJECT_ROOT}/scripts/corpus/write_corpus_manifest.py" \
+  local candidate_exe="${PROJECT_ROOT}/target/release/corpus-run"
+  if [ "${OS:-}" = "Windows_NT" ]; then
+    candidate_exe="${candidate_exe}.exe"
+  fi
+  "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/corpus/write_corpus_manifest.py" \
     --output "${MANIFEST}" \
     --corpus-index "${CORPUS_INDEX}" \
     --oracle-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
@@ -223,18 +246,26 @@ step_manifest() {
     --candidate-checkout "${PROJECT_ROOT}" \
     --candidate-dir "${CANDIDATE_DIR}" \
     --oracle-dir "${ORACLE_DIR}" \
-    --report "${REPORT}"
+    --report "${REPORT}" \
+    --cases-dir "${PROJECT_ROOT}/fixtures/corpus/cases" \
+    --fortran-fixtures "${PROJECT_ROOT}/fixtures/corpus/fortran" \
+    --thresholds "${PROJECT_ROOT}/fixtures/corpus/thresholds.json" \
+    --meteo-dir "${PROJECT_ROOT}/target/corpus/meteo" \
+    --candidate-exe "${candidate_exe}" \
+    --oracle-exe "${FLEXPART_DIR}/src/FLEXPART"
 }
 
 step_audit() {
   log_step "Corpus audit (no simulations)"
   require_pinned_fortran
-  python3 "${PROJECT_ROOT}/scripts/corpus/generate_fortran_fixtures.py" --flexpart-dir "${FLEXPART_DIR}" >/dev/null
+  "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/corpus/generate_fortran_fixtures.py" --flexpart-dir "${FLEXPART_DIR}" >/dev/null
   if [ -n "$(git -C "${PROJECT_ROOT}" status --porcelain -- fixtures/corpus/fortran/)" ]; then
     log_error "Generated Fortran fixtures differ from checked-in version; run the generator and commit the result"
     return 1
   fi
-  python3 -c "import json; d=json.load(open('${CORPUS_INDEX}')); assert d['version']==1; print(f\"corpus v{d['version']}: {len(d['cases'])} cases indexed\")"
+  "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/corpus/audit_corpus_inputs.py" \
+    --fixtures "${PROJECT_ROOT}/fixtures/corpus"
+  "${HOST_PYTHON}" -c "import json; d=json.load(open('${CORPUS_INDEX}')); assert d['version']==1; print(f\"corpus v{d['version']}: {len(d['cases'])} cases indexed\")"
   log_info "INPUT_EQUIVALENCE_NOT_DEMONSTRATED remains in force for ETEX mini (see fixtures/etex/mini/README.md)"
   log_info "Audit OK"
 }
@@ -259,14 +290,18 @@ case "${CMD}" in
   manifest) step_manifest ;;
   audit) step_audit ;;
   all)
-    step_candidate "all" "${SEEDS}"
-    if command -v docker >/dev/null 2>&1 && [ -d "${FLEXPART_DIR}/src" ]; then
-      step_oracle "all" || log_error "Oracle step failed; candidate outputs and diagnostic comparison remain available"
-    else
-      log_info "Docker or oracle checkout missing; skipping oracle (candidate-only run)"
+    if ! command -v docker >/dev/null 2>&1; then
+      log_error "Docker is required for the paired oracle workflow; use 'candidate' for a candidate-only run"
+      exit 1
     fi
+    if [ ! -d "${FLEXPART_DIR}/src" ]; then
+      log_error "Fortran checkout not found at ${FLEXPART_DIR}; use 'candidate' for a candidate-only run"
+      exit 1
+    fi
+    step_candidate "all" "${SEEDS}"
+    step_oracle "all"
     step_compare
-    step_manifest || log_error "Manifest needs both candidate and oracle artifacts; see message above"
+    step_manifest
     ;;
   *) echo "Usage: $0 [candidate|oracle|compare|manifest|audit|all] [CASE] [--seeds N]"; exit 2 ;;
 esac

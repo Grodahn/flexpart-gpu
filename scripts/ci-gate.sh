@@ -211,6 +211,8 @@ else
         FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4 2>&1 | tail -5
         test -x FLEXPART
         rm -f gitversion.txt
+        git checkout -- src/FLEXPART.f90 2>/dev/null || git checkout -- FLEXPART.f90
+        rm -f gitversion.txt
       "
     echo "=== compiler and image provenance ==="
     docker run --rm flexpart-fortran:latest gfortran --version | head -1
@@ -219,7 +221,14 @@ else
   if [ ! -x "${ORACLE_EXECUTABLE}" ]; then
     fail "Oracle executable missing after build: ${ORACLE_EXECUTABLE}"
   fi
-  # The build must leave the oracle checkout clean (gitversion.txt removed).
+  # The v11.1 makefile stamps the git version into the tracked
+  # src/FLEXPART.f90 (sed gitversion_tmp) plus an untracked gitversion.txt.
+  # Restore both on the host so the oracle stays pristine; the compiled
+  # binary itself is git-ignored and remains.
+  git -C "${ORACLE_CHECKOUT}" checkout -- src/FLEXPART.f90 2>/dev/null || true
+  rm -f "${ORACLE_CHECKOUT}/src/gitversion.txt"
+  # The build must leave the oracle checkout clean.
+  ORACLE_POST_STATUS="$(git -C "${ORACLE_CHECKOUT}" status --porcelain 2>/dev/null || true)"
   ORACLE_POST_STATUS="$(git -C "${ORACLE_CHECKOUT}" status --porcelain 2>/dev/null || true)"
   if [ -n "${ORACLE_POST_STATUS}" ]; then
     log_error "Oracle status after build:"

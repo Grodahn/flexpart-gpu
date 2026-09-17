@@ -1,0 +1,90 @@
+name: Extended validation (manual)
+
+# Larger corpus: local reproduction is authoritative. This workflow only
+# provides a documented manual/periodic entry point when runtime, data
+# access and artifact size are justifiable. It never runs on pull requests.
+# The full ETEX mini run must be repeatable without manual file editing via
+# scripts/run-etex.sh mini (see docs/ci-gates.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Corpus profile (synthetic-validate, etex-mini-audit, etex-mini)"
+        required: true
+        default: "synthetic-validate"
+        type: choice
+        options:
+          - synthetic-validate
+          - etex-mini-audit
+          - etex-mini
+
+jobs:
+  extended-corpus:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      FLEXPART_GPU_SOFTWARE: "1"
+      WGPU_BACKEND: vulkan
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          path: flexpart-gpu
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Lavapipe (software Vulkan)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers vulkan-tools
+          icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          test -n "$icd"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+
+      - name: Clone pinned FLEXPART 11.1 oracle
+        run: |
+          set -euo pipefail
+          cd flexpart-gpu
+          pinned=$(python3 -c 'import json; print(json.load(open("reference/flexpart-11.1.json"))["pinned_commit"])')
+          echo "$pinned" | grep -qE '^[0-9a-f]{40}$'
+          rm -rf ../flexpart
+          git clone https://gitlab.phaidra.org/flexpart/flexpart.git ../flexpart
+          git -C ../flexpart checkout "$pinned"
+          test -z "$(git -C ../flexpart status --porcelain)"
+
+      - name: Run extended corpus profile (manual only)
+        run: |
+          set -euo pipefail
+          cd flexpart-gpu
+          case "${{ inputs.profile }}" in
+            synthetic-validate)
+              scripts/compare-fortran.sh compose validate
+              ;;
+            etex-mini-audit)
+              # Verifies checked-in native ERA5 inputs without rerunning models.
+              # Requires a previous mini run (target/etex/mini/) or runs prepare first.
+              scripts/run-etex.sh mini
+              ETEX_PROFILE=mini scripts/run-etex.sh audit
+              ;;
+            etex-mini)
+              scripts/run-etex.sh mini
+              ;;
+            *)
+              echo "Unknown profile: ${{ inputs.profile }}"
+              exit 2
+              ;;
+          esac
+
+      - name: Upload extended artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extended-validation-${{ inputs.profile }}-${{ github.run_id }}
+          path: |
+            flexpart-gpu/target/validation/
+            flexpart-gpu/target/etex/
+            flexpart-gpu/target/comparison/
+          retention-days: 30

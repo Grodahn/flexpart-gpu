@@ -83,6 +83,7 @@ flexpart-gpu/
 │   │   ├── fortran-validation.rs # Synthetic Fortran comparison driver
 │   │   ├── bench-timeloop.rs     # Standalone timeloop benchmark
 │   │   └── gpu-preflight.rs      # GPU backend detection / smoke test
+│   │   └── reference-check.rs    # Pinned FLEXPART oracle checkout verification
 │   │
 │   ├── simulation/
 │   │   ├── mod.rs                # Public API
@@ -159,6 +160,7 @@ flexpart-gpu/
 │   ├── pbl/mod.rs                # PBL state structures
 │   ├── release/mod.rs            # Particle release manager
 │   ├── config/mod.rs             # Configuration file parser
+│   ├── reference/mod.rs            # Pinned FLEXPART oracle manifest + checkout verification
 │   └── validation/mod.rs         # Validation metrics (RMSE, bias, correlation)
 │
 ├── tests/                        # Integration and validation tests
@@ -181,20 +183,17 @@ flexpart-gpu/
 │   └── scaffold/                 # Synthetic scaffold for CI
 │
 ├── scripts/
-│   ├── run-etex.sh               # ETEX pipeline (GPU-only default, optional Fortran)
+│   ├── run-etex.sh               # Paired ETEX oracle/candidate pipeline
 │   ├── compare-fortran.sh        # Synthetic Fortran comparison
 │   ├── gpu-preflight.sh          # GPU backend check
 │   └── etex/                     # ETEX helper scripts (ERA5, obs parsing)
 │
 ├── docker/
 │   ├── Dockerfile.gpu            # GPU build image (Ubuntu + Vulkan + Rust)
+│   ├── Dockerfile.fortran        # Fortran oracle image (Ubuntu + gfortran + ecCodes + NetCDF)
 │   ├── docker-compose.yml        # Default compose (any Vulkan GPU)
+│   ├── docker-compose.fortran.yml # Oracle compose (pinned ../flexpart bind mount)
 │   └── docker-compose.nvidia.yml # NVIDIA overlay
-
-# Fortran Docker is in a separate sibling directory:
-# ../flexpart-fortran-docker/
-#   ├── Dockerfile
-#   └── docker-compose.yml
 ```
 
 ## Execution Paths
@@ -235,6 +234,7 @@ over Vulkan, Metal, DX12, and OpenGL. Compute shaders are written in WGSL.
 | Intel (Linux) | Vulkan (ANV) | `vulkan` |
 | Apple Silicon | Metal | `metal` |
 | No GPU (CI) | CPU software | `gl` |
+| No hardware GPU (dev) | Software WGSL fallback (Lavapipe/WARP) | any backend + `FLEXPART_GPU_SOFTWARE=1` (real WGSL path; timings are not GPU performance values) |
 
 ## Docker Environment
 

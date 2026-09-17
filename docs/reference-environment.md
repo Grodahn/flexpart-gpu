@@ -1,0 +1,105 @@
+# FLEXPART 11.1 reference environment (RISK-03.3G-01)
+
+This document defines the reproducible oracle setup behind every
+`flexpart-gpu` vs Fortran comparison. The normative oracle is **FLEXPART
+v11.1** at the pinned commit in `reference/flexpart-11.1.json`. The upstream
+repository is read-only for this project: it is never modified, and no
+issues or pull requests are filed there from this work.
+
+## 1. Fetch the unmodified oracle sources
+
+```bash
+git clone https://gitlab.phaidra.org/flexpart/flexpart.git ../flexpart
+cd ../flexpart
+git checkout c70586c2b7f5258850705325881c61f557ea9bd8
+```
+
+Always read the exact commit from `reference/flexpart-11.1.json` (field
+`pinned_commit`) instead of copying it from chat logs or docs.
+
+## 2. Verify the checkout (fail-closed)
+
+```bash
+# Rust verifier (works on any host with git; no Fortran needed)
+cargo run --bin reference-check -- verify --checkout ../flexpart
+
+# Show the bundled manifest
+cargo run --bin reference-check -- show
+```
+
+Verification requires all of the following, otherwise it exits non-zero:
+
+1. `../flexpart` is a git work tree,
+2. `git rev-parse HEAD` equals the pinned commit,
+3. `git status --porcelain` is empty (unmodified sources).
+
+The comparison entry points (`scripts/compare-fortran.sh`, `scripts/run-etex.sh`)
+run this check before any Fortran build.
+
+## 3. Build the oracle (Linux/Docker)
+
+The Fortran worker needs gfortran, ecCodes, and NetCDF-Fortran. Build the
+in-fork oracle image and compile the pinned sources:
+
+```bash
+docker compose -f docker/docker-compose.fortran.yml build flexpart-fortran
+scripts/compare-fortran.sh compose setup
+```
+
+The setup compiles with the v11.1 build system (`make -f makefile_gfortran
+eta=no arch=x86-64`; the legacy `make serial` recipe does not exist in v11.1)
+and removes
+the generated `gitversion.txt` stamp afterwards so the checkout stays clean
+for re-verification. Native Windows builds are not supported: use the
+manifest/checkout verification above plus Docker for the actual oracle runs.
+
+The Dockerfile pins the Ubuntu 22.04 image digest and the Ubuntu package
+snapshot dated 2026-09-10. The compiler uses the Fortran makefile's
+`arch=x86-64` profile instead of host-specific `-march=native`. Each Docker
+comparison writes `run_manifest.json` with the resolved image ID, package
+versions, compiler version and flags, source revisions, adapter, and SHA-256
+hashes of executable, inputs and outputs. Runners that do not expose a random
+seed record it as unavailable; such a run cannot support a multi-seed parity
+claim.
+
+## 4. What the oracle is used for
+
+- Synthetic uniform-wind comparison (`scripts/compare-fortran.sh validate`,
+  `src/bin/fortran-validation.rs`, `scripts/compare_concentrations.py`).
+- ETEX-1 paired runs (`scripts/run-etex.sh all`): prepare both model inputs
+  from the same independently downloaded ERA5 arrays, execute the pinned
+  Fortran oracle and the WGSL candidate, and compare complete three-hour
+  concentration windows with DATEM observations. The report contains model
+  diagnostics and input checksums; it does not assert scientific parity.
+- Checked-in ETEX-1 mini smoke run (`scripts/run-etex.sh mini`): verify six
+  native ERA5 snapshots in `fixtures/etex/native-mini/`, derive Fortran and
+  GPU inputs, audit their actual prepared fields and scenario settings, run
+  both models over 12 hours, and pair their outputs with independent station
+  observations. The audit is available separately with
+  `ETEX_PROFILE=mini scripts/run-etex.sh audit`; its report is recorded in
+  the run manifest. See `fixtures/etex/mini/README.md` for the remaining
+  scientific differences. Metrics are diagnostic.
+- Future parity gates in issues RISK-03.3G-03 and later.
+
+Oracle outputs are produced at validation time and compared, never vendored
+as fixtures. ETEX measurement/meteorology/source-term provenance is recorded
+in `fixtures/etex/PROVENANCE.md`.
+
+The ETEX workflow requires Python packages `eccodes`, `numpy`, `xarray`,
+`gcsfs`, and `zarr`, Docker Compose, and Cargo. Run `scripts/run-etex.sh status`
+to inspect local inputs and outputs. `compare` fails when either model output
+is absent or the model windows do not match. A complete ETEX run also needs
+the externally downloaded ERA5 arrays; a build or synthetic smoke test alone
+does not validate ETEX.
+
+The standard synthetic validation setup (`scripts/compare-fortran.sh`
+`validate`) uses an output cadence whose last window covers the run end, and
+the comparison reads that last file - never a mid-run time average against an
+instantaneous end state (see the RISK-03.3G-03 addendum in
+`docs/validation-report.md`).
+
+## 5. Software-adapter note
+
+Oracle comparisons must run on a hardware GPU or document the adapter. Runs
+on a software fallback adapter (`FLEXPART_GPU_SOFTWARE=1`) are valid for
+plumbing but their timings must never be reported as GPU performance values.

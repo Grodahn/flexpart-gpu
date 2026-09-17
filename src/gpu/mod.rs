@@ -4,6 +4,7 @@
 /// and compute shader dispatch. All GPU operations go through `GpuContext`.
 use thiserror::Error;
 
+pub mod adapter;
 pub mod advection;
 pub mod buffers;
 pub mod cbl;
@@ -81,6 +82,10 @@ pub use langevin_fused::{
 // Mega-kernel (particle_step) is abandoned due to register pressure.
 // The production path uses langevin_fused + separate advection/deposition.
 // Kept for reference and testing only.
+pub use adapter::{
+    is_software_adapter_requested_from_env, GpuAdapterOptions, SOFTWARE_ADAPTER_ENV,
+    SOFTWARE_ADAPTER_ENV_ALIAS,
+};
 pub use particle_step::{
     dispatch_particle_step_gpu, encode_particle_step_gpu,
     encode_particle_step_gpu_persistent, supports_mega_kernel,
@@ -153,32 +158,67 @@ pub struct GpuContext {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     adapter_info: wgpu::AdapterInfo,
+    fallback_requested: bool,
 }
 
 impl GpuContext {
     /// Initialize the GPU: request adapter, device, and queue.
     ///
-    /// Respects `WGPU_BACKEND` env var for backend selection.
-    /// Returns `GpuError::NoAdapter` if no suitable GPU is found.
+    /// Respects `WGPU_BACKEND` env var for backend selection and
+    /// `FLEXPART_GPU_SOFTWARE` / `WGPU_FORCE_FALLBACK_ADAPTER` for requesting
+    /// the software fallback adapter. The fallback path still executes the
+    /// real WGSL compute shaders; it is not a CPU replacement. Timings
+    /// measured on a software adapter must not be reported as GPU
+    /// performance values.
+    ///
+    /// # Errors
+    ///
+    /// Returns `GpuError::NoAdapter` if no suitable adapter is found.
     pub async fn new() -> Result<Self, GpuError> {
+        Self::with_options(GpuAdapterOptions::from_env()).await
+    }
+
+    /// Initialize the GPU with explicit adapter selection options.
+    ///
+    /// Use [`GpuAdapterOptions::software`] to force the software fallback
+    /// adapter on machines without a hardware GPU.
+    ///
+    /// # Errors
+    ///
+    /// Returns `GpuError::NoAdapter` if no suitable adapter is found.
+    pub async fn with_options(options: GpuAdapterOptions) -> Result<Self, GpuError> {
+        if let Some(backend) = options.backend_override.as_deref() {
+            std::env::set_var("WGPU_BACKEND", backend);
+        }
         let instance = wgpu::Instance::default();
 
         let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            })
+            .request_adapter(&options.to_request_adapter_options())
             .await
             .ok_or(GpuError::NoAdapter)?;
 
         let adapter_info = adapter.get_info();
-        log::info!(
-            "wgpu adapter: {} ({:?}, {:?})",
-            adapter_info.name,
-            adapter_info.backend,
-            adapter_info.device_type
-        );
+        if options.force_software_fallback {
+            log::info!(
+                "wgpu adapter (software fallback requested): {} ({:?}, {:?})",
+                adapter_info.name,
+                adapter_info.backend,
+                adapter_info.device_type
+            );
+        } else {
+            log::info!(
+                "wgpu adapter: {} ({:?}, {:?})",
+                adapter_info.name,
+                adapter_info.backend,
+                adapter_info.device_type
+            );
+        }
+        if adapter::is_software_adapter(&adapter_info) {
+            log::warn!(
+                "using software WGSL adapter ({}); timings must not be used as GPU performance values",
+                adapter_info.name
+            );
+        }
 
         let optional_features = wgpu::Features::FLOAT32_FILTERABLE;
         let requested_features = adapter.features() & optional_features;
@@ -204,6 +244,7 @@ impl GpuContext {
             device,
             queue,
             adapter_info,
+            fallback_requested: options.force_software_fallback,
         })
     }
 
@@ -213,6 +254,27 @@ impl GpuContext {
 
     pub fn backend(&self) -> wgpu::Backend {
         self.adapter_info.backend
+    }
+
+    /// Adapter device type reported by `wgpu` (software adapters report `Cpu`).
+    #[must_use]
+    pub const fn adapter_type(&self) -> wgpu::DeviceType {
+        self.adapter_info.device_type
+    }
+
+    /// Whether the software fallback adapter was explicitly requested.
+    #[must_use]
+    pub const fn fallback_requested(&self) -> bool {
+        self.fallback_requested
+    }
+
+    /// Whether the selected adapter is a software (CPU) rasterizer.
+    ///
+    /// Such adapters run the real WGSL shaders. Their timings must not be
+    /// used as GPU performance values.
+    #[must_use]
+    pub fn is_software_adapter(&self) -> bool {
+        adapter::is_software_adapter(&self.adapter_info)
     }
 
     /// Returns true when a filterable float 3-D sampled texture path is usable.

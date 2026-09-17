@@ -36,9 +36,7 @@ const OUTHEIGHTS: [f32; OUT_NZ] = [
 ];
 
 const WIND_NZ: usize = 8;
-const WIND_HEIGHTS: [f32; WIND_NZ] = [
-    50.0, 100.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0,
-];
+const WIND_HEIGHTS: [f32; WIND_NZ] = [50.0, 100.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0];
 
 const RELEASE_LON: f64 = 10.0;
 const RELEASE_LAT: f64 = 10.0;
@@ -49,6 +47,8 @@ const MASS_KG: f64 = 1.0;
 const START_TS: &str = "20240101000000";
 const END_TS: &str = "20240101060000";
 const DT_SECONDS: i64 = 900;
+const OUTPUT_AVERAGING_SECONDS: i64 = 1800;
+const OUTPUT_SAMPLING_SECONDS: i64 = 900;
 
 const SP_PA: f32 = 101_325.0;
 const T2M_K: f32 = 289.0;
@@ -60,6 +60,12 @@ const BLH_M: f32 = 3000.0;
 #[derive(Serialize)]
 struct ValidationOutput {
     grid: GridInfo,
+    window_start_epoch_seconds: i64,
+    window_end_epoch_seconds: i64,
+    averaging_seconds: i64,
+    sampling_seconds: i64,
+    samples: usize,
+    endpoint_weight: f32,
     particle_count_per_cell: Vec<u32>,
     particle_count_per_cell_host_gridding: Vec<u32>,
     concentration_mass_kg: Vec<f32>,
@@ -116,7 +122,9 @@ fn main() {
     eprintln!("domain: {OUT_NX}x{OUT_NY}x{OUT_NZ}, dx={OUT_DX}°, dy={OUT_DY}°");
     eprintln!("origin: ({OUTLON0}, {OUTLAT0})");
     eprintln!("wind: u={U_WIND}, v={V_WIND}, w={W_WIND} m/s");
-    eprintln!("release: ({RELEASE_LON}, {RELEASE_LAT}), z={RELEASE_Z}m, {particle_count} particles");
+    eprintln!(
+        "release: ({RELEASE_LON}, {RELEASE_LAT}), z={RELEASE_Z}m, {particle_count} particles"
+    );
     eprintln!("simulation: {START_TS} → {END_TS}, dt={DT_SECONDS}s");
     eprintln!("sync_readback: {sync_readback}");
 
@@ -194,9 +202,15 @@ fn main() {
     eprintln!("GPU driver ready");
 
     let wind_grid = WindFieldGrid::new(
-        OUT_NX, OUT_NY, WIND_NZ, WIND_NZ, WIND_NZ,
-        OUT_DX as f32, OUT_DY as f32,
-        OUTLON0 as f32, OUTLAT0 as f32,
+        OUT_NX,
+        OUT_NY,
+        WIND_NZ,
+        WIND_NZ,
+        WIND_NZ,
+        OUT_DX as f32,
+        OUT_DY as f32,
+        OUTLON0 as f32,
+        OUTLAT0 as f32,
         Array1::from_vec(WIND_HEIGHTS.to_vec()),
     );
     let wind_t0 = build_uniform_wind(&wind_grid, U_WIND, V_WIND, W_WIND);
@@ -223,8 +237,65 @@ fn main() {
     };
 
     eprintln!("running simulation...");
-    let reports = pollster::block_on(driver.run_to_end(&met, &forcing))
-        .expect("simulation failed");
+    let grid_shape = ConcentrationGridShape {
+        nx: OUT_NX,
+        ny: OUT_NY,
+        nz: OUT_NZ,
+    };
+    let grid_params = ConcentrationGriddingParams {
+        species_index: 0,
+        mass_scale: 1_000_000.0,
+        outheights: {
+            let mut heights = [0.0_f32; MAX_OUTPUT_LEVELS];
+            for (index, height) in OUTHEIGHTS.iter().enumerate() {
+                heights[index] = *height;
+            }
+            heights
+        },
+    };
+    let mut reports = Vec::new();
+    let mut window_mass_sum = vec![0.0_f64; OUT_NX * OUT_NY * OUT_NZ];
+    let mut window_samples = 0_usize;
+    let mut final_counts = Vec::new();
+    // The driver considers an end-time step runnable. Stop before it: each
+    // step advances the state from current_time to current_time + dt.
+    while driver.current_time_seconds() < end_secs {
+        let report = pollster::block_on(driver.run_timestep(&met, &forcing))
+            .expect("simulation timestep failed");
+        if driver.current_time_seconds() >= end_secs - OUTPUT_AVERAGING_SECONDS {
+            let snapshot =
+                pollster::block_on(driver.accumulate_concentration_grid(grid_shape, grid_params))
+                    .expect("concentration gridding failed");
+            assert_eq!(snapshot.concentration_mass_kg.len(), window_mass_sum.len());
+            let weight = if driver.current_time_seconds() == end_secs - OUTPUT_AVERAGING_SECONDS
+                || driver.current_time_seconds() == end_secs
+            {
+                0.5
+            } else {
+                1.0
+            };
+            for (sum, mass) in window_mass_sum
+                .iter_mut()
+                .zip(&snapshot.concentration_mass_kg)
+            {
+                *sum += weight * f64::from(*mass);
+            }
+            final_counts = snapshot.particle_count_per_cell;
+            window_samples += 1;
+        }
+        reports.push(report);
+    }
+    pollster::block_on(driver.finalize()).expect("simulation finalize failed");
+    assert_eq!(driver.current_time_seconds(), end_secs);
+    assert_eq!(
+        window_samples,
+        (OUTPUT_AVERAGING_SECONDS / OUTPUT_SAMPLING_SECONDS + 1) as usize,
+        "incomplete output averaging window"
+    );
+    let averaged_mass: Vec<f32> = window_mass_sum
+        .iter()
+        .map(|sum| (*sum / (window_samples - 1) as f64) as f32)
+        .collect();
 
     let total_steps = reports.len();
     let active = reports.last().map(|r| r.active_particle_count).unwrap_or(0);
@@ -233,22 +304,23 @@ fn main() {
     let z_stats = {
         let store = driver.particle_store();
         let particles = store.as_slice();
-        let active_particles: Vec<_> = particles.iter()
-            .filter(|p| p.is_active())
-            .collect();
+        let active_particles: Vec<_> = particles.iter().filter(|p| p.is_active()).collect();
         if !active_particles.is_empty() {
             let n = active_particles.len() as f64;
             let active_zs: Vec<f32> = active_particles.iter().map(|p| p.pos_z).collect();
             let min_z = active_zs.iter().cloned().fold(f32::INFINITY, f32::min);
             let max_z = active_zs.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
             let mean_z: f32 = active_zs.iter().sum::<f32>() / active_zs.len() as f32;
-            let var_z: f32 = active_zs.iter().map(|z| (z - mean_z).powi(2)).sum::<f32>() / active_zs.len() as f32;
+            let var_z: f32 = active_zs.iter().map(|z| (z - mean_z).powi(2)).sum::<f32>()
+                / active_zs.len() as f32;
             let std_z = var_z.sqrt();
 
-            let lons: Vec<f64> = active_particles.iter()
+            let lons: Vec<f64> = active_particles
+                .iter()
                 .map(|p| OUTLON0 + (p.cell_x as f64 + p.pos_x as f64) * OUT_DX)
                 .collect();
-            let lats: Vec<f64> = active_particles.iter()
+            let lats: Vec<f64> = active_particles
+                .iter()
                 .map(|p| OUTLAT0 + (p.cell_y as f64 + p.pos_y as f64) * OUT_DY)
                 .collect();
             let lon_mean: f64 = lons.iter().sum::<f64>() / n;
@@ -256,8 +328,14 @@ fn main() {
             let lon_var: f64 = lons.iter().map(|l| (l - lon_mean).powi(2)).sum::<f64>() / n;
             let lat_var: f64 = lats.iter().map(|l| (l - lat_mean).powi(2)).sum::<f64>() / n;
 
-            eprintln!("particle z stats: n={}, min={:.1}m, max={:.1}m, mean={:.1}m, std={:.1}m",
-                active_zs.len(), min_z, max_z, mean_z, std_z);
+            eprintln!(
+                "particle z stats: n={}, min={:.1}m, max={:.1}m, mean={:.1}m, std={:.1}m",
+                active_zs.len(),
+                min_z,
+                max_z,
+                mean_z,
+                std_z
+            );
             eprintln!("particle h stats: lon_mean={:.4}°, lat_mean={:.4}°, lon_std={:.4}°, lat_std={:.4}°",
                 lon_mean, lat_mean, lon_var.sqrt(), lat_var.sqrt());
             Some(ParticleZStats {
@@ -276,28 +354,8 @@ fn main() {
         }
     };
 
-    eprintln!("accumulating concentration grid...");
-    let conc = pollster::block_on(driver.accumulate_concentration_grid(
-        ConcentrationGridShape {
-            nx: OUT_NX,
-            ny: OUT_NY,
-            nz: OUT_NZ,
-        },
-        ConcentrationGriddingParams {
-            species_index: 0,
-            mass_scale: 1_000_000.0,
-            outheights: {
-                let mut h = [0.0_f32; MAX_OUTPUT_LEVELS];
-                for (i, &v) in OUTHEIGHTS.iter().enumerate() {
-                    h[i] = v;
-                }
-                h
-            },
-        },
-    ))
-    .expect("concentration gridding failed");
-
-    let total_count: u32 = conc.particle_count_per_cell.iter().sum();
+    eprintln!("averaged {window_samples} concentration snapshots in the final output window");
+    let total_count: u32 = final_counts.iter().sum();
     eprintln!("total gridded particles: {total_count}");
     let host_binned_counts = {
         let store = driver.particle_store();
@@ -317,9 +375,15 @@ fn main() {
             ylat0: OUTLAT0,
             heights_m: OUTHEIGHTS.to_vec(),
         },
-        particle_count_per_cell: conc.particle_count_per_cell,
+        window_start_epoch_seconds: end_secs - OUTPUT_AVERAGING_SECONDS,
+        window_end_epoch_seconds: end_secs,
+        averaging_seconds: OUTPUT_AVERAGING_SECONDS,
+        sampling_seconds: OUTPUT_SAMPLING_SECONDS,
+        samples: window_samples,
+        endpoint_weight: 0.5,
+        particle_count_per_cell: final_counts,
         particle_count_per_cell_host_gridding: host_binned_counts,
-        concentration_mass_kg: conc.concentration_mass_kg,
+        concentration_mass_kg: averaged_mass,
         total_particles_active: active,
         total_steps,
         particle_z_stats: z_stats,

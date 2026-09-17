@@ -1,0 +1,55 @@
+# FLEXPART Fortran oracle image (RISK-03.3G-01).
+#
+# Builds the environment needed to compile the pinned, unmodified FLEXPART
+# 11.1 sources (see reference/flexpart-11.1.json). The sources themselves are
+# provided at run time via a bind mount (../flexpart -> /workspace/flexpart)
+# and are never copied into the image, so the oracle revision stays exactly
+# what `reference-check -- verify` approved.
+#
+# Build it with:
+#   docker compose -f docker/docker-compose.fortran.yml build flexpart-fortran
+FROM ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7
+
+# Ubuntu 22.04 apt >= 2.4.11 supports snapshot-pinned package resolution.
+# Keep all pockets at the same timestamp (including security updates).
+ARG UBUNTU_SNAPSHOT=20260910T000000Z
+
+# The digest-pinned base image has no CA bundle. Bootstrap that exact package
+# version from the signed Ubuntu archive before selecting the HTTPS snapshot.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates=20260601~22.04.1 \
+  && sed -i -E "s#^deb http#deb [snapshot=${UBUNTU_SNAPSHOT}] http#" /etc/apt/sources.list \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  bash \
+  curl \
+  pkg-config \
+  make \
+  git \
+  # Fortran toolchain
+  gfortran \
+  # Scientific I/O (ecCodes with Fortran interface, NetCDF C + Fortran)
+  libeccodes-dev \
+  libnetcdf-dev \
+  libnetcdff-dev \
+  # Python helpers (synthetic GRIB, ETEX parsing, comparisons)
+  python3 \
+  python3-numpy \
+  python3-eccodes \
+  && rm -rf /var/lib/apt/lists/*
+
+LABEL org.opencontainers.image.ubuntu.snapshot="${UBUNTU_SNAPSHOT}"
+
+# FLEXPART 11.1's makefile_gfortran consumes CPATH/LIBRARY_PATH and FC.
+ENV FC=gfortran
+ENV CPATH=/usr/include:/usr/include/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu/fortran/gfortran-mod-15
+ENV LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
+
+WORKDIR /workspace/flexpart/src
+
+CMD ["bash"]

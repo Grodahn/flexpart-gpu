@@ -81,6 +81,8 @@ pub enum EtexValidationError {
     },
     #[error("missing fixture-only case in fixture JSON")]
     MissingFixtureOnlyCase,
+    #[error("reference.mode is `derived_from_candidate` but claims external dataset `{dataset_path}`: derived references must never back real-dataset validation claims")]
+    DerivedReferenceWithDataset { dataset_path: String },
 }
 
 /// Field container with an explicit shape and flattened row-major values.
@@ -325,6 +327,30 @@ impl Default for EtexReferenceConfig {
     }
 }
 
+impl EtexReferenceConfig {
+    /// Reject configurations that would silently present derived fields as
+    /// real-dataset validation.
+    ///
+    /// A reference derived from candidate outputs may only back scaffold runs
+    /// (`dataset_path` unset). Claiming an external dataset while deriving the
+    /// reference is a fail-closed error, never a warning.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EtexValidationError::DerivedReferenceWithDataset`] when
+    /// `mode` is `DerivedFromCandidate` while `dataset_path` is set.
+    pub fn validate(&self) -> Result<(), EtexValidationError> {
+        if self.mode == EtexReferenceMode::DerivedFromCandidate {
+            if let Some(dataset_path) = &self.dataset_path {
+                return Err(EtexValidationError::DerivedReferenceWithDataset {
+                    dataset_path: dataset_path.clone(),
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Optional deterministic case to exercise fixture-only validation mode.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FixtureOnlyCase {
@@ -438,6 +464,7 @@ impl EtexValidationHarness {
 
     /// Execute synthetic ETEX-style scenario through current time-loop pipeline.
     pub fn run_pipeline_synthetic(&self) -> Result<EtexValidationOutcome, EtexValidationError> {
+        self.fixture.reference.validate()?;
         let candidate_and_trace = self.build_candidate_from_pipeline()?;
         let reference = self.build_reference_fields(&candidate_and_trace.0)?;
         let metrics = compute_metrics_set(&candidate_and_trace.0, &reference)?;
@@ -973,5 +1000,22 @@ mod tests {
         assert!(parse_timestamp_seconds("20240101").is_err());
         assert!(parse_timestamp_seconds("20241301000000").is_err());
         assert!(parse_timestamp_seconds("20240230000000").is_ok());
+    }
+
+    #[test]
+    fn derived_reference_with_dataset_path_is_rejected() {
+        let mut reference = EtexReferenceConfig::default();
+        reference
+            .validate()
+            .expect("scaffold default without dataset stays valid");
+        reference.dataset_path = Some("fixtures/etex/data".to_string());
+        let error = reference
+            .validate()
+            .expect_err("derived mode must not claim a dataset");
+        let rendered = error.to_string();
+        assert!(
+            rendered.contains("derived_from_candidate"),
+            "unexpected message: {rendered}"
+        );
     }
 }

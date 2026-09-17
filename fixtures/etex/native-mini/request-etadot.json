@@ -1,0 +1,19 @@
+{
+  "source": "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-complete",
+  "dataset": "reanalysis-era5-complete",
+  "retrieved_utc": "2026-09-16",
+  "common_request": {
+    "levelist": "1/to/137",
+    "levtype": "ml",
+    "param": "77",
+    "stream": "oper",
+    "type": "an",
+    "area": "53/-8/43/8",
+    "grid": "0.25/0.25",
+    "format": "grib"
+  },
+  "files": [
+    {"date": "1994-10-23", "time": "15/18/21", "file": "era5-19941023-151821-etadot.grib", "bytes": 2724930, "sha256": "3d2e7b01a2d898cec14921c9ec3a39ef114685e58e06b49bd7f63ade857c48a4"},
+    {"date": "1994-10-24", "time": "00/03/06", "file": "era5-19941024-000306-etadot.grib", "bytes": 2724930, "sha256": "9927baa4ad8e3bc00a1aaf636455086659f03d7ad3f332823cff22b5adf4e4e2"}
+  ]
+}

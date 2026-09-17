@@ -1,0 +1,62 @@
+{
+  "name": "flexpart-gpu scientific thresholds",
+  "version": "v1",
+  "date": "2026-09-17",
+  "scope": "Applies to evaluation reports with schema 1.0.0. Thresholds are versioned separately from evaluation code and must never be loosened to make a candidate pass.",
+  "status_classes": {
+    "INTEGRITY_ERROR": "Technical failure: missing artifacts, unpinned oracle, grid/window mismatch, negative or non-finite fields, or hash mismatch. No scientific statement is made.",
+    "DIAGNOSTIC": "Metrics were computed but no parity verdict is given (for example ETEX mini with demonstrated input differences, single-seed stochastic runs, or normalized shape-only comparisons).",
+    "PASS": "All evaluated scientific criteria for the case scope hold.",
+    "FAIL": "At least one evaluated scientific criterion is violated."
+  },
+  "criteria": [
+    {
+      "id": "MASS_BUDGET_CLOSE",
+      "applies_to": ["synthetic-uniform-wind", "corpus-seeds"],
+      "metric": "particle_metrics.mass_budget.relative_error",
+      "operator": "abs_lt",
+      "value": 1e-05,
+      "unit": "dimensionless",
+      "rationale": "Candidate mass budget (remaining plus deposited plus decayed versus released mass) must close to single-precision summation order. The gate evaluates every seed and the worst absolute error governs, so opposite-sign errors cannot cancel into a pass. Mirrors the Rust mass-conservation tests (relative tolerance 2e-6 plus absolute floor) and matches fixtures/corpus/thresholds.json mass_conservation_rel (1e-5); the slightly wider 1e-5 covers JSON f32 round-trips. A normalized concentration field comparison never satisfies this criterion. Skipped for deposition/decay cases whose removed-mass reservoirs are not recorded."
+    },
+    {
+      "id": "MASS_POSITIVITY",
+      "applies_to": ["synthetic-uniform-wind", "etex-mini", "etex-full", "corpus-seeds"],
+      "metric": "integrity.non_negative_fields",
+      "operator": "equals",
+      "value": true,
+      "unit": "boolean",
+      "rationale": "Concentration and mass fields must be finite and non-negative. Any violation is an integrity error, not a scientific result."
+    },
+    {
+      "id": "GRID_WINDOW_ALIGNMENT",
+      "applies_to": ["synthetic-uniform-wind", "etex-mini", "etex-full"],
+      "metric": "alignment.grid_and_window_match",
+      "operator": "equals",
+      "value": true,
+      "unit": "boolean",
+      "rationale": "Time windows, averaging, sampling, grid cells and layer heights must match verifiably before any model comparison. Mismatched inputs fail instead of being silently interpolated."
+    }
+  ],
+  "diagnostic_only": [
+    {
+      "id": "SYNTHETIC_GRID_SHAPE",
+      "applies_to": ["synthetic-uniform-wind"],
+      "metrics": ["grid_metrics.field_correlation", "grid_metrics.footprint_overlap", "grid_metrics.center_distance_km", "grid_metrics.covariance_eigenvalue_ratios"],
+      "rationale": "Single-seed gridded shape diagnostics. Not a parity verdict: stochastic spread needs at least 10 independent seeds with a controllable oracle seed, which the current runners do not expose."
+    },
+    {
+      "id": "ETEX_MINI_OBSERVATIONS",
+      "applies_to": ["etex-mini"],
+      "metrics": ["etex.fortran_vs_observations", "etex.gpu_vs_observations", "etex.gpu_vs_fortran_at_stations", "etex.timing"],
+      "rationale": "The ETEX mini run remains a pipeline and observation-pairing regression. Its input audit reports INPUT_EQUIVALENCE_NOT_DEMONSTRATED (137 native hybrid levels with eta velocity versus 16 fixed AGL levels with omega-derived velocity, plus differing timesteps and PBL diagnostics). No concentration parity is claimed."
+    }
+  ],
+  "multiseed_policy": {
+    "minimum_seeds": 10,
+    "oracle_seed_controllable_required": true,
+    "rationale": "Issue #6 requires at least 10 independent seeds for stochastic comparisons. Runs without a controllable oracle seed are labeled NOT_SUITABLE_FOR_MULTISEED_PARITY and stay diagnostic.",
+    "insufficient_seeds_verdict": "DIAGNOSTIC"
+  },
+  "change_policy": "Threshold changes require a new versioned file with date and scientific justification. Loosening a threshold because a candidate fails is prohibited."
+}

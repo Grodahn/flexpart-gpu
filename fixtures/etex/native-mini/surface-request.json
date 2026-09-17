@@ -1,0 +1,12 @@
+{
+  "source": "https://console.cloud.google.com/storage/browser/gcp-public-data-arco-era5",
+  "dataset": "ARCO-ERA5 hourly surface fields",
+  "retrieved_utc": "2026-09-16",
+  "extraction": "scripts/etex/build_native_surface_fixture.py",
+  "source_archive_sha256": "bc7670d3995a07c241e19ade71cd662f489b7f565218952aa92df23d8efdd5fe",
+  "times": ["1994-10-23T15:00:00", "1994-10-23T18:00:00", "1994-10-23T21:00:00", "1994-10-24T00:00:00", "1994-10-24T03:00:00", "1994-10-24T06:00:00"],
+  "fields": ["surface_pressure", "10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "2m_dewpoint_temperature", "boundary_layer_height", "surface_sensible_heat_flux", "surface_net_solar_radiation", "mean_eastward_turbulent_surface_stress", "mean_northward_turbulent_surface_stress", "convective_precipitation", "large_scale_precipitation", "forecast_surface_roughness", "geopotential_at_surface", "land_sea_mask"],
+  "file": "era5-surface-19941023-24.npz",
+  "bytes": 531362,
+  "sha256": "88cd4dcb5e8ff89aeae6c065e3f2c2f75ad09c125f5d15290bfe7a56b059668d"
+}

@@ -25,13 +25,23 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 FLEXPART_DIR="${PROJECT_ROOT}/../flexpart"
-FORTRAN_DOCKER_DIR="${PROJECT_ROOT}/../flexpart-fortran-docker"
+# Optional override for the legacy external sibling layout
+# (../flexpart-fortran-docker/docker-compose.yml). When unset, the in-fork
+# oracle environment (docker/docker-compose.fortran.yml) is used.
+FORTRAN_DOCKER_DIR="${FORTRAN_DOCKER_DIR:-}"
 GPU_COMPOSE_FILE="${PROJECT_ROOT}/docker/docker-compose.yml"
 GPU_NVIDIA_COMPOSE_FILE="${PROJECT_ROOT}/docker/docker-compose.nvidia.yml"
+FORTRAN_COMPOSE_FILE="${PROJECT_ROOT}/docker/docker-compose.fortran.yml"
 
 C_FLEXPART="/workspace/flexpart"
 C_GPU="/workspace/flexpart-gpu"
 C_DATA="/workspace/comparison"
+CANDIDATE_BINARY="${PROJECT_ROOT}/target/release/fortran-validation"
+HOST_PYTHON=python3
+if [ "${OS:-}" = "Windows_NT" ]; then
+  CANDIDATE_BINARY="${CANDIDATE_BINARY}.exe"
+  HOST_PYTHON=python
+fi
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 log_info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
@@ -41,22 +51,61 @@ log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 require_fortran_stack() {
   if [ ! -d "${FLEXPART_DIR}" ] || [ ! -d "${FLEXPART_DIR}/src" ]; then
     log_error "Fortran checkout not found at ${FLEXPART_DIR}"
-    log_error "Clone FLEXPART as sibling directory to use compare-fortran workflows."
+    log_error "Clone the pinned oracle as sibling directory (see docs/reference-environment.md)."
     return 1
   fi
-  if [ ! -f "${FORTRAN_DOCKER_DIR}/docker-compose.yml" ]; then
-    log_error "Fortran Docker compose not found at ${FORTRAN_DOCKER_DIR}/docker-compose.yml"
-    log_error "Expected sibling repository: ../flexpart-fortran-docker"
+  if [ -n "${FORTRAN_DOCKER_DIR}" ]; then
+    if [ ! -f "${FORTRAN_DOCKER_DIR}/docker-compose.yml" ]; then
+      log_error "FORTRAN_DOCKER_DIR is set but has no docker-compose.yml: ${FORTRAN_DOCKER_DIR}"
+      return 1
+    fi
+    FORTRAN_COMPOSE_FILE="${FORTRAN_DOCKER_DIR}/docker-compose.yml"
+  fi
+  if [ ! -f "${FORTRAN_COMPOSE_FILE}" ]; then
+    log_error "Fortran compose file not found at ${FORTRAN_COMPOSE_FILE}"
     return 1
   fi
   return 0
 }
 
+# Fail-closed check: the Fortran checkout must be an unmodified upstream
+# tree at the commit pinned in reference/flexpart-11.1.json (RISK-03.3G-01).
+require_pinned_fortran() {
+  local manifest="${PROJECT_ROOT}/reference/flexpart-11.1.json"
+  if [ ! -f "${manifest}" ]; then
+    log_error "Oracle manifest not found at ${manifest}"
+    return 1
+  fi
+  local pinned
+  pinned="$(sed -n 's/^[[:space:]]*"pinned_commit": *"\([0-9a-f]*\)".*/\1/p' "${manifest}" | head -1)"
+  if ! printf '%s' "${pinned}" | grep -qE '^[0-9a-f]{40}$'; then
+    log_error "Could not read pinned_commit from ${manifest}"
+    return 1
+  fi
+  local actual
+  if ! actual="$(git -C "${FLEXPART_DIR}" rev-parse HEAD 2>/dev/null)"; then
+    log_error "${FLEXPART_DIR} is not a git checkout"
+    return 1
+  fi
+  if [ "${actual}" != "${pinned}" ]; then
+    log_error "Fortran checkout is at ${actual}, expected pinned ${pinned}"
+    log_error "Check out the exact pinned commit; see docs/reference-environment.md"
+    return 1
+  fi
+  if [ -n "$(git -C "${FLEXPART_DIR}" status --porcelain)" ]; then
+    log_error "Fortran checkout has uncommitted changes; the oracle must stay unmodified"
+    return 1
+  fi
+  log_info "Fortran oracle pinned at ${pinned} (clean)"
+  return 0
+}
+
 # ---------------------------------------------------------------------------
-# Fortran Docker is in a sibling directory (../flexpart-fortran-docker/)
+# Fortran Docker comes from this repository (docker/docker-compose.fortran.yml);
+# a legacy external sibling layout can be selected via FORTRAN_DOCKER_DIR.
 # GPU Docker is in this project
 fortran_compose_cmd() { local m="$1"; shift
-  docker compose -f "${FORTRAN_DOCKER_DIR}/docker-compose.yml" "$@"
+  docker compose -f "${FORTRAN_COMPOSE_FILE}" "$@"
 }
 gpu_compose_cmd() { local m="$1"; shift
   case "$m" in
@@ -73,19 +122,20 @@ gpu_exec()     { local m="$1"; shift; gpu_compose_cmd "$m" run --rm flexpart-gpu
 do_setup() {
   local mode="$1"
 
+  mkdir -p "${PROJECT_ROOT}/target/comparison" "${PROJECT_ROOT}/target/etex"
+  require_pinned_fortran
   log_info "Building Docker images..."
   fortran_compose_cmd "$mode" build
   gpu_compose_cmd "$mode" build
 
   log_info "Compiling FLEXPART Fortran..."
   fortran_exec "$mode" bash -c "
-    cd ${C_FLEXPART}/src && make clean 2>/dev/null; \
-    make serial \
-      INCPATH1=/usr/lib/x86_64-linux-gnu/fortran/x86_64-linux-gnu-gfortran-11 \
-      INCPATH2=/usr/include \
-      LIBPATH1=/usr/lib/x86_64-linux-gnu \
-      LIBS='-leccodes_f90 -leccodes -lm' \
-      2>&1 | tail -3
+    set -euo pipefail
+    cd ${C_FLEXPART}/src
+    make -f makefile_gfortran clean >/dev/null 2>&1 || true
+    FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4 2>&1 | tail -3
+    test -x FLEXPART
+    rm -f gitversion.txt
   "
 
   log_info "Generating synthetic GRIB data..."
@@ -127,6 +177,8 @@ EOF
  IOUT=                  1,
  IPOUT=                 0,
  LSUBGRID=              0,
+ NXSHIFT=               0,
+ LNETCDFOUT=            0,
  LCONVECTION=           0,
  LAGESPECTRA=           0,
  IPIN=                  0,
@@ -201,13 +253,14 @@ EOF
 
     # Copy static data (landuse, surface params)
     cp ${C_FLEXPART}/options/IGBP_int1.dat  ${C_DATA}/fortran_run/options/
-    cp ${C_FLEXPART}/options/surfdata.t     ${C_DATA}/fortran_run/options/
-    cp ${C_FLEXPART}/options/surfdepo.t     ${C_DATA}/fortran_run/options/
+    cp ${C_FLEXPART}/options/sfcdata.t     ${C_DATA}/fortran_run/options/
+    cp ${C_FLEXPART}/options/sfcdepo.t     ${C_DATA}/fortran_run/options/
+    cp ${C_FLEXPART}/options/PARTOPTIONS   ${C_DATA}/fortran_run/options/
 
-    # Copy SPECIES definitions
-    if [ -d ${C_FLEXPART}/options/SPECIES ]; then
-      cp -r ${C_FLEXPART}/options/SPECIES/* ${C_DATA}/fortran_run/options/SPECIES/
-    fi
+    # Inert tracer species from the upstream Tracer example (all removal
+    # disabled). v11.1 ships name-based SPECIES files, so copy the exact
+    # numbered file the RELEASES (SPECNUM_REL) refers to.
+    cp ${C_FLEXPART}/examples/Tracer/SPECIES/SPECIES_024 ${C_DATA}/fortran_run/options/SPECIES/
   "
 
   log_info "Setup complete."
@@ -278,18 +331,19 @@ V_DY=0.10
 do_validate_setup() {
   local mode="$1"
 
+  mkdir -p "${PROJECT_ROOT}/target/comparison" "${PROJECT_ROOT}/target/etex"
+  require_pinned_fortran
   log_info "Building Docker images..."
   fortran_compose_cmd "$mode" build
 
   log_info "Compiling FLEXPART Fortran..."
   fortran_exec "$mode" bash -c "
-    cd ${C_FLEXPART}/src && make clean 2>/dev/null; \
-    make serial \
-      INCPATH1=/usr/lib/x86_64-linux-gnu/fortran/x86_64-linux-gnu-gfortran-11 \
-      INCPATH2=/usr/include \
-      LIBPATH1=/usr/lib/x86_64-linux-gnu \
-      LIBS='-leccodes_f90 -leccodes -lm' \
-      2>&1 | tail -3
+    set -euo pipefail
+    cd ${C_FLEXPART}/src
+    make -f makefile_gfortran clean >/dev/null 2>&1 || true
+    FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4 2>&1 | tail -3
+    test -x FLEXPART
+    rm -f gitversion.txt
   "
 
   log_info "Generating synthetic GRIB data (u=${V_U_WIND}, v=${V_V_WIND})..."
@@ -320,7 +374,7 @@ EOF
  IBTIME=           000000,
  IEDATE=         20240101,
  IETIME=           060000,
- LOUTSTEP=          21600,
+ LOUTSTEP=           1800,
  LOUTAVER=           1800,
  LOUTSAMPLE=          900,
  ITSPLIT=        99999999,
@@ -330,6 +384,8 @@ EOF
  IOUT=                  1,
  IPOUT=                 2,
  LSUBGRID=              0,
+ NXSHIFT=               0,
+ LNETCDFOUT=            0,
  LCONVECTION=           0,
  LAGESPECTRA=           0,
  IPIN=                  0,
@@ -399,11 +455,10 @@ EOF
 EOF
 
     cp ${C_FLEXPART}/options/IGBP_int1.dat  ${C_DATA}/validate_run/options/
-    cp ${C_FLEXPART}/options/surfdata.t     ${C_DATA}/validate_run/options/
-    cp ${C_FLEXPART}/options/surfdepo.t     ${C_DATA}/validate_run/options/
-    if [ -d ${C_FLEXPART}/options/SPECIES ]; then
-      cp -r ${C_FLEXPART}/options/SPECIES/* ${C_DATA}/validate_run/options/SPECIES/
-    fi
+    cp ${C_FLEXPART}/options/sfcdata.t     ${C_DATA}/validate_run/options/
+    cp ${C_FLEXPART}/options/sfcdepo.t     ${C_DATA}/validate_run/options/
+    cp ${C_FLEXPART}/options/PARTOPTIONS   ${C_DATA}/validate_run/options/
+    cp ${C_FLEXPART}/examples/Tracer/SPECIES/SPECIES_024 ${C_DATA}/validate_run/options/SPECIES/
   "
 
   log_info "Validation setup complete."
@@ -419,6 +474,7 @@ do_validate() {
   # Step 2: Run Fortran FLEXPART
   log_info "Running FLEXPART Fortran (validation)..."
   fortran_exec "$mode" bash -c "
+    set -euo pipefail
     cd ${C_DATA}/validate_run && ${C_FLEXPART}/src/FLEXPART
   " 2>&1 | tee "${PROJECT_ROOT}/target/validation/fortran.log"
 
@@ -438,6 +494,7 @@ do_validate() {
   log_info "Running GPU validation..."
   OUTPUT_PATH="${PROJECT_ROOT}/target/validation/gpu_concentration.json" \
     PARTICLES=${V_PARTICLES} \
+    RUST_LOG=info \
     cargo run --release --bin fortran-validation 2>&1 \
     | tee "${PROJECT_ROOT}/target/validation/gpu.log"
 
@@ -452,11 +509,38 @@ do_validate() {
 
   # Step 5: Run comparison
   log_info "Comparing concentration fields..."
-  python3 "${SCRIPT_DIR}/compare_concentrations.py" \
-    --fortran-output "${FORTRAN_OUTPUT}" \
-    --gpu-output "${PROJECT_ROOT}/target/validation/gpu_concentration.json" \
-    --output-json "${PROJECT_ROOT}/target/validation/comparison_report.json" \
-    --verbose 2>&1 | tee "${PROJECT_ROOT}/target/validation/comparison.log"
+  if [ "$mode" = "local" ]; then
+    "${HOST_PYTHON}" "${SCRIPT_DIR}/compare_concentrations.py" \
+      --fortran-output "${FORTRAN_OUTPUT}" \
+      --gpu-output "${PROJECT_ROOT}/target/validation/gpu_concentration.json" \
+      --output-json "${PROJECT_ROOT}/target/validation/comparison_report.json" \
+      --verbose 2>&1 | tee "${PROJECT_ROOT}/target/validation/comparison.log"
+  else
+    fortran_exec "$mode" python3 "${C_GPU}/scripts/compare_concentrations.py" \
+      --fortran-output "${C_DATA}/validate_run/output" \
+      --gpu-output "${C_GPU}/target/validation/gpu_concentration.json" \
+      --output-json "${C_GPU}/target/validation/comparison_report.json" \
+      --verbose 2>&1 | tee "${PROJECT_ROOT}/target/validation/comparison.log"
+  fi
+
+  if [ "$mode" != "local" ]; then
+    "${HOST_PYTHON}" "${SCRIPT_DIR}/write_oracle_run_manifest.py" \
+      --output "${PROJECT_ROOT}/target/validation/run_manifest.json" \
+      --scenario synthetic-uniform-wind \
+      --oracle-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+      --oracle-checkout "${FLEXPART_DIR}" \
+      --oracle-executable "${FLEXPART_DIR}/src/FLEXPART" \
+      --candidate-checkout "${PROJECT_ROOT}" \
+      --candidate-executable "${CANDIDATE_BINARY}" \
+      --candidate-log "${PROJECT_ROOT}/target/validation/gpu.log" \
+      --input "${PROJECT_ROOT}/target/comparison/meteo" \
+      --input "${PROJECT_ROOT}/target/comparison/validate_run/options" \
+      --artifact "${FORTRAN_OUTPUT}" \
+      --artifact "${PROJECT_ROOT}/target/validation/gpu_concentration.json" \
+      --artifact "${PROJECT_ROOT}/target/validation/comparison_report.json" \
+      --artifact "${PROJECT_ROOT}/target/validation/fortran.log" \
+      --artifact "${PROJECT_ROOT}/target/validation/gpu.log"
+  fi
 
   log_info "Validation complete. Results in target/validation/"
 }

@@ -1,0 +1,20 @@
+{
+  "source": "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-complete",
+  "dataset": "reanalysis-era5-complete",
+  "retrieved_utc": "2026-09-16",
+  "request": {
+    "date": "1994-10-24",
+    "time": "00/03/06",
+    "levelist": "1/to/137",
+    "levtype": "ml",
+    "param": "130/131/132/133/135",
+    "stream": "oper",
+    "type": "an",
+    "area": "53/-8/43/8",
+    "grid": "0.25/0.25",
+    "format": "grib"
+  },
+  "file": "era5-19941024-000306-ml.grib",
+  "bytes": 13624650,
+  "sha256": "893c39cbf0b70129895588aa5c8b43dc819abb129973604147e621c05d5a472b"
+}

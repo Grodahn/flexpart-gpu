@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "purpose": "Versioned scientific and technical thresholds for the Issue #6 test corpus. Thresholds are justified below and must not be loosened to make a run pass. Oracle-vs-candidate comparisons are diagnostic only unless a threshold is explicitly listed as a parity gate.",
+  "thresholds": {
+    "analytic_advection_east_m": {
+      "value": 360.0,
+      "unit": "m",
+      "justification": "1% of the 36000 m signal. Uniform-wind Petterssen advection is exact up to f32 rounding; the bound is generous by design."
+    },
+    "analytic_advection_north_m": {
+      "value": 1.0,
+      "unit": "m",
+      "justification": "No cross-wind component; any north/south drift is numerical noise."
+    },
+    "analytic_advection_vertical_m": {
+      "value": 0.01,
+      "unit": "m",
+      "justification": "No vertical wind; vertical position must be unchanged up to f32 rounding."
+    },
+    "mass_conservation_rel": {
+      "value": 1e-05,
+      "unit": "relative",
+      "justification": "f32 summation-order differences between CPU/GPU paths with deposition disabled. No mass may be created or destroyed."
+    },
+    "deposition_cpu_abs": {
+      "value": 2e-06,
+      "unit": "absolute and relative",
+      "justification": "Accumulated f32-vs-f64 error over 12 exponential-decay steps (existing D-06 budget)."
+    },
+    "deposition_gpu_abs": {
+      "value": 2e-05,
+      "unit": "absolute and relative",
+      "justification": "Additional adapter/driver exp() variation on top of the CPU budget (existing D-06 budget)."
+    },
+    "langevin_variance_rel": {
+      "value": 0.05,
+      "unit": "relative",
+      "justification": "Sample variance over 16384 draws has relative standard error ~1.1%; 5% is about 4.5 sigma."
+    },
+    "pbl_confinement_margin_m": {
+      "value": 1.0,
+      "unit": "m",
+      "justification": "Hard PBL reflection tolerance for the candidate; the Fortran oracle uses a soft top and may place particles above."
+    }
+  },
+  "oracle_parity_gates": null,
+  "oracle_parity_note": "No oracle-vs-candidate concentration or spread threshold is versioned as a pass/fail gate in this corpus. Oracle comparisons report mass, center of mass, covariance/eigenvalues, vertical quantiles, overlap, field correlation and process budgets diagnostically. Any future parity gate needs a separately versioned threshold with physical justification."
+}

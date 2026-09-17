@@ -1,0 +1,20 @@
+&RELEASES_CTRL
+ NSPEC      =           1,
+ SPECNUM_REL=          24,
+ /
+&RELEASE
+ IDATE1  =       20240101,
+ ITIME1  =         000000,
+ IDATE2  =       20240101,
+ ITIME2  =         000000,
+ LON1    =         10.000,
+ LON2    =         10.000,
+ LAT1    =         10.000,
+ LAT2    =         10.000,
+ Z1      =         50.000,
+ Z2      =         50.000,
+ ZKIND   =              1,
+ MASS    =       1.0000E0,
+ PARTS   =             1024,
+ COMMENT =    "ADV-ANA-001",
+ /

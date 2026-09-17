@@ -36,10 +36,33 @@ jobs:
             exit 1
           fi
           grep -q "software_adapter=true" target/ci-gate/sw-wgpu-advection.log
+      - name: Run corpus deterministic subset (Issue #6, point 2)
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-gate
+          # Small deterministic selection only: analytic advection, neutral
+          # production smoke, repeatability, isolated deposition analytic and
+          # the blocked-dependency gate. The larger 10-seed corpus stays local
+          # via scripts/run-corpus.sh (see docs/corpus-matrix.md).
+          cargo test --test integration corpus_ -- --nocapture 2>&1 | tee target/ci-gate/corpus-subset.log
+          grep -q "test result: ok" target/ci-gate/corpus-subset.log
+          grep -qE "[1-9][0-9]* passed" target/ci-gate/corpus-subset.log
+          if grep -q "FAILED\|failed" target/ci-gate/corpus-subset.log; then
+            echo "Corpus subset log contains failures"
+            exit 1
+          fi
+          # No skipped corpus test may hide behind a passing suite: every
+          # corpus test must either pass or the job fails here.
+          if grep -q "no WGSL adapter" target/ci-gate/corpus-subset.log; then
+            echo "Corpus subset skipped (no adapter); failing closed"
+            exit 1
+          fi
       - name: Upload smoke logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: software-wgpu-smoke-${{ github.run_id }}
-          path: target/ci-gate/sw-wgpu-advection.log
+          path: |
+            target/ci-gate/sw-wgpu-advection.log
+            target/ci-gate/corpus-subset.log
           retention-days: 30

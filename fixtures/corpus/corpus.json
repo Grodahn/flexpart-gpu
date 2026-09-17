@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "issue": "RISK-03.3G-01 (Issue #6), point 2: reproducible FLEXPART-11.1 test corpus",
+  "oracle": {
+    "manifest": "reference/flexpart-11.1.json",
+    "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+    "note": "Unmodified upstream sources only. Verification via cargo run --bin reference-check and scripts/compare-fortran.sh / scripts/run-corpus.sh."
+  },
+  "candidate_production_path": "ForwardTimeLoopDriver (src/simulation/timeloop.rs): WGSL dual-wind advection + fused Hanna/Langevin (n_substeps=4) + GPU PBL diagnostics + dry/wet deposition forcing. Isolated kernel dispatches (advection-only, Langevin-only, deposition-only, convection-workflow) are labeled isolated and are not full production runs.",
+  "seed_note": "Candidate Philox key/counter are controllable per case (see cases/*.json). The Fortran oracle hard-codes its RNG seeds (random_mod.f90 alloc_random: iseed1=-7-i, iseed2=-88-i) with no namelist override; multi-seed oracle parity cannot be claimed. Stochastic corpus cases run the candidate with 10 independent Philox seeds and compare diagnostically against a single oracle realization.",
+  "cases": [
+    {
+      "id": "ADV-ANA-001",
+      "issue_requirement": 1,
+      "title": "Analytic advection without turbulence",
+      "status": "implemented",
+      "candidate": {
+        "path": "isolated WGSL advection dispatches (production advection kernel, turbulence disabled by construction)",
+        "runner": "cargo test --test integration corpus_analytic_advection && scripts/run-corpus.sh candidate ADV-ANA-001",
+        "fixture": "fixtures/corpus/cases/ADV-ANA-001.json"
+      },
+      "oracle": {
+        "runner": "scripts/run-corpus.sh oracle ADV-ANA-001 (Docker, LTURBULENCE=0, LCONVECTION=0)",
+        "fixture": "fixtures/corpus/fortran/ADV-ANA-001/"
+      },
+      "expected": "10 m/s * 3600 s = 36000 m eastward displacement; no north/south or vertical motion; plume does not spread; mass conserved.",
+      "units": "wind m/s, displacement m, mass kg",
+      "thresholds": "thresholds.json analytic_advection_* and mass_conservation_rel",
+      "artifacts": "target/corpus/candidate/ADV-ANA-001/ + target/corpus/oracle/ADV-ANA-001/ + target/corpus/comparison_report.json"
+    },
+    {
+      "id": "WIND-UNI-002",
+      "issue_requirement": 2,
+      "title": "Uniform wind with horizontal and vertical turbulence",
+      "status": "implemented",
+      "candidate": {
+        "path": "production ForwardTimeLoopDriver (advection + fused Langevin + PBL)",
+        "runner": "src/bin/corpus-run.rs (case WIND-UNI-002) and tests/integration/corpus.rs",
+        "fixture": "fixtures/corpus/cases/WIND-UNI-002.json"
+      },
+      "oracle": {
+        "runner": "scripts/run-corpus.sh oracle WIND-UNI-002 (Docker, LTURBULENCE=1, CTL=5.0 modern Hanna, LCONVECTION=0)",
+        "fixture": "fixtures/corpus/fortran/WIND-UNI-002/"
+      },
+      "expected": "Center of mass advects east/south with 5/-3 m/s wind; plume spreads in x/y/z; all particles remain in [0, BLH]; total mass conserved without deposition.",
+      "units": "wind m/s, positions degrees/m, mass kg",
+      "thresholds": "mass_conservation_rel + pbl_confinement_margin_m; spread reported diagnostically",
+      "artifacts": "target/corpus/candidate/WIND-UNI-002/ (10 seeds) + target/corpus/oracle/WIND-UNI-002/ + comparison metrics"
+    },
+    {
+      "id": "WIND-SHEAR-003",
+      "issue_requirement": 2,
+      "title": "Sheared wind with horizontal and vertical turbulence",
+      "status": "implemented",
+      "candidate": {
+        "path": "production ForwardTimeLoopDriver with height-dependent u(z)",
+        "runner": "src/bin/corpus-run.rs (case WIND-SHEAR-003)",
+        "fixture": "fixtures/corpus/cases/WIND-SHEAR-003.json"
+      },
+      "oracle": {
+        "runner": "scripts/run-corpus.sh oracle WIND-SHEAR-003 (Docker, sheared synthetic GRIB via --u-shear-per-m)",
+        "fixture": "fixtures/corpus/fortran/WIND-SHEAR-003/"
+      },
+      "expected": "Mean displacement follows the release-height wind; vertical shear stretches the plume along-wind (growing x-variance and x/z covariance); mass conserved; PBL confined.",
+      "units": "wind m/s, shear 1/s, positions degrees/m, mass kg",
+      "thresholds": "mass_conservation_rel + pbl_confinement_margin_m; shear-stretch reported diagnostically",
+      "artifacts": "target/corpus/candidate/WIND-SHEAR-003/ (10 seeds) + target/corpus/oracle/WIND-SHEAR-003/ + comparison metrics"
+    },
+    {
+      "id": "PBL-STABLE-004",
+      "issue_requirement": 3,
+      "title": "Stable boundary-layer profile",
+      "status": "implemented",
+      "candidate": {
+        "path": "production ForwardTimeLoopDriver with stable surface forcing",
+        "runner": "src/bin/corpus-run.rs (case PBL-STABLE-004)",
+        "fixture": "fixtures/corpus/cases/PBL-STABLE-004.json"
+      },
+      "oracle": {
+        "runner": "scripts/run-corpus.sh oracle PBL-STABLE-004 (Docker, stable synthetic surface: negative heat flux, low BLH)",
+        "fixture": "fixtures/corpus/fortran/PBL-STABLE-004/"
+      },
+      "expected": "Suppressed vertical mixing: small vertical standard deviation, mean height stays near the 50 m release within a 500 m PBL.",
+      "units": "heat flux W/m2, Obukhov 1/m, heights m",
+      "thresholds": "pbl_confinement_margin_m; vertical quantiles reported diagnostically",
+      "artifacts": "target/corpus/candidate/PBL-STABLE-004/ (10 seeds) + oracle + comparison metrics"
+    },
+    {
+      "id": "PBL-NEUTRAL-005",
+      "issue_requirement": 3,
+      "title": "Neutral boundary-layer profile",
+      "status": "implemented",
+      "candidate": {
+        "path": "production ForwardTimeLoopDriver with neutral surface forcing",
+        "runner": "src/bin/corpus-run.rs (case PBL-NEUTRAL-005) and CI smoke tests/integration/corpus.rs",
+        "fixture": "fixtures/corpus/cases/PBL-NEUTRAL-005.json"
+      },
+      "oracle": {
+        "runner": "scripts/run-corpus.sh oracle PBL-NEUTRAL-005 (Docker, neutral synthetic surface)",
+        "fixture": "fixtures/corpus/fortran/PBL-NEUTRAL-005/"
+      },
+      "expected": "Moderate vertical mixing through a 1500 m PBL; mean height above release; non-trivial vertical spread; PBL confined; mass conserved.",
+      "units": "heat flux W/m2, Obukhov 1/m, heights m",
+      "thresholds": "mass_conservation_rel + pbl_confinement_margin_m",
+      "artifacts": "target/corpus/candidate/PBL-NEUTRAL-005/ + oracle + comparison metrics"
+    },
+    {
+      "id": "PBL-UNSTABLE-006",
+      "issue_requirement": 3,
+      "title": "Unstable (convective) boundary-layer profile",
+      "status": "implemented",
+      "candidate": {
+        "path": "production ForwardTimeLoopDriver with unstable surface forcing",
+        "runner": "src/bin/corpus-run.rs (case PBL-UNSTABLE-006)",
+        "fixture": "fixtures/corpus/cases/PBL-UNSTABLE-006.json"
+      },
+      "oracle": {
+        "runner": "scripts/run-corpus.sh oracle PBL-UNSTABLE-006 (Docker, unstable synthetic surface: positive heat flux, deep BLH)",
+        "fixture": "fixtures/corpus/fortran/PBL-UNSTABLE-006/"
+      },
+      "expected": "Vigorous vertical mixing: large vertical standard deviation and mean height well above release within a 2000 m PBL. Deep convection itself stays disabled (LCONVECTION=0).",
+      "units": "heat flux W/m2, Obukhov 1/m, heights m",
+      "thresholds": "pbl_confinement_margin_m; vertical quantiles reported diagnostically",
+      "artifacts": "target/corpus/candidate/PBL-UNSTABLE-006/ (10 seeds) + oracle + comparison metrics"
+    },
+    {
+      "id": "DRY-007",
+      "issue_requirement": 4,
+      "title": "Dry-only deposition",
+      "status": "implemented",
+      "candidate": {
+        "path": "isolated dry-deposition kernel (analytic exponential) + production driver with dry forcing and zero wet forcing",
+        "runner": "cargo test --test integration deposition_decay + src/bin/corpus-run.rs (case DRY-007)",
+        "fixture": "fixtures/corpus/cases/DRY-007.json"
+      },
+      "oracle": {
+        "runner": "scripts/run-corpus.sh oracle DRY-007 (Docker, depositing aerosol SPECIES, zero-precipitation GRIB)",
+        "fixture": "fixtures/corpus/fortran/DRY-007/"
+      },
+      "expected": "Total airborne mass decays exponentially with the dry-deposition rate; deposited reservoir grows complementarily; mass budget (airborne + deposited) conserved.",
+      "units": "deposition velocity m/s, rate 1/s, mass kg",
+      "thresholds": "deposition_cpu_abs / deposition_gpu_abs for isolated kernels; driver budget reported diagnostically",
+      "artifacts": "target/corpus/candidate/DRY-007/ + oracle + process budgets"
+    },
+    {
+      "id": "WET-008",
+      "issue_requirement": 4,
+      "title": "Wet-only deposition",
+      "status": "implemented",
+      "candidate": {
+        "path": "isolated wet-scavenging kernel (analytic exponential) + production driver with wet forcing and zero dry forcing",
+        "runner": "cargo test --test integration deposition_decay + src/bin/corpus-run.rs (case WET-008)",
+        "fixture": "fixtures/corpus/cases/WET-008.json"
+      },
+      "oracle": {
+        "runner": "scripts/run-corpus.sh oracle WET-008 (Docker, scavenging aerosol SPECIES, precipitating GRIB)",
+        "fixture": "fixtures/corpus/fortran/WET-008/"
+      },
+      "expected": "Total airborne mass decays exponentially with the scavenging coefficient times precipitating fraction; wet-deposited reservoir grows complementarily.",
+      "units": "scavenging coefficient 1/s, precipitating fraction 1, mass kg",
+      "thresholds": "deposition_cpu_abs / deposition_gpu_abs for isolated kernels; driver budget reported diagnostically",
+      "artifacts": "target/corpus/candidate/WET-008/ + oracle + process budgets"
+    },
+    {
+      "id": "REPEAT-009",
+      "issue_requirement": 7,
+      "title": "Repeatability (deterministic rerun)",
+      "status": "implemented",
+      "candidate": {
+        "path": "production ForwardTimeLoopDriver run twice with identical Philox key/counter",
+        "runner": "tests/integration/corpus.rs::corpus_repeatability_is_bit_identical + scripts/run-corpus.sh candidate REPEAT-009",
+        "fixture": "fixtures/corpus/cases/REPEAT-009.json"
+      },
+      "oracle": {
+        "runner": "documented only: Fortran seeds are hard-coded (random_mod.f90 alloc_random) with no namelist override; OpenMP threading adds scheduling nondeterminism. No multi-seed oracle parity is claimed.",
+        "fixture": "n/a (cause documented in docs/corpus-matrix.md)"
+      },
+      "expected": "Candidate reruns with the same seed produce bit-identical particle states and metrics.",
+      "units": "Philox key/counter (u32), positions grid/m",
+      "thresholds": "exact equality for candidate rerun",
+      "artifacts": "target/corpus/candidate/REPEAT-009/seed_*.json"
+    },
+    {
+      "id": "RESTART-010",
+      "issue_requirement": 7,
+      "title": "Restart (continue from saved state)",
+      "status": "blocked",
+      "blocked_by": "Candidate has no particle-state serialize/restore or timestep-continuation API (verified: no restart symbol in src/simulation/timeloop.rs at the corpus base commit). The Fortran oracle supports restart via IPIN/LOUTRESTART and restart_mod.f90, so no equivalent two-program restart run exists.",
+      "candidate": {
+        "path": "missing",
+        "runner": "none (dependency)",
+        "fixture": "none"
+      },
+      "oracle": {
+        "runner": "Fortran restart documented in docs/corpus-matrix.md (IPIN path); not executed as a paired run",
+        "fixture": "fixtures/corpus/fortran/RESTART-010/ (oracle-only COMMAND with LOUTRESTART/IPIN documented)"
+      },
+      "expected": "n/a (blocked)",
+      "units": "n/a",
+      "thresholds": "none",
+      "artifacts": "none (must not be reported as passed)"
+    },
+    {
+      "id": "DECAY-011",
+      "issue_requirement": 5,
+      "title": "Radioactive-decay analytic case",
+      "status": "blocked",
+      "blocked_by": "Radioactive decay is not present in the candidate production path at the corpus base commit (no decay kernel, no decay forcing in ForwardStepForcing/ForwardTimeLoopDriver). Isolated deposition/decay kernels cover deposition only. The Fortran oracle supports decay via SPECIES PDECAY half-life. No analytic decay run through both production paths exists.",
+      "candidate": {
+        "path": "missing from production driver",
+        "runner": "none (dependency)",
+        "fixture": "none"
+      },
+      "oracle": {
+        "runner": "none (dependency)",
+        "fixture": "none"
+      },
+      "expected": "Future gate once decay lands in both production paths: airborne mass follows exp(-lambda*t) with lambda=ln(2)/half-life; budget includes decayed reservoir.",
+      "units": "half-life s, decay constant 1/s, mass kg",
+      "thresholds": "none (must not be reported as passed)",
+      "artifacts": "none"
+    },
+    {
+      "id": "CONV-012",
+      "issue_requirement": 6,
+      "title": "Convection column",
+      "status": "blocked",
+      "blocked_by": "Convection is implemented only as an isolated CPU reference and WGSL mixing kernel (src/physics/convection.rs, src/gpu/convection.rs, tests/convection_chain.rs). It is not orchestrated by the candidate production driver (no convection dispatch in ForwardTimeLoopDriver at the corpus base commit). The Fortran oracle supports convection via LCONVECTION/convect43c. No convection-column run through both production paths exists.",
+      "candidate": {
+        "path": "isolated kernel only (not production)",
+        "runner": "tests/convection_chain.rs (isolated, not a corpus production run)",
+        "fixture": "none"
+      },
+      "oracle": {
+        "runner": "none (dependency)",
+        "fixture": "none"
+      },
+      "expected": "Future gate once Emanuel convection lands in both production paths: bottom-heavy profile lifts, column-stochastic matrix conserves mass.",
+      "units": "levels m, mass flux kg/m2/s, mass kg",
+      "thresholds": "none (must not be reported as passed)",
+      "artifacts": "none"
+    },
+    {
+      "id": "ETEX-MINI-013",
+      "issue_requirement": 8,
+      "title": "Real-weather ETEX-1 mini run",
+      "status": "implemented",
+      "candidate": {
+        "path": "production etex-run driver from native ERA5-derived GPU meteorology (16 AGL levels, omega-derived w)",
+        "runner": "scripts/run-etex.sh mini (alias ETEX_PROFILE=mini scripts/run-etex.sh all)",
+        "fixture": "fixtures/etex/native-mini/ + fixtures/etex/mini/config/ + fixtures/etex/data/"
+      },
+      "oracle": {
+        "runner": "scripts/run-etex.sh mini (pinned FLEXPART 11.1, 137 native hybrid levels, etadot velocity)",
+        "fixture": "fixtures/etex/native-mini/ + fixtures/etex/mini/config/"
+      },
+      "expected": "Pipeline and observation-pairing regression only. No concentration-parity verdict: input audit status is INPUT_EQUIVALENCE_NOT_DEMONSTRATED (137 vs 16 levels, etadot vs omega-derived w, differing timesteps/PBL). Metrics are diagnostic (FB, NMSE, correlation, FAC2, timing/peak where available).",
+      "units": "concentrations pg/m3 per bundled readme.txt; meteorology SI",
+      "thresholds": "fixtures/etex/mini/input-equivalence-thresholds.json are technical decoding tolerances only, not parity gates",
+      "artifacts": "target/etex/mini/ (paired report, run_manifest.json, input_equivalence_report.json)"
+    }
+  ]
+}

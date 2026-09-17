@@ -264,6 +264,17 @@ PATHEOF
             test -x FLEXPART
             rm -f gitversion.txt
         "
+    # Restore oracle checkout: the makefile modifies tracked src/FLEXPART.f90
+    # and creates untracked gitversion.txt. Restore both so the pinned checkout
+    # stays clean for subsequent verification steps.
+    git -C "${FLEXPART_DIR}" checkout -- src/FLEXPART.f90
+    rm -f "${FLEXPART_DIR}/src/gitversion.txt"
+    # Verify cleanliness (fail closed, no || true)
+    if [ -n "$(git -C "${FLEXPART_DIR}" status --porcelain)" ]; then
+        log_error "Oracle checkout not clean after build"
+        git -C "${FLEXPART_DIR}" status --porcelain
+        exit 1
+    fi
 
     log_info "Running FLEXPART Fortran (ETEX-1)..."
     docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \

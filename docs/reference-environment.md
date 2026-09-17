@@ -92,6 +92,12 @@ is absent or the model windows do not match. A complete ETEX run also needs
 the externally downloaded ERA5 arrays; a build or synthetic smoke test alone
 does not validate ETEX.
 
+In CI, the pinned oracle is cloned from the upstream repository at the
+`pinned_commit` in `reference/flexpart-11.1.json` and verified with
+`reference-check -- verify` before any build (see `docs/ci-gates.md`).
+The small per-PR gate builds the oracle Docker image and compiles FLEXPART;
+the larger synthetic and ETEX runs stay local/manual.
+
 The standard synthetic validation setup (`scripts/compare-fortran.sh`
 `validate`) uses an output cadence whose last window covers the run end, and
 the comparison reads that last file - never a mid-run time average against an

@@ -137,6 +137,17 @@ do_setup() {
     test -x FLEXPART
     rm -f gitversion.txt
   "
+  # Restore oracle checkout: the makefile modifies tracked src/FLEXPART.f90
+  # and creates untracked gitversion.txt. Restore both so the pinned checkout
+  # stays clean for subsequent verification steps.
+  git -C "${FLEXPART_DIR}" checkout -- src/FLEXPART.f90
+  rm -f "${FLEXPART_DIR}/src/gitversion.txt"
+  # Verify cleanliness (fail closed, no || true)
+  if [ -n "$(git -C "${FLEXPART_DIR}" status --porcelain)" ]; then
+    log_error "Oracle checkout not clean after build"
+    git -C "${FLEXPART_DIR}" status --porcelain
+    exit 1
+  fi
 
   log_info "Generating synthetic GRIB data..."
   fortran_exec "$mode" python3 ${C_GPU}/scripts/generate_synthetic_grib.py \
@@ -345,6 +356,17 @@ do_validate_setup() {
     test -x FLEXPART
     rm -f gitversion.txt
   "
+  # Restore oracle checkout: the makefile modifies tracked src/FLEXPART.f90
+  # and creates untracked gitversion.txt. Restore both so the pinned checkout
+  # stays clean for subsequent verification steps.
+  git -C "${FLEXPART_DIR}" checkout -- src/FLEXPART.f90
+  rm -f "${FLEXPART_DIR}/src/gitversion.txt"
+  # Verify cleanliness (fail closed, no || true)
+  if [ -n "$(git -C "${FLEXPART_DIR}" status --porcelain)" ]; then
+    log_error "Oracle checkout not clean after build"
+    git -C "${FLEXPART_DIR}" status --porcelain
+    exit 1
+  fi
 
   log_info "Generating synthetic GRIB data (u=${V_U_WIND}, v=${V_V_WIND})..."
   fortran_exec "$mode" python3 ${C_GPU}/scripts/generate_synthetic_grib.py \

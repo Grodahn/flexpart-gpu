@@ -164,7 +164,17 @@ tests/
     └── software_advection.rs       # SW-WGPU-ADVECTION-001 infrastructure smoke test
 ```
 
-### What the CI gate checks
+### What the CI gates check
+
+The `software-wgpu` job runs `SW-WGPU-ADVECTION-001` on Lavapipe and fails
+on a missing adapter, a skipped test, or a missing result (see
+[ci-gates.md](ci-gates.md)).
+
+The `technical-gate` job runs `scripts/ci-gate.sh`: pinned clean oracle
+verification, oracle Docker build, `gpu-preflight --software`, the
+analytical `SW-WGPU-ADVECTION-001` case, and a 1000-particle synthetic
+candidate smoke with provenance checks. It is a technical gate only and
+does not establish scientific parity.
 
 The `physics_validation_advection_turbulence_pbl` test runs a 1-hour
 simulation (500 particles, 12 steps, dt=300 s) and verifies:

@@ -22,4 +22,24 @@ jobs:
           test -n "$icd"
           echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
       - name: Run required software WGSL advection smoke test
-        run: cargo test --test integration software_advection::test_sw_wgpu_advection_001_constant_wind_displacement -- --exact --nocapture
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-gate
+          cargo test --test integration software_advection::test_sw_wgpu_advection_001_constant_wind_displacement -- --exact --nocapture 2>&1 | tee target/ci-gate/sw-wgpu-advection.log
+          # Fail closed: a missing adapter, a skipped test, or a missing
+          # result must fail the job (never silently pass).
+          grep -q "SW-WGPU-ADVECTION-001" target/ci-gate/sw-wgpu-advection.log
+          grep -q "test result: ok" target/ci-gate/sw-wgpu-advection.log
+          grep -qE "1 passed" target/ci-gate/sw-wgpu-advection.log
+          if grep -q "FAILED" target/ci-gate/sw-wgpu-advection.log; then
+            echo "SW-WGPU smoke log contains FAILED"
+            exit 1
+          fi
+          grep -q "software_adapter=true" target/ci-gate/sw-wgpu-advection.log
+      - name: Upload smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: software-wgpu-smoke-${{ github.run_id }}
+          path: target/ci-gate/sw-wgpu-advection.log
+          retention-days: 30

@@ -212,6 +212,23 @@ impl SimulationConfig {
         for specie in &self.species {
             specie.validate()?;
         }
+
+        let species_count = self.species.len();
+        for release in &self.releases {
+            if let Some(masses) = &release.species_masses_kg {
+                if masses.len() > species_count {
+                    return Err(ConfigError::Validation {
+                        message: format!(
+                            "release `{}` species_masses_kg has {} entries but simulation has only {} configured species",
+                            release.name,
+                            masses.len(),
+                            species_count
+                        ),
+                    });
+                }
+            }
+        }
+
         Ok(())
     }
 }
@@ -1565,6 +1582,338 @@ mod tests {
         "#;
         let result = ReleaseConfig::parse_many(input, Path::new("<inline>"));
         assert!(result.is_err(), "more than MAX_SPECIES masses must fail");
+    }
+
+    #[test]
+    fn validate_rejects_release_with_more_masses_than_species() {
+        let config = SimulationConfig {
+            version: Some(CURRENT_CONFIG_VERSION),
+            command: CommandConfig {
+                start_time: "20240101120000".to_string(),
+                end_time: "20240101180000".to_string(),
+                output_interval_seconds: Some(3600),
+                sync_interval_seconds: Some(900),
+                raw: ConfigMap::new(),
+            },
+            releases: vec![ReleaseConfig {
+                name: "r1".to_string(),
+                start_time: "20240101130000".to_string(),
+                end_time: "20240101150000".to_string(),
+                lon: 7.5,
+                lat: 46.2,
+                z_min: 0.0,
+                z_max: 100.0,
+                mass_kg: 1.0,
+                particle_count: 1000,
+                species_masses_kg: Some(vec![1.0, 0.5]),
+                raw: ConfigMap::new(),
+            }],
+            outgrid: OutputGridConfig {
+                lon_min: 5.0,
+                lon_max: 10.0,
+                lat_min: 44.0,
+                lat_max: 48.0,
+                nx: 100,
+                ny: 80,
+                nz: 10,
+                dx: 0.05,
+                dy: 0.05,
+                dz: 100.0,
+                raw: ConfigMap::new(),
+            },
+            species: vec![SpeciesConfig {
+                name: "SO2".to_string(),
+                version: Some(CURRENT_CONFIG_VERSION),
+                molecular_weight: Some(64.066),
+                dry_deposition_velocity: Some(0.01),
+                decay_constant: Some(0.0),
+                half_life_s: None,
+                wet_a_gas: None,
+                wet_b_gas: None,
+                crain_aero: None,
+                csnow_aero: None,
+                ccn_aero: None,
+                in_aero: None,
+                relative_diffusivity: None,
+                henry: None,
+                surface_reactivity_f0: None,
+                particle_density_kg_m3: None,
+                mean_diameter_um: None,
+                diameter_sigma: None,
+                source_file: Some("SO2.spec".to_string()),
+                raw: ConfigMap::new(),
+            }],
+        };
+
+        let err = config.validate().expect_err("excess masses must fail");
+        assert!(
+            err.to_string()
+                .contains("release `r1` species_masses_kg has 2 entries but simulation has only 1 configured species")
+        );
+    }
+
+    #[test]
+    fn validate_accepts_equal_length_masses_and_species() {
+        let config = SimulationConfig {
+            version: Some(CURRENT_CONFIG_VERSION),
+            command: CommandConfig {
+                start_time: "20240101120000".to_string(),
+                end_time: "20240101180000".to_string(),
+                output_interval_seconds: Some(3600),
+                sync_interval_seconds: Some(900),
+                raw: ConfigMap::new(),
+            },
+            releases: vec![ReleaseConfig {
+                name: "r1".to_string(),
+                start_time: "20240101130000".to_string(),
+                end_time: "20240101150000".to_string(),
+                lon: 7.5,
+                lat: 46.2,
+                z_min: 0.0,
+                z_max: 100.0,
+                mass_kg: 1.0,
+                particle_count: 1000,
+                species_masses_kg: Some(vec![1.0, 0.5]),
+                raw: ConfigMap::new(),
+            }],
+            outgrid: OutputGridConfig {
+                lon_min: 5.0,
+                lon_max: 10.0,
+                lat_min: 44.0,
+                lat_max: 48.0,
+                nx: 100,
+                ny: 80,
+                nz: 10,
+                dx: 0.05,
+                dy: 0.05,
+                dz: 100.0,
+                raw: ConfigMap::new(),
+            },
+            species: vec![
+                SpeciesConfig {
+                    name: "SO2".to_string(),
+                    version: Some(CURRENT_CONFIG_VERSION),
+                    molecular_weight: Some(64.066),
+                    dry_deposition_velocity: Some(0.01),
+                    decay_constant: Some(0.0),
+                    half_life_s: None,
+                    wet_a_gas: None,
+                    wet_b_gas: None,
+                    crain_aero: None,
+                    csnow_aero: None,
+                    ccn_aero: None,
+                    in_aero: None,
+                    relative_diffusivity: None,
+                    henry: None,
+                    surface_reactivity_f0: None,
+                    particle_density_kg_m3: None,
+                    mean_diameter_um: None,
+                    diameter_sigma: None,
+                    source_file: Some("SO2.spec".to_string()),
+                    raw: ConfigMap::new(),
+                },
+                SpeciesConfig {
+                    name: "Xe133".to_string(),
+                    version: Some(CURRENT_CONFIG_VERSION),
+                    molecular_weight: Some(133.0),
+                    dry_deposition_velocity: None,
+                    decay_constant: Some(0.0),
+                    half_life_s: Some(453168.0),
+                    wet_a_gas: None,
+                    wet_b_gas: None,
+                    crain_aero: None,
+                    csnow_aero: None,
+                    ccn_aero: None,
+                    in_aero: None,
+                    relative_diffusivity: None,
+                    henry: None,
+                    surface_reactivity_f0: None,
+                    particle_density_kg_m3: None,
+                    mean_diameter_um: None,
+                    diameter_sigma: None,
+                    source_file: Some("Xe133.spec".to_string()),
+                    raw: ConfigMap::new(),
+                },
+            ],
+        };
+
+        config.validate().expect("equal lengths must pass");
+    }
+
+    #[test]
+    fn validate_accepts_shorter_masses_list() {
+        let config = SimulationConfig {
+            version: Some(CURRENT_CONFIG_VERSION),
+            command: CommandConfig {
+                start_time: "20240101120000".to_string(),
+                end_time: "20240101180000".to_string(),
+                output_interval_seconds: Some(3600),
+                sync_interval_seconds: Some(900),
+                raw: ConfigMap::new(),
+            },
+            releases: vec![ReleaseConfig {
+                name: "r1".to_string(),
+                start_time: "20240101130000".to_string(),
+                end_time: "20240101150000".to_string(),
+                lon: 7.5,
+                lat: 46.2,
+                z_min: 0.0,
+                z_max: 100.0,
+                mass_kg: 1.0,
+                particle_count: 1000,
+                species_masses_kg: Some(vec![1.0]),
+                raw: ConfigMap::new(),
+            }],
+            outgrid: OutputGridConfig {
+                lon_min: 5.0,
+                lon_max: 10.0,
+                lat_min: 44.0,
+                lat_max: 48.0,
+                nx: 100,
+                ny: 80,
+                nz: 10,
+                dx: 0.05,
+                dy: 0.05,
+                dz: 100.0,
+                raw: ConfigMap::new(),
+            },
+            species: vec![
+                SpeciesConfig {
+                    name: "SO2".to_string(),
+                    version: Some(CURRENT_CONFIG_VERSION),
+                    molecular_weight: Some(64.066),
+                    dry_deposition_velocity: Some(0.01),
+                    decay_constant: Some(0.0),
+                    half_life_s: None,
+                    wet_a_gas: None,
+                    wet_b_gas: None,
+                    crain_aero: None,
+                    csnow_aero: None,
+                    ccn_aero: None,
+                    in_aero: None,
+                    relative_diffusivity: None,
+                    henry: None,
+                    surface_reactivity_f0: None,
+                    particle_density_kg_m3: None,
+                    mean_diameter_um: None,
+                    diameter_sigma: None,
+                    source_file: Some("SO2.spec".to_string()),
+                    raw: ConfigMap::new(),
+                },
+                SpeciesConfig {
+                    name: "Xe133".to_string(),
+                    version: Some(CURRENT_CONFIG_VERSION),
+                    molecular_weight: Some(133.0),
+                    dry_deposition_velocity: None,
+                    decay_constant: Some(0.0),
+                    half_life_s: Some(453168.0),
+                    wet_a_gas: None,
+                    wet_b_gas: None,
+                    crain_aero: None,
+                    csnow_aero: None,
+                    ccn_aero: None,
+                    in_aero: None,
+                    relative_diffusivity: None,
+                    henry: None,
+                    surface_reactivity_f0: None,
+                    particle_density_kg_m3: None,
+                    mean_diameter_um: None,
+                    diameter_sigma: None,
+                    source_file: Some("Xe133.spec".to_string()),
+                    raw: ConfigMap::new(),
+                },
+            ],
+        };
+
+        config.validate().expect("shorter masses list must pass");
+    }
+
+    #[test]
+    fn validate_accepts_legacy_absent_masses() {
+        let config = SimulationConfig {
+            version: Some(CURRENT_CONFIG_VERSION),
+            command: CommandConfig {
+                start_time: "20240101120000".to_string(),
+                end_time: "20240101180000".to_string(),
+                output_interval_seconds: Some(3600),
+                sync_interval_seconds: Some(900),
+                raw: ConfigMap::new(),
+            },
+            releases: vec![ReleaseConfig {
+                name: "r1".to_string(),
+                start_time: "20240101130000".to_string(),
+                end_time: "20240101150000".to_string(),
+                lon: 7.5,
+                lat: 46.2,
+                z_min: 0.0,
+                z_max: 100.0,
+                mass_kg: 1.0,
+                particle_count: 1000,
+                species_masses_kg: None,
+                raw: ConfigMap::new(),
+            }],
+            outgrid: OutputGridConfig {
+                lon_min: 5.0,
+                lon_max: 10.0,
+                lat_min: 44.0,
+                lat_max: 48.0,
+                nx: 100,
+                ny: 80,
+                nz: 10,
+                dx: 0.05,
+                dy: 0.05,
+                dz: 100.0,
+                raw: ConfigMap::new(),
+            },
+            species: vec![
+                SpeciesConfig {
+                    name: "SO2".to_string(),
+                    version: Some(CURRENT_CONFIG_VERSION),
+                    molecular_weight: Some(64.066),
+                    dry_deposition_velocity: Some(0.01),
+                    decay_constant: Some(0.0),
+                    half_life_s: None,
+                    wet_a_gas: None,
+                    wet_b_gas: None,
+                    crain_aero: None,
+                    csnow_aero: None,
+                    ccn_aero: None,
+                    in_aero: None,
+                    relative_diffusivity: None,
+                    henry: None,
+                    surface_reactivity_f0: None,
+                    particle_density_kg_m3: None,
+                    mean_diameter_um: None,
+                    diameter_sigma: None,
+                    source_file: Some("SO2.spec".to_string()),
+                    raw: ConfigMap::new(),
+                },
+                SpeciesConfig {
+                    name: "Xe133".to_string(),
+                    version: Some(CURRENT_CONFIG_VERSION),
+                    molecular_weight: Some(133.0),
+                    dry_deposition_velocity: None,
+                    decay_constant: Some(0.0),
+                    half_life_s: Some(453168.0),
+                    wet_a_gas: None,
+                    wet_b_gas: None,
+                    crain_aero: None,
+                    csnow_aero: None,
+                    ccn_aero: None,
+                    in_aero: None,
+                    relative_diffusivity: None,
+                    henry: None,
+                    surface_reactivity_f0: None,
+                    particle_density_kg_m3: None,
+                    mean_diameter_um: None,
+                    diameter_sigma: None,
+                    source_file: Some("Xe133.spec".to_string()),
+                    raw: ConfigMap::new(),
+                },
+            ],
+        };
+
+        config.validate().expect("absent masses must pass");
     }
 
     #[test]

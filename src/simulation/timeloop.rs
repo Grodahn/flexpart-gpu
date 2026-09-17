@@ -887,6 +887,24 @@ impl ForwardTimeLoopDriver {
         &self.particle_store
     }
 
+    /// Read-only access to the GPU context.
+    #[must_use]
+    pub fn gpu_context(&self) -> &GpuContext {
+        &self.gpu_context
+    }
+
+    /// Read-only access to the PBL buffers (ping-pong pair).
+    #[must_use]
+    pub fn pbl_buffers(&self) -> &[PblBuffers; 2] {
+        &self.pbl_buffers
+    }
+
+    /// Current PBL write buffer index (0 or 1).
+    #[must_use]
+    pub fn pbl_write_index(&self) -> usize {
+        self.pbl_write_index
+    }
+
     /// Consume the driver and return the host-side particle storage.
     #[must_use]
     pub fn into_particle_store(self) -> ParticleStore {

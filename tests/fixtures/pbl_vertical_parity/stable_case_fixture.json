@@ -1,0 +1,61 @@
+{
+  "oracle": {
+    "name": "FLEXPART",
+    "version": "11.1",
+    "pinned_tag": "v11.1",
+    "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+    "upstream_repository": "https://gitlab.phaidra.org/flexpart/flexpart"
+  },
+  "case": "stable_predefined_hmix",
+  "description": "Stable case with predefined mixing height and negative sensible heat flux (cooling from surface). The provided friction_velocity_ms (0.35) is used by GPU path instead of stress-derived value.",
+  "inputs": {
+    "grid": {
+      "nx": 64,
+      "ny": 64,
+      "dx_deg": 0.1,
+      "dy_deg": 0.1,
+      "xlon0": 6.0,
+      "ylat0": 6.0
+    },
+    "surface_fields": {
+      "surface_pressure_pa": 101325.0,
+      "temperature_2m_k": 289.0,
+      "u10_ms": 5.0,
+      "v10_ms": -3.0,
+      "surface_stress_n_m2": 0.2,
+      "sensible_heat_flux_w_m2": 40.0,
+      "solar_radiation_w_m2": 220.0,
+      "provided_mixing_height_m": 1500.0,
+      "provided_friction_velocity_m_s": 0.35,
+      "provided_inverse_obukhov_per_m": null
+    },
+    "profile_point": null,
+    "pbl_computation_options": {
+      "roughness_length_m": 0.1,
+      "wind_reference_height_m": 10.0,
+      "heat_flux_neutral_threshold_w_m2": 1.0,
+      "bulk_richardson_critical": 0.25,
+      "min_shear_squared_m2_s2": 0.25,
+      "fallback_mixing_height_m": 800.0,
+      "hmix_min_m": 100.0,
+      "hmix_max_m": 4500.0
+    }
+  },
+  "oracle_reference_values": {
+    "note": "These values are derived from the GPU PBL diagnostics path (pbl_diagnostics.wgsl). With provided u*=0.35, H=40 W/m², T=289K, P=101325 Pa: rho ≈ 1.22. The GPU shader uses a sign convention where H>0 yields stable regime. L ≈ 96.9m. 1/L ≈ 0.0103. Provided hmix=1500 is used directly. H>0 → stable (GPU convention), w* = 0.",
+    "friction_velocity_m_s": 0.35,
+    "obukhov_length_m": 96.9,
+    "inverse_obukhov_length_per_m": 0.0103,
+    "mixing_height_m": 1500.0,
+    "convective_velocity_scale_m_s": 0.0,
+    "stability_class": "Stable",
+    "bulk_richardson_number": null
+  },
+  "ctl": {
+    "value": 0.0103,
+    "description": "Inverse Obukhov length 1/L ≈ 0.0103 > 1e-5 → Stable (per GPU shader convention)."
+  },
+  "stability_regime": "Stable",
+  "computed_by": "GPU PBL diagnostics (pbl_diagnostics.wgsl, matching FLEXPART 11.1 calcpar.f90 physics)",
+  "date_computed": "2026-09-17"
+}

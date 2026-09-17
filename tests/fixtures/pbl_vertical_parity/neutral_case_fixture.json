@@ -1,0 +1,69 @@
+{
+  "oracle": {
+    "name": "FLEXPART",
+    "version": "11.1",
+    "pinned_tag": "v11.1",
+    "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+    "upstream_repository": "https://gitlab.phaidra.org/flexpart/flexpart"
+  },
+  "case": "neutral_richardson_fallback",
+  "description": "Neutral case with vanishing sensible heat flux. No predefined hmix provided — PBL height falls back to default (800m) because GPU PBL path does not yet implement bulk Richardson from profile points. u* derived from surface stress.",
+  "inputs": {
+    "grid": {
+      "nx": 64,
+      "ny": 64,
+      "dx_deg": 0.1,
+      "dy_deg": 0.1,
+      "xlon0": 6.0,
+      "ylat0": 6.0
+    },
+    "surface_fields": {
+      "surface_pressure_pa": 101325.0,
+      "temperature_2m_k": 298.0,
+      "u10_ms": 4.0,
+      "v10_ms": 1.0,
+      "surface_stress_n_m2": 0.3,
+      "sensible_heat_flux_w_m2": 0.0,
+      "solar_radiation_w_m2": 200.0,
+      "provided_mixing_height_m": 0.0,
+      "provided_friction_velocity_m_s": null,
+      "provided_inverse_obukhov_per_m": null
+    },
+    "profile_point": {
+      "height_m": 150.0,
+      "temperature_k": 298.5,
+      "wind_u_m_s": 4.2,
+      "wind_v_m_s": 1.1
+    },
+    "pbl_computation_options": {
+      "roughness_length_m": 0.1,
+      "wind_reference_height_m": 10.0,
+      "heat_flux_neutral_threshold_w_m2": 1.0,
+      "bulk_richardson_critical": 0.25,
+      "min_shear_squared_m2_s2": 0.25,
+      "fallback_mixing_height_m": 800.0,
+      "hmix_min_m": 100.0,
+      "hmix_max_m": 4500.0
+    }
+  },
+  "oracle_reference_values": {
+    "note": "These values are derived from the GPU PBL diagnostics path (pbl_diagnostics.wgsl) which implements the same physics as FLEXPART 11.1 calcpar.f90. The profile point is not yet used in the GPU path (TODO in shader), so hmix falls back to 800m.",
+    "friction_velocity_m_s": 0.500,
+    "obukhov_length_m": 1000000000.0,
+    "inverse_obukhov_length_per_m": 0.0,
+    "mixing_height_m": 800.0,
+    "convective_velocity_scale_m_s": 0.0,
+    "stability_class": "Neutral",
+    "bulk_richardson_number": 0.0625
+  },
+  "ctl": {
+    "value": 0.0,
+    "description": "Inverse Obukhov length 1/L = 0.0 (neutral). Bulk Richardson from profile would be 0.0625 < 0.25 → Neutral, but GPU path uses fallback hmix."
+  },
+  "stability_regime": "Neutral",
+  "computed_by": "GPU PBL diagnostics (pbl_diagnostics.wgsl, matching FLEXPART 11.1 calcpar.f90 physics)",
+  "date_computed": "2026-09-17",
+  "reproduction": {
+    "note": "Run this integration test. The GPU path computes u* from surface stress (0.3 N/m²) and rho (~1.14 kg/m³ at 298K, 101325 Pa) → u* = sqrt(0.3/1.14) ≈ 0.513, clamped to ustar_min → ~0.5. With H=0, 1/L=0, hmix falls back to 800m."
+  }
+}

@@ -64,10 +64,12 @@ jobs:
               scripts/compare-fortran.sh compose validate
               ;;
             etex-mini-audit)
-              # Verifies checked-in native ERA5 inputs without rerunning models.
-              # Requires a previous mini run (target/etex/mini/) or runs prepare first.
-              scripts/run-etex.sh mini
-              ETEX_PROFILE=mini scripts/run-etex.sh audit
+              # Audit only: prepare inputs, run Fortran, then audit.
+              # Does NOT run GPU, compare, or report.
+              scripts/run-etex.sh parse
+              scripts/run-etex.sh prepare
+              scripts/run-etex.sh fortran
+              scripts/run-etex.sh audit
               ;;
             etex-mini)
               scripts/run-etex.sh mini
@@ -77,6 +79,22 @@ jobs:
               exit 2
               ;;
           esac
+
+      - name: Restore oracle checkout cleanliness after builds
+        run: |
+          set -euo pipefail
+          # The v11.1 makefile embeds the git version into tracked
+          # src/FLEXPART.f90 (sed gitversion_tmp) plus an untracked gitversion.txt.
+          # Restore both so the pinned checkout stays pristine; the git-ignored
+          # FLEXPART binary remains available.
+          git -C ../flexpart checkout -- src/FLEXPART.f90 2>/dev/null || true
+          rm -f ../flexpart/src/gitversion.txt
+          # Verify cleanliness
+          if [ -n "$(git -C ../flexpart status --porcelain 2>/dev/null || true)" ]; then
+            echo "ERROR: Oracle checkout not clean after restore" >&2
+            git -C ../flexpart status --porcelain
+            exit 1
+          fi
 
       - name: Upload extended artifacts
         if: always()

@@ -1,3 +1,5 @@
+#[path = "integration/corpus.rs"]
+mod corpus;
 #[path = "integration/deposition_decay.rs"]
 mod deposition_decay;
 #[path = "integration/horizontal_dispersion.rs"]

@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "case_id": "DRY-007",
+  "description": "Dry-only deposition: isolated exponential kernel check plus production-driver run with dry forcing and zero wet forcing.",
+  "domain": {
+    "nx": 32,
+    "ny": 32,
+    "nz": 8,
+    "dx_deg": 0.1,
+    "dy_deg": 0.1,
+    "xlon0_deg": 9.5,
+    "ylat0_deg": 8.5,
+    "wind_heights_m": [50.0, 100.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0]
+  },
+  "release": {
+    "lon_deg": 10.0,
+    "lat_deg": 10.0,
+    "z_m": 50.0,
+    "particle_count": 500,
+    "mass_kg_total": 1.0
+  },
+  "wind": {
+    "u_m_s": 5.0,
+    "v_m_s": -3.0,
+    "w_m_s": 0.0,
+    "profile": "uniform"
+  },
+  "surface": {
+    "surface_pressure_pa": 101325.0,
+    "temperature_2m_k": 289.0,
+    "dewpoint_2m_k": 284.0,
+    "sensible_heat_flux_w_m2": 0.0,
+    "solar_radiation_w_m2": 120.0,
+    "surface_stress_n_m2": 0.2,
+    "friction_velocity_m_s": 0.35,
+    "convective_velocity_scale_m_s": 0.0,
+    "mixing_height_m": 1500.0,
+    "tropopause_height_m": 10000.0,
+    "inv_obukhov_length_per_m": 0.0,
+    "precip_large_scale_mm_h": 0.0,
+    "precip_convective_mm_h": 0.0
+  },
+  "deposition": {
+    "dry_deposition_velocity_m_s": 0.02,
+    "dry_reference_height_m": 15.0,
+    "wet_scavenging_coefficient_s_inv": 0.0,
+    "wet_precipitating_fraction": 0.0,
+    "isolated_check": {
+      "dt_s": 60.0,
+      "steps": 12,
+      "analytic": "mass(t) = mass0 * exp(-vdep/(2*HREF) * t)"
+    }
+  },
+  "integration": {
+    "start": "20240101000000",
+    "dt_s": 300,
+    "steps": 12,
+    "total_s": 3600
+  },
+  "physics_switches": {
+    "turbulence": true,
+    "convection": false,
+    "dry_deposition": true,
+    "wet_deposition": false,
+    "decay": false
+  },
+  "units": {
+    "deposition_velocity": "m/s",
+    "reference_height": "m",
+    "rate": "1/s",
+    "mass": "kg"
+  },
+  "seeds": {
+    "base_philox_key": [3737180555, 305419896],
+    "base_counter": [0, 0, 0, 0],
+    "count": 10,
+    "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
+  },
+  "oracle_species_note": "Depositing aerosol SPECIES copied from upstream examples/Aerosol/SPECIES/SPECIES_040 with zero-precipitation GRIB (LSP=CP=0); inert SPECIES_024 is the no-deposition control."
+}

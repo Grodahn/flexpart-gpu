@@ -47,21 +47,56 @@ scripts/compare-fortran.sh compose setup
 ```
 
 The setup compiles with the v11.1 build system (`make -f makefile_gfortran
-eta=no`; the legacy `make serial` recipe does not exist in v11.1) and removes
+eta=no arch=x86-64`; the legacy `make serial` recipe does not exist in v11.1)
+and removes
 the generated `gitversion.txt` stamp afterwards so the checkout stays clean
 for re-verification. Native Windows builds are not supported: use the
 manifest/checkout verification above plus Docker for the actual oracle runs.
+
+The Dockerfile pins the Ubuntu 22.04 image digest and the Ubuntu package
+snapshot dated 2026-09-10. The compiler uses the Fortran makefile's
+`arch=x86-64` profile instead of host-specific `-march=native`. Each Docker
+comparison writes `run_manifest.json` with the resolved image ID, package
+versions, compiler version and flags, source revisions, adapter, and SHA-256
+hashes of executable, inputs and outputs. Runners that do not expose a random
+seed record it as unavailable; such a run cannot support a multi-seed parity
+claim.
 
 ## 4. What the oracle is used for
 
 - Synthetic uniform-wind comparison (`scripts/compare-fortran.sh validate`,
   `src/bin/fortran-validation.rs`, `scripts/compare_concentrations.py`).
-- ETEX-1 side-by-side runs (`scripts/run-etex.sh all-with-fortran`).
+- ETEX-1 paired runs (`scripts/run-etex.sh all`): prepare both model inputs
+  from the same independently downloaded ERA5 arrays, execute the pinned
+  Fortran oracle and the WGSL candidate, and compare complete three-hour
+  concentration windows with DATEM observations. The report contains model
+  diagnostics and input checksums; it does not assert scientific parity.
+- Checked-in ETEX-1 mini smoke run (`scripts/run-etex.sh mini`): verify six
+  native ERA5 snapshots in `fixtures/etex/native-mini/`, derive Fortran and
+  GPU inputs, audit their actual prepared fields and scenario settings, run
+  both models over 12 hours, and pair their outputs with independent station
+  observations. The audit is available separately with
+  `ETEX_PROFILE=mini scripts/run-etex.sh audit`; its report is recorded in
+  the run manifest. See `fixtures/etex/mini/README.md` for the remaining
+  scientific differences. Metrics are diagnostic.
 - Future parity gates in issues RISK-03.3G-03 and later.
 
 Oracle outputs are produced at validation time and compared, never vendored
 as fixtures. ETEX measurement/meteorology/source-term provenance is recorded
 in `fixtures/etex/PROVENANCE.md`.
+
+The ETEX workflow requires Python packages `eccodes`, `numpy`, `xarray`,
+`gcsfs`, and `zarr`, Docker Compose, and Cargo. Run `scripts/run-etex.sh status`
+to inspect local inputs and outputs. `compare` fails when either model output
+is absent or the model windows do not match. A complete ETEX run also needs
+the externally downloaded ERA5 arrays; a build or synthetic smoke test alone
+does not validate ETEX.
+
+In CI, the pinned oracle is cloned from the upstream repository at the
+`pinned_commit` in `reference/flexpart-11.1.json` and verified with
+`reference-check -- verify` before any build (see `docs/ci-gates.md`).
+The small per-PR gate builds the oracle Docker image and compiles FLEXPART;
+the larger synthetic and ETEX runs stay local/manual.
 
 The standard synthetic validation setup (`scripts/compare-fortran.sh`
 `validate`) uses an output cadence whose last window covers the run end, and

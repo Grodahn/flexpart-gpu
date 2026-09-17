@@ -19,12 +19,16 @@ Usage:
 
 import argparse
 import json
+import math
 import os
 import struct
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
+
+EARTH_RADIUS_M = 6_371_000.0  # FLEXPART par_mod.f90:r_earth
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +127,8 @@ def read_header(header_path, endian="<"):
         "maxpointspec_act": maxpointspec_act,
         "nageclass": nageclass,
         "loutstep": loutstep,
+        "loutaver": loutaver,
+        "loutsample": loutsample,
     }
 
 
@@ -275,7 +281,57 @@ def read_gpu_output(filepath):
         "total_active": data["total_particles_active"],
         "total_steps": data["total_steps"],
         "particle_z_stats": data.get("particle_z_stats"),
+        "window_start_epoch_seconds": data["window_start_epoch_seconds"],
+        "window_end_epoch_seconds": data["window_end_epoch_seconds"],
+        "averaging_seconds": data["averaging_seconds"],
+        "sampling_seconds": data["sampling_seconds"],
+        "samples": data["samples"],
+        "endpoint_weight": data["endpoint_weight"],
     }
+
+
+def concentration_to_cell_mass(concentration, header):
+    """Convert FLEXPART concentration per volume to mass per output cell.
+
+    FLEXPART's forward binary output divides accumulated particle mass by
+    ``volume(ix,jy,kz)`` (binary_output_mod.f90:concoutput). The GPU output is
+    already mass per cell. Use the same spherical cell area and layer thickness
+    as outgrid_mod.f90 before normalizing or computing spatial moments.
+    The common FLEXPART output-unit factor cancels on normalization.
+    """
+    nx, ny, nz = concentration.shape
+    if (nx, ny, nz) != (header["numxgrid"], header["numygrid"], header["numzgrid"]):
+        raise ValueError("concentration shape does not match FLEXPART header")
+    heights = np.asarray(header["outheights"], dtype=np.float64)
+    thickness = np.diff(np.concatenate(([0.0], heights)))
+    if np.any(thickness <= 0) or header["dxout"] <= 0 or header["dyout"] <= 0:
+        raise ValueError("output cells must have positive area and layer thickness")
+    south = header["outlat0"] + np.arange(ny) * header["dyout"]
+    north = south + header["dyout"]
+    if np.any(south < -90) or np.any(north > 90):
+        raise ValueError("output grid latitude is outside [-90, 90] degrees")
+    # outgrid_mod.f90 uses meridional arc length for cells crossing the
+    # equator and the spherical-zone formula elsewhere.
+    zone_height = np.where(
+        (south < 0) & (north > 0),
+        np.deg2rad(header["dyout"]),
+        np.sin(np.deg2rad(north)) - np.sin(np.deg2rad(south)),
+    )
+    area = EARTH_RADIUS_M ** 2 * np.deg2rad(header["dxout"]) * zone_height
+    volume = area[None, :, None] * thickness[None, None, :]
+    return concentration.astype(np.float64) * volume
+
+
+def validate_shared_grid(header, grid_info):
+    """Reject grids whose matching shapes hide different cell locations."""
+    pairs = (("numxgrid", "nx"), ("numygrid", "ny"), ("numzgrid", "nz"),
+             ("outlon0", "xlon0"), ("outlat0", "ylat0"),
+             ("dxout", "dx"), ("dyout", "dy"))
+    for oracle_key, gpu_key in pairs:
+        if not np.isclose(header[oracle_key], grid_info[gpu_key], rtol=1e-6, atol=1e-6):
+            raise ValueError(f"output grid mismatch: {oracle_key} and {gpu_key}")
+    if not np.allclose(header["outheights"], grid_info["heights_m"], rtol=1e-6, atol=1e-6):
+        raise ValueError("output grid mismatch: vertical layer boundaries")
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +377,7 @@ def compute_metrics(field_a, field_b, label=""):
 
 
 def compute_center_of_mass(grid, xlon0, ylat0, dx, dy, heights):
-    """Compute 3D center of mass of a concentration field."""
+    """Compute the 3D center of mass of a mass-per-cell field."""
     nx, ny, nz = grid.shape
     total = np.sum(grid)
     if total <= 0:
@@ -330,6 +386,7 @@ def compute_center_of_mass(grid, xlon0, ylat0, dx, dy, heights):
     com_x = 0.0
     com_y = 0.0
     com_z = 0.0
+    layer_midpoints = (np.asarray(heights) + np.r_[0.0, heights[:-1]]) / 2
     for ix in range(nx):
         for iy in range(ny):
             for iz in range(nz):
@@ -337,7 +394,7 @@ def compute_center_of_mass(grid, xlon0, ylat0, dx, dy, heights):
                 if w > 0:
                     com_x += w * (xlon0 + (ix + 0.5) * dx)
                     com_y += w * (ylat0 + (iy + 0.5) * dy)
-                    com_z += w * heights[iz]
+                    com_z += w * layer_midpoints[iz]
 
     return {
         "lon": com_x / total,
@@ -345,6 +402,29 @@ def compute_center_of_mass(grid, xlon0, ylat0, dx, dy, heights):
         "z_m": com_z / total,
         "total_mass": float(total),
     }
+
+
+def horizontal_grid_moments(grid, xlon0, ylat0, dx, dy):
+    """Compute horizontal moments of a gridded, time-averaged field in km."""
+    weights = grid.astype(np.float64).sum(axis=2)
+    total = weights.sum()
+    if total <= 0:
+        return None
+    lons = xlon0 + (np.arange(grid.shape[0]) + 0.5) * dx
+    lats = ylat0 + (np.arange(grid.shape[1]) + 0.5) * dy
+    lon_mean = float((weights * lons[:, None]).sum() / total)
+    lat_mean = float((weights * lats[None, :]).sum() / total)
+    x = (lons - lon_mean) * 111.195 * math.cos(math.radians(lat_mean))
+    y = (lats - lat_mean) * 111.195
+    xx = float((weights * x[:, None] ** 2).sum() / total)
+    yy = float((weights * y[None, :] ** 2).sum() / total)
+    xy = float((weights * x[:, None] * y[None, :]).sum() / total)
+    eig = np.linalg.eigvalsh(np.array([[xx, xy], [xy, yy]]))
+    return {"lon_mean": lon_mean, "lat_mean": lat_mean,
+            "sigma_east_km": math.sqrt(max(xx, 0.0)),
+            "sigma_north_km": math.sqrt(max(yy, 0.0)),
+            "covariance_km2": [[xx, xy], [xy, yy]],
+            "eigenvalues_km2": eig.tolist()}
 
 
 # ---------------------------------------------------------------------------
@@ -447,6 +527,17 @@ def main():
     # Read GPU output
     print(f"Reading GPU output: {args.gpu_output}")
     gpu_data = read_gpu_output(args.gpu_output)
+    stamp = Path(last_conc_file).name.split("_")[2]
+    fortran_end = int(datetime.strptime(stamp, "%Y%m%d%H%M%S")
+                      .replace(tzinfo=timezone.utc).timestamp())
+    if (header["loutaver"] != gpu_data["averaging_seconds"] or
+            header["loutsample"] != gpu_data["sampling_seconds"] or
+            gpu_data["window_end_epoch_seconds"] != fortran_end or
+            gpu_data["window_start_epoch_seconds"] !=
+            fortran_end - header["loutaver"] or
+            gpu_data["samples"] != header["loutaver"] // header["loutsample"] + 1 or
+            gpu_data["endpoint_weight"] != 0.5):
+        raise ValueError("Fortran and GPU concentration averaging windows differ")
     gpu_counts = gpu_data["particle_count"]
     gpu_mass = gpu_data["mass_kg"]
     gi = gpu_data["grid_info"]
@@ -460,16 +551,21 @@ def main():
         print(f"ERROR: Shape mismatch: Fortran={fortran_grid.shape}, GPU={gpu_counts.shape}",
               file=sys.stderr)
         sys.exit(1)
+    validate_shared_grid(header, gi)
 
-    # Normalize both fields for comparison (spatial distribution)
-    f_sum = np.sum(fortran_grid)
+    # Both sides must represent mass per cell before spatial normalization.
+    # FLEXPART's binary grid is concentration per volume; the GPU grid is
+    # already mass per cell. Normalizing raw concentration distorts thick
+    # vertical layers even when the timestamps and sample weights match.
+    fortran_mass = concentration_to_cell_mass(fortran_grid, header)
+    f_sum = np.sum(fortran_mass)
     g_count_sum = np.sum(gpu_counts.astype(np.float64))
     g_mass_sum = np.sum(np.abs(gpu_mass).astype(np.float64))
 
     if f_sum > 0:
-        fortran_norm = fortran_grid / f_sum
+        fortran_norm = fortran_mass / f_sum
     else:
-        fortran_norm = fortran_grid.copy()
+        fortran_norm = fortran_mass.copy()
         print("WARNING: Fortran field is all zeros!")
 
     if g_count_sum > 0:
@@ -488,11 +584,12 @@ def main():
     print("  FLEXPART Fortran vs flexpart-gpu — Scientific Validation")
     print("=" * 70)
 
-    # Metrics: normalized Fortran conc vs normalized GPU particle counts
+    # End-state particle counts have different temporal sampling from the
+    # Fortran average. Keep them as a diagnostic; compare averaged mass first.
     metrics_count = compute_metrics(fortran_norm, gpu_count_norm,
-                                     "Fortran(norm) vs GPU-count(norm)")
+                                     "Fortran(avg) vs GPU-end-count (diagnostic only)")
     metrics_mass = compute_metrics(fortran_norm, gpu_mass_norm,
-                                    "Fortran(norm) vs GPU-mass(norm)")
+                                    "Fortran(avg) vs GPU-averaged-mass")
 
     for m in [metrics_count, metrics_mass]:
         print(f"\n--- {m['label']} ---")
@@ -511,11 +608,11 @@ def main():
     # Center of mass
     heights = gi["heights_m"]
     com_fortran = compute_center_of_mass(
-        fortran_grid, header["outlon0"], header["outlat0"],
+        fortran_mass, header["outlon0"], header["outlat0"],
         header["dxout"], header["dyout"], header["outheights"]
     )
     com_gpu = compute_center_of_mass(
-        gpu_counts.astype(np.float32),
+        gpu_mass,
         gi["xlon0"], gi["ylat0"], gi["dx"], gi["dy"], heights
     )
 
@@ -534,44 +631,24 @@ def main():
         dlon = com_gpu["lon"] - com_fortran["lon"]
         dlat = com_gpu["lat"] - com_fortran["lat"]
         dz = com_gpu["z_m"] - com_fortran["z_m"]
-        dist_km = ((dlon * 111.0) ** 2 + (dlat * 111.0) ** 2) ** 0.5
+        dist_km = math.hypot(dlon * 111.195 * math.cos(math.radians(com_fortran["lat"])),
+                             dlat * 111.195)
         print(f"  Δlon={dlon:+.4f}°, Δlat={dlat:+.4f}°, Δz={dz:+.1f}m")
         print(f"  Horizontal distance: {dist_km:.2f} km")
 
-    # Pass/fail thresholds
-    print("\n--- Validation Verdict ---")
-    corr = metrics_count.get("correlation")
-    nrmse = metrics_count["normalized_rmse"]
-    passed = True
+    moments_fortran = horizontal_grid_moments(
+        fortran_mass, header["outlon0"], header["outlat0"],
+        header["dxout"], header["dyout"])
+    moments_gpu = horizontal_grid_moments(
+        gpu_mass, gi["xlon0"], gi["ylat0"], gi["dx"], gi["dy"])
+    print("\n--- Averaged-field horizontal spread (gridded diagnostic) ---")
+    for label, moments in [("Fortran", moments_fortran), ("GPU", moments_gpu)]:
+        if moments:
+            print(f"  {label}: east={moments['sigma_east_km']:.2f} km, "
+                  f"north={moments['sigma_north_km']:.2f} km, "
+                  f"covariance eigenvalues={moments['eigenvalues_km2']} km²")
 
-    if corr is not None and corr > 0.8:
-        print(f"  [PASS] Correlation = {corr:.4f} > 0.80")
-    elif corr is not None:
-        print(f"  [WARN] Correlation = {corr:.4f} < 0.80")
-        passed = False
-    else:
-        print("  [WARN] Correlation not computable")
-        passed = False
-
-    if nrmse < 0.5:
-        print(f"  [PASS] Normalized RMSE = {nrmse:.4f} < 0.50")
-    else:
-        print(f"  [WARN] Normalized RMSE = {nrmse:.4f} >= 0.50")
-        passed = False
-
-    if com_fortran and com_gpu:
-        if dist_km < 50.0:
-            print(f"  [PASS] COM distance = {dist_km:.2f} km < 50 km")
-        else:
-            print(f"  [WARN] COM distance = {dist_km:.2f} km >= 50 km")
-            passed = False
-
-    if passed:
-        print("\n  >>> VALIDATION: PASS <<<")
-    else:
-        print("\n  >>> VALIDATION: NEEDS INVESTIGATION <<<")
-        print("  (Differences may be expected due to different turbulence RNG,")
-        print("   PBL schemes, or coordinate system handling.)")
+    print("\n  DIAGNOSTIC ONLY: ensemble parity gates are not evaluated here")
 
     print("=" * 70)
 
@@ -626,17 +703,12 @@ def main():
             if com_g_lon is not None:
                 dlon = com_g_lon - com_f_lon
                 dlat = com_g_lat - com_f_lat
-                h_dist = ((dlon * 111.0) ** 2 + (dlat * 111.0) ** 2) ** 0.5
+                h_dist = math.hypot(dlon * 111.195 * math.cos(math.radians(com_f_lat)),
+                                    dlat * 111.195)
                 print(f"\n--- Horizontal Center of Mass (partposit-based) ---")
                 print(f"  Fortran: lon={com_f_lon:.4f}, lat={com_f_lat:.4f}")
                 print(f"  GPU:     lon={com_g_lon:.4f}, lat={com_g_lat:.4f}")
                 print(f"  Distance: {h_dist:.2f} km")
-                if h_dist < 10:
-                    print(f"  [PASS] Horizontal advection within 10 km")
-                elif h_dist < 50:
-                    print(f"  [PASS] Horizontal advection within 50 km")
-                else:
-                    print(f"  [WARN] Horizontal advection differs by {h_dist:.1f} km")
 
                 # --- Horizontal spread comparison ---
                 print(f"\n--- Horizontal Spread (partposit-based) ---")
@@ -644,25 +716,21 @@ def main():
                 f_lat_std = float(f_lats.std())
                 gpu_z = gpu_data.get("particle_z_stats")
                 # Fortran spread in km (approx)
-                f_spread_lon_km = f_lon_std * 111.0
-                f_spread_lat_km = f_lat_std * 111.0
+                f_spread_lon_km = f_lon_std * 111.195 * math.cos(math.radians(com_f_lat))
+                f_spread_lat_km = f_lat_std * 111.195
                 print(f"  Fortran: σ_lon={f_lon_std:.4f}° ({f_spread_lon_km:.2f} km), "
                       f"σ_lat={f_lat_std:.4f}° ({f_spread_lat_km:.2f} km)")
                 if gpu_z and "lon_std" in gpu_z:
                     g_lon_std = gpu_z["lon_std"]
                     g_lat_std = gpu_z["lat_std"]
-                    g_spread_lon_km = g_lon_std * 111.0
-                    g_spread_lat_km = g_lat_std * 111.0
+                    g_spread_lon_km = g_lon_std * 111.195 * math.cos(math.radians(com_f_lat))
+                    g_spread_lat_km = g_lat_std * 111.195
                     print(f"  GPU:     σ_lon={g_lon_std:.4f}° ({g_spread_lon_km:.2f} km), "
                           f"σ_lat={g_lat_std:.4f}° ({g_spread_lat_km:.2f} km)")
                     lon_ratio = g_lon_std / max(f_lon_std, 1e-10)
                     lat_ratio = g_lat_std / max(f_lat_std, 1e-10)
                     print(f"  σ_lon ratio (GPU/F): {lon_ratio:.2f}")
                     print(f"  σ_lat ratio (GPU/F): {lat_ratio:.2f}")
-                    if 0.5 <= lon_ratio <= 2.0 and 0.5 <= lat_ratio <= 2.0:
-                        print(f"  [PASS] Horizontal spread ratios within [0.5, 2.0]")
-                    else:
-                        print(f"  [NOTE] Horizontal spread ratio outside expected range")
 
                 print(f"\n--- Vertical (raw particle z) ---")
                 if gpu_z:
@@ -674,17 +742,6 @@ def main():
                     std_ratio = gpu_std_z / max(f_zs.std(), 1e-10)
                     print(f"  Δz mean: {dz:+.0f}m")
                     print(f"  σ_z ratio (GPU/F): {std_ratio:.2f}")
-                    if abs(dz) < 200:
-                        print(f"  [PASS] Vertical mean within 200m (Δz={dz:+.0f}m)")
-                    elif abs(dz) < 500:
-                        print(f"  [PASS] Vertical mean within 500m (Δz={dz:+.0f}m)")
-                    else:
-                        print(f"  [NOTE] Vertical mean differs (Δz={dz:+.0f}m)")
-                        print(f"         Likely due to hmix computation or sub-stepping differences.")
-                    if 0.7 <= std_ratio <= 1.3:
-                        print(f"  [PASS] σ_z ratio within [0.7, 1.3]")
-                    else:
-                        print(f"  [NOTE] σ_z ratio outside expected range ({std_ratio:.2f})")
 
                     # --- Per-level vertical profile comparison ---
                     print(f"\n--- Vertical Profile (per-level particle fraction) ---")
@@ -711,10 +768,6 @@ def main():
                     print(f"  Fortran z: mean={com_f_z:.1f}m, std={f_zs.std():.1f}m")
                     print(f"  GPU z (gridded COM): {com_gpu['z_m']:.1f}m")
                     dz = com_gpu["z_m"] - com_f_z
-                    if abs(dz) < 500:
-                        print(f"  [PASS] Vertical spread within 500m (Δz={dz:+.0f}m)")
-                    else:
-                        print(f"  [NOTE] Vertical spread differs (Δz={dz:+.0f}m)")
         print("=" * 70)
 
     if args.output_json:
@@ -723,7 +776,11 @@ def main():
             "metrics_mass_normalized": metrics_mass,
             "center_of_mass_fortran": com_fortran,
             "center_of_mass_gpu": com_gpu,
-            "passed": passed,
+            "horizontal_grid_moments_fortran": moments_fortran,
+            "horizontal_grid_moments_gpu": moments_gpu,
+            "parity_verdict": "NOT_EVALUATED",
+            "comparison_quantity": "normalized mass per output cell; FLEXPART concentration multiplied by spherical cell area and layer thickness",
+            "time_window_matched": True,
             "fortran_header": header,
             "gpu_grid_info": gi,
         }

@@ -1,40 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
+if [ "${1:-}" = "mini" ]; then
+    ETEX_PROFILE=mini
+    set -- all
+fi
+ETEX_PROFILE="${ETEX_PROFILE:-full}"
 
 # ===========================================================================
 # ETEX-1 Real Data Validation Pipeline
 #
-# ETEX workflow for Phase D scientific validation:
-#   GPU-only default:
-#     1. Download ERA5 meteorological data (requires CDS account)
-#     2. Prepare FLEXPART-compatible input files
-#     3. Parse ETEX-1 station measurements
-#     4. Run flexpart-gpu
-#     5. Compare against observations
-#     6. Generate validation report
-#   Optional:
-#     - Run FLEXPART Fortran reference (Docker) for side-by-side comparison
+# Paired workflow: prepare both models from the same independent ERA5 arrays,
+# run the pinned FLEXPART 11.1 oracle and the WGSL candidate, then compare
+# complete three-hour concentration windows with ETEX station measurements.
 #
 # Usage:
 #   scripts/run-etex.sh [step]
 #
 # Steps:
-#   all              Run GPU-only pipeline (default)
-#   all-with-fortran Run GPU pipeline + optional Fortran reference
-#   download     Download ERA5 data from CDS
-#   prepare      Prepare FLEXPART input from ERA5
+#   all              Run both models and the paired observation comparison
+#   all-with-fortran Alias for all
+#   download         Download public ARCO-ERA5 arrays
+#   prepare          Prepare both model inputs from ERA5
 #   parse        Parse ETEX measurements
 #   fortran      Run Fortran FLEXPART
+#   audit        Check paired mini-run inputs and list unresolved differences
 #   gpu          Run flexpart-gpu
 #   compare      Compare outputs against observations
 #   report       Print final report
 #   status       Show current pipeline status
 #
 # Prerequisites:
-#   - CDS account with ~/.cdsapirc configured
-#   - Python 3 with eccodes, numpy, cdsapi
+#   - Python 3 with eccodes, numpy, xarray, gcsfs and zarr
 #   - Rust toolchain (for flexpart-gpu)
-#   - Docker + docker-compose (optional, Fortran comparison only)
+#   - Docker + docker-compose for the FLEXPART 11.1 oracle
 # ===========================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,22 +48,40 @@ if [ -n "${FORTRAN_DOCKER_DIR}" ]; then
 fi
 
 ETEX_DIR="${PROJECT_ROOT}/target/etex"
+if [ "${ETEX_PROFILE}" = "mini" ]; then
+    ETEX_DIR="${ETEX_DIR}/mini"
+fi
 ERA5_RAW="${ETEX_DIR}/era5_raw"
+if [ "${ETEX_PROFILE}" = "mini" ]; then
+    ERA5_RAW="${PROJECT_ROOT}/fixtures/etex/native-mini"
+fi
 METEO_DIR="${ETEX_DIR}/meteo"
 FORTRAN_RUN="${ETEX_DIR}/fortran_run"
 GPU_OUTPUT="${ETEX_DIR}/gpu_output.json"
+GPU_BINARY="${PROJECT_ROOT}/target/release/etex-run"
+if [ "${OS:-}" = "Windows_NT" ]; then
+    GPU_BINARY="${GPU_BINARY}.exe"
+fi
+HOST_PYTHON="${ETEX_PYTHON:-python3}"
+if [ "${OS:-}" = "Windows_NT" ]; then
+    HOST_PYTHON="${ETEX_PYTHON:-python}"
+fi
 MEASUREMENTS="${ETEX_DIR}/measurements.json"
 REPORT="${ETEX_DIR}/comparison_report.json"
 DATA_DIR="${PROJECT_ROOT}/fixtures/etex/data"
 CONFIG_DIR="${PROJECT_ROOT}/fixtures/etex/real/config"
+if [ "${ETEX_PROFILE}" = "mini" ]; then
+    CONFIG_DIR="${PROJECT_ROOT}/fixtures/etex/mini/config"
+fi
 
 C_FLEXPART="/workspace/flexpart"
-C_GPU="/workspace/flexpart-gpu"
-C_DATA="/workspace/etex"
+C_ETEX="/workspace/etex"
+if [ "${ETEX_PROFILE}" = "mini" ]; then
+    C_ETEX="${C_ETEX}/mini"
+fi
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+RED='\033[0;31m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
 log_info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
-log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 log_step()  { echo -e "\n${BLUE}=== Step: $* ===${NC}"; }
 
@@ -75,20 +91,26 @@ fortran_run_succeeded() {
 
 # ---------------------------------------------------------------------------
 check_prereqs() {
-    local ok=true
-    if ! command -v python3 &>/dev/null; then
-        log_error "python3 not found"; ok=false
+    if ! command -v "${HOST_PYTHON}" &>/dev/null; then
+        log_error "${HOST_PYTHON} not found"
+        return 1
     fi
-    if ! python3 -c "import eccodes" 2>/dev/null; then
-        log_warn "python3-eccodes not found (needed for GRIB processing)"
+    local modules="eccodes, numpy, xarray, gcsfs, zarr"
+    if [ "${ETEX_PROFILE}" = "mini" ]; then
+        modules="numpy"
     fi
-    if ! python3 -c "import numpy" 2>/dev/null; then
-        log_warn "numpy not found (needed for comparison)"
+    if ! "${HOST_PYTHON}" -c "import ${modules}" 2>/dev/null; then
+        log_error "Python needs ${modules}"
+        return 1
     fi
     if ! command -v docker &>/dev/null; then
-        log_warn "docker not found (optional, only needed for Fortran comparison)"
+        log_error "Docker is required for the pinned FLEXPART 11.1 run"
+        return 1
     fi
-    $ok
+    if ! command -v cargo &>/dev/null; then
+        log_error "Cargo is required for the WGSL candidate run"
+        return 1
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -96,26 +118,25 @@ step_download() {
     log_step "Download ERA5 data"
     mkdir -p "${ERA5_RAW}"
 
-    if [ -f "${ERA5_RAW}/era5_pressure_levels.grib" ] && [ -f "${ERA5_RAW}/era5_single_levels.grib" ]; then
+    if [ "${ETEX_PROFILE}" = "mini" ]; then
+        docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
+            flexpart-fortran python3 \
+            /workspace/flexpart-gpu/scripts/etex/verify_native_model_levels.py
+        return 0
+    fi
+
+    if [ -f "${ERA5_RAW}/metadata.json" ] && [ -f "${ERA5_RAW}/times.npy" ] \
+        && [ -f "${ERA5_RAW}/u_component_of_wind.npy" ]; then
         log_info "ERA5 data already downloaded. Skipping."
         return 0
     fi
 
-    if ! python3 -c "import cdsapi" 2>/dev/null; then
-        log_error "cdsapi not installed. Run: pip install cdsapi"
-        log_error "Then configure ~/.cdsapirc with your CDS Personal Access Token."
-        log_error "See scripts/etex/download_era5.py for details."
+    if ! "${HOST_PYTHON}" -c "import numpy, xarray, gcsfs, zarr" 2>/dev/null; then
+        log_error "ERA5 download needs numpy, xarray, gcsfs and zarr"
         return 1
     fi
 
-    if [ ! -f ~/.cdsapirc ]; then
-        log_error "~/.cdsapirc not found. Create it with your CDS credentials:"
-        echo "  url: https://cds.climate.copernicus.eu/api"
-        echo "  key: <YOUR_PERSONAL_ACCESS_TOKEN>"
-        return 1
-    fi
-
-    python3 "${PROJECT_ROOT}/scripts/etex/download_era5.py" \
+    "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/download_era5_gcs.py" \
         --output-dir "${ERA5_RAW}"
 }
 
@@ -124,15 +145,25 @@ step_prepare() {
     log_step "Prepare FLEXPART input"
     mkdir -p "${METEO_DIR}"
 
-    if [ ! -f "${ERA5_RAW}/era5_pressure_levels.grib" ]; then
+    if [ "${ETEX_PROFILE}" != "mini" ] && \
+        { [ ! -f "${ERA5_RAW}/metadata.json" ] || [ ! -f "${ERA5_RAW}/times.npy" ]; }; then
         log_error "ERA5 data not downloaded. Run: scripts/run-etex.sh download"
         return 1
     fi
 
-    python3 "${PROJECT_ROOT}/scripts/etex/prepare_flexpart_input.py" \
-        --era5-dir "${ERA5_RAW}" \
-        --output-dir "${METEO_DIR}" \
-        --gpu-json "${ETEX_DIR}/gpu_meteo.json"
+    if [ "${ETEX_PROFILE}" = "mini" ]; then
+        docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
+            flexpart-fortran python3 \
+            /workspace/flexpart-gpu/scripts/etex/prepare_native_era5.py \
+            --native-dir /workspace/flexpart-gpu/fixtures/etex/native-mini \
+            --meteo-dir "${C_ETEX}/meteo" \
+            --gpu-dir "${C_ETEX}/gpu_meteo"
+    else
+        "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/prepare_flexpart_input_from_npy.py" \
+            --era5-dir "${ERA5_RAW}" --output-dir "${METEO_DIR}"
+        "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/prepare_gpu_meteo.py" \
+            --era5-dir "${ERA5_RAW}" --output-dir "${ETEX_DIR}/gpu_meteo"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -144,7 +175,7 @@ step_parse() {
         return 1
     fi
 
-    python3 "${PROJECT_ROOT}/scripts/etex/parse_measurements.py" \
+    "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/parse_measurements.py" \
         --data-dir "${DATA_DIR}" \
         --output "${MEASUREMENTS}"
 }
@@ -155,18 +186,15 @@ step_fortran() {
 
     if ! command -v docker &>/dev/null; then
         log_error "docker not found. Fortran step requires Docker."
-        log_error "Fortran step is optional. For GPU-only quickstart, run: scripts/run-etex.sh all"
         return 1
     fi
     if ! docker compose version &>/dev/null; then
         log_error "docker compose is not available."
-        log_error "Fortran step is optional. For GPU-only quickstart, run: scripts/run-etex.sh all"
         return 1
     fi
 
     if [ ! -d "${FLEXPART_DIR}" ] || [ ! -d "${FLEXPART_DIR}/src" ]; then
         log_error "Fortran checkout not found at ${FLEXPART_DIR}"
-        log_error "Fortran step is optional. For GPU-only quickstart, run: scripts/run-etex.sh all"
         return 1
     fi
     # Fail closed on unpinned or modified oracle sources (RISK-03.3G-01).
@@ -175,19 +203,16 @@ step_fortran() {
     pinned="$(sed -n 's/^[[:space:]]*"pinned_commit": *"\([0-9a-f]*\)".*/\1/p' "${manifest}" | head -1)"
     if ! printf '%s' "${pinned}" | grep -qE '^[0-9a-f]{40}$'; then
         log_error "Could not read pinned_commit from ${manifest}"
-        log_error "Fortran step is optional. For GPU-only quickstart, run: scripts/run-etex.sh all"
         return 1
     fi
     if ! actual="$(git -C "${FLEXPART_DIR}" rev-parse HEAD 2>/dev/null)" \
         || [ "${actual}" != "${pinned}" ] \
         || [ -n "$(git -C "${FLEXPART_DIR}" status --porcelain)" ]; then
         log_error "Fortran checkout is not the pinned unmodified oracle (see docs/reference-environment.md)"
-        log_error "Fortran step is optional. For GPU-only quickstart, run: scripts/run-etex.sh all"
         return 1
     fi
     if [ ! -f "${FORTRAN_COMPOSE_FILE}" ]; then
         log_error "Fortran compose file not found at ${FORTRAN_COMPOSE_FILE}"
-        log_error "Fortran step is optional. For GPU-only quickstart, run: scripts/run-etex.sh all"
         return 1
     fi
 
@@ -231,18 +256,31 @@ PATHEOF
 
     log_info "Compiling FLEXPART Fortran..."
     docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
-        -v "${ETEX_DIR}:/workspace/etex" \
         flexpart-fortran bash -c "
-            cd ${C_FLEXPART}/src && make -f makefile_gfortran clean 2>/dev/null; \
-            FC=gfortran make -f makefile_gfortran eta=no -j\"$(nproc)\" 2>&1 | tail -5; \
+            set -euo pipefail
+            cd ${C_FLEXPART}/src
+            make -f makefile_gfortran clean >/dev/null 2>&1 || true
+            FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4 2>&1 | tail -5
+            test -x FLEXPART
             rm -f gitversion.txt
         "
+    # Restore oracle checkout: the makefile modifies tracked src/FLEXPART.f90
+    # and creates untracked gitversion.txt. Restore both so the pinned checkout
+    # stays clean for subsequent verification steps.
+    git -C "${FLEXPART_DIR}" checkout -- src/FLEXPART.f90
+    rm -f "${FLEXPART_DIR}/src/gitversion.txt"
+    # Verify cleanliness (fail closed, no || true)
+    if [ -n "$(git -C "${FLEXPART_DIR}" status --porcelain)" ]; then
+        log_error "Oracle checkout not clean after build"
+        git -C "${FLEXPART_DIR}" status --porcelain
+        exit 1
+    fi
 
     log_info "Running FLEXPART Fortran (ETEX-1)..."
     docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
-        -v "${ETEX_DIR}:/workspace/etex" \
         flexpart-fortran bash -c "
-            cd /workspace/etex/fortran_run && ${C_FLEXPART}/src/FLEXPART
+            set -euo pipefail
+            cd ${C_ETEX}/fortran_run && ${C_FLEXPART}/src/FLEXPART
         " 2>&1 | tee "${ETEX_DIR}/fortran.log"
 
     if grep -q "CONGRATULATIONS" "${ETEX_DIR}/fortran.log" 2>/dev/null; then
@@ -251,28 +289,55 @@ PATHEOF
         log_error "Fortran run failed. Check ${ETEX_DIR}/fortran.log"
         return 1
     fi
+    test -s "${FORTRAN_RUN}/output/header_txt"
+    test -s "${FORTRAN_RUN}/output/dates"
+    compgen -G "${FORTRAN_RUN}/output/grid_conc_*_001" > /dev/null
 }
 
 # ---------------------------------------------------------------------------
 step_gpu() {
     log_step "Run flexpart-gpu"
 
+    if [ ! -f "${ETEX_DIR}/gpu_meteo/manifest.json" ]; then
+        log_error "Prepared GPU meteorology is missing. Run: scripts/run-etex.sh prepare"
+        return 1
+    fi
     log_info "Building GPU ETEX binary..."
     cd "${PROJECT_ROOT}"
-    cargo build --release --bin fortran-validation 2>&1 | tail -3
+    cargo build --release --bin etex-run 2>&1 | tail -3
 
     log_info "Running flexpart-gpu (ETEX-1)..."
+    rm -f "${GPU_OUTPUT}"
     OUTPUT_PATH="${GPU_OUTPUT}" \
-    ETEX_METEO="${ETEX_DIR}/gpu_meteo.json" \
-    PARTICLES=100000 \
-        cargo run --release --bin fortran-validation 2>&1 \
+    ETEX_MANIFEST="${ETEX_DIR}/gpu_meteo/manifest.json" \
+    RUST_LOG=flexpart_gpu=info \
+        "${GPU_BINARY}" 2>&1 \
         | tee "${ETEX_DIR}/gpu.log"
 
-    if [ -f "${GPU_OUTPUT}" ]; then
-        log_info "GPU output: ${GPU_OUTPUT}"
-    else
-        log_warn "GPU output not generated (may need ETEX-specific binary)"
+    test -s "${GPU_OUTPUT}"
+    log_info "GPU output: ${GPU_OUTPUT}"
+}
+
+# ---------------------------------------------------------------------------
+step_audit() {
+    if [ "${ETEX_PROFILE}" != "mini" ]; then
+        log_error "The input equivalence audit currently supports only the native ERA5 mini profile"
+        return 2
     fi
+    log_step "Audit paired ETEX inputs"
+    if [ ! -f "${FORTRAN_RUN}/options/SPECIES/SPECIES_024" ] || \
+        [ ! -f "${ETEX_DIR}/gpu_meteo/manifest.json" ]; then
+        log_error "Prepare inputs and run the Fortran step before auditing"
+        return 1
+    fi
+    docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran python3 \
+        /workspace/flexpart-gpu/scripts/etex/audit_input_equivalence.py \
+        --native-dir /workspace/flexpart-gpu/fixtures/etex/native-mini \
+        --meteo-dir "${C_ETEX}/meteo" \
+        --gpu-dir "${C_ETEX}/gpu_meteo" \
+        --config-dir "${C_ETEX}/fortran_run/options" \
+        --thresholds /workspace/flexpart-gpu/fixtures/etex/mini/input-equivalence-thresholds.json \
+        --output "${C_ETEX}/input_equivalence_report.json"
 }
 
 # ---------------------------------------------------------------------------
@@ -284,22 +349,65 @@ step_compare() {
         return 1
     fi
 
-    local fortran_arg=""
-    if fortran_run_succeeded && [ -d "${FORTRAN_RUN}/output" ]; then
-        fortran_arg="--fortran-output ${FORTRAN_RUN}/output"
+    if ! fortran_run_succeeded || [ ! -d "${FORTRAN_RUN}/output" ]; then
+        log_error "Pinned FLEXPART 11.1 output is missing or incomplete"
+        return 1
+    fi
+    if [ ! -s "${GPU_OUTPUT}" ]; then
+        log_error "GPU ETEX output is missing"
+        return 1
+    fi
+    local pinned actual candidate_revision
+    pinned="$(sed -n 's/^[[:space:]]*"pinned_commit": *"\([0-9a-f]*\)".*/\1/p' "${PROJECT_ROOT}/reference/flexpart-11.1.json" | head -1)"
+    actual="$(git -C "${FLEXPART_DIR}" rev-parse HEAD 2>/dev/null)" || return 1
+    if [ "${actual}" != "${pinned}" ] || [ -n "$(git -C "${FLEXPART_DIR}" status --porcelain)" ]; then
+        log_error "Current FLEXPART checkout is not the pinned unmodified oracle"
+        return 1
+    fi
+    candidate_revision="$(git -C "${PROJECT_ROOT}" rev-parse HEAD)"
+    local -a candidate_dirty_args=()
+    local -a audit_artifact_args=()
+    if [ -n "$(git -C "${PROJECT_ROOT}" status --porcelain)" ]; then
+        candidate_dirty_args=(--candidate-dirty)
+    fi
+    if [ "${ETEX_PROFILE}" = "mini" ]; then
+        test -s "${ETEX_DIR}/input_equivalence_report.json"
+        audit_artifact_args=(--artifact "${ETEX_DIR}/input_equivalence_report.json")
     fi
 
-    local gpu_arg=""
-    if [ -f "${GPU_OUTPUT}" ]; then
-        gpu_arg="--gpu-output ${GPU_OUTPUT}"
-    fi
-
-    python3 "${PROJECT_ROOT}/scripts/etex/compare_with_observations.py" \
+    "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/etex/compare_oracle_observations.py" \
         --measurements "${MEASUREMENTS}" \
-        ${fortran_arg} \
-        ${gpu_arg} \
-        --output "${REPORT}" \
-        --verbose
+        --fortran-output "${FORTRAN_RUN}/output" \
+        --gpu-output "${GPU_OUTPUT}" \
+        --era5-dir "${ERA5_RAW}" \
+        --gpu-manifest "${ETEX_DIR}/gpu_meteo/manifest.json" \
+        --gpu-log "${ETEX_DIR}/gpu.log" \
+        --fortran-log "${ETEX_DIR}/fortran.log" \
+        --oracle-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+        --candidate-revision "${candidate_revision}" \
+        "${candidate_dirty_args[@]}" \
+        --output "${REPORT}"
+
+    "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/write_oracle_run_manifest.py" \
+        --output "${ETEX_DIR}/run_manifest.json" \
+        --scenario ETEX-1 \
+        --oracle-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+        --oracle-checkout "${FLEXPART_DIR}" \
+        --oracle-executable "${FLEXPART_DIR}/src/FLEXPART" \
+        --candidate-checkout "${PROJECT_ROOT}" \
+        --candidate-executable "${GPU_BINARY}" \
+        --candidate-log "${ETEX_DIR}/gpu.log" \
+        --input "${ERA5_RAW}" \
+        --input "${METEO_DIR}" \
+        --input "${ETEX_DIR}/gpu_meteo" \
+        --input "${CONFIG_DIR}" \
+        --input "${DATA_DIR}" \
+        --artifact "${FORTRAN_RUN}/output" \
+        --artifact "${GPU_OUTPUT}" \
+        --artifact "${REPORT}" \
+        "${audit_artifact_args[@]}" \
+        --artifact "${ETEX_DIR}/fortran.log" \
+        --artifact "${ETEX_DIR}/gpu.log"
 }
 
 # ---------------------------------------------------------------------------
@@ -319,9 +427,18 @@ step_status() {
 
     check_file "${DATA_DIR}/meas-t1.txt"                        "ETEX measurements (DATEM)"
     check_file "${DATA_DIR}/stations.txt"                        "ETEX stations (DATEM)"
-    check_file "${ERA5_RAW}/era5_pressure_levels.grib"           "ERA5 pressure levels"
-    check_file "${ERA5_RAW}/era5_single_levels.grib"             "ERA5 single levels"
+    if [ "${ETEX_PROFILE}" = "mini" ]; then
+        check_file "${ERA5_RAW}/era5-19941023-151821-ml.grib"   "ERA5 model levels, day 1"
+        check_file "${ERA5_RAW}/era5-19941024-000306-ml.grib"   "ERA5 model levels, day 2"
+        check_file "${ERA5_RAW}/era5-19941023-151821-etadot.grib" "ERA5 eta velocity, day 1"
+        check_file "${ERA5_RAW}/era5-19941024-000306-etadot.grib" "ERA5 eta velocity, day 2"
+        check_file "${ERA5_RAW}/era5-surface-19941023-24.npz"  "ERA5 surface fields"
+    else
+        check_file "${ERA5_RAW}/metadata.json"                  "ERA5 source metadata"
+        check_file "${ERA5_RAW}/times.npy"                      "ERA5 time axis"
+    fi
     check_file "${METEO_DIR}/AVAILABLE"                          "FLEXPART input prepared"
+    check_file "${ETEX_DIR}/gpu_meteo/manifest.json"             "GPU input prepared"
     check_file "${MEASUREMENTS}"                                 "Measurements parsed"
     if fortran_run_succeeded; then
         echo -e "  ${GREEN}[OK]${NC}  Fortran FLEXPART run"
@@ -330,17 +447,13 @@ step_status() {
     fi
     check_file "${GPU_OUTPUT}"                                   "GPU run"
     check_file "${REPORT}"                                       "Comparison report"
+    if [ "${ETEX_PROFILE}" = "mini" ]; then
+        check_file "${ETEX_DIR}/input_equivalence_report.json"   "Input equivalence audit"
+    fi
+    check_file "${ETEX_DIR}/run_manifest.json"                     "Run provenance manifest"
 
     echo ""
 
-    if [ -f ~/.cdsapirc ]; then
-        echo -e "  ${GREEN}[OK]${NC}  CDS API credentials (~/.cdsapirc)"
-    else
-        echo -e "  ${YELLOW}[!!]${NC}  CDS API credentials missing (~/.cdsapirc)"
-        echo "        Create account: https://cds.climate.copernicus.eu"
-        echo "        Then: echo 'url: https://cds.climate.copernicus.eu/api' > ~/.cdsapirc"
-        echo "              echo 'key: <YOUR_TOKEN>' >> ~/.cdsapirc"
-    fi
     echo ""
 }
 
@@ -348,12 +461,16 @@ step_status() {
 step_report() {
     log_step "Validation Report"
     if [ -f "${REPORT}" ]; then
-        python3 -c "
+        local report_path="${REPORT}"
+        if [ "${OS:-}" = "Windows_NT" ]; then
+            report_path="$(cygpath -w "${REPORT}")"
+        fi
+        "${HOST_PYTHON}" -c '
 import json, sys
-with open('${REPORT}') as f:
+with open(sys.argv[1]) as f:
     r = json.load(f)
-print(json.dumps(r, indent=2))
-"
+print(json.dumps({key: value for key, value in r.items() if key != "pairs"}, indent=2))
+' "${report_path}"
     else
         log_error "No report found. Run: scripts/run-etex.sh compare"
     fi
@@ -368,42 +485,23 @@ case "${STEP}" in
     prepare)  step_prepare ;;
     parse)    step_parse ;;
     fortran)  step_fortran ;;
+    audit)    step_audit ;;
     gpu)      step_gpu ;;
     compare)  step_compare ;;
     report)   step_report ;;
-    all)
-        check_prereqs || true
+    all|all-with-fortran)
+        check_prereqs
         step_parse
-        step_download || {
-            log_warn "ERA5 download failed (CDS credentials needed)."
-            log_warn "Pipeline will continue with available data."
-            log_warn "Run 'scripts/run-etex.sh status' to check requirements."
-        }
-        if [ -f "${ERA5_RAW}/era5_pressure_levels.grib" ]; then
-            step_prepare
-            step_gpu
-        fi
-        step_compare
-        step_report
-        ;;
-    all-with-fortran)
-        check_prereqs || true
-        step_parse
-        step_download || {
-            log_warn "ERA5 download failed (CDS credentials needed)."
-            log_warn "Pipeline will continue with available data."
-            log_warn "Run 'scripts/run-etex.sh status' to check requirements."
-        }
-        if [ -f "${ERA5_RAW}/era5_pressure_levels.grib" ]; then
-            step_prepare
-            step_fortran
-            step_gpu
-        fi
+        step_download
+        step_prepare
+        step_fortran
+        if [ "${ETEX_PROFILE}" = "mini" ]; then step_audit; fi
+        step_gpu
         step_compare
         step_report
         ;;
     *)
-        echo "Usage: scripts/run-etex.sh [all|all-with-fortran|status|download|prepare|parse|fortran|gpu|compare|report]"
+        echo "Usage: scripts/run-etex.sh [all|all-with-fortran|status|download|prepare|parse|fortran|audit|gpu|compare|report]"
         exit 2
         ;;
 esac

@@ -14,7 +14,7 @@
 //! Analytical expectation: 10 m/s * 3600 s = 36000 m eastward displacement,
 //! no mean north/south or vertical motion.
 
-use flexpart_gpu::coords::{distance_meters, geo_to_grid, GeoCoord, GridCoord, GridDomain};
+use flexpart_gpu::coords::{geo_to_grid, GeoCoord, GridCoord, GridDomain};
 use flexpart_gpu::gpu::{
     advect_particles_gpu_with_sampling, GpuAdapterOptions, GpuContext, GpuError, ParticleBuffers,
     WindBuffers, WindSamplingOptions,
@@ -51,11 +51,8 @@ const WIND_HEIGHTS_M: [f32; 8] = [0.0, 50.0, 100.0, 200.0, 500.0, 1500.0, 3000.0
 
 const EARTH_RADIUS_M: f64 = 6_371_000.0;
 
-/// Eastward displacement tolerance [m]: 1 % of the 36 km signal.
-///
-/// Uniform-wind Petterssen advection is exact up to f32 rounding, so this
-/// bound is generous by design and must not be loosened to hide regressions.
-const EAST_DISPLACEMENT_TOLERANCE_M: f32 = 360.0;
+/// Acceptance bound from RISK-03.3G-00: 36.0 ± 0.2 km eastward.
+const EAST_DISPLACEMENT_TOLERANCE_M: f64 = 200.0;
 /// Allowed absolute north/south drift [m].
 const NORTH_DRIFT_TOLERANCE_M: f32 = 1.0;
 /// Allowed absolute vertical drift [m].
@@ -155,13 +152,12 @@ fn test_sw_wgpu_advection_001_constant_wind_displacement() {
 
     // Explicitly request the software fallback adapter so this smoke test
     // exercises the SW-WGPU path even on machines with a hardware GPU.
-    // Skip when no adapter is available at all.
+    // An unavailable software adapter is a failed execution gate.
     let context = match pollster::block_on(GpuContext::with_options(GpuAdapterOptions::software()))
     {
         Ok(context) => context,
         Err(GpuError::NoAdapter) => {
-            eprintln!("{TEST_ID}: no WGSL adapter found — skipping smoke test");
-            return;
+            panic!("{TEST_ID}: required software WGSL adapter not found");
         }
         Err(error) => panic!("{TEST_ID}: unexpected GPU init error: {error}"),
     };
@@ -171,6 +167,10 @@ fn test_sw_wgpu_advection_001_constant_wind_displacement() {
         context.backend(),
         context.adapter_type(),
         context.is_software_adapter()
+    );
+    assert!(
+        context.is_software_adapter(),
+        "{TEST_ID}: selected adapter is not a software rasterizer"
     );
 
     let field = uniform_wind();
@@ -199,26 +199,14 @@ fn test_sw_wgpu_advection_001_constant_wind_displacement() {
     assert_eq!(advected.len(), PARTICLE_COUNT);
 
     let end = mean_geo(&advected, &domain);
-    let east_m = distance_meters(
-        GeoCoord {
-            lat: start.lat,
-            lon: start.lon,
-        },
-        GeoCoord {
-            lat: start.lat,
-            lon: end.lon,
-        },
-    );
-    let north_m = distance_meters(
-        GeoCoord {
-            lat: start.lat,
-            lon: end.lon,
-        },
-        end,
-    ) * (end.lat - start.lat).signum() as f32;
+    let meters_per_lon_degree =
+        EARTH_RADIUS_M * start.lat.to_radians().cos() * std::f64::consts::PI / 180.0;
+    let meters_per_lat_degree = EARTH_RADIUS_M * std::f64::consts::PI / 180.0;
+    let east_m = (end.lon - start.lon) * meters_per_lon_degree;
+    let north_m = (end.lat - start.lat) * meters_per_lat_degree;
     let mean_z: f32 = advected.iter().map(|p| p.pos_z).sum::<f32>() / advected.len() as f32;
 
-    let expected_east_m = U_WIND_MS * TOTAL_SECONDS;
+    let expected_east_m = f64::from(U_WIND_MS * TOTAL_SECONDS);
     eprintln!(
         "{TEST_ID}: start=({:.5}E, {:.5}N, {:.1}m)",
         start.lon, start.lat, START_Z_M
@@ -238,7 +226,7 @@ fn test_sw_wgpu_advection_001_constant_wind_displacement() {
         "{TEST_ID}: eastward displacement out of tolerance: got {east_m:.2}m, expected {expected_east_m:.2}m"
     );
     assert!(
-        north_m.abs() <= NORTH_DRIFT_TOLERANCE_M,
+        north_m.abs() <= f64::from(NORTH_DRIFT_TOLERANCE_M),
         "{TEST_ID}: unexpected north/south drift: {north_m:.4}m"
     );
     assert!(
@@ -252,6 +240,23 @@ fn test_sw_wgpu_advection_001_constant_wind_displacement() {
     for particle in advected.iter().filter(|p| p.is_active()) {
         min_x = min_x.min(particle.grid_x());
         max_x = max_x.max(particle.grid_x());
+        let particle_lon = particle.grid_x().mul_add(domain.dx, domain.xlon0);
+        let particle_lat = particle.grid_y().mul_add(domain.dy, domain.ylat0);
+        let particle_east_m = (particle_lon - start.lon) * meters_per_lon_degree;
+        let particle_north_m = (particle_lat - start.lat) * meters_per_lat_degree;
+        assert!(
+            (particle_east_m - expected_east_m).abs() <= EAST_DISPLACEMENT_TOLERANCE_M,
+            "{TEST_ID}: individual eastward displacement is {particle_east_m:.2}m"
+        );
+        assert!(
+            particle_north_m.abs() <= f64::from(NORTH_DRIFT_TOLERANCE_M),
+            "{TEST_ID}: individual north/south drift is {particle_north_m:.4}m"
+        );
+        assert!(
+            (particle.pos_z - START_Z_M).abs() <= VERTICAL_DRIFT_TOLERANCE_M,
+            "{TEST_ID}: individual vertical drift is {}m",
+            particle.pos_z - START_Z_M
+        );
     }
     assert!(
         (max_x - min_x) < 1.0e-3,

@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "case_id": "PBL-STABLE-004",
+  "description": "Stable boundary layer through the production driver: negative heat flux, positive Obukhov inverse, shallow PBL.",
+  "domain": {
+    "nx": 32,
+    "ny": 32,
+    "nz": 8,
+    "dx_deg": 0.1,
+    "dy_deg": 0.1,
+    "xlon0_deg": 9.5,
+    "ylat0_deg": 8.5,
+    "wind_heights_m": [50.0, 100.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0]
+  },
+  "release": {
+    "lon_deg": 10.0,
+    "lat_deg": 10.0,
+    "z_m": 50.0,
+    "particle_count": 1000,
+    "mass_kg_total": 1.0
+  },
+  "wind": {
+    "u_m_s": 5.0,
+    "v_m_s": -3.0,
+    "w_m_s": 0.0,
+    "profile": "uniform"
+  },
+  "surface": {
+    "surface_pressure_pa": 101325.0,
+    "temperature_2m_k": 282.0,
+    "dewpoint_2m_k": 280.0,
+    "sensible_heat_flux_w_m2": -20.0,
+    "solar_radiation_w_m2": 20.0,
+    "surface_stress_n_m2": 0.08,
+    "friction_velocity_m_s": 0.2,
+    "convective_velocity_scale_m_s": 0.0,
+    "mixing_height_m": 500.0,
+    "tropopause_height_m": 10000.0,
+    "inv_obukhov_length_per_m": 0.02,
+    "precip_large_scale_mm_h": 0.0,
+    "precip_convective_mm_h": 0.0
+  },
+  "integration": {
+    "start": "20240101000000",
+    "dt_s": 300,
+    "steps": 12,
+    "total_s": 3600
+  },
+  "physics_switches": {
+    "turbulence": true,
+    "convection": false,
+    "dry_deposition": false,
+    "wet_deposition": false,
+    "decay": false
+  },
+  "expected_property": "Suppressed vertical mixing: vertical standard deviation remains small; mean height stays near 50 m release.",
+  "units": {
+    "heat_flux": "W/m2",
+    "inv_obukhov": "1/m",
+    "height": "m"
+  },
+  "seeds": {
+    "base_philox_key": [3737180555, 305419896],
+    "base_counter": [0, 0, 0, 0],
+    "count": 10,
+    "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
+  },
+  "oracle_command_overrides": {
+    "LTURBULENCE": 1,
+    "CTL": 5.0,
+    "IFINE": 4,
+    "LCONVECTION": 0
+  }
+}

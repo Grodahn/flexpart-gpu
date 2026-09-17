@@ -4,7 +4,9 @@
 > FLEXPART v10. The normative oracle for all current and future comparisons
 > is **FLEXPART v11.1** pinned in `reference/flexpart-11.1.json`; see
 > `docs/reference-environment.md`. This report will be superseded by the
-> RISK-03.3G validation gate.
+> RISK-03.3G validation gate. The historical PASS labels below apply only to
+> the old v10 experiment and are not v11.1 parity evidence. Horizontal
+> dispersion parity for RISK-03.3G-02 remains **unverified**.
 
 Date: 2026-03-06
 Configuration: synthetic uniform wind, Fortran FLEXPART v10 vs flexpart-gpu (Rust/WebGPU)
@@ -114,35 +116,59 @@ the GPU uses a prescribed friction velocity (ust=0.35 m/s) while Fortran
 computes ust from the wind profile and surface roughness, yielding a different
 effective turbulence intensity. This is a parameterization difference, not a bug.
 
-### 3.5 Addendum (RISK-03.3G-03): re-measurement against FLEXPART 11.1
+### 3.5 Addendum (RISK-03.3G-02): status of v11.1 re-measurement
 
-The 2x claim above did not survive re-measurement against the pinned v11.1
-oracle with temporally matched output:
+The original 2x spread estimate mixed an averaged Fortran concentration field
+with an instantaneous GPU particle field. That comparison cannot establish a
+horizontal dispersion ratio. A later single 10,000-particle run used a 30-minute
+Fortran output cadence and reported gridded longitude/latitude standard
+deviations of 0.055/0.045 degrees for v11.1 versus 0.056/0.056 degrees for
+the GPU. These values are diagnostics, not a parity verdict: the reported
+centers (10.944, 9.442) and (11.029, 9.392) differ by about 10.9 km at this
+latitude, exceeding the issue's stricter 5 km criterion. The earlier candidate
+runner also advanced one extra 900-second step and compared its end state to
+the oracle's 30-minute average.
 
-- The old comparison read the single `grid_conc` file of a `LOUTSTEP=21600`
-  run, which FLEXPART centers mid-run (averaging window, here stamped 03:15),
-  and compared it against the instantaneous GPU end state (06:00). The oracle
-  number therefore contained ~2.6 km of along-track time-averaging smear on
-  top of a 69 km mean-position lag.
-- With matched output cadence (`LOUTSTEP=1800`, last window covering the run
-  end; see `scripts/compare-fortran.sh` validation setup), the end-window
-  spreads agree: oracle lon 10.944 +/- 0.055 deg, lat 9.442 +/- 0.045 deg
-  versus GPU lon 11.029 +/- 0.056 deg, lat 9.392 +/- 0.056 deg on the
-  identical 0.1 deg grid (6 h, uniform 5/-3 m/s wind, 10k particles).
-- The oracle diagnoses ustar ~0.34 from the synthetic surface-stress fields
-  (`ustar = sqrt(|stress|/rho)`, `getfields_mod.f90:scalev`), nearly identical
-  to the GPU's prescribed 0.35 - the suspected ustar gap does not exist in
-  this scenario.
-- The horizontal Langevin application itself matches the exact discrete
-  Ornstein-Uhlenbeck variance within ~1% across turbulence regimes
-  (`tests/integration/horizontal_dispersion.rs`).
+The comparison runner now stops at the requested end time, averages three GPU
+concentration samples at 05:30, 05:45, and 06:00 with half-weight endpoints,
+and rejects mismatched output timestamps and averaging intervals. Its final
+particle positions are reported separately from the averaged concentration field.
 
-No kernel change was needed. The standard validation setup now yields
-end-covering output so future comparisons cannot repeat the smear artifact.
-Vertical differences (oracle mean z 3651 m vs GPU 1416 m) are out of scope
-here and belong to RISK-03.3G-04 (PBL/vertical transport).
+A fresh local run with the clean pinned oracle commit
+`c70586c2b7f5258850705325881c61f557ea9bd8` and 10,000 particles produced
+the following **gridded diagnostics**, with both fields representing the
+05:30–06:00 UTC average. FLEXPART's concentration per volume was first
+multiplied by each FLEXPART output cell's area and layer thickness, giving
+mass per cell on both sides. The candidate adapter was Microsoft Basic Render
+Driver (software DX12).
+The generated `target/validation/run_manifest.json` hashes the input, binaries,
+and outputs; it is a local generated artifact, not committed evidence.
 
-### 3.4 Progression of vertical accuracy
+| Metric | FLEXPART 11.1 | GPU | GPU / oracle |
+|--------|---------------|-----|--------------|
+| East standard deviation | 6.05 km | 6.73 km | 1.11 |
+| North standard deviation | 5.04 km | 6.15 km | 1.22 |
+| Smaller covariance eigenvalue | 20.75 km² | 34.79 km² | 1.68 |
+| Larger covariance eigenvalue | 41.17 km² | 48.41 km² | 1.18 |
+
+The horizontal center distance is 0.20 km and the normalized mass-field
+correlation is 0.919. Using layer midpoints, the vertical centers are
+1415.6 m (oracle) and 1410.4 m (GPU), a GPU-minus-oracle difference of -5.2 m.
+Both spread axes and covariance eigenvalues
+remain outside issue #123's ±10% target in this single case. The oracle
+mass field and candidate mass field are normalized before comparing spatial
+distributions; their raw totals use different output-unit factors and are
+not a mass-conservation comparison. The oracle did not emit a `partposit_*`
+dump in this run, so particle-space moments remain unavailable.
+
+The isolated Ornstein-Uhlenbeck variance tests in
+`tests/integration/horizontal_dispersion.rs` exercise a helper, not the fused
+production trajectory. RISK-03.3G-02 still needs production-path runs against
+the pinned v11.1 oracle across at least 10 seeds and stable, neutral, unstable,
+and sheared cases, with particle-space covariance, radial quantiles, footprint
+area, and uncertainty intervals as specified in BringMeOut issue #123.
+
+### 3.6 Progression of vertical accuracy
 
 | Version                     | Dz mean | sigma_z ratio | Key change                    |
 |-----------------------------|---------|---------------|-------------------------------|
@@ -185,13 +211,13 @@ here and belong to RISK-03.3G-04 (PBL/vertical transport).
 - **Proper PBL confinement**: all particles within [0, BLH]
 - **Identical vertical mixing profile**: sigma_z ratio = 0.94
 
-Remaining known differences:
-- Horizontal spread: re-measured against v11.1, spreads agree (§3.5 above);
-  the old 2x figure was a comparison artifact, not a model difference.
+Remaining known differences and gaps:
+- Horizontal spread against v11.1 is unverified (§3.5). The old 2x figure is
+  inconclusive because the compared fields had different time semantics.
 - Hard vs soft PBL ceiling (~7% of particles)
 - hmix computation method (GPU uses prescribed value vs Fortran's Richardson)
 
-These are architectural differences, not bugs. A detailed 1M-particle comparison
+The v10 observations do not establish v11.1 scientific parity. A detailed 1M-particle comparison
 with performance benchmarks is available in
 [benchmarks/benchmark-1m-fortran-vs-gpu0.md](benchmarks/benchmark-1m-fortran-vs-gpu0.md)
 and the physics validation report in

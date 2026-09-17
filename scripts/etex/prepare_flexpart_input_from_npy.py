@@ -38,24 +38,33 @@ PRESSURE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 
 PRESSURE_LEVELS_TOP_FIRST = list(reversed(PRESSURE_LEVELS))
 
 def compute_hybrid_pv(pressure_levels_hpa_top_first):
-    """Build a pv array (A,B coefficients) for pressure-as-hybrid levels.
+    """Construct terrain-following half levels for a pressure-level smoke run.
 
-    FLEXPART reads pv = [A_0..A_N, B_0..B_N] for N+1 half-level boundaries.
-    For pure pressure levels: A = pressure in Pa at half-level, B = 0.
+    This is an approximation, not native ERA5 model-level forcing. Interpolate
+    each pressure-level field to the matching cell-specific full levels below.
     """
-    n = len(pressure_levels_hpa_top_first)
-    half_levels_pa = []
-    # Top boundary (above first level)
-    half_levels_pa.append(pressure_levels_hpa_top_first[0] * 100.0 * 0.5)
-    # Interfaces between levels
-    for i in range(n - 1):
-        mid = 0.5 * (pressure_levels_hpa_top_first[i] + pressure_levels_hpa_top_first[i + 1])
-        half_levels_pa.append(mid * 100.0)
-    # Bottom boundary (below last level)
-    half_levels_pa.append(pressure_levels_hpa_top_first[-1] * 100.0 * 1.05)
-    a_coeffs = half_levels_pa  # len = N+1
-    b_coeffs = [0.0] * (n + 1)
-    return a_coeffs + b_coeffs
+    levels = np.asarray(pressure_levels_hpa_top_first, dtype=np.float64)
+    half = np.empty(len(levels) + 1, dtype=np.float64)
+    half[0] = max(0.0, levels[0] - (levels[1] - levels[0]) / 2) / 1000.0
+    half[1:-1] = (levels[:-1] + levels[1:]) / 2000.0
+    half[-1] = 1.0
+    return [0.0] * len(half) + half.tolist()
+
+
+def interpolate_pressure_field(field, surface_pressure_pa, pv):
+    """Map (top-to-bottom, y, x) ERA5 fields to the declared sigma levels."""
+    n = field.shape[0]
+    half = np.asarray(pv[n + 1:], dtype=np.float64)
+    sigma = 0.5 * (half[:-1] + half[1:])
+    target_hpa = sigma[:, None, None] * surface_pressure_pa[None, :, :] / 100.0
+    levels = np.asarray(PRESSURE_LEVELS_TOP_FIRST, dtype=np.float64)
+    target_hpa = np.clip(target_hpa, levels[0], levels[-1])
+    upper = np.clip(np.searchsorted(levels, target_hpa, side="left"), 1, n - 1)
+    lower = upper - 1
+    low = np.take_along_axis(field, lower, axis=0)
+    high = np.take_along_axis(field, upper, axis=0)
+    fraction = (target_hpa - levels[lower]) / (levels[upper] - levels[lower])
+    return low + fraction * (high - low)
 
 
 PARAM_3D = {
@@ -64,7 +73,6 @@ PARAM_3D = {
     "vertical_velocity":    135,
     "temperature":          130,
     "specific_humidity":    133,
-    "geopotential":         129,
 }
 
 PARAM_SFC = {
@@ -81,6 +89,8 @@ PARAM_SFC = {
     "convective_precipitation":                 143,
     "large_scale_precipitation":                142,
     "forecast_surface_roughness":               173,
+    "geopotential_at_surface":                    129,
+    "land_sea_mask":                             172,
 }
 
 TIME_STEP_HOURS = 3
@@ -203,18 +213,20 @@ def main():
         out_path = os.path.join(args.output_dir, fname)
 
         pv = compute_hybrid_pv(PRESSURE_LEVELS_TOP_FIRST)
+        surface_pressure = data_sfc["surface_pressure"][t_idx, :, :]
 
         with open(out_path, "wb") as fout:
             for name, param_id in PARAM_3D.items():
                 if name not in data_3d:
                     continue
                 arr = data_3d[name]
+                full_levels = interpolate_pressure_field(
+                    arr[t_idx, ::-1, :, :], surface_pressure, pv)
                 # ERA5 numpy: index 0 = 1000hPa (surface), index 13 = 50hPa (top)
                 # FLEXPART: level 1 = top (50hPa), level 14 = surface (1000hPa)
                 for model_level in range(1, len(PRESSURE_LEVELS) + 1):
                     # model_level 1 → top (50hPa) → numpy index 13
-                    era5_idx = len(PRESSURE_LEVELS) - model_level
-                    vals = arr[t_idx, era5_idx, :, :]
+                    vals = full_levels[model_level - 1, :, :]
                     write_grib1(fout, param_id, 109, model_level, nx, ny, vals,
                                 lat_first, lon_first, lat_last, lon_last,
                                 dx, dy, date_int, time_hhmm,
@@ -224,6 +236,12 @@ def main():
                 if name not in data_sfc:
                     continue
                 vals = data_sfc[name][t_idx, :, :]
+                if name in ("surface_sensible_heat_flux", "surface_net_solar_radiation"):
+                    # ERA5 stores hourly accumulated J/m2; FLEXPART expects W/m2.
+                    vals = vals / 3600.0
+                elif name in ("convective_precipitation", "large_scale_precipitation"):
+                    # ERA5 accumulated metres per hour -> FLEXPART mm/h.
+                    vals = vals * 1000.0
                 write_grib1(fout, param_id, 1, 0, nx, ny, vals,
                             lat_first, lon_first, lat_last, lon_last,
                             dx, dy, date_int, time_hhmm)

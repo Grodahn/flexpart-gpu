@@ -93,7 +93,7 @@ WGSL compute path through a software rasterizer:
 Request the software fallback adapter explicitly:
 
 ```bash
-# One-shot CLI flag (works for gpu-preflight and the smoke test below)
+# One-shot CLI flag for gpu-preflight
 cargo run --bin gpu-preflight -- --software
 
 # Or persistent environment toggle (honored by GpuContext and preflight)
@@ -104,6 +104,12 @@ WGPU_FORCE_FALLBACK_ADAPTER=1 cargo run --bin gpu-preflight
 The fallback adapter executes the same WGSL shaders as hardware. No separate
 CPU replacement path is used. Wall-clock timings measured on a software
 adapter must never be reported as GPU performance values.
+
+`SW-WGPU-ADVECTION-001` is a required execution gate: it fails if the
+software adapter is absent or the selected device is not a software
+rasterizer. It checks signed eastward displacement for every particle against
+the 36.0 ± 0.2 km bound. The `software-wgpu` CI job runs this test through
+Lavapipe on Ubuntu; local Windows runs can use WARP.
 
 Known limitation: the Windows software rasterizer (WARP) can crash with
 `STATUS_ACCESS_VIOLATION` when many GPU test binaries run back to back in one
@@ -158,7 +164,17 @@ tests/
     └── software_advection.rs       # SW-WGPU-ADVECTION-001 infrastructure smoke test
 ```
 
-### What the CI gate checks
+### What the CI gates check
+
+The `software-wgpu` job runs `SW-WGPU-ADVECTION-001` on Lavapipe and fails
+on a missing adapter, a skipped test, or a missing result (see
+[ci-gates.md](ci-gates.md)).
+
+The `technical-gate` job runs `scripts/ci-gate.sh`: pinned clean oracle
+verification, oracle Docker build, `gpu-preflight --software`, the
+analytical `SW-WGPU-ADVECTION-001` case, and a 1000-particle synthetic
+candidate smoke with provenance checks. It is a technical gate only and
+does not establish scientific parity.
 
 The `physics_validation_advection_turbulence_pbl` test runs a 1-hour
 simulation (500 particles, 12 steps, dt=300 s) and verifies:
@@ -225,8 +241,8 @@ See [quickstart.md](quickstart.md) for the step-by-step guide. Short version:
 
 ```bash
 scripts/run-etex.sh status    # check prerequisites
-scripts/run-etex.sh all       # GPU-only pipeline
-scripts/run-etex.sh all-with-fortran  # optional Fortran comparison
+scripts/run-etex.sh all       # paired FLEXPART 11.1 and WGSL runs
+scripts/run-etex.sh all-with-fortran  # alias for all
 ```
 
 ## Available Binaries
@@ -244,7 +260,7 @@ scripts/run-etex.sh all-with-fortran  # optional Fortran comparison
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/run-etex.sh` | ETEX pipeline (GPU-only by default, optional Fortran step) |
+| `scripts/run-etex.sh` | Paired ETEX oracle/candidate pipeline |
 | `scripts/compare-fortran.sh` | GPU vs Fortran synthetic comparison |
 | `scripts/gpu-preflight.sh` | GPU backend check (Docker wrapper) |
 | `scripts/validate-etex.sh` | ETEX validation runner |

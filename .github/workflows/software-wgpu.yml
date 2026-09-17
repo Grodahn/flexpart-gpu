@@ -1,0 +1,72 @@
+name: Software WGSL smoke
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  software-wgpu:
+    runs-on: ubuntu-22.04
+    env:
+      FLEXPART_GPU_SOFTWARE: "1"
+      WGPU_BACKEND: vulkan
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lavapipe
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers vulkan-tools
+          icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          test -n "$icd"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+      - name: Run required software WGSL advection smoke test
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-gate
+          cargo test --test integration software_advection::test_sw_wgpu_advection_001_constant_wind_displacement -- --exact --nocapture 2>&1 | tee target/ci-gate/sw-wgpu-advection.log
+          # Fail closed: a missing adapter, a skipped test, or a missing
+          # result must fail the job (never silently pass).
+          grep -q "SW-WGPU-ADVECTION-001" target/ci-gate/sw-wgpu-advection.log
+          grep -q "test result: ok" target/ci-gate/sw-wgpu-advection.log
+          grep -qE "1 passed" target/ci-gate/sw-wgpu-advection.log
+          if grep -q "FAILED" target/ci-gate/sw-wgpu-advection.log; then
+            echo "SW-WGPU smoke log contains FAILED"
+            exit 1
+          fi
+          grep -q "software_adapter=true" target/ci-gate/sw-wgpu-advection.log
+      - name: Run corpus deterministic subset (Issue #6, point 2)
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-gate
+          # Small deterministic selection only: analytic advection, neutral
+          # production smoke, repeatability, isolated deposition analytic and
+          # the blocked-dependency gate. The larger 10-seed corpus stays local
+          # via scripts/run-corpus.sh (see docs/corpus-matrix.md).
+          # NOTE: cargo exit status is captured without a pipe so the
+          # successful summary line ("6 passed; 0 failed") can never be
+          # misread as a failure.
+          set +e
+          cargo test --test integration corpus_ -- --nocapture > target/ci-gate/corpus-subset.log 2>&1
+          cargo_status=$?
+          set -e
+          cat target/ci-gate/corpus-subset.log
+          test "$cargo_status" -eq 0
+          grep -q "test result: ok" target/ci-gate/corpus-subset.log
+          grep -qE "[1-9][0-9]* passed; 0 failed" target/ci-gate/corpus-subset.log
+          # No skipped corpus test may hide behind a passing suite: every
+          # corpus test must either pass or the job fails here.
+          if grep -q "no WGSL adapter" target/ci-gate/corpus-subset.log; then
+            echo "Corpus subset skipped (no adapter); failing closed"
+            exit 1
+          fi
+      - name: Upload smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: software-wgpu-smoke-${{ github.run_id }}
+          path: |
+            target/ci-gate/sw-wgpu-advection.log
+            target/ci-gate/corpus-subset.log
+          retention-days: 30

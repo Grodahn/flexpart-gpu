@@ -36,14 +36,34 @@ Ground-level ETEX-1 station observations in the original exchange format
 bundled `readme.txt`). The files are consumed read-only by
 `scripts/etex/parse_measurements.py`. They are never written by any
 `flexpart-gpu` binary, and no comparison script may overwrite them.
+The DATEM `dur` field is HHMM, so `0300` denotes a three-hour sample.
 
-## Meteorology (not bundled)
+## Meteorology
 
-Meteorology is deliberately not vendored here. The pipeline downloads ERA5
-from the Copernicus Climate Data Store (`scripts/etex/download_era5*.py`)
-and prepares FLEXPART input (`scripts/etex/prepare_flexpart_input*.py`).
-ERA5 is produced independently of this project; the download scripts record
-request parameters for reproducibility.
+The full ETEX meteorology is not bundled. A six-snapshot native ERA5 subset
+is bundled in `native-mini/`: 137 hybrid model levels, the separate
+eta-coordinate velocity required by FLEXPART, and matching surface fields.
+Exact CDS/ARCO requests, SHA-256 hashes, licensing, and field checks are
+documented in `native-mini/README.md` and its manifests. `scripts/run-etex.sh
+mini` verifies these inputs and generates both model inputs. The former
+pressure-level mini archive has been removed.
+The full `scripts/run-etex.sh all` downloads public ARCO-ERA5 arrays using
+`scripts/etex/download_era5_gcs.py`. It prepares Fortran GRIB input with
+`prepare_flexpart_input_from_npy.py` and candidate binary input with
+`prepare_gpu_meteo.py` from those same arrays. ERA5 is independent of both
+models. The downloader records its request parameters, and the comparison
+report hashes the downloaded arrays, generated model outputs, manifests, and
+observations. It also records the pinned oracle and candidate revisions.
+The companion `target/etex/run_manifest.json` records the exact oracle image,
+installed packages, compiler profile, executables, adapter, and raw-artifact
+hashes. The candidate runner does not currently expose a random seed; the
+manifest marks it unavailable and must not be used for a multi-seed claim.
+Fortran reads the native 137-level hybrid fields and ERA5 eta-coordinate
+velocity; the GPU uses 16 fixed AGL levels sampled from the same native
+fields and ERA5 pressure velocity converted to m/s. This shared source removes
+the previous pressure-level approximation, but quantitative equivalence of
+the vertical representations and velocities is not yet established. The
+mini concentration metrics remain diagnostic, not a scientific parity claim.
 
 ## Reference outputs (not bundled)
 
@@ -58,3 +78,6 @@ reference environment (`reference/flexpart-11.1.json`,
   stay explicitly labeled `fixture_scaffold`.
 - The `scaffold/` directory holds synthetic plumbing fixtures only and must
   not be cited as ETEX evidence.
+- `scripts/run-etex.sh all` requires both the pinned FLEXPART 11.1 run and the
+  WGSL candidate run. Missing output or incomplete time coverage is an error.
+  The paired report is diagnostic and cannot by itself establish parity.

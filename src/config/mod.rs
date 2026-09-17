@@ -19,8 +19,13 @@ use crate::particles::MAX_SPECIES;
 
 type ConfigMap = BTreeMap<String, String>;
 
+const CURRENT_CONFIG_VERSION: u32 = 1;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SimulationConfig {
+    /// Version of the project-owned serialized configuration. `None` denotes legacy input.
+    #[serde(default)]
+    pub version: Option<u32>,
     pub command: CommandConfig,
     pub releases: Vec<ReleaseConfig>,
     pub outgrid: OutputGridConfig,
@@ -83,6 +88,9 @@ pub enum SpeciesKind {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SpeciesConfig {
     pub name: String,
+    /// Version of the project-owned species schema. `None` denotes legacy input.
+    #[serde(default)]
+    pub version: Option<u32>,
     pub molecular_weight: Option<f64>,
     pub dry_deposition_velocity: Option<f64>,
     pub decay_constant: Option<f64>,
@@ -147,6 +155,19 @@ pub enum ConfigError {
     Validation { message: String },
 }
 
+/// Unversioned FLEXPART and earlier project files retain their legacy parser semantics.
+/// Project-owned versioned files currently support schema version 1 only.
+fn validate_config_version(version: Option<u32>, context: &str) -> Result<(), ConfigError> {
+    match version {
+        None | Some(CURRENT_CONFIG_VERSION) => Ok(()),
+        Some(other) => Err(ConfigError::Validation {
+            message: format!(
+                "{context} has unsupported version {other}; supported version is {CURRENT_CONFIG_VERSION} (omit version only for legacy input)"
+            ),
+        }),
+    }
+}
+
 impl SimulationConfig {
     pub fn load(base_path: &Path) -> Result<Self, ConfigError> {
         let command = CommandConfig::from_file(&base_path.join("COMMAND"))?;
@@ -155,6 +176,7 @@ impl SimulationConfig {
         let species = SpeciesConfig::load_dir(&base_path.join("SPECIES"))?;
 
         let config = Self {
+            version: None,
             command,
             releases,
             outgrid,
@@ -165,8 +187,18 @@ impl SimulationConfig {
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
+        validate_config_version(self.version, "simulation")?;
         self.command.validate()?;
         self.outgrid.validate()?;
+
+        if self.species.len() > MAX_SPECIES {
+            return Err(ConfigError::Validation {
+                message: format!(
+                    "too many species: found {}, maximum supported is {MAX_SPECIES}",
+                    self.species.len()
+                ),
+            });
+        }
 
         if self.releases.is_empty() {
             return Err(ConfigError::Validation {
@@ -611,6 +643,14 @@ impl SpeciesConfig {
                 message: "SPECIES directory is empty".to_string(),
             });
         }
+        if species.len() > MAX_SPECIES {
+            return Err(ConfigError::Validation {
+                message: format!(
+                    "too many species: found {}, maximum supported is {MAX_SPECIES}",
+                    species.len()
+                ),
+            });
+        }
         Ok(species)
     }
 
@@ -655,6 +695,7 @@ impl SpeciesConfig {
     // vs `wet_b_gas`, `crain` vs `csnow`); the similarity carries meaning.
     #[allow(clippy::similar_names)]
     fn from_map(raw: ConfigMap, path: &Path, context: &str) -> Result<Self, ConfigError> {
+        let version = parse_optional_u32(&raw, context, &["version", "species_version"])?;
         let name_from_file = path
             .file_stem()
             .map(|stem| stem.to_string_lossy().to_string())
@@ -694,6 +735,7 @@ impl SpeciesConfig {
 
         let species = Self {
             name,
+            version,
             molecular_weight,
             dry_deposition_velocity,
             decay_constant,
@@ -779,6 +821,7 @@ impl SpeciesConfig {
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
+        validate_config_version(self.version, &format!("species `{}`", self.name))?;
         if self.name.trim().is_empty() {
             return Err(ConfigError::Validation {
                 message: "species name must not be empty".to_string(),
@@ -1554,6 +1597,7 @@ mod tests {
     #[test]
     fn serde_round_trip_simulation_config() {
         let config = SimulationConfig {
+            version: Some(CURRENT_CONFIG_VERSION),
             command: CommandConfig {
                 start_time: "20240101120000".to_string(),
                 end_time: "20240101180000".to_string(),
@@ -1589,6 +1633,7 @@ mod tests {
             },
             species: vec![SpeciesConfig {
                 name: "SO2".to_string(),
+                version: Some(CURRENT_CONFIG_VERSION),
                 molecular_weight: Some(64.066),
                 dry_deposition_velocity: Some(0.01),
                 decay_constant: Some(0.0),
@@ -1613,6 +1658,17 @@ mod tests {
         let json = serde_json::to_string(&config).expect("serialize");
         let back: SimulationConfig = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(config, back);
+        assert_eq!(back.version, Some(CURRENT_CONFIG_VERSION));
+        assert_eq!(back.species[0].version, Some(CURRENT_CONFIG_VERSION));
+
+        for invalid in [0, CURRENT_CONFIG_VERSION + 1] {
+            let mut unsupported = back.clone();
+            unsupported.version = Some(invalid);
+            assert!(unsupported.validate().is_err());
+            unsupported.version = Some(CURRENT_CONFIG_VERSION);
+            unsupported.species[0].version = Some(invalid);
+            assert!(unsupported.validate().is_err());
+        }
     }
 
     #[test]
@@ -1908,5 +1964,49 @@ mod tests {
             "lambda: {lambda}, expected: {expected}"
         );
         assert!(species.decay_active());
+    }
+
+    #[test]
+    fn species_directory_enforces_four_slot_limit() {
+        let directory = temp_dir("species_cardinality");
+        for index in 0..MAX_SPECIES {
+            fs::write(
+                directory.join(format!("SPECIES_{index:03}")),
+                "&SPECIES_PARAMS PSPECIES='stable' /",
+            )
+            .expect("write species");
+        }
+        assert_eq!(
+            SpeciesConfig::load_dir(&directory)
+                .expect("four species")
+                .len(),
+            MAX_SPECIES
+        );
+        fs::write(
+            directory.join(format!("SPECIES_{MAX_SPECIES:03}")),
+            "&SPECIES_PARAMS PSPECIES='extra' /",
+        )
+        .expect("write fifth species");
+        let error = SpeciesConfig::load_dir(&directory).expect_err("five species must fail");
+        assert!(error
+            .to_string()
+            .contains("found 5, maximum supported is 4"));
+        fs::remove_dir_all(directory).expect("remove species fixture");
+    }
+
+    #[test]
+    fn species_versioned_and_legacy_files_have_explicit_handling() {
+        let current = species_from_assignments(&[("name", "gas"), ("version", "1")], "gas.spec");
+        assert_eq!(current.version, Some(CURRENT_CONFIG_VERSION));
+        let legacy =
+            species_from_file_content("&SPECIES_PARAMS PSPECIES='legacy' /", "SPECIES_001");
+        assert_eq!(legacy.version, None);
+        let raw = ConfigMap::from([
+            ("name".to_string(), "future".to_string()),
+            ("version".to_string(), "2".to_string()),
+        ]);
+        let error = SpeciesConfig::from_map(raw, Path::new("future.spec"), "test")
+            .expect_err("future schema must fail");
+        assert!(error.to_string().contains("unsupported version 2"));
     }
 }

@@ -12,7 +12,7 @@
 //! resistance and scavenging formulas in [`crate::physics::deposition`] and
 //! [`crate::physics::wet_scavenging`] to build per-species forcing vectors.
 
-use crate::config::{SpeciesConfig, SpeciesKind};
+use crate::config::{ConfigError, SpeciesConfig, SpeciesKind};
 use crate::particles::MAX_SPECIES;
 use crate::physics::deposition::GasSpeciesDepositionInput;
 use crate::physics::wet_scavenging::{
@@ -35,20 +35,22 @@ fn to_f32(value: f64) -> f32 {
 
 /// Gas dry-deposition input for one species.
 ///
-/// Returns `Some` when the gas resistance pathway is enabled
-/// (`PRELDIFF > 0`). Values `<= 0` mean "not gas-parameterized" downstream.
+/// Returns `Some` for either the resistance (`PRELDIFF > 0`) or constant
+/// velocity (`PDRYVEL > 0`) gas pathway. The latter uses zero diffusivity to
+/// select the constant-velocity branch in `gas_dry_deposition_velocity_m_s`.
 #[must_use]
 pub fn gas_deposition_input(species: &SpeciesConfig) -> Option<GasSpeciesDepositionInput> {
-    let reldiff = species.relative_diffusivity?;
-    if reldiff <= 0.0 {
+    if species.species_kind() != SpeciesKind::Gas {
+        return None;
+    }
+    let reldiff = species.relative_diffusivity.filter(|value| *value > 0.0);
+    let constant_velocity = species.dry_deposition_velocity.filter(|value| *value > 0.0);
+    if reldiff.is_none() && constant_velocity.is_none() {
         return None;
     }
     Some(GasSpeciesDepositionInput {
-        relative_diffusivity_to_h2o: to_f32(reldiff),
-        constant_dry_velocity_m_s: species
-            .dry_deposition_velocity
-            .filter(|v| *v > 0.0)
-            .map(to_f32),
+        relative_diffusivity_to_h2o: reldiff.map_or(0.0, to_f32),
+        constant_dry_velocity_m_s: constant_velocity.map(to_f32),
     })
 }
 
@@ -136,13 +138,25 @@ pub fn decay_constant_s_inv(species: &SpeciesConfig) -> f32 {
 }
 
 /// Decay constants for up to [`MAX_SPECIES`] species [1/s], padded with `0`.
-#[must_use]
-pub fn species_decay_constants(species: &[SpeciesConfig]) -> [f32; MAX_SPECIES] {
+///
+/// # Errors
+/// Returns an error rather than silently dropping species beyond the GPU slot limit.
+pub fn species_decay_constants(
+    species: &[SpeciesConfig],
+) -> Result<[f32; MAX_SPECIES], ConfigError> {
+    if species.len() > MAX_SPECIES {
+        return Err(ConfigError::Validation {
+            message: format!(
+                "too many species: found {}, maximum supported is {MAX_SPECIES}",
+                species.len()
+            ),
+        });
+    }
     let mut lambdas = [0.0_f32; MAX_SPECIES];
-    for (slot, config) in species.iter().take(MAX_SPECIES).enumerate() {
+    for (slot, config) in species.iter().enumerate() {
         lambdas[slot] = decay_constant_s_inv(config);
     }
-    lambdas
+    Ok(lambdas)
 }
 
 /// Radioactive decay survival factor for one step.
@@ -209,6 +223,7 @@ mod tests {
     ) -> SpeciesConfig {
         SpeciesConfig {
             name: "test".to_string(),
+            version: None,
             molecular_weight: None,
             dry_deposition_velocity: None,
             decay_constant,
@@ -237,6 +252,20 @@ mod tests {
         assert!((input.relative_diffusivity_to_h2o - 0.8).abs() < 1.0e-6);
         assert_eq!(input.constant_dry_velocity_m_s, None);
         assert!(aerosol_below_cloud_params(&species).is_none());
+    }
+
+    #[test]
+    fn gas_constant_velocity_without_reldiff_is_preserved() {
+        let mut species = test_species(None, None, None, None, None, None);
+        species.dry_deposition_velocity = Some(0.02);
+        let input = gas_deposition_input(&species).expect("constant velocity enabled");
+        assert_eq!(input.relative_diffusivity_to_h2o.to_bits(), 0.0_f32.to_bits());
+        assert_eq!(input.constant_dry_velocity_m_s, Some(0.02));
+
+        species.relative_diffusivity = Some(0.8);
+        let input = gas_deposition_input(&species).expect("resistance pathway enabled");
+        assert!((input.relative_diffusivity_to_h2o - 0.8).abs() < 1.0e-6);
+        assert_eq!(input.constant_dry_velocity_m_s, Some(0.02));
     }
 
     #[test]
@@ -336,10 +365,20 @@ mod tests {
     fn species_decay_constants_pads_to_max_species() {
         let decaying = test_species(None, None, None, None, Some(100.0), Some(0.006_931_47));
         let stable = test_species(None, None, None, None, None, None);
-        let lambdas = species_decay_constants(&[decaying, stable]);
+        let lambdas =
+            species_decay_constants(&[decaying, stable]).expect("supported species count");
         assert!(lambdas[0] > 0.0);
         for lambda in lambdas.iter().skip(1) {
             assert!(lambda.abs() < f32::EPSILON);
         }
+    }
+
+    #[test]
+    fn species_decay_constants_rejects_excess_species() {
+        let species = vec![test_species(None, None, None, None, None, None); MAX_SPECIES + 1];
+        let error = species_decay_constants(&species).expect_err("fifth species must fail");
+        let message = error.to_string();
+        assert!(message.contains(&species.len().to_string()));
+        assert!(message.contains(&MAX_SPECIES.to_string()));
     }
 }

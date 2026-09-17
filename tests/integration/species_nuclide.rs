@@ -83,6 +83,7 @@ fn make_particle(mass: [f32; MAX_SPECIES], pos_z: f32) -> Particle {
 fn trio_species_configs() -> Vec<SpeciesConfig> {
     let half_life = 453_168.0_f64;
     let decaying = SpeciesConfig {
+        version: None,
         name: "Xe-133-like".to_string(),
         molecular_weight: None,
         dry_deposition_velocity: None,
@@ -121,7 +122,7 @@ fn trio_species_configs() -> Vec<SpeciesConfig> {
 #[test]
 fn species_decay_cpu_matches_analytical_per_species() {
     let configs = trio_species_configs();
-    let lambdas = species_decay_constants(&configs);
+    let lambdas = species_decay_constants(&configs).expect("supported species count");
     let initial = [2.0_f32, 3.0, 1.5, 0.5];
     let mut masses = initial;
     for step in 1..=STEP_COUNT {
@@ -257,7 +258,7 @@ fn species_decay_gpu_matches_cpu_when_adapter_available() {
     };
 
     let configs = trio_species_configs();
-    let lambdas = species_decay_constants(&configs);
+    let lambdas = species_decay_constants(&configs).expect("supported species count");
     let initial = [1.0_f32, 2.0, 4.0, 8.0];
     let particles = vec![make_particle(initial, PARTICLE_HEIGHT_M)];
     let particle_buffers = ParticleBuffers::from_particles(&ctx, &particles);

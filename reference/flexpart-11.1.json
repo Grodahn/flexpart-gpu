@@ -5,6 +5,53 @@
   "upstream_repository": "https://gitlab.phaidra.org/flexpart/flexpart",
   "pinned_tag": "v11.1",
   "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+  "execution_profile": {
+    "id": "flexpart-11.1-single-thread",
+    "version": 1,
+    "runtime_environment": {
+      "OMP_NUM_THREADS": "1",
+      "OMP_THREAD_LIMIT": "1",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_NESTED": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_SCHEDULE": "static",
+      "OMP_PROC_BIND": "FALSE",
+      "OMP_WAIT_POLICY": "PASSIVE"
+    },
+    "build": {
+      "makefile": "src/makefile_gfortran",
+      "make_arguments": "eta=no arch=x86-64",
+      "fortran_compiler": "gfortran",
+      "optimization": "-O3",
+      "openmp_flag": "-fopenmp",
+      "arch_flag": "-march=x86-64",
+      "eta": "no",
+      "netcdf": "enabled (USE_NCF)"
+    },
+    "docker": {
+      "image": "flexpart-fortran:latest",
+      "dockerfile": "docker/Dockerfile.fortran",
+      "compose_file": "docker/docker-compose.fortran.yml",
+      "base_image": "ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7",
+      "ubuntu_snapshot": "20260910T000000Z"
+    },
+    "required_inputs": [
+      "COMMAND",
+      "RELEASES",
+      "OUTGRID",
+      "AGECLASSES",
+      "RECEPTORS",
+      "SPECIES/SPECIES_*",
+      "METEO_ARGS.txt",
+      "generated GRIB meteorology and AVAILABLE"
+    ],
+    "external_seed_control": "unavailable",
+    "repeatability_cases": {
+      "ADV-ANA-001": "deterministic",
+      "WIND-UNI-002": "stochastic"
+    },
+    "minimum_repetitions": 5
+  },
   "license": "GPL-3.0-or-later",
   "license_url": "https://gitlab.phaidra.org/flexpart/flexpart/-/blob/v11.1/LICENSE",
   "source_requirement": "Reference checkouts must be unmodified upstream sources at exactly the pinned commit. Any deviation (different commit, dirty work tree) fails verification.",

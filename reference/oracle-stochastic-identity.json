@@ -28,7 +28,8 @@
     "notes": [
       "0 is rejected: offset 0 is the pristine default and must stay expressible only as default mode (unset/empty variable), never as a requested identity",
       "Values above 1000000000 are rejected to keep every derived 32-bit Fortran integer seed far from overflow",
-      "Non-canonical spellings (blanks, signs, decimal points, trailing text) are rejected instead of being parsed leniently"
+      "Non-canonical spellings (blanks, signs, decimal points, trailing text) are rejected instead of being parsed leniently",
+      "Leading zeros are rejected: canonical decimal representation has no leading zeros (e.g., '01' is invalid)"
     ]
   },
   "derivation_mapping": {
@@ -54,7 +55,7 @@
   },
   "validation_patch": {
     "file": "reference/flexpart-11.1-seedable.patch",
-    "sha256": "2b4dafb6faaf3c4019b1d7fc5fc51c0277d32ecb0c2fe9e5a36099439381c1fb",
+    "sha256": "554ec7d4aa291c5ded242c7342e22fdf3615964ea397abc85f738543f55be96c",
     "target_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
     "touched_files": [
       "src/random_mod.f90",

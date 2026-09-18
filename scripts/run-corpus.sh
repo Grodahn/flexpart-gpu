@@ -294,7 +294,7 @@ oracle_run_one_repetition() {
   local repdir="$3"
   # Container rundir uses a double leading slash so MSYS2/Git Bash on Windows
   # leaves it untouched (POSIX collapses // to / inside Linux).
-  local container_rundir="//workspace/corpus/fortran_run_repeatability/$(basename "${rundir}")"
+  local container_rundir="//workspace/target/corpus/fortran_run_repeatability/$(basename "${rundir}")"
   rm -rf "${repdir}"
   mkdir -p "${repdir}/raw"
   # Tie this repetition to the experiment executable and prove which inputs
@@ -333,7 +333,7 @@ PYEOF
     set -euo pipefail
     python3 /workspace/flexpart-gpu/scripts/write_oracle_run_manifest.py check-runtime-profile \
       --oracle-manifest /workspace/flexpart-gpu/reference/flexpart-11.1.json \
-      > /workspace/corpus/oracle_repeatability/${case}/$(basename "${repdir}")/runtime_profile.json
+      > /workspace/target/corpus/oracle_repeatability/${case}/$(basename "${repdir}")/runtime_profile.json
     cd ${container_rundir} && /workspace/flexpart/src/FLEXPART
   " 2>&1 | tee "${repdir}/fortran.log"
   if ! grep -q "CONGRATULATIONS" "${repdir}/fortran.log"; then
@@ -775,7 +775,7 @@ step_oracle_case() {
   # shellcheck disable=SC2086
   docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran \
     python3 //workspace/flexpart-gpu/scripts/generate_synthetic_grib.py \
-    --output-dir "//workspace/corpus/meteo/${case}" \
+    --output-dir "//workspace/target/corpus/meteo/${case}" \
     $(cat "${fixture}/METEO_ARGS.txt")
   test -f "${meteodir}/AVAILABLE"
   cp "${fixture}/COMMAND" "${rundir}/options/COMMAND"
@@ -814,8 +814,8 @@ PATHEOF
     set -euo pipefail
     python3 /workspace/flexpart-gpu/scripts/write_oracle_run_manifest.py check-runtime-profile \
       --oracle-manifest /workspace/flexpart-gpu/reference/flexpart-11.1.json \
-      > /workspace/corpus/oracle/${case}/runtime_profile.json
-    cd /workspace/corpus/fortran_run/${case} && /workspace/flexpart/src/FLEXPART
+      > /workspace/target/corpus/oracle/${case}/runtime_profile.json
+    cd /workspace/target/corpus/fortran_run/${case} && /workspace/flexpart/src/FLEXPART
   " 2>&1 | tee "${oracledir}/fortran.log"
   if ! grep -q "CONGRATULATIONS" "${oracledir}/fortran.log"; then
     log_error "Oracle run failed for ${case}; see ${oracledir}/fortran.log"

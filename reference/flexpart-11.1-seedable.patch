@@ -1,8 +1,8 @@
 diff --git a/src/random_mod.f90 b/src/random_mod.f90
-index f43075a..6307232 100644
+index f43075a..aa32711 100644
 --- a/src/random_mod.f90
 +++ b/src/random_mod.f90
-@@ -19,13 +19,51 @@ module random_mod
+@@ -19,13 +19,56 @@ module random_mod
  
    integer, allocatable :: iseed1(:), iseed2(:)
  
@@ -16,12 +16,12 @@ index f43075a..6307232 100644
 +    ! Validation-only stochastic identity selector (RISK-03.3G-01V-b, issue #50).
 +    ! Returns 0 when FLEXPART_VALIDATION_SEED is unset or empty, preserving the
 +    ! pristine default initialization bit-exactly. A present value must be a
-+    ! canonical decimal identity in [1, 1000000000]; anything else stops the run
++    ! canonical decimal identity in [1, 1000000000] with no leading zeros,
++    ! no leading/trailing spaces, and no sign; anything else stops the run
 +    ! instead of silently falling back to the default seed.
 +    implicit none
 +    integer :: offset
 +    character(len=32) :: raw_value
-+    character(len=32) :: trimmed
 +    integer :: value_length, read_status, seed, convert_status, k, digits
 +
 +    offset = 0
@@ -30,14 +30,19 @@ index f43075a..6307232 100644
 +    if (read_status.ne.0) &
 +      error stop "FLEXPART_VALIDATION_SEED cannot be read exactly; refusing seedable run"
 +    if (value_length.le.0) return
-+    trimmed = adjustl(raw_value)
-+    digits = len_trim(trimmed)
-+    if (digits.le.0) return
++    digits = value_length
++    ! Reject leading/trailing spaces
++    if (raw_value(1:1).eq.' '.or.raw_value(digits:digits).eq.' ') &
++      error stop "FLEXPART_VALIDATION_SEED must be a canonical decimal identity without spaces"
++    ! All characters must be digits
 +    do k = 1, digits
-+      if (trimmed(k:k).lt.'0'.or.trimmed(k:k).gt.'9') &
++      if (raw_value(k:k).lt.'0'.or.raw_value(k:k).gt.'9') &
 +        error stop "FLEXPART_VALIDATION_SEED must be a canonical decimal identity"
 +    end do
-+    read(trimmed(1:digits), *, iostat=convert_status) seed
++    ! Reject leading zeros (canonical decimal representation)
++    if (digits.gt.1.and.raw_value(1:1).eq.'0') &
++      error stop "FLEXPART_VALIDATION_SEED must not have leading zeros"
++    read(raw_value(1:digits), *, iostat=convert_status) seed
 +    if (convert_status.ne.0) &
 +      error stop "FLEXPART_VALIDATION_SEED must be a canonical decimal identity"
 +    if (seed.lt.validation_seed_min.or.seed.gt.validation_seed_max) &
@@ -54,7 +59,7 @@ index f43075a..6307232 100644
  
      allocate(ran1_iv(ran1_ntab,0:num_threads-1),ran1_iy(0:num_threads-1), stat=stat)
      if (stat.ne.0) error stop "Could not allocate ran1_iv"
-@@ -38,9 +76,13 @@ contains
+@@ -38,9 +81,13 @@ contains
      allocate(iseed1(0:num_threads-1),iseed2(0:num_threads-1), stat=stat)
      if (stat.ne.0) error stop "Could not allocate iseed1"
  

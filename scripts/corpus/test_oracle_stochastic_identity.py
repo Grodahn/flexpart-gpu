@@ -79,6 +79,39 @@ def test_parse_requested_identity_rejects_ambiguous_missing():
     print("test_parse_requested_identity_rejects_ambiguous_missing: OK")
 
 
+def test_parse_requested_identity_rejects_leading_zeros():
+    """Canonical decimal representation must not have leading zeros."""
+    for raw in ("01", "001", "0001", "0000000001", "010", "007"):
+        try:
+            parse_requested_identity(raw)
+        except StochasticIdentityError:
+            continue
+        raise AssertionError(f"leading zeros accepted: {raw!r}")
+    print("test_parse_requested_identity_rejects_leading_zeros: OK")
+
+
+def test_parse_requested_identity_rejects_spaces():
+    """Leading/trailing spaces must be rejected (not trimmed)."""
+    for raw in (" 1", "1 ", " 1 ", "\t1", "1\t", " 1\t"):
+        try:
+            parse_requested_identity(raw)
+        except StochasticIdentityError:
+            continue
+        raise AssertionError(f"spaces accepted: {raw!r}")
+    print("test_parse_requested_identity_rejects_spaces: OK")
+
+
+def test_parse_requested_identity_rejects_signs():
+    """Signs must be rejected."""
+    for raw in ("+1", "-1", "+10", "-10"):
+        try:
+            parse_requested_identity(raw)
+        except StochasticIdentityError:
+            continue
+        raise AssertionError(f"sign accepted: {raw!r}")
+    print("test_parse_requested_identity_rejects_signs: OK")
+
+
 def test_derive_state_mapping_vectors():
     first = derive_state(1)
     assert first["iseed1"] == [-8]

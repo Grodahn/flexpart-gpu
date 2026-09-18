@@ -66,6 +66,8 @@ PATCH_ADDED_CODE_MARKERS = (
     "get_environment",
     "adjustl",
     "len_trim",
+    "value_length",
+    "digits",
     "read(",
     "return",
     "end function",
@@ -84,8 +86,9 @@ def parse_requested_identity(raw) -> int:
 
     Only plain decimal spellings of integers in ``[1, 1000000000]`` are
     accepted. ``0``, negative values, out-of-range values, blanks, signs,
-    decimal points, surrounding whitespace, and non-numeric text are all
-    rejected so a missing or ambiguous identity can never become a run.
+    decimal points, surrounding whitespace, leading zeros, and non-numeric
+    text are all rejected so a missing or ambiguous identity can never
+    become a run.
     """
     if raw is None:
         raise StochasticIdentityError(
@@ -98,10 +101,20 @@ def parse_requested_identity(raw) -> int:
     if isinstance(raw, int):
         identity = raw
     elif isinstance(raw, str):
-        if not raw or any(c < "0" or c > "9" for c in raw):
+        if not raw:
             raise StochasticIdentityError(
                 f"unsupported stochastic identity: {raw!r}; expected a "
                 f"canonical decimal integer in [{IDENTITY_MIN}, {IDENTITY_MAX}]"
+            )
+        if any(c < "0" or c > "9" for c in raw):
+            raise StochasticIdentityError(
+                f"unsupported stochastic identity: {raw!r}; expected a "
+                f"canonical decimal integer in [{IDENTITY_MIN}, {IDENTITY_MAX}]"
+            )
+        # Reject leading zeros (canonical decimal representation)
+        if len(raw) > 1 and raw[0] == "0":
+            raise StochasticIdentityError(
+                f"unsupported stochastic identity: {raw!r}; leading zeros not allowed"
             )
         try:
             identity = int(raw, 10)

@@ -21,8 +21,11 @@ set -euo pipefail
 #       then run ADV-ANA-001 and WIND-UNI-002 REPS times each (default 5) with
 #       isolated run/output directories under
 #       target/corpus/oracle_repeatability/<CASE>/rep_XX/ and write
-#       target/corpus/oracle_repeatability_report.json. FLEXPART_DIR may point
-#       to the pinned checkout when this repository is an isolated worktree.
+#       target/corpus/oracle_repeatability_report.json. Only the cases run by
+#       the invocation are evaluated (a single CASE yields a valid single-case
+#       report; canonical evidence uses the default: both cases). FLEXPART_DIR
+#       may point to the pinned checkout when this repository is an isolated
+#       worktree.
 #   scripts/run-corpus.sh compare
 #       Compute machine-readable metrics (mass, COM, covariance/eigenvalues,
 #       vertical quantiles, overlap, field correlation, process budgets) into
@@ -151,7 +154,55 @@ oracle_build_once() {
     log_error "Could not hash oracle executable"
     return 1
   fi
+  # Build identity for this experiment: every retained repetition is tied to
+  # these values via per-case experiment.json and per-rep records.
+  ORACLE_IMAGE_ID="$(docker image inspect flexpart-fortran:latest --format '{{.Id}}')"
+  ORACLE_COMPILER="$(docker run --rm flexpart-fortran:latest gfortran --version | head -1)"
+  ORACLE_MAKEFILE_SHA="$("${HOST_PYTHON}" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "${FLEXPART_DIR}/src/makefile_gfortran")"
+  if [ -z "${ORACLE_IMAGE_ID}" ] || [ -z "${ORACLE_COMPILER}" ] || [ "${#ORACLE_MAKEFILE_SHA}" != 64 ]; then
+    log_error "Could not record oracle build provenance"
+    return 1
+  fi
   log_info "Oracle executable SHA-256: ${ORACLE_EXE_SHA}"
+  log_info "Oracle image: ${ORACLE_IMAGE_ID} (${ORACLE_COMPILER})"
+}
+
+# Record the experiment a case's retained repetitions belong to. The case
+# directory is recreated fresh so repetitions from an older experiment can
+# never enter the new report silently.
+oracle_write_case_experiment() {
+  local case="$1"
+  local reps="$2"
+  local case_dir="${REPEAT_DIR}/${case}"
+  rm -rf "${case_dir}"
+  mkdir -p "${case_dir}"
+  "${HOST_PYTHON}" - "${PROJECT_ROOT}/reference/flexpart-11.1.json" "${case}" "${reps}" \
+    "${ORACLE_EXE_SHA}" "${ORACLE_IMAGE_ID}" "${ORACLE_COMPILER}" "${ORACLE_MAKEFILE_SHA}" \
+    "${case_dir}/experiment.json" <<'PYEOF'
+import datetime
+import json
+import sys
+(manifest_path, case_id, reps, exe_sha, image_id, compiler, makefile_sha, output) = sys.argv[1:9]
+reference = json.load(open(manifest_path, encoding="utf-8"))
+profile = reference["execution_profile"]
+experiment = {
+    "execution_profile": {"id": profile["id"], "version": profile["version"]},
+    "case": case_id,
+    "classification": profile["repeatability_cases"][case_id],
+    "repetitions_requested": int(reps),
+    "experiment_started_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "oracle_pinned_commit": reference["pinned_commit"],
+    "oracle_executable_sha256": exe_sha,
+    "docker_image": profile["docker"]["image"],
+    "docker_image_id": image_id,
+    "compiler": compiler,
+    "make_arguments": profile["build"]["make_arguments"],
+    "makefile_sha256": makefile_sha,
+    "external_seed_control": profile["external_seed_control"],
+}
+open(output, "w", encoding="utf-8").write(json.dumps(experiment, indent=2) + "\n")
+print(f"Experiment record: {output}")
+PYEOF
 }
 
 oracle_assert_same_executable() {
@@ -219,6 +270,38 @@ oracle_run_one_repetition() {
   local container_rundir="//workspace/corpus/fortran_run_repeatability/$(basename "${rundir}")"
   rm -rf "${repdir}"
   mkdir -p "${repdir}/raw"
+  # Tie this repetition to the experiment executable and prove which inputs
+  # the invocation consumes. Both records are written BEFORE FLEXPART runs:
+  # post-run fixture copies alone cannot prove what was consumed.
+  printf '%s' "${ORACLE_EXE_SHA}" > "${repdir}/oracle_executable.sha256"
+  "${HOST_PYTHON}" - "${rundir}" "${PROJECT_ROOT}/target/corpus/meteo/${case}" "${repdir}/consumed_inputs.json" <<'PYEOF'
+import hashlib
+import json
+import sys
+from pathlib import Path
+rundir, meteodir, output = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+def digest(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+options = rundir / "options"
+consumed = {"options": {}, "meteo": {}}
+for path in sorted(p for p in options.rglob("*") if p.is_file()):
+    consumed["options"][str(path.relative_to(rundir)).replace("\\", "/")] = digest(path)
+for required in ("options/COMMAND", "options/RELEASES", "options/OUTGRID"):
+    if required not in consumed["options"]:
+        raise SystemExit(f"prepared run directory lacks {required}")
+consumed["pathnames_sha256"] = digest(rundir / "pathnames")
+consumed["pathnames_text"] = (rundir / "pathnames").read_text(encoding="utf-8")
+if not (meteodir / "AVAILABLE").is_file():
+    raise SystemExit(f"shared meteorology lacks AVAILABLE: {meteodir}")
+for path in sorted(p for p in meteodir.rglob("*") if p.is_file()):
+    consumed["meteo"][str(path.relative_to(meteodir)).replace("\\", "/")] = digest(path)
+Path(output).write_text(json.dumps(consumed, indent=2) + "\n", encoding="utf-8")
+print(f"Consumed inputs: {output}")
+PYEOF
   docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran bash -c "
     set -euo pipefail
     python3 /workspace/flexpart-gpu/scripts/write_oracle_run_manifest.py check-runtime-profile \
@@ -254,14 +337,17 @@ step_oracle_repeatability() {
   esac
   mkdir -p "${REPEAT_DIR}" "${REPEAT_RUN_ROOT}"
   oracle_build_once
+  ran_cases=""
   for case in ${cases}; do
     case " ${REPEAT_CASES} " in
       *" ${case} "*) ;;
       *) log_error "Case ${case} is not in the frozen #49 repeatability set (${REPEAT_CASES})"; return 1 ;;
     esac
     log_step "Oracle repeatability ${case} x${reps} (shared exe ${ORACLE_EXE_SHA})"
+    # Fresh case directory: repetitions from an older experiment must never
+    # enter the new report silently. Only cases run below are evaluated.
+    oracle_write_case_experiment "${case}" "${reps}"
     oracle_generate_meteo_once "${case}"
-    mkdir -p "${REPEAT_DIR}/${case}"
     for i in $(seq 1 "${reps}"); do
       rep="$(printf 'rep_%02d' "${i}")"
       oracle_assert_same_executable
@@ -269,9 +355,10 @@ step_oracle_repeatability() {
       oracle_run_one_repetition "${case}" "${REPEAT_RUN_ROOT}/${case}_rep_${rep}" "${REPEAT_DIR}/${case}/${rep}"
     done
     require_pinned_fortran
+    ran_cases="${ran_cases} ${case}"
   done
   restore_oracle_checkout
-  log_step "Oracle repeatability comparison"
+  log_step "Oracle repeatability comparison (cases:${ran_cases})"
   "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/corpus/compare_oracle_repeatability.py" \
     --repeat-dir "${REPEAT_DIR}" \
     --output "${REPEAT_REPORT}" \
@@ -279,7 +366,8 @@ step_oracle_repeatability() {
     --oracle-checkout "${FLEXPART_DIR}" \
     --oracle-exe "${FLEXPART_DIR}/src/FLEXPART" \
     --meteo-dir "${PROJECT_ROOT}/target/corpus/meteo" \
-    --fixtures-dir "${PROJECT_ROOT}/fixtures/corpus/fortran"
+    --fixtures-dir "${PROJECT_ROOT}/fixtures/corpus/fortran" \
+    --cases "${ran_cases}"
   log_info "Repeatability evidence under ${REPEAT_DIR}/ and ${REPEAT_REPORT}"
 }
 

@@ -11,9 +11,17 @@ Each repetition directory must contain:
 - ``raw/header``, ``raw/dates``, ``raw/grid_conc_*`` (plus optional partposit)
 - ``oracle_summary.json`` decoded by ``scripts/corpus/decode_oracle_output.py``
 - ``runtime_profile.json`` written by ``check-runtime-profile`` immediately
-  before the FLEXPART invocation
+-   before the FLEXPART invocation
 - ``fortran.log`` containing ``CONGRATULATIONS``
-- ``COMMAND``, ``RELEASES``, ``OUTGRID`` copies of the consumed inputs
+- ``oracle_executable.sha256`` tying the repetition to the experiment build
+- ``consumed_inputs.json`` with SHA-256 of the prepared run-directory options
+  and shared meteorology, recorded BEFORE the FLEXPART invocation
+- ``COMMAND``, ``RELEASES``, ``OUTGRID`` post-run copies (traceability only;
+  the pre-invocation ``consumed_inputs.json`` is the input evidence)
+
+Each case directory must contain ``experiment.json`` written by the runner
+before its repetitions. Only the cases named with ``--cases`` are evaluated,
+so repetitions from an older experiment never enter a new report silently.
 
 The report records, per case and repetition: execution-profile identity and
 version, oracle executable hash, consumed input hashes, raw artifact inventory
@@ -34,7 +42,8 @@ Usage:
         --oracle-checkout ../flexpart \
         --oracle-exe ../flexpart/src/FLEXPART \
         --meteo-dir target/corpus/meteo \
-        --fixtures-dir fixtures/corpus/fortran
+        --fixtures-dir fixtures/corpus/fortran \
+        [--cases "ADV-ANA-001 WIND-UNI-002"]
 """
 
 import argparse
@@ -169,6 +178,11 @@ def main():
     parser.add_argument("--meteo-dir", required=True)
     parser.add_argument("--fixtures-dir", required=True)
     parser.add_argument("--image", default="flexpart-fortran:latest")
+    parser.add_argument("--cases", default=None,
+                        help="Space-separated subset of repeatability cases to evaluate "
+                             "(default: all profile cases). Only the named cases enter "
+                             "the report, so a single-case run yields a valid single-case "
+                             "report instead of mixing in older repetitions.")
     args = parser.parse_args()
 
     manifest_path = Path(args.oracle_manifest)
@@ -202,24 +216,48 @@ def main():
     except Exception:
         docker_version = "unavailable"
 
+    if args.cases and args.cases.strip() and args.cases.strip() != "all":
+        requested = args.cases.split()
+    else:
+        requested = list(profile["repeatability_cases"])
+    for case_id in requested:
+        if case_id not in profile["repeatability_cases"]:
+            raise SystemExit(f"case {case_id} is not in the frozen repeatability set")
+    if not requested:
+        raise SystemExit("no repeatability cases requested")
+
     cases_report = {}
-    for case_id, classification in profile["repeatability_cases"].items():
+    experiment_executables = {}
+    for case_id in requested:
+        classification = profile["repeatability_cases"][case_id]
         case_dir = repeat_dir / case_id
         if not case_dir.is_dir():
             raise SystemExit(f"missing repeatability case directory: {case_dir}")
+        experiment_path = case_dir / "experiment.json"
+        if not experiment_path.is_file():
+            raise SystemExit(
+                f"{case_id}: missing experiment.json; the case was not produced by "
+                "the current oracle-repeatability runner")
+        experiment = json.loads(experiment_path.read_text(encoding="utf-8"))
+        if experiment.get("execution_profile", {}) != {"id": profile["id"], "version": profile["version"]}:
+            raise SystemExit(f"{case_id}: experiment profile does not match the frozen contract")
+        if experiment.get("case") != case_id:
+            raise SystemExit(f"{case_id}: experiment record belongs to {experiment.get('case')}")
+        if experiment.get("classification") != classification:
+            raise SystemExit(f"{case_id}: experiment classification mismatch")
+        if experiment.get("oracle_pinned_commit") != reference["pinned_commit"]:
+            raise SystemExit(f"{case_id}: experiment pinned commit mismatch")
+        if experiment.get("external_seed_control") != "unavailable":
+            raise SystemExit(f"{case_id}: experiment must record seed control as unavailable")
         reps = sorted(p for p in case_dir.iterdir() if p.is_dir() and p.name.startswith("rep_"))
         if len(reps) < profile["minimum_repetitions"]:
             raise SystemExit(f"{case_id}: need at least {profile['minimum_repetitions']} repetitions, found {len(reps)}")
-        fixture_case = fixtures_dir / case_id
-        if not fixture_case.is_dir():
-            raise SystemExit(f"missing oracle fixture: {fixture_case}")
-        fixture_hashes = hash_tree(fixture_case)
-        if not fixture_hashes:
-            raise SystemExit(f"empty oracle fixture: {fixture_case}")
-        meteo_case = meteo_dir / case_id
-        meteo_hashes = hash_tree(meteo_case)
-        if not meteo_hashes or not (meteo_case / "AVAILABLE").is_file():
-            raise SystemExit(f"missing generated meteorology for {case_id}: {meteo_case}")
+        if len(reps) != experiment.get("repetitions_requested"):
+            raise SystemExit(
+                f"{case_id}: found {len(reps)} repetition directories but the experiment "
+                f"requested {experiment.get('repetitions_requested')}; stale directories "
+                "from another experiment must not be evaluated")
+        experiment_executables[case_id] = experiment["oracle_executable_sha256"]
 
         rep_reports = []
         for rep in reps:
@@ -227,7 +265,10 @@ def main():
             summary_path = rep / "oracle_summary.json"
             runtime_path = rep / "runtime_profile.json"
             log_path = rep / "fortran.log"
+            exe_path = rep / "oracle_executable.sha256"
+            consumed_path = rep / "consumed_inputs.json"
             for required in (raw_dir / "header", raw_dir / "dates", summary_path, runtime_path, log_path,
+                             exe_path, consumed_path,
                              rep / "COMMAND", rep / "RELEASES", rep / "OUTGRID"):
                 if not required.is_file():
                     raise SystemExit(f"{case_id} {rep.name}: missing required artifact {required.name}")
@@ -236,6 +277,11 @@ def main():
             log_text = log_path.read_text(encoding="utf-8", errors="replace")
             if "CONGRATULATIONS" not in log_text:
                 raise SystemExit(f"{case_id} {rep.name}: fortran.log lacks successful completion marker")
+            rep_exe_sha = exe_path.read_text(encoding="utf-8").strip()
+            if rep_exe_sha != experiment["oracle_executable_sha256"]:
+                raise SystemExit(
+                    f"{case_id} {rep.name}: repetition is tied to executable {rep_exe_sha}, "
+                    f"not this experiment's {experiment['oracle_executable_sha256']}")
             runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
             if runtime.get("execution_profile", {}).get("id") != profile["id"]:
                 raise SystemExit(f"{case_id} {rep.name}: runtime profile id mismatch")
@@ -245,19 +291,69 @@ def main():
                 raise SystemExit(f"{case_id} {rep.name}: runtime environment does not match frozen profile")
             if runtime.get("reference_manifest_sha256") != manifest_sha:
                 raise SystemExit(f"{case_id} {rep.name}: reference manifest changed during experiment")
+            consumed = json.loads(consumed_path.read_text(encoding="utf-8"))
+            for required_option in ("options/COMMAND", "options/RELEASES", "options/OUTGRID"):
+                if required_option not in consumed.get("options", {}):
+                    raise SystemExit(f"{case_id} {rep.name}: consumed inputs lack {required_option}")
+            if not consumed.get("meteo"):
+                raise SystemExit(f"{case_id} {rep.name}: consumed inputs lack meteorology hashes")
             raw_hashes = hash_tree(raw_dir)
             summary_sha = digest(summary_path)
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            consumed_digest = hashlib.sha256(
+                json.dumps(consumed, sort_keys=True).encode("utf-8")).hexdigest()
             rep_reports.append({
                 "rep": rep.name,
+                "oracle_executable_sha256": rep_exe_sha,
+                "consumed_inputs_digest": consumed_digest,
+                "consumed_inputs": consumed,
                 "raw_sha256": raw_hashes,
                 "decoded_summary_sha256": summary_sha,
                 "decoded_summary": summary,
                 "runtime_profile": runtime,
-                "input_copies_sha256": {
-                    name: digest(rep / name) for name in ("COMMAND", "RELEASES", "OUTGRID")
-                },
             })
+
+        # Every repetition of a case must have consumed identical inputs,
+        # including the generated meteorology; otherwise the repeatability
+        # claim is void.
+        baseline_inputs = json.dumps(rep_reports[0]["consumed_inputs"], sort_keys=True)
+        for rep in rep_reports[1:]:
+            if json.dumps(rep["consumed_inputs"], sort_keys=True) != baseline_inputs:
+                current_keys = set(rep["consumed_inputs"].get("options", {})) | set(rep["consumed_inputs"].get("meteo", {}))
+                baseline_keys = set(rep_reports[0]["consumed_inputs"].get("options", {})) | set(rep_reports[0]["consumed_inputs"].get("meteo", {}))
+                raise SystemExit(
+                    f"{case_id} {rep['rep']}: consumed inputs differ from {rep_reports[0]['rep']} "
+                    f"(differing keys: {sorted(current_keys ^ baseline_keys) or 'same keys, different hashes'}); "
+                    "repetitions with different inputs must not be compared")
+        baseline_consumed = rep_reports[0]["consumed_inputs"]
+
+        # The shared meteorology and versioned fixtures on disk must still be
+        # what the repetitions consumed; otherwise the report would attribute
+        # results to inputs that were never used.
+        meteo_case = meteo_dir / case_id
+        if not (meteo_case / "AVAILABLE").is_file():
+            raise SystemExit(f"missing generated meteorology for {case_id}: {meteo_case}")
+        if hash_tree(meteo_case) != rep_reports[0]["consumed_inputs"]["meteo"]:
+            raise SystemExit(
+                f"{case_id}: generated meteorology changed since the repetitions ran; "
+                "rerun the experiment instead of reporting stale inputs")
+        fixture_case = fixtures_dir / case_id
+        if not fixture_case.is_dir():
+            raise SystemExit(f"missing oracle fixture: {fixture_case}")
+        fixture_hashes = hash_tree(fixture_case)
+        if not fixture_hashes:
+            raise SystemExit(f"empty oracle fixture: {fixture_case}")
+        consumed_options = rep_reports[0]["consumed_inputs"]["options"]
+        for fixture_rel in ("COMMAND", "RELEASES", "OUTGRID", "AGECLASSES", "RECEPTORS"):
+            if fixture_hashes.get(fixture_rel) != consumed_options.get(f"options/{fixture_rel}"):
+                raise SystemExit(
+                    f"{case_id}: versioned fixture {fixture_rel} differs from what the "
+                    "repetitions consumed; rerun the experiment")
+        for fixture_rel, sha in fixture_hashes.items():
+            if fixture_rel.startswith("SPECIES/") and consumed_options.get(f"options/{fixture_rel}") != sha:
+                raise SystemExit(
+                    f"{case_id}: versioned fixture {fixture_rel} differs from what the "
+                    "repetitions consumed; rerun the experiment")
 
         baseline = rep_reports[0]
         baseline_summary = baseline["decoded_summary"]
@@ -282,9 +378,11 @@ def main():
             rep["byte_identical_to_baseline"] = bool(
                 rep["raw_byte_identical_to_baseline"] and rep["decoded_hash_identical_to_baseline"]
             )
-            # Keep the full decoded payload out of the per-rep inventory; the
-            # hashed summary file remains the attributable decoded artifact.
+            # Keep full decoded and consumed-input payloads out of the per-rep
+            # inventory; the hashed summary file and the case-level verified
+            # input map remain the attributable artifacts.
             del rep["decoded_summary"]
+            del rep["consumed_inputs"]
 
         all_identical = all(r["byte_identical_to_baseline"] for r in rep_reports)
         any_decoded_diff = any(r["differing_decoded_fields"] for r in rep_reports)
@@ -297,22 +395,50 @@ def main():
         cases_report[case_id] = {
             "classification": classification,
             "baseline_rep": baseline["rep"],
+            "experiment": experiment,
+            "executable_sha256": experiment["oracle_executable_sha256"],
             "repetitions": rep_reports,
             "all_byte_identical_to_baseline": all_identical,
             "repeatability_observation": observation,
-            "consumed_input_hashes": {
+            "consumed_inputs_identical_across_reps": True,
+            "consumed_input_hashes": baseline_consumed,
+            "consumed_inputs_note": "SHA-256 of the prepared run-directory options and shared "
+                                    "meteorology, recorded before each invocation and verified "
+                                    "identical across all repetitions of this case.",
+            "versioned_inputs_at_report": {
                 "fixture": fixture_hashes,
-                "generated_meteorology": meteo_hashes,
+                "generated_meteorology": hash_tree(meteo_case),
+                "note": "Report-time state, cross-checked against the pre-run consumed "
+                        "inputs above; not standalone evidence.",
             },
         }
 
+    experiment_shas = {case: experiment_executables[case] for case in requested}
+    if len(set(experiment_shas.values())) != 1:
+        raise SystemExit(
+            f"evaluated cases tie to different executables {experiment_shas}; "
+            "one report must cover a single experiment only")
+
+    verified_exe_sha = next(iter(set(experiment_shas.values())))
+    if exe_sha != verified_exe_sha:
+        raise SystemExit(
+            f"oracle executable on disk ({exe_sha}) differs from the experiment build "
+            f"({verified_exe_sha}); rebuild and rerun the experiment instead of "
+            "reporting repetitions tied to another binary")
+    scope_note = (
+        "Canonical evidence evaluates all profile cases."
+        if set(requested) == set(profile["repeatability_cases"]) else
+        f"Single-scope report evaluating only {sorted(requested)}; canonical evidence "
+        "requires all profile cases.")
     report = {
         "status": "ORACLE_REPEATABILITY_CHARACTERIZED_NO_PARITY_VERDICT",
         "status_note": "Execution repeatability only; no candidate-vs-oracle physics parity is claimed.",
+        "scope_note": scope_note,
+        "cases_evaluated": sorted(requested),
         "execution_profile": {"id": profile["id"], "version": profile["version"]},
         "reference_manifest_sha256": manifest_sha,
         "oracle": oracle,
-        "oracle_executable_sha256": exe_sha,
+        "oracle_executable_sha256": verified_exe_sha,
         "container": {"image": args.image, "image_id": image_id, "docker_version": docker_version},
         "compiler": {
             "version": compiler,

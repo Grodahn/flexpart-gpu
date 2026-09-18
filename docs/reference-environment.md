@@ -85,10 +85,25 @@ same SHA-256 before every repetition, generates shared meteorology once per
 case, and preserves each repetition separately under
 `target/corpus/oracle_repeatability/<CASE>/rep_XX/` (raw `header`/`dates`/
 `grid_conc_*`, decoded `oracle_summary.json`, `runtime_profile.json`,
-`fortran.log`, consumed `COMMAND`/`RELEASES`/`OUTGRID`). The pinned checkout
-is verified clean before the experiment and after build and runs (the v11.1
-makefile's `FLEXPART.f90` stamp is restored on the host); a dirty or
-wrong-revision checkout fails non-zero.
+`fortran.log`, post-run `COMMAND`/`RELEASES`/`OUTGRID` copies). The pinned
+checkout is verified clean before the experiment and after build and runs
+(the v11.1 makefile's `FLEXPART.f90` stamp is restored on the host); a dirty
+or wrong-revision checkout fails non-zero.
+
+Single-experiment tie-in: each run recreates its case directories fresh and
+writes a per-case `experiment.json` (profile id/version, executable SHA,
+image, compiler, requested repetitions) before any repetition. Every
+repetition records `oracle_executable.sha256` and `consumed_inputs.json`
+(SHA-256 of the prepared run-directory options including `COMMAND`,
+`RELEASES`, `OUTGRID`, plus the shared meteorology) BEFORE the FLEXPART
+invocation; post-run fixture copies are traceability only, never input
+evidence. The comparator evaluates only the cases the invocation ran (a
+single `CASE` yields a valid single-case report; canonical evidence uses the
+default: both cases), requires the requested repetition count to match the
+directories found, ties every repetition to the experiment executable
+(including the binary on disk), and verifies all repetitions of a case
+consumed identical inputs. Stale directories, foreign executables, changed
+inputs, or a missing experiment record fail non-zero.
 
 `scripts/corpus/compare_oracle_repeatability.py` hashes every raw and decoded
 artifact, checks the frozen profile, and writes
@@ -105,6 +120,8 @@ short path):
 
 ```bash
 scripts/run-corpus.sh oracle-repeatability all 5
+# Single-case debugging yields a valid single-case report:
+scripts/run-corpus.sh oracle-repeatability ADV-ANA-001 5
 ```
 
 Observed result (2026-09-18, Docker Desktop, `flexpart-fortran:latest`
@@ -128,7 +145,10 @@ Regression evidence: `python scripts/test_oracle_run_manifest.py` (canonical
 settings accepted, every missing/changed setting rejected, uncontracted
 overrides rejected, CLI rejects `OMP_NUM_THREADS=2`) and
 `python scripts/corpus/test_compare_oracle_repeatability.py` (numeric diffs
-quantified, contract violations and missing repetitions fail closed).
+quantified; contract violations, missing repetitions, stale repetitions tied
+to a foreign executable, changed consumed inputs, missing experiment records,
+and unscoped partial evaluations fail closed; single-case scoping yields a
+valid single-case report).
 
 ## 4. What the oracle is used for
 

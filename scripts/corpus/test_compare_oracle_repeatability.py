@@ -7,7 +7,6 @@ FLEXPART or claiming physics parity.
 """
 
 import json
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -78,7 +77,10 @@ class ProfileContractTest(unittest.TestCase):
                 cmp_mod.load_profile(path)
 
 
-def write_rep(case_dir, name, raw_bytes, summary, runtime):
+EXE_SHA_FOR_TESTS = "0" * 64
+
+
+def write_rep(case_dir, name, raw_bytes, summary, runtime, consumed, exe_sha=EXE_SHA_FOR_TESTS):
     rep = case_dir / name
     raw = rep / "raw"
     raw.mkdir(parents=True)
@@ -88,80 +90,186 @@ def write_rep(case_dir, name, raw_bytes, summary, runtime):
     (rep / "oracle_summary.json").write_text(json.dumps(summary), encoding="utf-8")
     (rep / "runtime_profile.json").write_text(json.dumps(runtime), encoding="utf-8")
     (rep / "fortran.log").write_text("FLEXPART ... CONGRATULATIONS\n", encoding="utf-8")
+    (rep / "oracle_executable.sha256").write_text(exe_sha, encoding="utf-8")
+    (rep / "consumed_inputs.json").write_text(json.dumps(consumed), encoding="utf-8")
     for artifact in ("COMMAND", "RELEASES", "OUTGRID"):
         (rep / artifact).write_text(f"{artifact}\n", encoding="utf-8")
     return rep
 
 
-class RepeatabilityReportTest(unittest.TestCase):
-    def make_layout(self, root, summary_b, raw_b=b"same"):
-        manifest = REPO / "reference/flexpart-11.1.json"
-        reference = json.loads(manifest.read_text(encoding="utf-8"))
-        profile = reference["execution_profile"]
-        runtime = {
-            "execution_profile": {"id": profile["id"], "version": profile["version"]},
-            "reference_manifest_sha256": cmp_mod.digest(manifest),
-            "runtime_environment": profile["runtime_environment"],
-        }
-        repeat = root / "repeat"
-        for case in ("ADV-ANA-001", "WIND-UNI-002"):
-            case_dir = repeat / case
-            summary_a = {"last_slice": {"weighted": {"airborne": 1.0}}, "center_of_mass": {"z_m": 50.0}}
-            write_rep(case_dir, "rep_01", b"same", summary_a, runtime)
-            write_rep(case_dir, "rep_02", raw_b, summary_b, runtime)
-            for n in ("rep_03", "rep_04", "rep_05"):
-                write_rep(case_dir, n, b"same", summary_a, runtime)
-        meteo = root / "meteo"
-        for case in ("ADV-ANA-001", "WIND-UNI-002"):
-            d = meteo / case
-            d.mkdir(parents=True)
-            (d / "AVAILABLE").write_text("x\n", encoding="utf-8")
-            (d / "meteo.grb").write_bytes(b"meteo")
-        return repeat, meteo
+def write_experiment(case_dir, profile, exe_sha=EXE_SHA_FOR_TESTS, reps=5, commit=None):
+    if commit is None:
+        commit = json.loads((REPO / "reference/flexpart-11.1.json").read_text(encoding="utf-8"))["pinned_commit"]
+    experiment = {
+        "execution_profile": {"id": profile["id"], "version": profile["version"]},
+        "case": case_dir.name,
+        "classification": profile["repeatability_cases"][case_dir.name],
+        "repetitions_requested": reps,
+        "experiment_started_utc": "2026-01-01T00:00:00Z",
+        "oracle_pinned_commit": commit,
+        "oracle_executable_sha256": exe_sha,
+        "docker_image": profile["docker"]["image"],
+        "docker_image_id": "test-image",
+        "compiler": "test-compiler",
+        "make_arguments": profile["build"]["make_arguments"],
+        "makefile_sha256": "test-makefile",
+        "external_seed_control": "unavailable",
+    }
+    case_dir.mkdir(parents=True, exist_ok=True)
+    (case_dir / "experiment.json").write_text(json.dumps(experiment), encoding="utf-8")
+    return experiment
 
-    def run_comparator(self, root, repeat, meteo):
-        # Resolve a pinned clean oracle checkout: prefer FLEXPART_DIR, then sibling.
-        import os
-        candidates = []
-        if os.environ.get("FLEXPART_DIR"):
-            candidates.append(Path(os.environ["FLEXPART_DIR"]))
-        candidates += [REPO.parent / "flexpart", Path("/workspace/flexpart")]
-        checkout = next((c for c in candidates if (c / "src/FLEXPART").is_file()), None)
-        if checkout is None:
-            self.skipTest("pinned oracle checkout with built executable not available")
-        exe = checkout / "src/FLEXPART"
-        out = root / "report.json"
-        cmd = [sys.executable, str(REPO / "scripts/corpus/compare_oracle_repeatability.py"),
-               "--repeat-dir", str(repeat), "--output", str(out),
-               "--oracle-manifest", str(REPO / "reference/flexpart-11.1.json"),
-               "--oracle-checkout", str(checkout), "--oracle-exe", str(exe),
-               "--meteo-dir", str(meteo),
-               "--fixtures-dir", str(REPO / "fixtures/corpus/fortran")]
-        proc = subprocess.run(cmd, capture_output=True, text=True)
-        return proc, out
+
+class FakeWorld:
+    """Hermetic fixture world: no Docker, git, or real oracle checkout needed."""
+
+    FIXTURE_FILES = {
+        "COMMAND": "command\n",
+        "RELEASES": "releases\n",
+        "OUTGRID": "outgrid\n",
+        "AGECLASSES": "ageclasses\n",
+        "RECEPTORS": "receptors\n",
+        "SPECIES/SPECIES_024": "species\n",
+        "METEO_ARGS.txt": "args\n",
+    }
+    METEO_FILES = {"AVAILABLE": "available\n", "meteo.grb": b"meteo"}
+
+    def __init__(self, root, cases=("ADV-ANA-001", "WIND-UNI-002")):
+        self.root = Path(root)
+        self.cases = cases
+        reference = json.loads((REPO / "reference/flexpart-11.1.json").read_text(encoding="utf-8"))
+        self.profile = reference["execution_profile"]
+        self.manifest = self.root / "reference.json"
+        self.manifest.write_text(json.dumps(reference), encoding="utf-8")
+        self.runtime = {
+            "execution_profile": {"id": self.profile["id"], "version": self.profile["version"]},
+            "reference_manifest_sha256": cmp_mod.digest(self.manifest),
+            "runtime_environment": self.profile["runtime_environment"],
+        }
+        self.exe = self.root / "fake-oracle-exe"
+        self.exe.write_bytes(b"fake-oracle-executable")
+        self.exe_sha = cmp_mod.digest(self.exe)
+        self.checkout = self.root / "fake-checkout"
+        (self.checkout / "src").mkdir(parents=True)
+        (self.checkout / "src" / "makefile_gfortran").write_text("makefile\n", encoding="utf-8")
+        self.fixtures = self.root / "fixtures"
+        self.meteo = self.root / "meteo"
+        for case in cases:
+            case_fixtures = self.fixtures / case
+            for rel, content in self.FIXTURE_FILES.items():
+                path = case_fixtures / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+            case_meteo = self.meteo / case
+            case_meteo.mkdir(parents=True)
+            for rel, content in self.METEO_FILES.items():
+                path = case_meteo / rel
+                if isinstance(content, bytes):
+                    path.write_bytes(content)
+                else:
+                    path.write_text(content, encoding="utf-8")
+        self.repeat = self.root / "repeat"
+
+    def consumed_inputs(self, case):
+        options = {}
+        for rel in ("COMMAND", "RELEASES", "OUTGRID", "AGECLASSES", "RECEPTORS", "SPECIES/SPECIES_024"):
+            options[f"options/{rel}"] = cmp_mod.digest(self.fixtures / case / rel)
+        meteo = {rel: cmp_mod.digest(self.meteo / case / rel)
+                 for rel in ("AVAILABLE", "meteo.grb")}
+        return {"options": options, "pathnames_sha256": "p" * 64,
+                "pathnames_text": "text", "meteo": meteo}
+
+    def make_case(self, case, summaries, raw_blobs=None, exe_sha=None):
+        case_dir = self.repeat / case
+        write_experiment(case_dir, self.profile, exe_sha or self.exe_sha)
+        consumed = self.consumed_inputs(case)
+        raw_blobs = raw_blobs or [b"same"] * len(summaries)
+        for i, (summary, blob) in enumerate(zip(summaries, raw_blobs), start=1):
+            write_rep(case_dir, f"rep_{i:02d}", blob, summary, self.runtime, consumed,
+                      exe_sha or self.exe_sha)
+        return case_dir
+
+
+class RepeatabilityReportTest(unittest.TestCase):
+    def setUp(self):
+        self._git_state = cmp_mod.git_state
+        self._command = cmp_mod.command
+
+    def tearDown(self):
+        cmp_mod.git_state = self._git_state
+        cmp_mod.command = self._command
+
+    def patch_host(self, world):
+        pinned = json.loads(world.manifest.read_text(encoding="utf-8"))["pinned_commit"]
+        cmp_mod.git_state = lambda path: {"commit": pinned, "worktree_dirty": False}
+
+        def fake_command(*args):
+            if args[:3] == ("docker", "image", "inspect"):
+                return "sha256:test-image-id"
+            if args[:3] == ("docker", "run", "--rm"):
+                return "GNU Fortran (test) 1.0"
+            if args[:2] == ("docker", "--version"):
+                return "Docker version test"
+            return self._command(*args)
+        cmp_mod.command = fake_command
+
+    def run_comparator(self, world, cases=None):
+        # Run the comparator in-process with Docker/git stubbed so the tests
+        # prove the verification logic without needing an oracle container.
+        out = world.root / "report.json"
+        argv = ["compare_oracle_repeatability.py",
+                "--repeat-dir", str(world.repeat), "--output", str(out),
+                "--oracle-manifest", str(world.manifest),
+                "--oracle-checkout", str(world.checkout),
+                "--oracle-exe", str(world.exe),
+                "--meteo-dir", str(world.meteo),
+                "--fixtures-dir", str(world.fixtures)]
+        if cases is not None:
+            argv += ["--cases", " ".join(cases)]
+        old_argv = sys.argv
+        sys.argv = argv
+        try:
+            cmp_mod.main()
+        except SystemExit as exc:
+            code = exc.code
+            message = code if isinstance(code, str) else ""
+            return (0 if code in (None, 0) else 1), None, message
+        finally:
+            sys.argv = old_argv
+        return 0, json.loads(out.read_text(encoding="utf-8")), ""
+
+    def baseline_summary(self):
+        return {"last_slice": {"weighted": {"airborne": 1.0}}, "center_of_mass": {"z_m": 50.0}}
 
     def test_byte_identical_repetitions_characterized_without_parity(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            baseline = {"last_slice": {"weighted": {"airborne": 1.0}}, "center_of_mass": {"z_m": 50.0}}
-            repeat, meteo = self.make_layout(root, baseline, b"same")
-            proc, out = self.run_comparator(root, repeat, meteo)
-            self.assertEqual(proc.returncode, 0, proc.stderr)
-            report = json.loads(out.read_text(encoding="utf-8"))
+            world = FakeWorld(directory)
+            self.patch_host(world)
+            for case in world.cases:
+                world.make_case(case, [self.baseline_summary()] * 5)
+            code, report, message = self.run_comparator(world)
+            self.assertEqual(code, 0, message)
             self.assertEqual(report["status"], "ORACLE_REPEATABILITY_CHARACTERIZED_NO_PARITY_VERDICT")
             self.assertEqual(report["external_seed_control"], "unavailable")
-            for case in ("ADV-ANA-001", "WIND-UNI-002"):
-                self.assertTrue(report["cases"][case]["all_byte_identical_to_baseline"])
-                self.assertIn("bitwise repeatable", report["cases"][case]["repeatability_observation"])
+            self.assertEqual(report["oracle_executable_sha256"], world.exe_sha)
+            for case in world.cases:
+                entry = report["cases"][case]
+                self.assertTrue(entry["all_byte_identical_to_baseline"])
+                self.assertIn("bitwise repeatable", entry["repeatability_observation"])
+                self.assertTrue(entry["consumed_inputs_identical_across_reps"])
+                self.assertEqual(entry["executable_sha256"], world.exe_sha)
+                self.assertIn("options/COMMAND", entry["consumed_input_hashes"]["options"])
 
     def test_differing_repetition_names_files_and_quantifies_numbers(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            world = FakeWorld(directory)
+            self.patch_host(world)
             changed = {"last_slice": {"weighted": {"airborne": 1.1}}, "center_of_mass": {"z_m": 55.0}}
-            repeat, meteo = self.make_layout(root, changed, b"changed")
-            proc, out = self.run_comparator(root, repeat, meteo)
-            self.assertEqual(proc.returncode, 0, proc.stderr)
-            report = json.loads(out.read_text(encoding="utf-8"))
+            for case in world.cases:
+                world.make_case(case, [self.baseline_summary(), changed] + [self.baseline_summary()] * 3,
+                                raw_blobs=[b"same", b"changed"] + [b"same"] * 3)
+            code, report, message = self.run_comparator(world)
+            self.assertEqual(code, 0, message)
             rep2 = next(r for r in report["cases"]["ADV-ANA-001"]["repetitions"] if r["rep"] == "rep_02")
             self.assertFalse(rep2["byte_identical_to_baseline"])
             self.assertIn("grid_conc_20240101010000", rep2["differing_raw_files"])
@@ -172,18 +280,79 @@ class RepeatabilityReportTest(unittest.TestCase):
 
     def test_missing_repetition_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            baseline = {"v": 1.0}
-            repeat, meteo = self.make_layout(root, baseline, b"same")
-            # Remove four reps so only one remains per case.
-            for case in ("ADV-ANA-001", "WIND-UNI-002"):
-                for name in ("rep_02", "rep_03", "rep_04", "rep_05"):
-                    for path in (repeat / case / name).rglob("*"):
-                        pass
-                    import shutil
-                    shutil.rmtree(repeat / case / name)
-            proc, _ = self.run_comparator(root, repeat, meteo)
-            self.assertNotEqual(proc.returncode, 0)
+            world = FakeWorld(directory)
+            self.patch_host(world)
+            for case in world.cases:
+                world.make_case(case, [self.baseline_summary()])
+            code, _, _ = self.run_comparator(world)
+            self.assertNotEqual(code, 0)
+
+    def test_stale_repetition_with_foreign_executable_fails_closed(self):
+        # A leftover rep_* directory from an older experiment (different
+        # executable record, no fresh experiment cover) must be rejected.
+        with tempfile.TemporaryDirectory() as directory:
+            world = FakeWorld(directory)
+            self.patch_host(world)
+            for case in world.cases:
+                world.make_case(case, [self.baseline_summary()] * 5)
+            stale = write_rep(world.repeat / "ADV-ANA-001", "rep_06", b"same",
+                              self.baseline_summary(), world.runtime,
+                              world.consumed_inputs("ADV-ANA-001"), exe_sha="f" * 64)
+            self.assertTrue(stale.is_dir())
+            code, _, message = self.run_comparator(world)
+            self.assertNotEqual(code, 0)
+            self.assertIn("stale", message)
+
+    def test_changed_consumed_inputs_fail_closed(self):
+        # One repetition consuming different inputs (e.g. regenerated
+        # meteorology or edited COMMAND) voids the repeatability claim.
+        with tempfile.TemporaryDirectory() as directory:
+            world = FakeWorld(directory)
+            self.patch_host(world)
+            for case in world.cases:
+                world.make_case(case, [self.baseline_summary()] * 5)
+            rep2 = world.repeat / "WIND-UNI-002" / "rep_02" / "consumed_inputs.json"
+            consumed = json.loads(rep2.read_text(encoding="utf-8"))
+            consumed["meteo"]["meteo.grb"] = "0" * 64
+            rep2.write_text(json.dumps(consumed), encoding="utf-8")
+            code, _, message = self.run_comparator(world)
+            self.assertNotEqual(code, 0)
+            self.assertIn("differ", message)
+
+    def test_missing_experiment_record_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            world = FakeWorld(directory)
+            self.patch_host(world)
+            for case in world.cases:
+                world.make_case(case, [self.baseline_summary()] * 5)
+            (world.repeat / "ADV-ANA-001" / "experiment.json").unlink()
+            code, _, message = self.run_comparator(world)
+            self.assertNotEqual(code, 0)
+            self.assertIn("experiment.json", message)
+
+    def test_single_case_scope_produces_valid_single_case_report(self):
+        # The documented single-case command must yield a valid report for
+        # that case instead of failing on (or mixing in) the other case.
+        with tempfile.TemporaryDirectory() as directory:
+            world = FakeWorld(directory, cases=("ADV-ANA-001",))
+            self.patch_host(world)
+            world.make_case("ADV-ANA-001", [self.baseline_summary()] * 5)
+            code, report, message = self.run_comparator(world, cases=["ADV-ANA-001"])
+            self.assertEqual(code, 0, message)
+            self.assertEqual(sorted(report["cases"]), ["ADV-ANA-001"])
+            self.assertEqual(report["cases_evaluated"], ["ADV-ANA-001"])
+            self.assertTrue(report["cases"]["ADV-ANA-001"]["all_byte_identical_to_baseline"])
+
+    def test_unscoped_run_ignores_no_case_silently(self):
+        # Without --cases, a missing profile case fails with a clear error
+        # rather than producing a silently partial report.
+        with tempfile.TemporaryDirectory() as directory:
+            world = FakeWorld(directory, cases=("ADV-ANA-001",))
+            self.patch_host(world)
+            world.make_case("ADV-ANA-001", [self.baseline_summary()] * 5)
+            code, _, message = self.run_comparator(world)
+            self.assertNotEqual(code, 0)
+            self.assertIn("WIND-UNI-002", message)
 
 
 if __name__ == "__main__":

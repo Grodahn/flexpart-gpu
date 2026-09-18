@@ -1,0 +1,88 @@
+diff --git a/src/random_mod.f90 b/src/random_mod.f90
+index f43075a..6307232 100644
+--- a/src/random_mod.f90
++++ b/src/random_mod.f90
+@@ -19,13 +19,51 @@ module random_mod
+ 
+   integer, allocatable :: iseed1(:), iseed2(:)
+ 
++  integer, parameter :: validation_seed_min = 1
++  integer, parameter :: validation_seed_max = 1000000000
++  character(len=*), parameter :: validation_seed_env = "FLEXPART_VALIDATION_SEED"
++
+ contains
++
++  function validation_seed_offset() result(offset)
++    ! Validation-only stochastic identity selector (RISK-03.3G-01V-b, issue #50).
++    ! Returns 0 when FLEXPART_VALIDATION_SEED is unset or empty, preserving the
++    ! pristine default initialization bit-exactly. A present value must be a
++    ! canonical decimal identity in [1, 1000000000]; anything else stops the run
++    ! instead of silently falling back to the default seed.
++    implicit none
++    integer :: offset
++    character(len=32) :: raw_value
++    character(len=32) :: trimmed
++    integer :: value_length, read_status, seed, convert_status, k, digits
++
++    offset = 0
++    call get_environment_variable(validation_seed_env, raw_value, value_length, read_status)
++    if (read_status.eq.1) return
++    if (read_status.ne.0) &
++      error stop "FLEXPART_VALIDATION_SEED cannot be read exactly; refusing seedable run"
++    if (value_length.le.0) return
++    trimmed = adjustl(raw_value)
++    digits = len_trim(trimmed)
++    if (digits.le.0) return
++    do k = 1, digits
++      if (trimmed(k:k).lt.'0'.or.trimmed(k:k).gt.'9') &
++        error stop "FLEXPART_VALIDATION_SEED must be a canonical decimal identity"
++    end do
++    read(trimmed(1:digits), *, iostat=convert_status) seed
++    if (convert_status.ne.0) &
++      error stop "FLEXPART_VALIDATION_SEED must be a canonical decimal identity"
++    if (seed.lt.validation_seed_min.or.seed.gt.validation_seed_max) &
++      error stop "FLEXPART_VALIDATION_SEED out of supported range"
++    offset = seed
++  end function validation_seed_offset
+   
+   subroutine alloc_random(num_threads)
+ 
+     implicit none
+ 
+     integer :: num_threads, i,stat
++    integer :: validation_offset
+ 
+     allocate(ran1_iv(ran1_ntab,0:num_threads-1),ran1_iy(0:num_threads-1), stat=stat)
+     if (stat.ne.0) error stop "Could not allocate ran1_iv"
+@@ -38,9 +76,13 @@ contains
+     allocate(iseed1(0:num_threads-1),iseed2(0:num_threads-1), stat=stat)
+     if (stat.ne.0) error stop "Could not allocate iseed1"
+ 
++    ! Validation-only stochastic identity (issue #50): an unset
++    ! FLEXPART_VALIDATION_SEED yields offset 0, preserving the pristine
++    ! defaults bit-exactly; a requested identity shifts both seed streams.
++    validation_offset = validation_seed_offset()
+     do i=0,num_threads-1
+-      iseed1(i) = -7-i
+-      iseed2(i) = -88-i
++      iseed1(i) = -7-i-validation_offset
++      iseed2(i) = -88-i-validation_offset
+     end do
+     ran3_iff(0:num_threads-1)=0
+     ran1_iv(:,0:num_threads-1)=0
+diff --git a/src/FLEXPART.f90 b/src/FLEXPART.f90
+index ec735eb..230637f 100644
+--- a/src/FLEXPART.f90
++++ b/src/FLEXPART.f90
+@@ -226,6 +226,11 @@ subroutine read_options_and_initialise_flexpart
+ 
+   call alloc_random(numthreads)
+ 
++  ! Validation-only stochastic identity (issue #50): an unset
++  ! FLEXPART_VALIDATION_SEED keeps idummy at the pristine -320, so the
++  ! precomputed Gaussian table matches the pristine oracle bit-exactly.
++  idummy = idummy - validation_seed_offset()
++
+   ! Generate a large number of random numbers
+   !******************************************
+   do j=1,maxrand-1,2

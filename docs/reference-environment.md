@@ -62,6 +62,39 @@ hashes of executable, inputs and outputs. Runners that do not expose a random
 seed record it as unavailable; such a run cannot support a multi-seed parity
 claim.
 
+### Seedable validation oracle (issue #50)
+
+For stochastic ensemble evidence, a separately identified
+`seedable-validation-oracle` is built by applying exactly the versioned
+validation-only patch `reference/flexpart-11.1-seedable.patch` to a fresh clone
+of the pristine checkout, then building under the same frozen #49 profile.
+The patched executable is **never** the normative oracle; its identity is
+recorded in `target/corpus/oracle_seedable/experiment.json` and distinguished
+from the pristine executable by SHA-256. The environment variable
+`FLEXPART_VALIDATION_SEED` (canonical decimal in [1, 1000000000]) selects the
+initial RNG state; unset/empty preserves the pristine default bit-exactly.
+Invalid seeds are rejected with actionable error — no silent fallback.
+
+Reproduce the seedable evidence (requires pristine #49 baseline first):
+
+```bash
+scripts/run-corpus.sh oracle-repeatability WIND-UNI-002 5
+scripts/run-corpus.sh oracle-seed-identities WIND-UNI-002
+```
+
+The evidence report at `target/corpus/oracle_seed_identity_report.json`
+characterizes default-equivalence, 10 distinct identities, and same-seed
+repeatability.
+
+The Dockerfile pins the Ubuntu 22.04 image digest and the Ubuntu package
+snapshot dated 2026-09-10. The compiler uses the Fortran makefile's
+`arch=x86-64` profile instead of host-specific `-march=native`. Each Docker
+comparison writes `run_manifest.json` with the resolved image ID, package
+versions, compiler version and flags, source revisions, adapter, and SHA-256
+hashes of executable, inputs and outputs. Runners that do not expose a random
+seed record it as unavailable; such a run cannot support a multi-seed parity
+claim.
+
 ### Frozen single-thread oracle execution and determinism contract (#49)
 
 `reference/flexpart-11.1.json` versions the canonical execution profile under
@@ -142,8 +175,9 @@ only the resolved image ID is attributable; the executable is rebuilt per
 experiment and its SHA must be recorded; FLEXPART logs a `RECEPTORS cannot be
 opened` warning and continues without receptor output (run still succeeds);
 disabling turbulence does not imply zero RNG consumption during startup;
-controlled independent oracle seeds belong to #50; the global artifact layout
-redesign belongs to #53.
+controlled independent oracle seeds belong to #50 (see
+`reference/oracle-stochastic-identity.json` and `docs/oracle-stochastic-identity.md`);
+the global artifact layout redesign belongs to #53.
 
 Regression evidence: `python scripts/test_oracle_run_manifest.py` (canonical
 settings accepted, every missing/changed setting rejected, uncontracted

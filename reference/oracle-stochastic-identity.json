@@ -1,0 +1,87 @@
+{
+  "strategy": "flexpart-oracle-validation-seed-offset",
+  "version": 1,
+  "issue": 50,
+  "role": "Stochastic identity contract for independent FLEXPART 11.1 oracle realizations. Defines how a requested stochastic realization is identified and produced. Does not execute ensembles, aggregate statistics, or define parity thresholds (owned by issues #57/#58/#59).",
+  "oracle_kinds": [
+    "pristine-oracle",
+    "seedable-validation-oracle"
+  ],
+  "oracle_kind_definitions": {
+    "pristine-oracle": "Unmodified FLEXPART 11.1 sources at the pinned commit, built under the frozen #49 execution profile. The normative model reference. Knows no FLEXPART_VALIDATION_SEED handling; setting the variable has no effect on it.",
+    "seedable-validation-oracle": "Pinned FLEXPART 11.1 sources plus exactly the versioned validation-only RNG-initialization patch below, built under the same frozen #49 execution profile. A separately identified validation instrument, never a replacement normative oracle. Must never be reported as pristine-oracle."
+  },
+  "native_seed_control": "unavailable",
+  "native_seed_control_evidence": [
+    "random_mod.f90 alloc_random hard-codes iseed1(i)=-7-i and iseed2(i)=-88-i with no input path",
+    "FLEXPART.f90 hard-codes idummy=-320 for the precomputed Gaussian table",
+    "Release-jitter sites hard-code ran1 idummies (-7 in initialise_mod.f90 release_parts, -8/-11 in domain-fill paths, -11 in initdomain_mod.f90)",
+    "COMMAND namelist (readoptions_mod.f90) exposes no seed variable",
+    "No getenv/get_environment_variable, command_argument, random_seed intrinsic, or random_number intrinsic call exists in the pinned sources",
+    "Full source crosswalk: docs/oracle-stochastic-identity.md"
+  ],
+  "seed_control": "validation-patch",
+  "canonical_identity": {
+    "representation": "decimal integer in environment variable FLEXPART_VALIDATION_SEED",
+    "minimum": 1,
+    "maximum": 1000000000,
+    "notes": [
+      "0 is rejected: offset 0 is the pristine default and must stay expressible only as default mode (unset/empty variable), never as a requested identity",
+      "Values above 1000000000 are rejected to keep every derived 32-bit Fortran integer seed far from overflow",
+      "Non-canonical spellings (blanks, signs, decimal points, trailing text) are rejected instead of being parsed leniently"
+    ]
+  },
+  "derivation_mapping": {
+    "iseed1_per_thread": "-(7 + thread_index + S)",
+    "iseed2_per_thread": "-(88 + thread_index + S)",
+    "rannumb_table_idummy": "-(320 + S)",
+    "pristine_defaults_offset_zero": {
+      "iseed1_per_thread": "-(7 + thread_index)",
+      "iseed2_per_thread": "-(88 + thread_index)",
+      "rannumb_table_idummy": "-320"
+    },
+    "algorithm_reference": "Numerical Recipes ran3 (Knuth subtractive, mbig=1000000000, mseed=161803398, 55-entry table per thread) for iseed1/iseed2 streams; Box-Muller gasdev1 over ran3 thread 0 for the rannumb table; Park-Miller ran1 with Bays-Durham shuffle for release jitter (unpatched, see limitations)"
+  },
+  "default_mode": {
+    "condition": "FLEXPART_VALIDATION_SEED unset or empty",
+    "semantics": "Offset 0: pristine default initialization bit-exactly. A seedable-validation-oracle run in default mode must reproduce the pristine-oracle result to the #49 repeatability criterion, but its oracle_kind stays seedable-validation-oracle."
+  },
+  "execution_profile": {
+    "id": "flexpart-11.1-single-thread",
+    "version": 1,
+    "manifest": "reference/flexpart-11.1.json",
+    "note": "Runtime, build, and Docker boundary come from the frozen #49 contract and are referenced, never duplicated. Thread-count variation is not an acceptable substitute for an explicitly identified stochastic realization."
+  },
+  "validation_patch": {
+    "file": "reference/flexpart-11.1-seedable.patch",
+    "sha256": "2b4dafb6faaf3c4019b1d7fc5fc51c0277d32ecb0c2fe9e5a36099439381c1fb",
+    "target_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+    "touched_files": [
+      "src/random_mod.f90",
+      "src/FLEXPART.f90"
+    ],
+    "scope": "RNG initialization only: one validation_seed_offset() selector plus its two call sites. RNG algorithms, distributions, call order, OpenMP semantics, and physics are untouched.",
+    "application": "Applied with git apply to a fresh clone of the pinned pristine checkout; the upstream repository and the pristine checkout are never modified."
+  },
+  "rng_namespaces": "Candidate Philox seed N and oracle identity N are different RNG namespaces over different generators and must never be equated numerically. Case manifests must keep candidate and oracle stochastic identities structurally separate (see issue #51).",
+  "prescribed_case": "WIND-UNI-002",
+  "prescribed_identities": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  "repeatability_identity": 3,
+  "repeatability_repetitions": 5,
+  "fail_closed": [
+    "Unsupported or out-of-range stochastic identity is rejected",
+    "A missing identity when an independent realization was requested is rejected (S=0 and empty spellings included)",
+    "A run whose applied seed/state cannot be proven from its identity record is rejected",
+    "A seedable binary whose patch/build identity is unknown is rejected",
+    "A seedable run not conforming to the frozen #49 profile is rejected",
+    "Provenance labeling a patched executable as pristine-oracle is rejected",
+    "Silent fallback from a requested seed to the FLEXPART default seed is rejected (invalid values stop the Fortran run non-zero)"
+  ],
+  "limitations": [
+    "Release-jitter ran1 streams keep pristine hard-coded idummies; for the point release and single uncertainty class of WIND-UNI-002 they do not influence trajectories (xaux=yaux=zaux=0, nclass 1). Volume releases would need a follow-up.",
+    "Convection stream iseed2 is offset for uniformity but unused when LCONVECTION=0 (as in WIND-UNI-002).",
+    "Restart files do not persist RNG state; seeded identities apply to fresh runs (IPIN=0).",
+    "Single-thread profile only; multi-thread scheduling effects are out of scope by design.",
+    "Ten runs justify distinct initialization states, not ensemble statistical adequacy (owned by #57/#58/#59)."
+  ]
+}

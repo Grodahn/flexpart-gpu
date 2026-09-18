@@ -490,9 +490,11 @@ oracle_seedable_smoke_one() {
   local log="$4"
   local rc=0
   set +e
-  docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran bash -c "
+  docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
+    -e "FLEXPART_VALIDATION_SEED=${seed}" \
+    flexpart-fortran bash -c "
     set -euo pipefail
-    cd //workspace/target/corpus/fortran_run_seedable/$(basename "${rundir}") && FLEXPART_VALIDATION_SEED=${seed} /workspace/flexpart-gpu/target/flexpart-seedable/src/FLEXPART
+    cd //workspace/target/corpus/fortran_run_seedable/$(basename "${rundir}") && /workspace/flexpart-gpu/target/flexpart-seedable/src/FLEXPART
   " > "${log}" 2>&1
   rc=$?
   set -e
@@ -518,6 +520,13 @@ oracle_seedable_smoke() {
     "${SEEDABLE_OUT_DIR}/smoke/attempt_out_of_range.log"
   oracle_seedable_smoke_one "${smoke_rundir}" "abc" "canonical decimal identity" \
     "${SEEDABLE_OUT_DIR}/smoke/attempt_noncanonical.log"
+  # P2: test non-canonical spellings that must be rejected by Fortran parser
+  oracle_seedable_smoke_one "${smoke_rundir}" "01" "must not have leading zeros" \
+    "${SEEDABLE_OUT_DIR}/smoke/attempt_leading_zero.log"
+  oracle_seedable_smoke_one "${smoke_rundir}" " 1" "canonical decimal identity" \
+    "${SEEDABLE_OUT_DIR}/smoke/attempt_leading_space.log"
+  oracle_seedable_smoke_one "${smoke_rundir}" "1 " "canonical decimal identity" \
+    "${SEEDABLE_OUT_DIR}/smoke/attempt_trailing_space.log"
   "${HOST_PYTHON}" - "${SEEDABLE_OUT_DIR}/smoke" <<'PYEOF'
 import json
 import sys
@@ -527,7 +536,10 @@ attempts = []
 for name, env_value, fragment in (
         ("attempt_0.log", "0", "out of supported range"),
         ("attempt_out_of_range.log", "1000000001", "out of supported range"),
-        ("attempt_noncanonical.log", "abc", "canonical decimal identity")):
+        ("attempt_noncanonical.log", "abc", "canonical decimal identity"),
+        ("attempt_leading_zero.log", "01", "must not have leading zeros"),
+        ("attempt_leading_space.log", " 1", "canonical decimal identity"),
+        ("attempt_trailing_space.log", "1 ", "canonical decimal identity")):
     log = (smoke / name).read_text(encoding="utf-8", errors="replace")
     if "FLEXPART_VALIDATION_SEED" not in log or fragment not in log:
         raise SystemExit(f"smoke log {name} lacks the actionable error fragment")

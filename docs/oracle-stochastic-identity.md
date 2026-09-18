@@ -109,7 +109,7 @@ initialization patch (implemented in issue #50).
 ## 6. Validation Patch (RISK-03.3G-01V-b)
 
 **Artifact:** `reference/flexpart-11.1-seedable.patch` (SHA-256:
-`2b4dafb6faaf3c4019b1d7fc5fc51c0277d32ecb0c2fe9e5a36099439381c1fb`)
+`554ec7d4aa291c5ded242c7342e22fdf3615964ea397abc85f738543f55be96c`)
 
 **Scope:** Two files only — `src/random_mod.f90`, `src/FLEXPART.f90`
 **Effect:** Adds `validation_seed_offset()` selector reading

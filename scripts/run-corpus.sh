@@ -26,6 +26,19 @@ set -euo pipefail
 #       report; canonical evidence uses the default: both cases). FLEXPART_DIR
 #       may point to the pinned checkout when this repository is an isolated
 #       worktree.
+#   scripts/run-corpus.sh oracle-seed-identities [CASE]
+#       Issue #50 stochastic identity evidence: clone the pinned pristine
+#       checkout, apply exactly reference/flexpart-11.1-seedable.patch
+#       (RNG initialization only), build the distinctly identified
+#       seedable-validation-oracle once, prove invalid seeds fail instead of
+#       falling back, then run WIND-UNI-002 for the default mode plus the ten
+#       prescribed identities (extra repetitions for identity 3) under the
+#       frozen #49 single-thread profile. Preserves per-identity repetitions
+#       under target/corpus/oracle_seedable/<IDENTITY>/rep_XX/ and writes
+#       target/corpus/oracle_seed_identity_report.json. Requires the pristine
+#       #49 baseline (scripts/run-corpus.sh oracle-repeatability WIND-UNI-002 5)
+#       for the default-equivalence comparison. The pristine checkout is never
+#       modified; only the git-ignored target/flexpart-seedable copy is patched.
 #   scripts/run-corpus.sh compare
 #       Compute machine-readable metrics (mass, COM, covariance/eigenvalues,
 #       vertical quantiles, overlap, field correlation, process budgets) into
@@ -82,6 +95,18 @@ REPEAT_MINIMUM=5
 REPEAT_DIR="${PROJECT_ROOT}/target/corpus/oracle_repeatability"
 REPEAT_RUN_ROOT="${PROJECT_ROOT}/target/corpus/fortran_run_repeatability"
 REPEAT_REPORT="${PROJECT_ROOT}/target/corpus/oracle_repeatability_report.json"
+# Issue #50: seedable validation oracle. The patched copy lives under target/
+# (git-ignored); the pristine sibling checkout is never modified.
+SEEDABLE_CASE="WIND-UNI-002"
+SEEDABLE_IDENTITIES="1 2 3 4 5 6 7 8 9 10"
+SEEDABLE_REPEAT_IDENTITY="3"
+SEEDABLE_REPEAT_REPS="5"
+SEEDABLE_DIR="${PROJECT_ROOT}/target/flexpart-seedable"
+SEEDABLE_RUN_ROOT="${PROJECT_ROOT}/target/corpus/fortran_run_seedable"
+SEEDABLE_OUT_DIR="${PROJECT_ROOT}/target/corpus/oracle_seedable"
+SEEDABLE_REPORT="${PROJECT_ROOT}/target/corpus/oracle_seed_identity_report.json"
+SEEDABLE_PATCH="${PROJECT_ROOT}/reference/flexpart-11.1-seedable.patch"
+SEEDABLE_CONTRACT="${PROJECT_ROOT}/reference/oracle-stochastic-identity.json"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
 log_info() { echo -e "${GREEN}[INFO]${NC}  $*"; }
@@ -227,7 +252,7 @@ oracle_generate_meteo_once() {
   # shellcheck disable=SC2086
   docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran \
     python3 //workspace/flexpart-gpu/scripts/generate_synthetic_grib.py \
-    --output-dir "//workspace/corpus/meteo/${case}" \
+    --output-dir "//workspace/target/corpus/meteo/${case}" \
     $(cat "${fixture}/METEO_ARGS.txt")
   test -f "${meteodir}/AVAILABLE"
 }
@@ -269,7 +294,7 @@ oracle_run_one_repetition() {
   local repdir="$3"
   # Container rundir uses a double leading slash so MSYS2/Git Bash on Windows
   # leaves it untouched (POSIX collapses // to / inside Linux).
-  local container_rundir="//workspace/corpus/fortran_run_repeatability/$(basename "${rundir}")"
+  local container_rundir="//workspace/target/corpus/fortran_run_repeatability/$(basename "${rundir}")"
   rm -rf "${repdir}"
   mkdir -p "${repdir}/raw"
   # Tie this repetition to the experiment executable and prove which inputs
@@ -308,7 +333,7 @@ PYEOF
     set -euo pipefail
     python3 /workspace/flexpart-gpu/scripts/write_oracle_run_manifest.py check-runtime-profile \
       --oracle-manifest /workspace/flexpart-gpu/reference/flexpart-11.1.json \
-      > /workspace/corpus/oracle_repeatability/${case}/$(basename "${repdir}")/runtime_profile.json
+      > /workspace/target/corpus/oracle_repeatability/${case}/$(basename "${repdir}")/runtime_profile.json
     cd ${container_rundir} && /workspace/flexpart/src/FLEXPART
   " 2>&1 | tee "${repdir}/fortran.log"
   if ! grep -q "CONGRATULATIONS" "${repdir}/fortran.log"; then
@@ -383,6 +408,340 @@ step_oracle_repeatability() {
   log_info "Repeatability evidence under ${REPEAT_DIR}/ and ${REPEAT_REPORT}"
 }
 
+# Issue #50: clone the pinned pristine checkout, apply exactly the versioned
+# validation-only patch, and build the seedable-validation-oracle once. The
+# pristine checkout is only read; only target/flexpart-seedable is patched.
+oracle_seedable_setup() {
+  require_pinned_fortran
+  if [ ! -f "${SEEDABLE_PATCH}" ]; then
+    log_error "Missing validation patch artifact: ${SEEDABLE_PATCH}"
+    return 1
+  fi
+  log_info "Cloning pristine oracle and applying the validation-only patch (host-side)..."
+  # Do the clone and patch on the host where git ownership is fine
+  PINNED="$("${HOST_PYTHON}" -c "import json, os; print(json.load(open(os.path.join(os.environ.get('PROJECT_ROOT', ''), 'reference/flexpart-11.1.json')))['pinned_commit'])")"
+  case "${PINNED}" in
+    ????????????????????????????????????????) ;;
+    *) log_error "Could not read pinned_commit from reference manifest"; return 1 ;;
+  esac
+  rm -rf "${SEEDABLE_DIR}"
+  git clone -q "${FLEXPART_DIR}" "${SEEDABLE_DIR}"
+  git -C "${SEEDABLE_DIR}" checkout -q "${PINNED}"
+  git -C "${SEEDABLE_DIR}" apply --check "${SEEDABLE_PATCH}"
+  git -C "${SEEDABLE_DIR}" apply "${SEEDABLE_PATCH}"
+  test "$(git -C "${SEEDABLE_DIR}" diff --name-only | sort | tr '\n' ' ')" = "src/FLEXPART.f90 src/random_mod.f90 "
+  # Now build inside Docker
+  log_info "Building seedable oracle in Docker..."
+  docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran bash -c "
+    set -euo pipefail
+    cd /workspace/flexpart-gpu/target/flexpart-seedable/src
+    FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4 2>&1 | tail -3
+    test -x FLEXPART
+    rm -f gitversion.txt
+  "
+  if [ ! -f "${SEEDABLE_DIR}/src/FLEXPART" ]; then
+    log_error "Seedable oracle executable missing after build: ${SEEDABLE_DIR}/src/FLEXPART"
+    return 1
+  fi
+  # The pristine checkout must be untouched by the seedable build; the hook
+  # must exist only in the seedable copy.
+  if grep -q "validation_seed_offset" "${FLEXPART_DIR}/src/random_mod.f90" \
+    || grep -q "validation_seed_offset" "${FLEXPART_DIR}/src/FLEXPART.f90"; then
+    log_error "Pristine oracle sources carry validation seed handling; refusing to continue"
+    return 1
+  fi
+  grep -q "validation_seed_offset" "${SEEDABLE_DIR}/src/random_mod.f90" || {
+    log_error "Seedable copy lacks the validation seed handling"; return 1; }
+  grep -q "validation_seed_offset" "${SEEDABLE_DIR}/src/FLEXPART.f90" || {
+    log_error "Seedable copy lacks the validation seed handling"; return 1; }
+  if [ "$(git -C "${SEEDABLE_DIR}" diff --name-only | sort | tr '\n' ' ')" != \
+    "src/FLEXPART.f90 src/random_mod.f90 " ]; then
+    log_error "Seedable copy differs from pristine by more than the versioned patch"
+    return 1
+  fi
+  restore_oracle_checkout
+  PRISTINE_EXE_SHA="$("${HOST_PYTHON}" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "${FLEXPART_DIR}/src/FLEXPART")"
+  SEEDABLE_EXE_SHA="$("${HOST_PYTHON}" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "${SEEDABLE_DIR}/src/FLEXPART")"
+  SEEDABLE_PATCH_SHA="$("${HOST_PYTHON}" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "${SEEDABLE_PATCH}")"
+  SEEDABLE_IMAGE_ID="$(docker image inspect flexpart-fortran:latest --format '{{.Id}}')"
+  SEEDABLE_COMPILER="$(docker run --rm flexpart-fortran:latest gfortran --version | head -1)"
+  SEEDABLE_MAKEFILE_SHA="$("${HOST_PYTHON}" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "${FLEXPART_DIR}/src/makefile_gfortran")"
+  if [ "${#PRISTINE_EXE_SHA}" != 64 ] || [ "${#SEEDABLE_EXE_SHA}" != 64 ] \
+    || [ "${#SEEDABLE_PATCH_SHA}" != 64 ] || [ -z "${SEEDABLE_IMAGE_ID}" ] \
+    || [ -z "${SEEDABLE_COMPILER}" ] || [ "${#SEEDABLE_MAKEFILE_SHA}" != 64 ]; then
+    log_error "Could not record seedable build provenance"
+    return 1
+  fi
+  if [ "${SEEDABLE_EXE_SHA}" = "${PRISTINE_EXE_SHA}" ]; then
+    log_error "Seedable executable is identical to the pristine executable"
+    return 1
+  fi
+  log_info "Pristine executable SHA-256: ${PRISTINE_EXE_SHA}"
+  log_info "Seedable executable SHA-256: ${SEEDABLE_EXE_SHA}"
+  log_info "Validation patch SHA-256: ${SEEDABLE_PATCH_SHA}"
+}
+
+# Issue #50: prove invalid seeds fail instead of silently falling back. Each
+# attempt must exit non-zero with the actionable Fortran error fragment.
+oracle_seedable_smoke_one() {
+  local rundir="$1"
+  local seed="$2"
+  local fragment="$3"
+  local log="$4"
+  local rc=0
+  set +e
+  docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm \
+    -e "FLEXPART_VALIDATION_SEED=${seed}" \
+    flexpart-fortran bash -c "
+    set -euo pipefail
+    cd //workspace/target/corpus/fortran_run_seedable/$(basename "${rundir}") && /workspace/flexpart-gpu/target/flexpart-seedable/src/FLEXPART
+  " > "${log}" 2>&1
+  rc=$?
+  set -e
+  if [ "${rc}" -eq 0 ]; then
+    log_error "Invalid seed '${seed}' was accepted (exit 0); silent fallback suspected"
+    return 1
+  fi
+  if ! grep -q "FLEXPART_VALIDATION_SEED" "${log}" || ! grep -q "${fragment}" "${log}"; then
+    log_error "Invalid seed '${seed}' failed without the actionable error fragment; see ${log}"
+    return 1
+  fi
+  log_info "Invalid seed '${seed}' rejected (exit ${rc}): ${fragment}"
+}
+
+oracle_seedable_smoke() {
+  local case="$1"
+  local smoke_rundir="${SEEDABLE_RUN_ROOT}/smoke_invalid_seed"
+  oracle_prepare_rep_rundir "${case}" "${smoke_rundir}"
+  mkdir -p "${SEEDABLE_OUT_DIR}/smoke"
+  oracle_seedable_smoke_one "${smoke_rundir}" "0" "out of supported range" \
+    "${SEEDABLE_OUT_DIR}/smoke/attempt_0.log"
+  oracle_seedable_smoke_one "${smoke_rundir}" "1000000001" "out of supported range" \
+    "${SEEDABLE_OUT_DIR}/smoke/attempt_out_of_range.log"
+  oracle_seedable_smoke_one "${smoke_rundir}" "abc" "canonical decimal identity" \
+    "${SEEDABLE_OUT_DIR}/smoke/attempt_noncanonical.log"
+  # P2: test non-canonical spellings that must be rejected by Fortran parser
+  oracle_seedable_smoke_one "${smoke_rundir}" "01" "must not have leading zeros" \
+    "${SEEDABLE_OUT_DIR}/smoke/attempt_leading_zero.log"
+  oracle_seedable_smoke_one "${smoke_rundir}" " 1" "canonical decimal identity" \
+    "${SEEDABLE_OUT_DIR}/smoke/attempt_leading_space.log"
+  oracle_seedable_smoke_one "${smoke_rundir}" "1 " "canonical decimal identity" \
+    "${SEEDABLE_OUT_DIR}/smoke/attempt_trailing_space.log"
+  "${HOST_PYTHON}" - "${SEEDABLE_OUT_DIR}/smoke" <<'PYEOF'
+import json
+import sys
+from pathlib import Path
+smoke = Path(sys.argv[1])
+attempts = []
+for name, env_value, fragment in (
+        ("attempt_0.log", "0", "out of supported range"),
+        ("attempt_out_of_range.log", "1000000001", "out of supported range"),
+        ("attempt_noncanonical.log", "abc", "canonical decimal identity"),
+        ("attempt_leading_zero.log", "01", "must not have leading zeros"),
+        ("attempt_leading_space.log", " 1", "canonical decimal identity"),
+        ("attempt_trailing_space.log", "1 ", "canonical decimal identity")):
+    log = (smoke / name).read_text(encoding="utf-8", errors="replace")
+    if "FLEXPART_VALIDATION_SEED" not in log or fragment not in log:
+        raise SystemExit(f"smoke log {name} lacks the actionable error fragment")
+    attempts.append({"env_value": env_value, "rejected": True,
+                     "error_fragment": fragment,
+                     "log_excerpt": log.strip().splitlines()[-1][:300]})
+(smoke / "smoke.json").write_text(
+    json.dumps({"all_rejected": True, "attempts": attempts}, indent=2) + "\n",
+    encoding="utf-8")
+print(f"Seed enforcement smoke: {smoke / 'smoke.json'}")
+PYEOF
+}
+
+# Issue #50: run one seedable repetition. Mirrors oracle_run_one_repetition
+# (#49 pattern) for the distinct seedable instrument: same frozen runtime
+# guard, same pre-invocation input proof, plus the canonical identity record.
+# Arguments: case, label (identity or "default"), rep (rep_XX), seed (empty = default mode).
+oracle_seedable_run_one() {
+  local case="$1"
+  local label="$2"
+  local rep="$3"
+  local seed="$4"
+  local rundir="${SEEDABLE_RUN_ROOT}/${label}_${rep}"
+  local repdir="${SEEDABLE_OUT_DIR}/${label}/${rep}"
+  local container_rundir="//workspace/target/corpus/fortran_run_seedable/$(basename "${rundir}")"
+  local seedable_exe_container="/workspace/flexpart-gpu/target/flexpart-seedable/src/FLEXPART"
+  rm -rf "${repdir}"
+  mkdir -p "${repdir}/raw"
+  printf '%s' "${SEEDABLE_EXE_SHA}" > "${repdir}/oracle_executable.sha256"
+  "${HOST_PYTHON}" - "${rundir}" "${PROJECT_ROOT}/target/corpus/meteo/${case}" "${repdir}/consumed_inputs.json" <<'PYEOF'
+import hashlib
+import json
+import sys
+from pathlib import Path
+rundir, meteodir, output = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+def digest(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+options = rundir / "options"
+consumed = {"options": {}, "meteo": {}}
+for path in sorted(p for p in options.rglob("*") if p.is_file()):
+    consumed["options"][str(path.relative_to(rundir)).replace("\\", "/")] = digest(path)
+for required in ("options/COMMAND", "options/RELEASES", "options/OUTGRID"):
+    if required not in consumed["options"]:
+        raise SystemExit(f"prepared run directory lacks {required}")
+consumed["pathnames_sha256"] = digest(rundir / "pathnames")
+consumed["pathnames_text"] = (rundir / "pathnames").read_text(encoding="utf-8")
+if not (meteodir / "AVAILABLE").is_file():
+    raise SystemExit(f"shared meteorology lacks AVAILABLE: {meteodir}")
+for path in sorted(p for p in meteodir.rglob("*") if p.is_file()):
+    consumed["meteo"][str(path.relative_to(meteodir)).replace("\\", "/")] = digest(path)
+Path(output).write_text(json.dumps(consumed, indent=2) + "\n", encoding="utf-8")
+print(f"Consumed inputs: {output}")
+PYEOF
+  # The identity record doubles as host-side seed validation: an invalid seed
+  # aborts here, before any container run.
+  SEEDABLE_RECORD_SEED="${seed}" "${HOST_PYTHON}" - "${PROJECT_ROOT}" "${case}" \
+    "${SEEDABLE_EXE_SHA}" "${SEEDABLE_PATCH_SHA}" "${repdir}/stochastic_identity.json" <<'PYEOF'
+import json
+import os
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / "scripts" / "corpus"))
+from oracle_stochastic_identity import SEEDABLE_ORACLE, build_identity_record
+project, case, exe_sha, patch_sha, output = sys.argv[1:6]
+seed = os.environ.get("SEEDABLE_RECORD_SEED") or None
+record = build_identity_record(
+    requested_env_value=seed, oracle_kind=SEEDABLE_ORACLE,
+    executable_sha256=exe_sha, patch_sha256=patch_sha, case=case,
+    execution_profile={"id": "flexpart-11.1-single-thread", "version": 1})
+Path(output).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+print(f"Stochastic identity: {output}")
+PYEOF
+  local seed_prefix=""
+  if [ -n "${seed}" ]; then
+    seed_prefix="FLEXPART_VALIDATION_SEED=${seed} "
+  fi
+  docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran bash -c "
+    set -euo pipefail
+    python3 /workspace/flexpart-gpu/scripts/write_oracle_run_manifest.py check-runtime-profile \
+      --oracle-manifest /workspace/flexpart-gpu/reference/flexpart-11.1.json \
+      > /workspace/target/corpus/oracle_seedable/${label}/${rep}/runtime_profile.json
+    cd ${container_rundir} && ${seed_prefix}${seedable_exe_container}
+  " 2>&1 | tee "${repdir}/fortran.log"
+  if ! grep -q "CONGRATULATIONS" "${repdir}/fortran.log"; then
+    log_error "Seedable repetition failed for ${label} ${rep}; see ${repdir}/fortran.log"
+    return 1
+  fi
+  cp "${rundir}/output/header" "${rundir}/output/dates" "${repdir}/raw/"
+  cp "${rundir}"/output/grid_conc_* "${repdir}/raw/"
+  for partposit in "${rundir}"/output/partposit_*; do
+    [ -e "${partposit}" ] || continue
+    cp "${partposit}" "${repdir}/raw/"
+  done
+  cp "${PROJECT_ROOT}/fixtures/corpus/fortran/${case}/COMMAND" "${PROJECT_ROOT}/fixtures/corpus/fortran/${case}/RELEASES" "${PROJECT_ROOT}/fixtures/corpus/fortran/${case}/OUTGRID" "${repdir}/"
+  "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/corpus/decode_oracle_output.py" \
+    --raw-dir "${repdir}/raw" \
+    --releases "${repdir}/RELEASES" \
+    --output "${repdir}/oracle_summary.json"
+}
+
+oracle_seedable_write_experiment() {
+  local experiment_id="$1"
+  "${HOST_PYTHON}" - "${PROJECT_ROOT}/reference/flexpart-11.1.json" "${experiment_id}" \
+    "${SEEDABLE_EXE_SHA}" "${PRISTINE_EXE_SHA}" "${SEEDABLE_PATCH_SHA}" \
+    "${SEEDABLE_IMAGE_ID}" "${SEEDABLE_COMPILER}" "${SEEDABLE_MAKEFILE_SHA}" \
+    "${SEEDABLE_OUT_DIR}/experiment.json" "${SEEDABLE_OUT_DIR}/smoke/smoke.json" <<'PYEOF'
+import datetime
+import json
+import sys
+(manifest_path, experiment_id, seedable_sha, pristine_sha, patch_sha,
+ image_id, compiler, makefile_sha, output, smoke_path) = sys.argv[1:11]
+reference = json.load(open(manifest_path, encoding="utf-8"))
+profile = reference["execution_profile"]
+smoke = json.load(open(smoke_path, encoding="utf-8"))
+repetitions = {"default": 1}
+for identity in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10):
+    repetitions[str(identity)] = 5 if identity == 3 else 1
+experiment = {
+    "execution_profile": {"id": profile["id"], "version": profile["version"]},
+    "experiment_id": experiment_id,
+    "case": "WIND-UNI-002",
+    "oracle_kind": "seedable-validation-oracle",
+    "patch_sha256": patch_sha,
+    "oracle_pinned_commit": reference["pinned_commit"],
+    "oracle_executable_sha256": seedable_sha,
+    "pristine_executable_sha256": pristine_sha,
+    "experiment_started_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "docker_image": profile["docker"]["image"],
+    "docker_image_id": image_id,
+    "compiler": compiler,
+    "make_arguments": profile["build"]["make_arguments"],
+    "makefile_sha256": makefile_sha,
+    "seed_enforcement_smoke": smoke,
+    "repetitions": repetitions,
+}
+open(output, "w", encoding="utf-8").write(json.dumps(experiment, indent=2) + "\n")
+print(f"Experiment record: {output}")
+PYEOF
+}
+
+step_oracle_seed_identities() {
+  local case="${1:-${SEEDABLE_CASE}}"
+  if [ "${case}" != "${SEEDABLE_CASE}" ]; then
+    log_error "Issue #50 evidence is prescribed for ${SEEDABLE_CASE}; got ${case}"
+    return 1
+  fi
+  if [ ! -f "${REPEAT_DIR}/${case}/experiment.json" ]; then
+    log_error "Missing pristine #49 baseline for ${case}; run first:"
+    log_error "  scripts/run-corpus.sh oracle-repeatability ${case} 5"
+    return 1
+  fi
+  mkdir -p "${SEEDABLE_OUT_DIR}" "${SEEDABLE_RUN_ROOT}"
+  oracle_seedable_setup
+  EXPERIMENT_ID="$("${HOST_PYTHON}" -c 'import uuid; print(uuid.uuid4())')"
+  case "${EXPERIMENT_ID}" in
+    ????????-????-????-????-????????????) ;;
+    *) log_error "Could not generate an experiment ID"; return 1 ;;
+  esac
+  log_info "Seedable experiment ID: ${EXPERIMENT_ID}"
+  rm -rf "${SEEDABLE_OUT_DIR}"
+  mkdir -p "${SEEDABLE_OUT_DIR}"
+  oracle_generate_meteo_once "${case}"
+  log_step "Seed enforcement smoke (invalid seeds must fail, never fall back)"
+  oracle_seedable_smoke "${case}"
+  oracle_seedable_write_experiment "${EXPERIMENT_ID}"
+  log_step "Seedable default mode (no requested seed)"
+  oracle_prepare_rep_rundir "${case}" "${SEEDABLE_RUN_ROOT}/default_rep_01"
+  oracle_seedable_run_one "${case}" "default" "rep_01" ""
+  log_step "Seedable requested identities ${SEEDABLE_IDENTITIES}"
+  for identity in ${SEEDABLE_IDENTITIES}; do
+    oracle_prepare_rep_rundir "${case}" "${SEEDABLE_RUN_ROOT}/${identity}_rep_01"
+    oracle_seedable_run_one "${case}" "${identity}" "rep_01" "${identity}"
+  done
+  log_step "Seedable same-seed repeatability (identity ${SEEDABLE_REPEAT_IDENTITY} x${SEEDABLE_REPEAT_REPS})"
+  for i in $(seq 2 "${SEEDABLE_REPEAT_REPS}"); do
+    rep="$(printf 'rep_%02d' "${i}")"
+    oracle_prepare_rep_rundir "${case}" "${SEEDABLE_RUN_ROOT}/${SEEDABLE_REPEAT_IDENTITY}_${rep}"
+    oracle_seedable_run_one "${case}" "${SEEDABLE_REPEAT_IDENTITY}" "${rep}" "${SEEDABLE_REPEAT_IDENTITY}"
+  done
+  require_pinned_fortran
+  restore_oracle_checkout
+  log_step "Seedable stochastic identity comparison"
+  "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/corpus/compare_oracle_seed_identities.py" \
+    --seedable-dir "${SEEDABLE_OUT_DIR}" \
+    --pristine-repeat-dir "${REPEAT_DIR}" \
+    --output "${SEEDABLE_REPORT}" \
+    --oracle-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+    --identity-contract "${SEEDABLE_CONTRACT}" \
+    --pristine-checkout "${FLEXPART_DIR}" \
+    --pristine-exe "${FLEXPART_DIR}/src/FLEXPART" \
+    --seedable-checkout "${SEEDABLE_DIR}" \
+    --seedable-exe "${SEEDABLE_DIR}/src/FLEXPART" \
+    --meteo-dir "${PROJECT_ROOT}/target/corpus/meteo" \
+    --fixtures-dir "${PROJECT_ROOT}/fixtures/corpus/fortran" \
+    --repo-root "${PROJECT_ROOT}"
+  log_info "Seedable evidence under ${SEEDABLE_OUT_DIR}/ and ${SEEDABLE_REPORT}"
+}
+
 step_candidate() {
   local case="${1:-all}"
   local seeds="${2:-10}"
@@ -428,7 +787,7 @@ step_oracle_case() {
   # shellcheck disable=SC2086
   docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran \
     python3 //workspace/flexpart-gpu/scripts/generate_synthetic_grib.py \
-    --output-dir "//workspace/corpus/meteo/${case}" \
+    --output-dir "//workspace/target/corpus/meteo/${case}" \
     $(cat "${fixture}/METEO_ARGS.txt")
   test -f "${meteodir}/AVAILABLE"
   cp "${fixture}/COMMAND" "${rundir}/options/COMMAND"
@@ -467,8 +826,8 @@ PATHEOF
     set -euo pipefail
     python3 /workspace/flexpart-gpu/scripts/write_oracle_run_manifest.py check-runtime-profile \
       --oracle-manifest /workspace/flexpart-gpu/reference/flexpart-11.1.json \
-      > /workspace/corpus/oracle/${case}/runtime_profile.json
-    cd /workspace/corpus/fortran_run/${case} && /workspace/flexpart/src/FLEXPART
+      > /workspace/target/corpus/oracle/${case}/runtime_profile.json
+    cd /workspace/target/corpus/fortran_run/${case} && /workspace/flexpart/src/FLEXPART
   " 2>&1 | tee "${oracledir}/fortran.log"
   if ! grep -q "CONGRATULATIONS" "${oracledir}/fortran.log"; then
     log_error "Oracle run failed for ${case}; see ${oracledir}/fortran.log"
@@ -583,6 +942,7 @@ case "${CMD}" in
   candidate) step_candidate "${CASE}" "${SEEDS}" ;;
   oracle) step_oracle "${CASE}" ;;
   oracle-repeatability) step_oracle_repeatability "${CASE:-all}" "${3:-${REPEAT_MINIMUM}}" ;;
+  oracle-seed-identities) step_oracle_seed_identities "${2:-${SEEDABLE_CASE}}" ;;
   compare) step_compare ;;
   manifest) step_manifest ;;
   audit) step_audit ;;
@@ -600,5 +960,5 @@ case "${CMD}" in
     step_compare
     step_manifest
     ;;
-  *) echo "Usage: $0 [candidate|oracle|oracle-repeatability|compare|manifest|audit|all] [CASE] [--seeds N]"; exit 2 ;;
+  *) echo "Usage: $0 [candidate|oracle|oracle-repeatability|oracle-seed-identities|compare|manifest|audit|all] [CASE] [--seeds N]"; exit 2 ;;
 esac

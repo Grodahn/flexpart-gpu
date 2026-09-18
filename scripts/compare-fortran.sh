@@ -35,7 +35,7 @@ FORTRAN_COMPOSE_FILE="${PROJECT_ROOT}/docker/docker-compose.fortran.yml"
 
 C_FLEXPART="/workspace/flexpart"
 C_GPU="/workspace/flexpart-gpu"
-C_DATA="/workspace/comparison"
+C_DATA="/workspace/target/comparison"
 CANDIDATE_BINARY="${PROJECT_ROOT}/target/release/fortran-validation"
 HOST_PYTHON=python3
 if [ "${OS:-}" = "Windows_NT" ]; then

@@ -75,7 +75,7 @@ if [ "${ETEX_PROFILE}" = "mini" ]; then
 fi
 
 C_FLEXPART="/workspace/flexpart"
-C_ETEX="/workspace/etex"
+C_ETEX="/workspace/target/etex"
 if [ "${ETEX_PROFILE}" = "mini" ]; then
     C_ETEX="${C_ETEX}/mini"
 fi

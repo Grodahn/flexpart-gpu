@@ -1,1 +1,2 @@
 *.sh text eol=lf
+reference/flexpart-11.1-seedable.patch text eol=lf

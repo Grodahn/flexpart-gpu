@@ -23,9 +23,7 @@ services:
       # This repository (comparison scripts, fixtures).
       - ..:/workspace/flexpart-gpu
       # Host-visible result directories for the comparison scripts.
-      - ../target/comparison:/workspace/comparison
-      - ../target/etex:/workspace/etex
-      - ../target/corpus:/workspace/corpus
+      - ../target:/workspace/target
     environment:
       FC: "gfortran"
       OMP_NUM_THREADS: "1"

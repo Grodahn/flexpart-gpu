@@ -97,11 +97,16 @@ def write_rep(case_dir, name, raw_bytes, summary, runtime, consumed, exe_sha=EXE
     return rep
 
 
-def write_experiment(case_dir, profile, exe_sha=EXE_SHA_FOR_TESTS, reps=5, commit=None):
+SHARED_TEST_EXPERIMENT_ID = "11111111-2222-4333-8444-555555555555"
+
+
+def write_experiment(case_dir, profile, exe_sha=EXE_SHA_FOR_TESTS, reps=5, commit=None,
+                     exp_id=SHARED_TEST_EXPERIMENT_ID):
     if commit is None:
         commit = json.loads((REPO / "reference/flexpart-11.1.json").read_text(encoding="utf-8"))["pinned_commit"]
     experiment = {
         "execution_profile": {"id": profile["id"], "version": profile["version"]},
+        "experiment_id": exp_id,
         "case": case_dir.name,
         "classification": profile["repeatability_cases"][case_dir.name],
         "repetitions_requested": reps,
@@ -179,9 +184,10 @@ class FakeWorld:
         return {"options": options, "pathnames_sha256": "p" * 64,
                 "pathnames_text": "text", "meteo": meteo}
 
-    def make_case(self, case, summaries, raw_blobs=None, exe_sha=None):
+    def make_case(self, case, summaries, raw_blobs=None, exe_sha=None, exp_id=None):
         case_dir = self.repeat / case
-        write_experiment(case_dir, self.profile, exe_sha or self.exe_sha)
+        write_experiment(case_dir, self.profile, exe_sha or self.exe_sha,
+                         exp_id=exp_id or SHARED_TEST_EXPERIMENT_ID)
         consumed = self.consumed_inputs(case)
         raw_blobs = raw_blobs or [b"same"] * len(summaries)
         for i, (summary, blob) in enumerate(zip(summaries, raw_blobs), start=1):
@@ -319,6 +325,48 @@ class RepeatabilityReportTest(unittest.TestCase):
             self.assertNotEqual(code, 0)
             self.assertIn("differ", message)
 
+    def test_mixed_experiment_ids_fail_closed(self):
+        # Two otherwise valid cases sharing one executable hash but produced
+        # by separate invocations must never be combined into one report, let
+        # alone labeled canonical.
+        with tempfile.TemporaryDirectory() as directory:
+            world = FakeWorld(directory)
+            self.patch_host(world)
+            world.make_case("ADV-ANA-001", [self.baseline_summary()] * 5,
+                            exp_id="aaaaaaaa-0000-4000-8000-000000000001")
+            world.make_case("WIND-UNI-002", [self.baseline_summary()] * 5,
+                            exp_id="bbbbbbbb-0000-4000-8000-000000000002")
+            code, report, message = self.run_comparator(world)
+            self.assertNotEqual(code, 0)
+            self.assertIsNone(report)
+            self.assertIn("different experiments", message)
+
+    def test_shared_experiment_id_two_case_run_succeeds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            world = FakeWorld(directory)
+            self.patch_host(world)
+            for case in world.cases:
+                world.make_case(case, [self.baseline_summary()] * 5,
+                                exp_id="aaaaaaaa-0000-4000-8000-000000000001")
+            code, report, message = self.run_comparator(world)
+            self.assertEqual(code, 0, message)
+            self.assertEqual(report["experiment_id"], "aaaaaaaa-0000-4000-8000-000000000001")
+            self.assertEqual(report["cases_evaluated"], ["ADV-ANA-001", "WIND-UNI-002"])
+
+    def test_missing_experiment_id_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            world = FakeWorld(directory)
+            self.patch_host(world)
+            for case in world.cases:
+                world.make_case(case, [self.baseline_summary()] * 5)
+            experiment_path = world.repeat / "ADV-ANA-001" / "experiment.json"
+            experiment = json.loads(experiment_path.read_text(encoding="utf-8"))
+            del experiment["experiment_id"]
+            experiment_path.write_text(json.dumps(experiment), encoding="utf-8")
+            code, _, message = self.run_comparator(world)
+            self.assertNotEqual(code, 0)
+            self.assertIn("experiment ID", message)
+
     def test_missing_experiment_record_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             world = FakeWorld(directory)
@@ -341,6 +389,7 @@ class RepeatabilityReportTest(unittest.TestCase):
             self.assertEqual(code, 0, message)
             self.assertEqual(sorted(report["cases"]), ["ADV-ANA-001"])
             self.assertEqual(report["cases_evaluated"], ["ADV-ANA-001"])
+            self.assertEqual(report["experiment_id"], SHARED_TEST_EXPERIMENT_ID)
             self.assertTrue(report["cases"]["ADV-ANA-001"]["all_byte_identical_to_baseline"])
 
     def test_unscoped_run_ignores_no_case_silently(self):

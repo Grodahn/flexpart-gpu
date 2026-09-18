@@ -90,20 +90,24 @@ checkout is verified clean before the experiment and after build and runs
 (the v11.1 makefile's `FLEXPART.f90` stamp is restored on the host); a dirty
 or wrong-revision checkout fails non-zero.
 
-Single-experiment tie-in: each run recreates its case directories fresh and
-writes a per-case `experiment.json` (profile id/version, executable SHA,
-image, compiler, requested repetitions) before any repetition. Every
-repetition records `oracle_executable.sha256` and `consumed_inputs.json`
-(SHA-256 of the prepared run-directory options including `COMMAND`,
-`RELEASES`, `OUTGRID`, plus the shared meteorology) BEFORE the FLEXPART
-invocation; post-run fixture copies are traceability only, never input
-evidence. The comparator evaluates only the cases the invocation ran (a
-single `CASE` yields a valid single-case report; canonical evidence uses the
-default: both cases), requires the requested repetition count to match the
-directories found, ties every repetition to the experiment executable
-(including the binary on disk), and verifies all repetitions of a case
-consumed identical inputs. Stale directories, foreign executables, changed
-inputs, or a missing experiment record fail non-zero.
+Single-experiment tie-in: each invocation mints one random experiment UUID
+(deliberately neither the executable hash nor a timestamp) and writes it to
+every case's `experiment.json` (alongside profile id/version, executable SHA,
+image, compiler, requested repetitions) before any repetition; case
+directories are recreated fresh. Every repetition records
+`oracle_executable.sha256` and `consumed_inputs.json` (SHA-256 of the
+prepared run-directory options including `COMMAND`, `RELEASES`, `OUTGRID`,
+plus the shared meteorology) BEFORE the FLEXPART invocation; post-run fixture
+copies are traceability only, never input evidence. The comparator evaluates
+only the cases the invocation ran (a single `CASE` yields a valid,
+clearly scoped single-case report; canonical evidence uses the default: both
+cases), requires the requested repetition count to match the directories
+found, requires multi-case reports to share one experiment ID (mixed
+experiments are rejected even when the executable hash is identical), ties
+every repetition to the experiment executable (including the binary on disk),
+and verifies all repetitions of a case consumed identical inputs. Stale
+directories, foreign executables, changed inputs, or a missing experiment
+record fail non-zero.
 
 `scripts/corpus/compare_oracle_repeatability.py` hashes every raw and decoded
 artifact, checks the frozen profile, and writes

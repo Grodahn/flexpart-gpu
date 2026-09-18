@@ -20,8 +20,11 @@ Each repetition directory must contain:
   the pre-invocation ``consumed_inputs.json`` is the input evidence)
 
 Each case directory must contain ``experiment.json`` written by the runner
-before its repetitions. Only the cases named with ``--cases`` are evaluated,
-so repetitions from an older experiment never enter a new report silently.
+before its repetitions, carrying the unique ``experiment_id`` of the
+invocation that produced it. Only the cases named with ``--cases`` are
+evaluated, and a multi-case report requires all of them to share one
+experiment ID, so repetitions from separate experiments can never be combined
+silently (even when they used an identical executable).
 
 The report records, per case and repetition: execution-profile identity and
 version, oracle executable hash, consumed input hashes, raw artifact inventory
@@ -243,6 +246,10 @@ def main():
             raise SystemExit(f"{case_id}: experiment profile does not match the frozen contract")
         if experiment.get("case") != case_id:
             raise SystemExit(f"{case_id}: experiment record belongs to {experiment.get('case')}")
+        if not isinstance(experiment.get("experiment_id"), str) or not experiment["experiment_id"]:
+            raise SystemExit(
+                f"{case_id}: experiment record lacks an experiment ID; the case was not "
+                "produced by the current oracle-repeatability runner")
         if experiment.get("classification") != classification:
             raise SystemExit(f"{case_id}: experiment classification mismatch")
         if experiment.get("oracle_pinned_commit") != reference["pinned_commit"]:
@@ -418,6 +425,13 @@ def main():
         raise SystemExit(
             f"evaluated cases tie to different executables {experiment_shas}; "
             "one report must cover a single experiment only")
+    experiment_ids = {case: cases_report[case]["experiment"]["experiment_id"] for case in requested}
+    if len(set(experiment_ids.values())) != 1:
+        raise SystemExit(
+            f"evaluated cases belong to different experiments {experiment_ids}; "
+            "rerun all cases in one oracle-repeatability invocation instead of "
+            "combining repetitions from separate experiments")
+    experiment_id = next(iter(set(experiment_ids.values())))
 
     verified_exe_sha = next(iter(set(experiment_shas.values())))
     if exe_sha != verified_exe_sha:
@@ -435,6 +449,7 @@ def main():
         "status_note": "Execution repeatability only; no candidate-vs-oracle physics parity is claimed.",
         "scope_note": scope_note,
         "cases_evaluated": sorted(requested),
+        "experiment_id": experiment_id,
         "execution_profile": {"id": profile["id"], "version": profile["version"]},
         "reference_manifest_sha256": manifest_sha,
         "oracle": oracle,

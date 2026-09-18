@@ -173,20 +173,22 @@ oracle_build_once() {
 oracle_write_case_experiment() {
   local case="$1"
   local reps="$2"
+  local experiment_id="$3"
   local case_dir="${REPEAT_DIR}/${case}"
   rm -rf "${case_dir}"
   mkdir -p "${case_dir}"
   "${HOST_PYTHON}" - "${PROJECT_ROOT}/reference/flexpart-11.1.json" "${case}" "${reps}" \
-    "${ORACLE_EXE_SHA}" "${ORACLE_IMAGE_ID}" "${ORACLE_COMPILER}" "${ORACLE_MAKEFILE_SHA}" \
+    "${experiment_id}" "${ORACLE_EXE_SHA}" "${ORACLE_IMAGE_ID}" "${ORACLE_COMPILER}" "${ORACLE_MAKEFILE_SHA}" \
     "${case_dir}/experiment.json" <<'PYEOF'
 import datetime
 import json
 import sys
-(manifest_path, case_id, reps, exe_sha, image_id, compiler, makefile_sha, output) = sys.argv[1:9]
+(manifest_path, case_id, reps, experiment_id, exe_sha, image_id, compiler, makefile_sha, output) = sys.argv[1:10]
 reference = json.load(open(manifest_path, encoding="utf-8"))
 profile = reference["execution_profile"]
 experiment = {
     "execution_profile": {"id": profile["id"], "version": profile["version"]},
+    "experiment_id": experiment_id,
     "case": case_id,
     "classification": profile["repeatability_cases"][case_id],
     "repetitions_requested": int(reps),
@@ -337,16 +339,26 @@ step_oracle_repeatability() {
   esac
   mkdir -p "${REPEAT_DIR}" "${REPEAT_RUN_ROOT}"
   oracle_build_once
+  # One unique experiment ID per invocation, shared by every case it runs. A
+  # random UUID is used deliberately: neither the executable hash (identical
+  # across rebuilds) nor a timestamp (collidable, clock-dependent) can
+  # distinguish two separate invocations.
+  EXPERIMENT_ID="$("${HOST_PYTHON}" -c 'import uuid; print(uuid.uuid4())')"
+  case "${EXPERIMENT_ID}" in
+    ????????-????-????-????-????????????) ;;
+    *) log_error "Could not generate an experiment ID"; return 1 ;;
+  esac
+  log_info "Repeatability experiment ID: ${EXPERIMENT_ID}"
   ran_cases=""
   for case in ${cases}; do
     case " ${REPEAT_CASES} " in
       *" ${case} "*) ;;
       *) log_error "Case ${case} is not in the frozen #49 repeatability set (${REPEAT_CASES})"; return 1 ;;
     esac
-    log_step "Oracle repeatability ${case} x${reps} (shared exe ${ORACLE_EXE_SHA})"
-    # Fresh case directory: repetitions from an older experiment must never
+    log_step "Oracle repeatability ${case} x${reps} (experiment ${EXPERIMENT_ID})"
+    # Fresh case directory: repetitions from an older experiment can never
     # enter the new report silently. Only cases run below are evaluated.
-    oracle_write_case_experiment "${case}" "${reps}"
+    oracle_write_case_experiment "${case}" "${reps}" "${EXPERIMENT_ID}"
     oracle_generate_meteo_once "${case}"
     for i in $(seq 1 "${reps}"); do
       rep="$(printf 'rep_%02d' "${i}")"

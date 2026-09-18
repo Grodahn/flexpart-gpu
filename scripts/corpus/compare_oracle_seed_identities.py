@@ -404,6 +404,51 @@ def main():
         and default_equivalence["decoded_hash_identical"]
         else "SEEDABLE DEFAULT DIFFERS FROM PRISTINE; the patch is not acceptable")
 
+    # --- Fail closed: default mode must reproduce pristine bit-exactly. ---
+    default_failed = (not default_equivalence["raw_byte_identical"]
+                      or not default_equivalence["decoded_hash_identical"])
+    if default_failed:
+        # Write report with failure status for diagnostics, then exit non-zero.
+        report = {
+            "status": "SEEDABLE_DEFAULT_EQUIVALENCE_FAILED",
+            "status_note": "Seedable default mode does not reproduce pristine oracle; "
+                           "the validation-only patch is not acceptable.",
+            "strategy": STRATEGY,
+            "strategy_version": STRATEGY_VERSION,
+            "case": experiment["case"],
+            "experiment_id": experiment.get("experiment_id"),
+            "execution_profile": {"id": profile["id"], "version": profile["version"]},
+            "reference_manifest_sha256": manifest_sha,
+            "oracle": pristine,
+            "pristine_executable_sha256": pristine_exe_sha,
+            "seedable_executable_sha256": seedable_exe_sha,
+            "seedable_checkout": {
+                "commit": seedable["commit"],
+                "diff_name_only": sorted(changed),
+            },
+            "validation_patch": patch_provenance,
+            "seed_enforcement_smoke": smoke,
+            "container": {"image": args.image, "image_id": image_id},
+            "compiler": {
+                "version": compiler,
+                "make_arguments": profile["build"]["make_arguments"],
+                "makefile_sha256": makefile_sha,
+            },
+            "runtime_environment": profile["runtime_environment"],
+            "rng_namespaces": "Candidate Philox seeds and oracle identities are separate "
+                              "RNG namespaces and are never equated.",
+            "default_equivalence": default_equivalence,
+        }
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        print(f"Oracle seed identity report: {output}")
+        raise SystemExit(
+            "seedable default differs from pristine (raw_byte_identical="
+            f"{default_equivalence['raw_byte_identical']}, "
+            f"decoded_hash_identical={default_equivalence['decoded_hash_identical']}); "
+            "the validation-only patch is not acceptable")
+
     # --- C. Distinct requested stochastic identities. ---
     summaries = {}
     raws = {}

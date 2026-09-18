@@ -366,6 +366,38 @@ def main():
             except StochasticIdentityError as exc:
                 raise SystemExit(f"seedable {label} {entry['rep']}: {exc}")
             entry["applied_state"] = applied
+            # Verify recorded identity matches the directory label.
+            ir = entry["identity_record"]
+            if label == "default":
+                if ir.get("default_mode") is not True:
+                    raise SystemExit(
+                        f"seedable {label} {entry['rep']}: identity record claims "
+                        f"non-default mode in 'default' directory")
+                if ir.get("requested_identity") is not None:
+                    raise SystemExit(
+                        f"seedable {label} {entry['rep']}: identity record carries "
+                        f"requested_identity {ir.get('requested_identity')} in 'default' directory")
+                if ir.get("requested_env_value") is not None:
+                    raise SystemExit(
+                        f"seedable {label} {entry['rep']}: identity record carries "
+                        f"requested_env_value {ir.get('requested_env_value')!r} in 'default' directory")
+            else:
+                # label should be one of the prescribed identities "1".."10"
+                expected = int(label)
+                if ir.get("default_mode") is not False:
+                    raise SystemExit(
+                        f"seedable {label} {entry['rep']}: identity record claims "
+                        f"default mode in identity directory {label}")
+                if ir.get("requested_identity") != expected:
+                    raise SystemExit(
+                        f"seedable {label} {entry['rep']}: identity record "
+                        f"requested_identity {ir.get('requested_identity')} does not match "
+                        f"directory identity {expected}")
+                if ir.get("requested_env_value") != label:
+                    raise SystemExit(
+                        f"seedable {label} {entry['rep']}: identity record "
+                        f"requested_env_value {ir.get('requested_env_value')!r} does not match "
+                        f"directory identity {label}")
             del entry["identity_record"]
         baseline_consumed = json.dumps(loaded[0]["consumed_inputs"], sort_keys=True)
         for entry in loaded[1:]:

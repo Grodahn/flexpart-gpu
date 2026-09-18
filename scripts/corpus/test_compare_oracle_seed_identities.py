@@ -222,7 +222,11 @@ class SeedIdentityReportTest(unittest.TestCase):
         except SystemExit as exc:
             code = exc.code
             message = code if isinstance(code, str) else ""
-            return (0 if code in (None, 0) else 1), None, message
+            # Read report if it was written before exit
+            report = None
+            if out.is_file():
+                report = json.loads(out.read_text(encoding="utf-8"))
+            return (0 if code in (None, 0) else 1), report, message
         finally:
             sys.argv = old_argv
         return 0, json.loads(out.read_text(encoding="utf-8")), ""
@@ -303,8 +307,10 @@ class SeedIdentityReportTest(unittest.TestCase):
             code, report, message = self.run_comparator(world)
             self.assertEqual(code, 1, message)
             self.assertIn("differs", message.lower())
-            # The report should have been written with diagnostics
-            self.assertTrue(report is not None or True)  # report may be None if exit before write
+            self.assertIsNotNone(report)
+            self.assertEqual(report["status"], "SEEDABLE_DEFAULT_EQUIVALENCE_FAILED")
+            self.assertFalse(report["default_equivalence"]["raw_byte_identical"])
+            self.assertTrue(report["default_equivalence"]["decoded_hash_identical"])
 
     def test_default_decoded_only_difference_fails_closed(self):
         """Decoded summary difference with identical raw bytes must fail."""
@@ -316,6 +322,10 @@ class SeedIdentityReportTest(unittest.TestCase):
             code, report, message = self.run_comparator(world)
             self.assertEqual(code, 1, message)
             self.assertIn("differs", message.lower())
+            self.assertIsNotNone(report)
+            self.assertEqual(report["status"], "SEEDABLE_DEFAULT_EQUIVALENCE_FAILED")
+            self.assertTrue(report["default_equivalence"]["raw_byte_identical"])
+            self.assertFalse(report["default_equivalence"]["decoded_hash_identical"])
 
     def test_unrepeatable_seed_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -335,6 +345,32 @@ class SeedIdentityReportTest(unittest.TestCase):
             code, _, message = self.run_comparator(world)
             self.assertEqual(code, 1)
             self.assertIn("pristine", message)
+
+    def test_swapped_identity_fails_closed(self):
+        """Identity record in directory 7 claiming identity 8 must fail."""
+        with tempfile.TemporaryDirectory() as directory:
+            world = self.make_full_world(directory)
+            # Overwrite directory 7's identity record to claim identity 8
+            bad = world.identity_record("8")  # env_value="8", requested_identity=8
+            (world.seedable_dir / "7" / "rep_01" / "stochastic_identity.json").write_text(
+                json.dumps(bad), encoding="utf-8")
+            code, _, message = self.run_comparator(world)
+            self.assertEqual(code, 1, message)
+            self.assertIn("does not match", message)
+            self.assertIn("7", message)
+
+    def test_mislabeled_default_repetition_fails_closed(self):
+        """Default directory with non-default identity record must fail."""
+        with tempfile.TemporaryDirectory() as directory:
+            world = self.make_full_world(directory)
+            # Overwrite default's identity record to claim identity 1
+            bad = world.identity_record("1")  # env_value="1", requested_identity=1
+            (world.seedable_dir / "default" / "rep_01" / "stochastic_identity.json").write_text(
+                json.dumps(bad), encoding="utf-8")
+            code, _, message = self.run_comparator(world)
+            self.assertEqual(code, 1, message)
+            self.assertIn("non-default", message)
+            self.assertIn("default", message)
 
     def test_unknown_build_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:

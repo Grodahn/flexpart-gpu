@@ -62,6 +62,74 @@ hashes of executable, inputs and outputs. Runners that do not expose a random
 seed record it as unavailable; such a run cannot support a multi-seed parity
 claim.
 
+### Frozen single-thread oracle execution and determinism contract (#49)
+
+`reference/flexpart-11.1.json` versions the canonical execution profile under
+`execution_profile` (id `flexpart-11.1-single-thread`, version 1): pinned
+commit, clean-checkout requirement, build (`eta=no arch=x86-64`, gfortran,
+`-O3`, `-fopenmp`, `-march=x86-64`), Docker boundary (pinned Ubuntu digest and
+snapshot), the eight explicit OpenMP runtime settings with
+`OMP_NUM_THREADS=1`, required input files, `external_seed_control:
+unavailable`, and the two repeatability cases (`ADV-ANA-001` deterministic,
+`WIND-UNI-002` stochastic, minimum five repetitions each).
+
+Enforcement reuses the #6 oracle path. Compose sets the runtime settings
+literally so inherited host OpenMP values cannot override them. Every oracle
+invocation (single-result and repeatability) runs
+`scripts/write_oracle_run_manifest.py check-runtime-profile` in the actual
+container process environment immediately before FLEXPART. Missing or changed
+settings and uncontracted `OMP_`/`GOMP_`/`KMP_` overrides are rejected
+non-zero; the resolved settings and reference-manifest hash are recorded per
+run. The repeatability runner builds the oracle executable once, verifies the
+same SHA-256 before every repetition, generates shared meteorology once per
+case, and preserves each repetition separately under
+`target/corpus/oracle_repeatability/<CASE>/rep_XX/` (raw `header`/`dates`/
+`grid_conc_*`, decoded `oracle_summary.json`, `runtime_profile.json`,
+`fortran.log`, consumed `COMMAND`/`RELEASES`/`OUTGRID`). The pinned checkout
+is verified clean before the experiment and after build and runs (the v11.1
+makefile's `FLEXPART.f90` stamp is restored on the host); a dirty or
+wrong-revision checkout fails non-zero.
+
+`scripts/corpus/compare_oracle_repeatability.py` hashes every raw and decoded
+artifact, checks the frozen profile, and writes
+`target/corpus/oracle_repeatability_report.json` with executable, image,
+compiler, input, runtime, and seed identity plus per-repetition
+byte-identical-to-baseline results. Non-identical artifacts name the differing
+files and decoded fields with max absolute/relative differences. The report
+status is `ORACLE_REPEATABILITY_CHARACTERIZED_NO_PARITY_VERDICT`: execution
+repeatability only, never candidate-vs-oracle physics parity.
+
+Reproduce with a pinned checkout (override `FLEXPART_DIR` when this repository
+is an isolated worktree; on Windows use a space-free path such as the 8.3
+short path):
+
+```bash
+scripts/run-corpus.sh oracle-repeatability all 5
+```
+
+Observed result (2026-09-18, Docker Desktop, `flexpart-fortran:latest`
+resolved to `sha256:2d10cfc9a51c91056beda6a9d55840a334dccc7212222306540004b667a6259b`,
+`GNU Fortran 11.4.0`, executable
+`a58c365b0e68c2136de335dccac8ebccd94ba44de9d7f44f1983bb878872e3da`):
+both `ADV-ANA-001` and `WIND-UNI-002` were bitwise repeatable across all five
+repetitions (raw SHA-256 and decoded summary identical to baseline). This
+holds for the pristine default RNG initialization under one thread; the
+repetitions are not independent stochastic realizations.
+
+Limitations: single-thread profile only; the `latest` image tag is mutable so
+only the resolved image ID is attributable; the executable is rebuilt per
+experiment and its SHA must be recorded; FLEXPART logs a `RECEPTORS cannot be
+opened` warning and continues without receptor output (run still succeeds);
+disabling turbulence does not imply zero RNG consumption during startup;
+controlled independent oracle seeds belong to #50; the global artifact layout
+redesign belongs to #53.
+
+Regression evidence: `python scripts/test_oracle_run_manifest.py` (canonical
+settings accepted, every missing/changed setting rejected, uncontracted
+overrides rejected, CLI rejects `OMP_NUM_THREADS=2`) and
+`python scripts/corpus/test_compare_oracle_repeatability.py` (numeric diffs
+quantified, contract violations and missing repetitions fail closed).
+
 ## 4. What the oracle is used for
 
 - Synthetic uniform-wind comparison (`scripts/compare-fortran.sh validate`,

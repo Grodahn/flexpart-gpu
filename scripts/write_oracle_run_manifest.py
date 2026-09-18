@@ -8,7 +8,9 @@ an unpinned/modified FLEXPART checkout are errors.
 import argparse
 import hashlib
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -55,6 +57,37 @@ def adapter_line(path):
     return matches[0]
 
 
+def validate_runtime_profile(manifest_path, environment):
+    reference = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    profile = reference.get("execution_profile", {})
+    if profile.get("id") != "flexpart-11.1-single-thread" or profile.get("version") != 1:
+        raise ValueError("missing or unsupported oracle execution profile")
+    expected = profile.get("runtime_environment", {})
+    required = {
+        "OMP_NUM_THREADS", "OMP_THREAD_LIMIT", "OMP_DYNAMIC", "OMP_NESTED",
+        "OMP_MAX_ACTIVE_LEVELS", "OMP_SCHEDULE", "OMP_PROC_BIND", "OMP_WAIT_POLICY",
+    }
+    if set(expected) != required or any(not isinstance(v, str) or not v for v in expected.values()):
+        raise ValueError("incomplete oracle runtime environment contract")
+    if expected["OMP_NUM_THREADS"] != "1" or expected["OMP_THREAD_LIMIT"] != "1":
+        raise ValueError("canonical oracle profile requires one thread")
+    unexpected = sorted(
+        key for key in environment
+        if key.startswith(("OMP_", "GOMP_", "KMP_")) and key not in expected
+    )
+    if unexpected:
+        raise ValueError(f"uncontracted OpenMP settings: {', '.join(unexpected)}")
+    for key, value in expected.items():
+        if environment.get(key) != value:
+            raise ValueError(f"oracle runtime setting {key}: expected {value!r}, got {environment.get(key)!r}")
+    return {
+        "status": "RUNTIME_SETTINGS_VERIFIED_ONLY",
+        "execution_profile": {"id": profile["id"], "version": profile["version"]},
+        "reference_manifest_sha256": digest(manifest_path),
+        "runtime_environment": {key: environment[key] for key in sorted(expected)},
+    }
+
+
 def make_manifest(args):
     reference = json.loads(Path(args.oracle_manifest).read_text(encoding="utf-8"))
     oracle = git_state(args.oracle_checkout)
@@ -92,6 +125,13 @@ def make_manifest(args):
 
 
 def main():
+    if sys.argv[1:2] == ["check-runtime-profile"]:
+        parser = argparse.ArgumentParser()
+        parser.add_argument("command")
+        parser.add_argument("--oracle-manifest", required=True)
+        args = parser.parse_args()
+        print(json.dumps(validate_runtime_profile(args.oracle_manifest, os.environ), indent=2))
+        return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True)
     parser.add_argument("--scenario", required=True)

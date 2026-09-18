@@ -17,7 +17,9 @@ services:
     volumes:
       # Pinned oracle sources (must pass `reference-check -- verify`).
       # NOTE: paths are relative to this file's directory (docker/).
-      - ../../flexpart:/workspace/flexpart
+      # FLEXPART_DIR may override the default sibling checkout so isolated
+      # worktrees can reuse one pinned oracle checkout without copying it.
+      - ${FLEXPART_DIR:-../../flexpart}:/workspace/flexpart
       # This repository (comparison scripts, fixtures).
       - ..:/workspace/flexpart-gpu
       # Host-visible result directories for the comparison scripts.
@@ -26,4 +28,12 @@ services:
       - ../target/corpus:/workspace/corpus
     environment:
       FC: "gfortran"
+      OMP_NUM_THREADS: "1"
+      OMP_THREAD_LIMIT: "1"
+      OMP_DYNAMIC: "FALSE"
+      OMP_NESTED: "FALSE"
+      OMP_MAX_ACTIVE_LEVELS: "1"
+      OMP_SCHEDULE: "static"
+      OMP_PROC_BIND: "FALSE"
+      OMP_WAIT_POLICY: "PASSIVE"
     command: ["bash"]

@@ -76,5 +76,11 @@
     "count": 10,
     "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
   },
+  "oracle_command_overrides": {
+    "LTURBULENCE": 1,
+    "CTL": 5.0,
+    "IFINE": 4,
+    "LCONVECTION": 0
+  },
   "oracle_species_note": "Depositing aerosol SPECIES copied from upstream examples/Aerosol/SPECIES/SPECIES_040 with zero-precipitation GRIB (LSP=CP=0); inert SPECIES_024 is the no-deposition control."
 }

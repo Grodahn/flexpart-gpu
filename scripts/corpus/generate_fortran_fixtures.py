@@ -31,6 +31,7 @@ Usage:
 import argparse
 import hashlib
 import json
+import math
 import re
 import shutil
 from pathlib import Path
@@ -99,17 +100,131 @@ def outgrid_text(case: dict) -> str:
     )
 
 
-def command_text(case: dict) -> str:
+# Canonical (lowercase) Oracle override fields. The generated Fortran
+# namelist keeps uppercase spelling; only the JSON/Rust representation is
+# canonical lowercase.
+CANONICAL_ORACLE_FIELDS = (
+    "lturbulence",
+    "lconvection",
+    "ctl",
+    "ifine",
+    "ldrydep",
+    "lwetdep",
+    "ldecay",
+)
+LEGACY_ORACLE_FIELD_MAP = {
+    "LTURBULENCE": "lturbulence",
+    "LCONVECTION": "lconvection",
+    "CTL": "ctl",
+    "IFINE": "ifine",
+    "LDRYDEP": "ldrydep",
+    "LWETDEP": "lwetdep",
+    "LDECAY": "ldecay",
+}
+REQUIRED_ORACLE_FIELDS = ("lturbulence", "lconvection", "ctl", "ifine")
+FLAG_ORACLE_FIELDS = ("lturbulence", "lconvection", "ldrydep", "lwetdep", "ldecay")
+
+
+def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
+    """Single explicit v1/v2 migration point for Oracle command overrides.
+
+    Reads the canonical lowercase fields, accepting legacy uppercase spellings
+    only when the lowercase form is absent. Rejects documents containing both
+    forms, unknown keys, missing required overrides, out-of-range values, and
+    Oracle switches conflicting with ``physics_switches``. Never substitutes
+    physics-altering defaults.
+    """
+    raw = case.get("oracle_command_overrides")
+    if raw is None:
+        raise SystemExit(
+            f"{case_id}: missing oracle_command_overrides; "
+            "lturbulence, lconvection, ctl and ifine must be declared explicitly"
+        )
+    if not isinstance(raw, dict):
+        raise SystemExit(f"{case_id}: oracle_command_overrides must be an object")
+    normalized: dict = {}
+    for upper, lower in LEGACY_ORACLE_FIELD_MAP.items():
+        if upper in raw and lower in raw:
+            raise SystemExit(
+                f"{case_id}: ambiguous oracle override: both {upper} and {lower} "
+                "present; keep only the canonical lowercase form"
+            )
+        if upper in raw:
+            normalized[lower] = raw[upper]
+        elif lower in raw:
+            normalized[lower] = raw[lower]
+    known = set(CANONICAL_ORACLE_FIELDS) | set(LEGACY_ORACLE_FIELD_MAP)
+    for key in raw:
+        if key not in known:
+            raise SystemExit(f"{case_id}: unknown oracle override {key!r}")
+    for field in REQUIRED_ORACLE_FIELDS:
+        if field not in normalized:
+            raise SystemExit(
+                f"{case_id}: missing required oracle override {field}; "
+                "no hidden default substituted"
+            )
+    for field in FLAG_ORACLE_FIELDS:
+        if field in normalized:
+            value = normalized[field]
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise SystemExit(
+                    f"{case_id}: oracle override {field} must be exactly 0 or 1, "
+                    f"got {value!r}"
+                )
+            if value not in (0, 1):
+                raise SystemExit(
+                    f"{case_id}: oracle override {field} must be exactly 0 or 1, "
+                    f"got {value!r}"
+                )
+    ctl = normalized["ctl"]
+    if not isinstance(ctl, (int, float)) or isinstance(ctl, bool):
+        raise SystemExit(
+            f"{case_id}: oracle override ctl must be a finite number, got {ctl!r}"
+        )
+    if not math.isfinite(float(ctl)):
+        raise SystemExit(
+            f"{case_id}: oracle override ctl must be finite, got {ctl!r}"
+        )
+    ifine = normalized["ifine"]
+    if not isinstance(ifine, int) or isinstance(ifine, bool):
+        raise SystemExit(
+            f"{case_id}: oracle override ifine must be an integer in 1..=10, "
+            f"got {ifine!r}"
+        )
+    if not 1 <= ifine <= 10:
+        raise SystemExit(
+            f"{case_id}: oracle override ifine must be in 1..=10, got {ifine!r}"
+        )
+    physics = case.get("physics_switches", {})
+    if isinstance(physics, dict):
+        if "turbulence" in physics and isinstance(physics["turbulence"], bool):
+            if physics["turbulence"] != (normalized["lturbulence"] == 1):
+                raise SystemExit(
+                    f"{case_id}: physics_switches.turbulence={physics['turbulence']} "
+                    f"conflicts with oracle lturbulence={normalized['lturbulence']}; "
+                    "refusing to generate"
+                )
+        if "convection" in physics and isinstance(physics["convection"], bool):
+            if physics["convection"] != (normalized["lconvection"] == 1):
+                raise SystemExit(
+                    f"{case_id}: physics_switches.convection={physics['convection']} "
+                    f"conflicts with oracle lconvection={normalized['lconvection']}; "
+                    "refusing to generate"
+                )
+    return normalized
+
+
+def command_text(case_id: str, case: dict) -> str:
     """COMMAND namelist derived from case integration and switch overrides."""
     integration = case["integration"]
-    overrides = case.get("oracle_command_overrides", {})
+    overrides = normalize_oracle_overrides(case_id, case)
     iedate, ietime = sim_end_date(
         integration.get("start", "20240101000000"), int(integration["total_s"])
     )
-    ctl = float(overrides.get("CTL", 5.0))
-    ifine = int(overrides.get("IFINE", 4))
-    lturbulence = int(overrides.get("LTURBULENCE", 1))
-    lconvection = int(overrides.get("LCONVECTION", 0))
+    ctl = float(overrides["ctl"])
+    ifine = int(overrides["ifine"])
+    lturbulence = int(overrides["lturbulence"])
+    lconvection = int(overrides["lconvection"])
     return (
         "&COMMAND\n"
         " LDIRECT=               1,\n"
@@ -344,10 +459,11 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
     check("OUTGRID DYOUT", float(namelist_value(outgrid, "DYOUT")), float(domain["dy_deg"]), 1e-9)
 
     command = (outdir / "COMMAND").read_text(encoding="utf-8")
-    overrides = case.get("oracle_command_overrides", {})
-    check("COMMAND LTURBULENCE", int(namelist_value(command, "LTURBULENCE")), int(overrides.get("LTURBULENCE", 1)))
-    check("COMMAND LCONVECTION", int(namelist_value(command, "LCONVECTION")), int(overrides.get("LCONVECTION", 0)))
-    check("COMMAND CTL", float(namelist_value(command, "CTL")), float(overrides.get("CTL", 5.0)), 1e-6)
+    overrides = normalize_oracle_overrides(case_id, case)
+    check("COMMAND LTURBULENCE", int(namelist_value(command, "LTURBULENCE")), int(overrides["lturbulence"]))
+    check("COMMAND LCONVECTION", int(namelist_value(command, "LCONVECTION")), int(overrides["lconvection"]))
+    check("COMMAND CTL", float(namelist_value(command, "CTL")), float(overrides["ctl"]), 1e-6)
+    check("COMMAND IFINE", int(namelist_value(command, "IFINE")), int(overrides["ifine"]))
 
     species_text = (outdir / "SPECIES" / f"SPECIES_{specnum:03d}").read_text(encoding="utf-8")
     code = re.sub(r"!.*", "", species_text)
@@ -403,7 +519,7 @@ def main() -> None:
         outdir = FORTRAN_OUT / case_id
         (outdir / "SPECIES").mkdir(parents=True, exist_ok=True)
         specnum = 40 if case_id in ("DRY-007", "WET-008") else 24
-        (outdir / "COMMAND").write_text(command_text(case), encoding="utf-8")
+        (outdir / "COMMAND").write_text(command_text(case_id, case), encoding="utf-8")
         (outdir / "RELEASES").write_text(
             releases_text(case_id, case, specnum), encoding="utf-8"
         )

@@ -74,5 +74,11 @@
     "count": 10,
     "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
   },
+  "oracle_command_overrides": {
+    "LTURBULENCE": 1,
+    "CTL": 5.0,
+    "IFINE": 4,
+    "LCONVECTION": 0
+  },
   "oracle_species_note": "Scavenging aerosol SPECIES copied from upstream examples/Aerosol/SPECIES/SPECIES_040 with precipitating GRIB; dry path disabled by zero dry-deposition velocity in the candidate and by species/precip selection in the oracle."
 }

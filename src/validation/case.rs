@@ -554,6 +554,9 @@ impl ValidationCaseManifest {
         // Validate stochastic identity
         self.validate_stochastic()?;
 
+        // Validate Oracle command overrides (required, no hidden defaults)
+        self.validate_oracle_overrides()?;
+
         // Validate execution profile reference
         if self.execution_profile.id.is_empty() {
             return Err(ValidationCaseError::InvalidExecutionProfile {
@@ -676,6 +679,73 @@ impl ValidationCaseManifest {
             });
         }
 
+        Ok(())
+    }
+
+    fn validate_oracle_overrides(&self) -> Result<(), ValidationCaseError> {
+        let overrides = &self.oracle_command_overrides;
+        let flag = |name: &'static str, value: Option<u8>| -> Result<u8, ValidationCaseError> {
+            let value = value.ok_or(ValidationCaseError::MissingField { field: name })?;
+            if value != 0 && value != 1 {
+                return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                    message: format!("{name} must be exactly 0 or 1, got {value}"),
+                });
+            }
+            Ok(value)
+        };
+        let lturbulence = flag(
+            "oracle_command_overrides.lturbulence",
+            overrides.lturbulence,
+        )?;
+        let lconvection = flag(
+            "oracle_command_overrides.lconvection",
+            overrides.lconvection,
+        )?;
+        let ctl = overrides.ctl.ok_or(ValidationCaseError::MissingField {
+            field: "oracle_command_overrides.ctl",
+        })?;
+        if !ctl.is_finite() {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!("oracle_command_overrides.ctl must be finite, got {ctl}"),
+            });
+        }
+        let ifine = overrides.ifine.ok_or(ValidationCaseError::MissingField {
+            field: "oracle_command_overrides.ifine",
+        })?;
+        if !(1..=10).contains(&ifine) {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!("oracle_command_overrides.ifine must be in 1..=10, got {ifine}"),
+            });
+        }
+        for (name, value) in [
+            ("oracle_command_overrides.ldrydep", overrides.ldrydep),
+            ("oracle_command_overrides.lwetdep", overrides.lwetdep),
+            ("oracle_command_overrides.ldecay", overrides.ldecay),
+        ] {
+            if let Some(value) = value {
+                if value != 0 && value != 1 {
+                    return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                        message: format!("{name} must be exactly 0 or 1, got {value}"),
+                    });
+                }
+            }
+        }
+        if self.physics_switches.turbulence != (lturbulence == 1) {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "physics_switches.turbulence={} conflicts with oracle lturbulence={lturbulence}",
+                    self.physics_switches.turbulence
+                ),
+            });
+        }
+        if self.physics_switches.convection != (lconvection == 1) {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "physics_switches.convection={} conflicts with oracle lconvection={lconvection}",
+                    self.physics_switches.convection
+                ),
+            });
+        }
         Ok(())
     }
 
@@ -937,6 +1007,7 @@ mod tests {
     fn analytic_case_no_stochastic_allowed() {
         let mut manifest = make_minimal_manifest();
         manifest.physics_switches.turbulence = false;
+        manifest.oracle_command_overrides.lturbulence = Some(0);
         manifest.stochastic = StochasticIdentitySpec::default(); // Both None
         manifest.surface = None; // No surface needed
         // Should validate successfully
@@ -1111,5 +1182,67 @@ mod tests {
         assert!(manifest.stochastic.candidate_philox.is_none());
         manifest.validate().expect("ADV-ANA-001 stays valid");
         assert!(manifest.candidate_seed_identity(0).is_err());
+    }
+
+    #[test]
+    fn adv_ana_001_oracle_overrides_disable_turbulence_and_convection() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases")
+            .join("ADV-ANA-001.json");
+        let manifest = ValidationCaseManifest::load_from_file(&path).expect("load ADV-ANA-001");
+        assert_eq!(manifest.oracle_command_overrides.lturbulence, Some(0));
+        assert_eq!(manifest.oracle_command_overrides.lconvection, Some(0));
+        manifest.validate().expect("ADV-ANA-001 overrides stay valid");
+    }
+
+    #[test]
+    fn wind_uni_002_oracle_overrides_match_manifest() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases")
+            .join("WIND-UNI-002.json");
+        let manifest = ValidationCaseManifest::load_from_file(&path).expect("load WIND-UNI-002");
+        assert_eq!(manifest.oracle_command_overrides.lturbulence, Some(1));
+        assert_eq!(manifest.oracle_command_overrides.lconvection, Some(0));
+        assert_eq!(manifest.oracle_command_overrides.ctl, Some(5.0));
+        assert_eq!(manifest.oracle_command_overrides.ifine, Some(4));
+        manifest.validate().expect("WIND-UNI-002 overrides stay valid");
+    }
+
+    #[test]
+    fn missing_oracle_override_is_rejected_without_default() {
+        let mut manifest = make_minimal_manifest();
+        manifest.oracle_command_overrides.lturbulence = None;
+        let err = manifest.validate().expect_err("missing lturbulence must fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::MissingField { field: "oracle_command_overrides.lturbulence" }
+        ));
+    }
+
+    #[test]
+    fn oracle_flag_other_than_zero_or_one_is_rejected() {
+        let mut manifest = make_minimal_manifest();
+        manifest.oracle_command_overrides.lturbulence = Some(2);
+        let err = manifest.validate().expect_err("flag 2 must fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::InvalidPhysicsSwitches { .. }
+        ));
+    }
+
+    #[test]
+    fn oracle_switch_conflicting_with_physics_is_rejected() {
+        let mut manifest = make_minimal_manifest();
+        assert!(manifest.physics_switches.turbulence);
+        manifest.oracle_command_overrides.lturbulence = Some(0);
+        let err = manifest.validate().expect_err("conflict must fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::InvalidPhysicsSwitches { .. }
+        ));
     }
 }

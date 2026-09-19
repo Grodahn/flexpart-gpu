@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "schema_version": 2,
   "case_id": "DRY-007",
   "description": "Dry-only deposition: isolated exponential kernel check plus production-driver run with dry forcing and zero wet forcing.",
   "domain": {
@@ -17,13 +17,14 @@
     "lat_deg": 10.0,
     "z_m": 50.0,
     "particle_count": 500,
-    "mass_kg_total": 1.0
+    "mass_kg_total": 1.0,
+    "mass_kg_per_particle": 0.002
   },
   "wind": {
+    "profile": "uniform",
     "u_m_s": 5.0,
     "v_m_s": -3.0,
-    "w_m_s": 0.0,
-    "profile": "uniform"
+    "w_m_s": 0.0
   },
   "surface": {
     "surface_pressure_pa": 101325.0,
@@ -40,22 +41,11 @@
     "precip_large_scale_mm_h": 0.0,
     "precip_convective_mm_h": 0.0
   },
-  "deposition": {
-    "dry_deposition_velocity_m_s": 0.02,
-    "dry_reference_height_m": 15.0,
-    "wet_scavenging_coefficient_s_inv": 0.0,
-    "wet_precipitating_fraction": 0.0,
-    "isolated_check": {
-      "dt_s": 60.0,
-      "steps": 12,
-      "analytic": "mass(t) = mass0 * exp(-vdep/(2*HREF) * t)"
-    }
-  },
   "integration": {
     "start": "20240101000000",
-    "dt_s": 300,
+    "dt_s": 300.0,
     "steps": 12,
-    "total_s": 3600
+    "total_s": 3600.0
   },
   "physics_switches": {
     "turbulence": true,
@@ -64,23 +54,57 @@
     "wet_deposition": false,
     "decay": false
   },
-  "units": {
-    "deposition_velocity": "m/s",
-    "reference_height": "m",
-    "rate": "1/s",
-    "mass": "kg"
+  "deposition": {
+    "dry_deposition_velocity_m_s": 0.02,
+    "dry_reference_height_m": 15.0,
+    "wet_scavenging_coefficient_s_inv": 0.0,
+    "wet_precipitating_fraction": 0.0
   },
-  "seeds": {
-    "base_philox_key": [3737180555, 305419896],
-    "base_counter": [0, 0, 0, 0],
-    "count": 10,
-    "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
+  "units": {
+    "wind": "m/s",
+    "deposition_velocity": "m/s",
+    "height": "m",
+    "mass": "kg",
+    "time": "s"
+  },
+  "stochastic": {
+    "candidate_philox": {
+      "base_key": [3737180555, 305419896],
+      "base_counter": [0, 0, 0, 0],
+      "count": 10,
+      "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
+    },
+    "oracle_seed": {
+      "kind": "seedable-validation-oracle",
+      "seed": 1,
+      "repetitions": 5
+    }
+  },
+  "execution_profile": {
+    "id": "flexpart-11.1-single-thread",
+    "version": 1,
+    "manifest_path": "reference/flexpart-11.1.json"
   },
   "oracle_command_overrides": {
-    "LTURBULENCE": 1,
-    "CTL": 5.0,
-    "IFINE": 4,
-    "LCONVECTION": 0
+    "lturbulence": 1,
+    "ctl": 5.0,
+    "ifine": 4,
+    "lconvection": 0
   },
-  "oracle_species_note": "Depositing aerosol SPECIES copied from upstream examples/Aerosol/SPECIES/SPECIES_040 with zero-precipitation GRIB (LSP=CP=0); inert SPECIES_024 is the no-deposition control."
+  "expected_artifacts": {
+    "candidate_dir": "target/corpus/candidate/DRY-007",
+    "oracle_dir": "target/corpus/oracle/DRY-007",
+    "comparison_report": "target/corpus/comparison_report.json",
+    "run_manifest": "target/corpus/run_manifest.json"
+  },
+  "representation_differences": {
+    "notes": [
+      "Depositing aerosol SPECIES with zero-precipitation GRIB (LSP=CP=0); inert SPECIES_024 is the no-deposition control."
+    ]
+  },
+  "input_equivalence": "not_applicable",
+  "notes": [
+    "Migrated from v1 without scientific change: deposition block carried key-for-key; isolated_check (dt 60 s, 12 steps, analytic mass(t) = mass0 * exp(-vdep/(2*HREF) * t)) documents the kernel check and is preserved here.",
+    "Depositing aerosol SPECIES copied from upstream examples/Aerosol/SPECIES/SPECIES_040 with zero-precipitation GRIB (LSP=CP=0); inert SPECIES_024 is the no-deposition control."
+  ]
 }

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "schema_version": 2,
   "case_id": "PBL-STABLE-004",
   "description": "Stable boundary layer through the production driver: negative heat flux, positive Obukhov inverse, shallow PBL.",
   "domain": {
@@ -17,13 +17,14 @@
     "lat_deg": 10.0,
     "z_m": 50.0,
     "particle_count": 1000,
-    "mass_kg_total": 1.0
+    "mass_kg_total": 1.0,
+    "mass_kg_per_particle": 0.001
   },
   "wind": {
+    "profile": "uniform",
     "u_m_s": 5.0,
     "v_m_s": -3.0,
-    "w_m_s": 0.0,
-    "profile": "uniform"
+    "w_m_s": 0.0
   },
   "surface": {
     "surface_pressure_pa": 101325.0,
@@ -42,9 +43,9 @@
   },
   "integration": {
     "start": "20240101000000",
-    "dt_s": 300,
+    "dt_s": 300.0,
     "steps": 12,
-    "total_s": 3600
+    "total_s": 3600.0
   },
   "physics_switches": {
     "turbulence": true,
@@ -53,22 +54,51 @@
     "wet_deposition": false,
     "decay": false
   },
-  "expected_property": "Suppressed vertical mixing: vertical standard deviation remains small; mean height stays near 50 m release.",
   "units": {
+    "wind": "m/s",
     "heat_flux": "W/m2",
     "inv_obukhov": "1/m",
-    "height": "m"
+    "height": "m",
+    "mass": "kg",
+    "time": "s"
   },
-  "seeds": {
-    "base_philox_key": [3737180555, 305419896],
-    "base_counter": [0, 0, 0, 0],
-    "count": 10,
-    "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
+  "stochastic": {
+    "candidate_philox": {
+      "base_key": [3737180555, 305419896],
+      "base_counter": [0, 0, 0, 0],
+      "count": 10,
+      "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
+    },
+    "oracle_seed": {
+      "kind": "seedable-validation-oracle",
+      "seed": 1,
+      "repetitions": 5
+    }
+  },
+  "execution_profile": {
+    "id": "flexpart-11.1-single-thread",
+    "version": 1,
+    "manifest_path": "reference/flexpart-11.1.json"
   },
   "oracle_command_overrides": {
-    "LTURBULENCE": 1,
-    "CTL": 5.0,
-    "IFINE": 4,
-    "LCONVECTION": 0
-  }
+    "lturbulence": 1,
+    "ctl": 5.0,
+    "ifine": 4,
+    "lconvection": 0
+  },
+  "expected_artifacts": {
+    "candidate_dir": "target/corpus/candidate/PBL-STABLE-004",
+    "oracle_dir": "target/corpus/oracle/PBL-STABLE-004",
+    "comparison_report": "target/corpus/comparison_report.json",
+    "run_manifest": "target/corpus/run_manifest.json"
+  },
+  "representation_differences": {
+    "notes": [
+      "Suppressed vertical mixing: vertical standard deviation remains small; mean height stays near 50 m release."
+    ]
+  },
+  "input_equivalence": "not_applicable",
+  "notes": [
+    "Migrated from v1 without scientific change: expected_property moved to representation_differences."
+  ]
 }

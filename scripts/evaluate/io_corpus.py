@@ -52,9 +52,18 @@ def seed_particles(seed_data):
 
 
 def read_case_definition(path):
-    """Read a versioned corpus case input (``fixtures/corpus/cases/*.json``)."""
+    """Read a canonical v2 corpus case input (``fixtures/corpus/cases/*.json``).
+
+    Only ``schema_version`` 2 is accepted; legacy v1 (``seeds``/``version``)
+    is frozen and rejected (see ``fixtures/corpus/cases/MIGRATION_NOTES.md``).
+    """
     with open(path, encoding="utf-8") as stream:
         data = json.load(stream)
-    _require_keys(data, ("case_id", "release", "physics_switches", "seeds", "domain"),
+    if data.get("schema_version") != 2 or "version" in data:
+        raise ValueError(
+            f"corpus case {path} is not a canonical v2 document "
+            "(schema_version 2 required; v1 is frozen)"
+        )
+    _require_keys(data, ("case_id", "release", "physics_switches", "stochastic", "domain"),
                   f"corpus case {path}")
     return data

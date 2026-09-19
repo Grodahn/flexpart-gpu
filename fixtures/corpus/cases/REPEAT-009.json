@@ -1,8 +1,7 @@
 {
-  "version": 1,
+  "schema_version": 2,
   "case_id": "REPEAT-009",
   "description": "Repeatability: same neutral-driver configuration run twice with identical Philox key/counter must give identical particle states.",
-  "based_on": "PBL-NEUTRAL-005",
   "domain": {
     "nx": 32,
     "ny": 32,
@@ -18,29 +17,85 @@
     "lat_deg": 10.0,
     "z_m": 50.0,
     "particle_count": 500,
-    "mass_kg_total": 1.0
+    "mass_kg_total": 1.0,
+    "mass_kg_per_particle": 0.002
   },
   "wind": {
+    "profile": "uniform",
     "u_m_s": 5.0,
     "v_m_s": -3.0,
-    "w_m_s": 0.0,
-    "profile": "uniform"
+    "w_m_s": 0.0
+  },
+  "surface": {
+    "surface_pressure_pa": 101325.0,
+    "temperature_2m_k": 289.0,
+    "dewpoint_2m_k": 284.0,
+    "sensible_heat_flux_w_m2": 0.0,
+    "solar_radiation_w_m2": 120.0,
+    "surface_stress_n_m2": 0.2,
+    "friction_velocity_m_s": 0.35,
+    "convective_velocity_scale_m_s": 0.0,
+    "mixing_height_m": 1500.0,
+    "tropopause_height_m": 10000.0,
+    "inv_obukhov_length_per_m": 0.0,
+    "precip_large_scale_mm_h": 0.0,
+    "precip_convective_mm_h": 0.0
   },
   "integration": {
     "start": "20240101000000",
-    "dt_s": 300,
+    "dt_s": 300.0,
     "steps": 12,
-    "total_s": 3600
+    "total_s": 3600.0
   },
-  "seeds": {
-    "base_philox_key": [3737180555, 305419896],
-    "base_counter": [0, 0, 0, 0],
-    "repeats": 2,
-    "requirement": "bit-identical particle states across repeats"
+  "physics_switches": {
+    "turbulence": true,
+    "convection": false,
+    "dry_deposition": false,
+    "wet_deposition": false,
+    "decay": false
   },
   "units": {
-    "positions": "grid units and m",
-    "mass": "kg"
+    "wind": "m/s",
+    "mass": "kg",
+    "time": "s",
+    "height": "m"
   },
-  "fortran_repeatability_note": "The Fortran oracle exposes no seed control: random_mod.f90 alloc_random hard-codes iseed1=-7-i and iseed2=-88-i per OpenMP thread, with no COMMAND namelist override. Repeated oracle runs are therefore not a controlled multi-seed experiment; no multi-seed oracle parity is claimed."
+  "stochastic": {
+    "candidate_philox": {
+      "base_key": [3737180555, 305419896],
+      "base_counter": [0, 0, 0, 0],
+      "count": 2,
+      "derivation": "identical Philox key and counter reused for both repeats to prove bit-identical reruns",
+      "identical_repeats": true
+    },
+    "oracle_seed": null
+  },
+  "execution_profile": {
+    "id": "flexpart-11.1-single-thread",
+    "version": 1,
+    "manifest_path": "reference/flexpart-11.1.json"
+  },
+  "oracle_command_overrides": {
+    "lturbulence": 1,
+    "ctl": 5.0,
+    "ifine": 4,
+    "lconvection": 0
+  },
+  "expected_artifacts": {
+    "candidate_dir": "target/corpus/candidate/REPEAT-009",
+    "comparison_report": "target/corpus/comparison_report.json",
+    "run_manifest": "target/corpus/run_manifest.json"
+  },
+  "representation_differences": {
+    "notes": [
+      "No oracle counterpart is executed: the Fortran oracle exposes no seed control, so repeated oracle runs are not a controlled experiment and no multi-seed oracle parity is claimed."
+    ]
+  },
+  "input_equivalence": "not_applicable",
+  "notes": [
+    "Migrated from v1 without scientific change: based_on PBL-NEUTRAL-005; domain, release, wind and integration are identical to the neutral configuration and the surface block is the neutral surface.",
+    "Requirement: bit-identical particle states across repeats.",
+    "Oracle overrides document the shared neutral configuration only; no oracle run is performed for this case.",
+    "The Fortran oracle exposes no seed control: random_mod.f90 alloc_random hard-codes iseed1=-7-i and iseed2=-88-i per OpenMP thread, with no COMMAND namelist override. Repeated oracle runs are therefore not a controlled multi-seed experiment; no multi-seed oracle parity is claimed."
+  ]
 }

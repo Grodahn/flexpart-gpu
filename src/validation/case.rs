@@ -4,6 +4,11 @@
 //! physics-relevant configuration, stochastic identities, execution profile
 //! references, and expected artifacts. Supports both `pristine-oracle` and
 //! `seedable-validation-oracle` strategies from issue #50.
+//!
+//! Only `schema_version` 2 is accepted. The legacy v1 shape (`version`,
+//! `seeds`, uppercase overrides) is frozen and unsupported: every checked-in
+//! case is migrated to v2 and parsers reject v1 fail-closed. See
+//! `fixtures/corpus/cases/MIGRATION_NOTES.md` for the field-by-field mapping.
 
 use std::path::Path;
 use std::str::FromStr;
@@ -61,16 +66,25 @@ pub struct CandidatePhiloxIdentity {
     pub count: u32,
     /// Derivation rule: "seed i uses key [base0 + i, base1] with zeroed counter"
     pub derivation: String,
+    /// When true, every seed reuses the base key unchanged to prove
+    /// bit-identical reruns (REPEAT-009). Defaults to false (wrapping
+    /// derivation). Introduced in the v1 -> v2 migration to make repeat
+    /// semantics explicit instead of hard-coding case IDs in tooling.
+    #[serde(default)]
+    pub identical_repeats: bool,
 }
 
 impl CandidatePhiloxIdentity {
     /// Derive the Philox key for seed index `i`.
     ///
-    /// Canonical rule: `[base0.wrapping_add(i), base1]`.
-    /// REPEAT-009-style identical reruns must not call this; they reuse
-    /// `base_key` unchanged (see `corpus-run` repeat handling).
+    /// Canonical rule: `[base0.wrapping_add(i), base1]`, unless
+    /// `identical_repeats` is set, in which case the base key is reused
+    /// unchanged for every seed.
     #[must_use]
     pub fn key_for_seed_index(&self, seed_index: u32) -> [u32; 2] {
+        if self.identical_repeats {
+            return self.base_key;
+        }
         [
             self.base_key[0].wrapping_add(seed_index),
             self.base_key[1],
@@ -82,6 +96,24 @@ impl CandidatePhiloxIdentity {
     pub fn counter_for_seed_index(&self, _seed_index: u32) -> [u32; 4] {
         self.base_counter
     }
+}
+
+/// Driver deposition forcing carried by the case manifest.
+///
+/// Mirrors the legacy v1 `deposition` block key-for-key so migrated cases
+/// keep byte-identical scientific values. `None` when both deposition
+/// switches are off.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DepositionSpec {
+    /// Dry deposition velocity [m/s].
+    pub dry_deposition_velocity_m_s: f32,
+    /// Dry deposition reference height [m] (FLEXPART `href` layer scale).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dry_reference_height_m: Option<f32>,
+    /// Wet scavenging coefficient [1/s].
+    pub wet_scavenging_coefficient_s_inv: f32,
+    /// Precipitating fraction [0, 1].
+    pub wet_precipitating_fraction: f32,
 }
 
 /// Oracle-side seed identity per issue #50 contract.
@@ -375,6 +407,10 @@ pub struct ValidationCaseManifest {
     pub integration: IntegrationSpec,
     /// Physics switches.
     pub physics_switches: PhysicsSwitches,
+    /// Driver deposition forcing. `None` when deposition is off.
+    /// Migrated key-for-key from the legacy v1 `deposition` block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deposition: Option<DepositionSpec>,
     /// Explicit units for all quantities.
     pub units: UnitsSpec,
     /// Stochastic identity specification (candidate + oracle).
@@ -455,24 +491,64 @@ impl ValidationCaseManifest {
 
     /// Parse a validation case manifest from a JSON string.
     ///
+    /// Only `schema_version` 2 documents are accepted. Legacy v1 documents
+    /// (key `version`) and any other schema version are rejected with a
+    /// field-specific version error; v1 is frozen and unsupported, see
+    /// `fixtures/corpus/cases/MIGRATION_NOTES.md`.
+    ///
     /// # Errors
     /// Returns [`ValidationCaseError::ParseJson`] if the JSON is malformed,
-    /// [`ValidationCaseError::SchemaVersionMismatch`] if the schema version is incorrect,
-    /// or a validation error if the manifest fails schema validation.
+    /// [`ValidationCaseError::SchemaVersionMismatch`] if the schema version
+    /// is missing, ambiguous, or not 2, or a validation error if the
+    /// manifest fails schema validation.
     pub fn parse(content: &str, path: &Path) -> Result<Self, ValidationCaseError> {
-        let mut manifest: Self =
+        let raw: serde_json::Value =
             serde_json::from_str(content).map_err(|source| ValidationCaseError::ParseJson {
                 path: path.to_path_buf(),
                 source,
             })?;
-
-        // Validate schema version
-        if manifest.schema_version != VALIDATION_CASE_SCHEMA_VERSION {
-            return Err(ValidationCaseError::SchemaVersionMismatch {
-                expected: VALIDATION_CASE_SCHEMA_VERSION,
-                actual: manifest.schema_version,
+        if raw.get("schema_version").is_some() && raw.get("version").is_some() {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "schema_version/version",
+                message: "document contains both v2 `schema_version` and legacy v1 `version`; ambiguous mixed-version document rejected".to_string(),
             });
         }
+        match (
+            raw.get("schema_version").and_then(|v| v.as_u64()),
+            raw.get("version").and_then(|v| v.as_u64()),
+        ) {
+            (Some(2), None) => {}
+            (Some(actual), None) => {
+                let actual = u32::try_from(actual).unwrap_or(u32::MAX);
+                return Err(ValidationCaseError::SchemaVersionMismatch {
+                    expected: VALIDATION_CASE_SCHEMA_VERSION,
+                    actual,
+                });
+            }
+            (None, Some(legacy)) => {
+                let legacy = u32::try_from(legacy).unwrap_or(u32::MAX);
+                return Err(ValidationCaseError::SchemaVersionMismatch {
+                    expected: VALIDATION_CASE_SCHEMA_VERSION,
+                    actual: legacy,
+                });
+            }
+            (None, None) => {
+                return Err(ValidationCaseError::MissingField {
+                    field: "schema_version",
+                });
+            }
+            _ => {
+                return Err(ValidationCaseError::AmbiguousField {
+                    field: "schema_version/version",
+                    message: "ambiguous schema version declaration".to_string(),
+                });
+            }
+        }
+        let manifest: Self =
+            serde_json::from_value(raw).map_err(|source| ValidationCaseError::ParseJson {
+                path: path.to_path_buf(),
+                source,
+            })?;
 
         // Fail-closed validation of all required fields
         manifest.validate()?;
@@ -556,6 +632,9 @@ impl ValidationCaseManifest {
 
         // Validate Oracle command overrides (required, no hidden defaults)
         self.validate_oracle_overrides()?;
+
+        // Validate deposition forcing against deposition switches
+        self.validate_deposition()?;
 
         // Validate execution profile reference
         if self.execution_profile.id.is_empty() {
@@ -749,6 +828,78 @@ impl ValidationCaseManifest {
         Ok(())
     }
 
+    fn validate_deposition(&self) -> Result<(), ValidationCaseError> {
+        let dry = self.physics_switches.dry_deposition;
+        let wet = self.physics_switches.wet_deposition;
+        let Some(spec) = &self.deposition else {
+            // Absent block means forcing is defined by the execution pipeline
+            // (e.g. ETEX-MINI-013); present blocks are strictly validated.
+            return Ok(());
+        };
+        if !dry && !wet {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "deposition block must be absent when deposition switches are off".to_string(),
+            });
+        }
+        if !spec.dry_deposition_velocity_m_s.is_finite()
+            || spec.dry_deposition_velocity_m_s < 0.0
+        {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "deposition.dry_deposition_velocity_m_s must be finite and >= 0, got {}",
+                    spec.dry_deposition_velocity_m_s
+                ),
+            });
+        }
+        if dry && !(spec.dry_deposition_velocity_m_s > 0.0) {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "deposition.dry_deposition_velocity_m_s must be > 0 when physics_switches.dry_deposition=true".to_string(),
+            });
+        }
+        if let Some(href) = spec.dry_reference_height_m {
+            if !href.is_finite() || href <= 0.0 {
+                return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                    message: format!(
+                        "deposition.dry_reference_height_m must be finite and > 0, got {href}"
+                    ),
+                });
+            }
+        } else if dry {
+            return Err(ValidationCaseError::MissingField {
+                field: "deposition.dry_reference_height_m",
+            });
+        }
+        if !spec.wet_scavenging_coefficient_s_inv.is_finite()
+            || spec.wet_scavenging_coefficient_s_inv < 0.0
+        {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "deposition.wet_scavenging_coefficient_s_inv must be finite and >= 0, got {}",
+                    spec.wet_scavenging_coefficient_s_inv
+                ),
+            });
+        }
+        if !(0.0..=1.0).contains(&spec.wet_precipitating_fraction)
+            || !spec.wet_precipitating_fraction.is_finite()
+        {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "deposition.wet_precipitating_fraction must be in [0, 1], got {}",
+                    spec.wet_precipitating_fraction
+                ),
+            });
+        }
+        if wet
+            && !(spec.wet_scavenging_coefficient_s_inv > 0.0
+                && spec.wet_precipitating_fraction > 0.0)
+        {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "deposition wet scavenging coefficient and precipitating fraction must be > 0 when physics_switches.wet_deposition=true".to_string(),
+            });
+        }
+        Ok(())
+    }
+
     /// Resolve the candidate Philox key/counter for seed index `i`.
     ///
     /// Fail-closed: returns [`ValidationCaseError::InvalidStochasticIdentity`]
@@ -855,6 +1006,7 @@ mod tests {
                 wet_deposition: false,
                 decay: false,
             },
+            deposition: None,
             units: UnitsSpec {
                 wind: "m/s".to_string(),
                 pressure: Some("Pa".to_string()),
@@ -875,6 +1027,7 @@ mod tests {
                     base_counter: [0, 0, 0, 0],
                     count: 10,
                     derivation: "seed i uses key [base0 + i, base1] with zeroed counter".to_string(),
+                    identical_repeats: false,
                 }),
                 oracle_seed: Some(OracleSeedIdentity {
                     kind: OracleKind::SeedableValidationOracle,
@@ -1152,6 +1305,7 @@ mod tests {
             base_counter: [0, 0, 0, 0],
             count: 10,
             derivation: "seed i uses key [base0 + i, base1] with zeroed counter".to_string(),
+            identical_repeats: false,
         };
         assert_eq!(identity.key_for_seed_index(0), [u32::MAX, 305419896]);
         assert_eq!(identity.key_for_seed_index(1), [0, 305419896]);
@@ -1244,5 +1398,228 @@ mod tests {
             err,
             ValidationCaseError::InvalidPhysicsSwitches { .. }
         ));
+    }
+
+    const ALL_CHECKED_IN_CASES: &[&str] = &[
+        "ADV-ANA-001",
+        "WIND-UNI-002",
+        "WIND-SHEAR-003",
+        "PBL-STABLE-004",
+        "PBL-NEUTRAL-005",
+        "PBL-UNSTABLE-006",
+        "DRY-007",
+        "WET-008",
+        "REPEAT-009",
+        "ETEX-MINI-013",
+    ];
+
+    fn load_checked_in_case(case_id: &str) -> ValidationCaseManifest {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases")
+            .join(format!("{case_id}.json"));
+        ValidationCaseManifest::load_from_file(&path)
+            .unwrap_or_else(|e| panic!("load {case_id}: {e}"))
+    }
+
+    #[test]
+    fn every_checked_in_case_is_canonical_v2() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases");
+        let mut found: Vec<String> = std::fs::read_dir(&dir)
+            .expect("cases dir readable")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".json"))
+            .map(|name| name.trim_end_matches(".json").to_string())
+            .collect();
+        found.sort();
+        let mut expected: Vec<String> =
+            ALL_CHECKED_IN_CASES.iter().map(|s| s.to_string()).collect();
+        expected.sort();
+        assert_eq!(found, expected, "no checked-in case outside the v2 contract");
+        for case_id in ALL_CHECKED_IN_CASES {
+            let manifest = load_checked_in_case(case_id);
+            assert_eq!(manifest.schema_version, VALIDATION_CASE_SCHEMA_VERSION);
+            assert_eq!(manifest.case_id, *case_id);
+            manifest.validate().expect("checked-in case validates");
+        }
+    }
+
+    #[test]
+    fn migrated_cases_keep_their_scientific_values() {
+        let shear = load_checked_in_case("WIND-SHEAR-003");
+        match &shear.wind {
+            WindSpec::LinearShear { u0_m_s, u_shear_per_s, v_m_s, w_m_s } => {
+                assert_eq!(*u0_m_s, 2.0);
+                assert_eq!(*u_shear_per_s, 0.004);
+                assert_eq!(*v_m_s, 0.0);
+                assert_eq!(*w_m_s, 0.0);
+            }
+            other => panic!("shear wind changed: {other:?}"),
+        }
+        assert_eq!(shear.release.particle_count, 1000);
+
+        let stable = load_checked_in_case("PBL-STABLE-004");
+        let surface = stable.surface.as_ref().expect("stable surface");
+        assert_eq!(surface.sensible_heat_flux_w_m2, -20.0);
+        assert_eq!(surface.inv_obukhov_length_per_m, 0.02);
+        assert_eq!(surface.mixing_height_m, 500.0);
+
+        let neutral = load_checked_in_case("PBL-NEUTRAL-005");
+        assert_eq!(neutral.release.particle_count, 500);
+        let surface = neutral.surface.as_ref().expect("neutral surface");
+        assert_eq!(surface.mixing_height_m, 1500.0);
+        assert_eq!(surface.sensible_heat_flux_w_m2, 0.0);
+
+        let unstable = load_checked_in_case("PBL-UNSTABLE-006");
+        let surface = unstable.surface.as_ref().expect("unstable surface");
+        assert_eq!(surface.sensible_heat_flux_w_m2, 150.0);
+        assert_eq!(surface.convective_velocity_scale_m_s, 1.5);
+        assert_eq!(surface.mixing_height_m, 2000.0);
+        assert_eq!(surface.inv_obukhov_length_per_m, -0.02);
+
+        let dry = load_checked_in_case("DRY-007");
+        assert!(dry.physics_switches.dry_deposition);
+        assert!(!dry.physics_switches.wet_deposition);
+        let deposition = dry.deposition.as_ref().expect("dry deposition");
+        assert_eq!(deposition.dry_deposition_velocity_m_s, 0.02);
+        assert_eq!(deposition.dry_reference_height_m, Some(15.0));
+        assert_eq!(deposition.wet_scavenging_coefficient_s_inv, 0.0);
+        assert_eq!(deposition.wet_precipitating_fraction, 0.0);
+
+        let wet = load_checked_in_case("WET-008");
+        assert!(wet.physics_switches.wet_deposition);
+        assert!(!wet.physics_switches.dry_deposition);
+        let deposition = wet.deposition.as_ref().expect("wet deposition");
+        assert_eq!(deposition.dry_deposition_velocity_m_s, 0.0);
+        assert_eq!(deposition.wet_scavenging_coefficient_s_inv, 0.005);
+        assert_eq!(deposition.wet_precipitating_fraction, 1.0);
+        let surface = wet.surface.as_ref().expect("wet surface");
+        assert_eq!(surface.precip_large_scale_mm_h, 2.0);
+        assert_eq!(surface.precip_convective_mm_h, 1.0);
+
+        let repeat = load_checked_in_case("REPEAT-009");
+        assert_eq!(repeat.release.particle_count, 500);
+        let candidate = repeat
+            .stochastic
+            .candidate_philox
+            .as_ref()
+            .expect("repeat identity");
+        assert!(candidate.identical_repeats);
+        assert_eq!(candidate.count, 2);
+        assert_eq!(
+            repeat.candidate_seed_identity(0).expect("repeat seed 0"),
+            repeat.candidate_seed_identity(1).expect("repeat seed 1")
+        );
+        assert!(repeat.stochastic.oracle_seed.is_none());
+    }
+
+    #[test]
+    fn normalized_round_trip_all_checked_in_cases() {
+        for case_id in ALL_CHECKED_IN_CASES {
+            let manifest = load_checked_in_case(case_id);
+            let json = serde_json::to_string_pretty(&manifest).expect("serialize");
+            let reparsed = ValidationCaseManifest::parse(
+                &json,
+                Path::new(&format!("{case_id}.json")),
+            )
+            .unwrap_or_else(|e| panic!("reparse {case_id}: {e}"));
+            assert_eq!(manifest, reparsed, "{case_id} round-trip failed");
+        }
+    }
+
+    #[test]
+    fn legacy_v1_document_is_rejected_with_version_error() {
+        let doc = r#"{"version": 1, "case_id": "WIND-UNI-002"}"#;
+        let err =
+            ValidationCaseManifest::parse(doc, Path::new("legacy.json")).expect_err("v1 fails");
+        assert!(
+            matches!(err, ValidationCaseError::SchemaVersionMismatch { expected: 2, actual: 1 }),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn unsupported_schema_version_is_rejected() {
+        let mut manifest = make_minimal_manifest();
+        manifest.schema_version = 999;
+        let json = serde_json::to_string(&manifest).expect("serialize");
+        let err =
+            ValidationCaseManifest::parse(&json, Path::new("future.json")).expect_err("fails");
+        assert!(
+            matches!(
+                err,
+                ValidationCaseError::SchemaVersionMismatch { expected: 2, actual: 999 }
+            ),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn mixed_version_document_is_rejected_as_ambiguous() {
+        let doc = r#"{"schema_version": 2, "version": 1, "case_id": "X"}"#;
+        let err =
+            ValidationCaseManifest::parse(doc, Path::new("mixed.json")).expect_err("fails");
+        assert!(
+            matches!(err, ValidationCaseError::AmbiguousField { .. }),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn missing_version_is_rejected() {
+        let doc = r#"{"case_id": "X"}"#;
+        let err =
+            ValidationCaseManifest::parse(doc, Path::new("noversion.json")).expect_err("fails");
+        assert!(
+            matches!(err, ValidationCaseError::MissingField { field: "schema_version" }),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn deposition_block_forbidden_when_switches_off() {
+        let mut manifest = make_minimal_manifest();
+        assert!(!manifest.physics_switches.dry_deposition);
+        assert!(!manifest.physics_switches.wet_deposition);
+        manifest.deposition = Some(DepositionSpec {
+            dry_deposition_velocity_m_s: 0.0,
+            dry_reference_height_m: None,
+            wet_scavenging_coefficient_s_inv: 0.0,
+            wet_precipitating_fraction: 0.0,
+        });
+        let err = manifest.validate().expect_err("stray block fails");
+        assert!(
+            matches!(err, ValidationCaseError::InvalidPhysicsSwitches { .. }),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn dry_deposition_requires_positive_velocity_and_height() {
+        let mut manifest = make_minimal_manifest();
+        manifest.physics_switches.dry_deposition = true;
+        manifest.deposition = Some(DepositionSpec {
+            dry_deposition_velocity_m_s: 0.0,
+            dry_reference_height_m: Some(15.0),
+            wet_scavenging_coefficient_s_inv: 0.0,
+            wet_precipitating_fraction: 0.0,
+        });
+        assert!(manifest.validate().is_err());
+        manifest.deposition = Some(DepositionSpec {
+            dry_deposition_velocity_m_s: 0.02,
+            dry_reference_height_m: None,
+            wet_scavenging_coefficient_s_inv: 0.0,
+            wet_precipitating_fraction: 0.0,
+        });
+        let err = manifest.validate().expect_err("missing href fails");
+        assert!(
+            matches!(err, ValidationCaseError::MissingField { .. }),
+            "unexpected: {err}"
+        );
     }
 }

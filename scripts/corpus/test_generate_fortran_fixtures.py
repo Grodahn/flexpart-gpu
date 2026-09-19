@@ -51,12 +51,28 @@ class OracleOverrideTest(unittest.TestCase):
         )
         self.assertEqual(int(GEN.namelist_value(text, "IFINE")), 4)
 
-    def test_legacy_uppercase_document_is_accepted(self):
+    def test_migrated_shear_case_generates_declared_values(self):
         case = load_case("WIND-SHEAR-003")
-        self.assertIn("LTURBULENCE", case.get("oracle_command_overrides", {}))
+        self.assertEqual(case.get("schema_version"), 2)
         text = GEN.command_text("WIND-SHEAR-003", case)
         self.assertEqual(int(GEN.namelist_value(text, "LTURBULENCE")), 1)
+        self.assertEqual(int(GEN.namelist_value(text, "LCONVECTION")), 0)
         self.assertEqual(int(GEN.namelist_value(text, "IFINE")), 4)
+
+    def test_legacy_uppercase_document_is_rejected(self):
+        legacy = {
+            "integration": {"start": "20240101000000", "total_s": 3600},
+            "oracle_command_overrides": {
+                "LTURBULENCE": 1,
+                "LCONVECTION": 0,
+                "CTL": 5.0,
+                "IFINE": 4,
+            },
+            "physics_switches": {"turbulence": True, "convection": False},
+        }
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("LEGACY-001", legacy)
+        self.assertIn("legacy", str(ctx.exception))
 
     def test_missing_required_override_fails_without_default(self):
         case = load_case("WIND-UNI-002")
@@ -66,13 +82,13 @@ class OracleOverrideTest(unittest.TestCase):
             GEN.command_text("WIND-UNI-002", case)
         self.assertIn("lturbulence", str(ctx.exception))
 
-    def test_both_forms_rejected_as_ambiguous(self):
+    def test_both_forms_rejected_as_legacy(self):
         case = load_case("WIND-UNI-002")
         case = copy.deepcopy(case)
         case["oracle_command_overrides"]["LTURBULENCE"] = 1
         with self.assertRaises(SystemExit) as ctx:
             GEN.command_text("WIND-UNI-002", case)
-        self.assertIn("ambiguous", str(ctx.exception))
+        self.assertIn("legacy", str(ctx.exception))
 
     def test_flag_other_than_zero_or_one_rejected(self):
         case = load_case("WIND-UNI-002")

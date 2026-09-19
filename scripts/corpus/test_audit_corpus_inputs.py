@@ -37,7 +37,7 @@ def load_case(case_id: str) -> dict:
 class PhiloxIdentityTest(unittest.TestCase):
     def test_wind_uni_002_seed_zero_matches_manifest(self):
         case = load_case("WIND-UNI-002")
-        base_key, base_counter, count, deterministic, error = (
+        base_key, base_counter, count, deterministic, identical, error = (
             AUDIT.candidate_philox_identity("WIND-UNI-002", case)
         )
         self.assertIsNone(error)
@@ -53,7 +53,7 @@ class PhiloxIdentityTest(unittest.TestCase):
 
     def test_seed_n_uses_wrapping_derivation(self):
         case = load_case("WIND-UNI-002")
-        base_key, base_counter, _, _, error = AUDIT.candidate_philox_identity(
+        base_key, base_counter, _, _, _, error = AUDIT.candidate_philox_identity(
             "WIND-UNI-002", case
         )
         self.assertIsNone(error)
@@ -70,13 +70,36 @@ class PhiloxIdentityTest(unittest.TestCase):
     def test_stochastic_case_without_identity_fails(self):
         case = load_case("WIND-UNI-002")
         case["stochastic"] = {"candidate_philox": None, "oracle_seed": None}
-        _, _, _, _, error = AUDIT.candidate_philox_identity("WIND-UNI-002", case)
+        _, _, _, _, _, error = AUDIT.candidate_philox_identity("WIND-UNI-002", case)
         self.assertIsNotNone(error)
         self.assertIn("no default key", error)
 
+    def test_legacy_v1_document_rejected(self):
+        case = {"version": 1, "case_id": "WIND-UNI-002"}
+        _, _, _, _, _, error = AUDIT.candidate_philox_identity("WIND-UNI-002", case)
+        self.assertIsNotNone(error)
+        self.assertIn("schema_version 2", error)
+
+    def test_repeat_009_reuses_identical_key(self):
+        case = load_case("REPEAT-009")
+        base_key, base_counter, count, deterministic, identical, error = (
+            AUDIT.candidate_philox_identity("REPEAT-009", case)
+        )
+        self.assertIsNone(error)
+        self.assertTrue(identical)
+        self.assertEqual(count, 2)
+        key0, _ = AUDIT.expected_philox_for_seed(
+            "REPEAT-009", base_key, base_counter, 0, identical
+        )
+        key1, _ = AUDIT.expected_philox_for_seed(
+            "REPEAT-009", base_key, base_counter, 1, identical
+        )
+        self.assertEqual(key0, key1)
+        self.assertEqual(key0, [3737180555, 305419896])
+
     def test_adv_ana_001_valid_without_identity(self):
         case = load_case("ADV-ANA-001")
-        base_key, base_counter, count, deterministic, error = (
+        base_key, base_counter, count, deterministic, identical, error = (
             AUDIT.candidate_philox_identity("ADV-ANA-001", case)
         )
         self.assertIsNone(error)
@@ -108,7 +131,7 @@ class PhiloxIdentityTest(unittest.TestCase):
 
     def test_audit_fails_for_wrong_counter(self):
         case = load_case("WIND-UNI-002")
-        base_key, base_counter, _, _, _ = AUDIT.candidate_philox_identity(
+        base_key, base_counter, _, _, _, _ = AUDIT.candidate_philox_identity(
             "WIND-UNI-002", case
         )
         with tempfile.TemporaryDirectory() as tmp:

@@ -102,7 +102,9 @@ def outgrid_text(case: dict) -> str:
 
 # Canonical (lowercase) Oracle override fields. The generated Fortran
 # namelist keeps uppercase spelling; only the JSON/Rust representation is
-# canonical lowercase.
+# canonical lowercase. Legacy uppercase JSON keys are frozen and rejected
+# (see fixtures/corpus/cases/MIGRATION_NOTES.md): every checked-in case is
+# migrated to v2.
 CANONICAL_ORACLE_FIELDS = (
     "lturbulence",
     "lconvection",
@@ -112,26 +114,26 @@ CANONICAL_ORACLE_FIELDS = (
     "lwetdep",
     "ldecay",
 )
-LEGACY_ORACLE_FIELD_MAP = {
-    "LTURBULENCE": "lturbulence",
-    "LCONVECTION": "lconvection",
-    "CTL": "ctl",
-    "IFINE": "ifine",
-    "LDRYDEP": "ldrydep",
-    "LWETDEP": "lwetdep",
-    "LDECAY": "ldecay",
-}
+LEGACY_ORACLE_KEYS = frozenset({
+    "LTURBULENCE",
+    "LCONVECTION",
+    "CTL",
+    "IFINE",
+    "LDRYDEP",
+    "LWETDEP",
+    "LDECAY",
+})
 REQUIRED_ORACLE_FIELDS = ("lturbulence", "lconvection", "ctl", "ifine")
 FLAG_ORACLE_FIELDS = ("lturbulence", "lconvection", "ldrydep", "lwetdep", "ldecay")
 
 
 def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
-    """Single explicit v1/v2 migration point for Oracle command overrides.
+    """Canonical v2 Oracle override reader (no hidden defaults, no v1).
 
-    Reads the canonical lowercase fields, accepting legacy uppercase spellings
-    only when the lowercase form is absent. Rejects documents containing both
-    forms, unknown keys, missing required overrides, out-of-range values, and
-    Oracle switches conflicting with ``physics_switches``. Never substitutes
+    Reads the canonical lowercase fields. Legacy uppercase spellings are
+    rejected (frozen v1, see MIGRATION_NOTES.md), as are unknown keys,
+    missing required overrides, out-of-range values, and Oracle switches
+    conflicting with ``physics_switches``. Never substitutes
     physics-altering defaults.
     """
     raw = case.get("oracle_command_overrides")
@@ -142,20 +144,19 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
         )
     if not isinstance(raw, dict):
         raise SystemExit(f"{case_id}: oracle_command_overrides must be an object")
-    normalized: dict = {}
-    for upper, lower in LEGACY_ORACLE_FIELD_MAP.items():
-        if upper in raw and lower in raw:
-            raise SystemExit(
-                f"{case_id}: ambiguous oracle override: both {upper} and {lower} "
-                "present; keep only the canonical lowercase form"
-            )
-        if upper in raw:
-            normalized[lower] = raw[upper]
-        elif lower in raw:
-            normalized[lower] = raw[lower]
-    known = set(CANONICAL_ORACLE_FIELDS) | set(LEGACY_ORACLE_FIELD_MAP)
     for key in raw:
-        if key not in known:
+        if key in LEGACY_ORACLE_KEYS:
+            raise SystemExit(
+                f"{case_id}: legacy uppercase oracle override {key!r} is frozen "
+                "and unsupported; use the canonical lowercase form "
+                "(see MIGRATION_NOTES.md)"
+            )
+    normalized: dict = {}
+    for field in CANONICAL_ORACLE_FIELDS:
+        if field in raw:
+            normalized[field] = raw[field]
+    for key in raw:
+        if key not in CANONICAL_ORACLE_FIELDS:
             raise SystemExit(f"{case_id}: unknown oracle override {key!r}")
     for field in REQUIRED_ORACLE_FIELDS:
         if field not in normalized:

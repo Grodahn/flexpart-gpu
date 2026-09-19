@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "schema_version": 2,
   "case_id": "WET-008",
   "description": "Wet-only deposition: isolated exponential scavenging check plus production-driver run with wet forcing and zero dry forcing.",
   "domain": {
@@ -17,13 +17,14 @@
     "lat_deg": 10.0,
     "z_m": 50.0,
     "particle_count": 500,
-    "mass_kg_total": 1.0
+    "mass_kg_total": 1.0,
+    "mass_kg_per_particle": 0.002
   },
   "wind": {
+    "profile": "uniform",
     "u_m_s": 5.0,
     "v_m_s": -3.0,
-    "w_m_s": 0.0,
-    "profile": "uniform"
+    "w_m_s": 0.0
   },
   "surface": {
     "surface_pressure_pa": 101325.0,
@@ -40,21 +41,11 @@
     "precip_large_scale_mm_h": 2.0,
     "precip_convective_mm_h": 1.0
   },
-  "deposition": {
-    "dry_deposition_velocity_m_s": 0.0,
-    "wet_scavenging_coefficient_s_inv": 0.005,
-    "wet_precipitating_fraction": 1.0,
-    "isolated_check": {
-      "dt_s": 60.0,
-      "steps": 12,
-      "analytic": "mass(t) = mass0 * exp(-lambda * frac * t)"
-    }
-  },
   "integration": {
     "start": "20240101000000",
-    "dt_s": 300,
+    "dt_s": 300.0,
     "steps": 12,
-    "total_s": 3600
+    "total_s": 3600.0
   },
   "physics_switches": {
     "turbulence": true,
@@ -63,22 +54,56 @@
     "wet_deposition": true,
     "decay": false
   },
-  "units": {
-    "scavenging_coefficient": "1/s",
-    "precipitating_fraction": "1",
-    "mass": "kg"
+  "deposition": {
+    "dry_deposition_velocity_m_s": 0.0,
+    "wet_scavenging_coefficient_s_inv": 0.005,
+    "wet_precipitating_fraction": 1.0
   },
-  "seeds": {
-    "base_philox_key": [3737180555, 305419896],
-    "base_counter": [0, 0, 0, 0],
-    "count": 10,
-    "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
+  "units": {
+    "wind": "m/s",
+    "scavenging_coefficient": "1/s",
+    "mass": "kg",
+    "time": "s",
+    "height": "m"
+  },
+  "stochastic": {
+    "candidate_philox": {
+      "base_key": [3737180555, 305419896],
+      "base_counter": [0, 0, 0, 0],
+      "count": 10,
+      "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
+    },
+    "oracle_seed": {
+      "kind": "seedable-validation-oracle",
+      "seed": 1,
+      "repetitions": 5
+    }
+  },
+  "execution_profile": {
+    "id": "flexpart-11.1-single-thread",
+    "version": 1,
+    "manifest_path": "reference/flexpart-11.1.json"
   },
   "oracle_command_overrides": {
-    "LTURBULENCE": 1,
-    "CTL": 5.0,
-    "IFINE": 4,
-    "LCONVECTION": 0
+    "lturbulence": 1,
+    "ctl": 5.0,
+    "ifine": 4,
+    "lconvection": 0
   },
-  "oracle_species_note": "Scavenging aerosol SPECIES copied from upstream examples/Aerosol/SPECIES/SPECIES_040 with precipitating GRIB; dry path disabled by zero dry-deposition velocity in the candidate and by species/precip selection in the oracle."
+  "expected_artifacts": {
+    "candidate_dir": "target/corpus/candidate/WET-008",
+    "oracle_dir": "target/corpus/oracle/WET-008",
+    "comparison_report": "target/corpus/comparison_report.json",
+    "run_manifest": "target/corpus/run_manifest.json"
+  },
+  "representation_differences": {
+    "notes": [
+      "Scavenging aerosol SPECIES with precipitating GRIB; dry path disabled by zero dry-deposition velocity in the candidate."
+    ]
+  },
+  "input_equivalence": "not_applicable",
+  "notes": [
+    "Migrated from v1 without scientific change: deposition block carried key-for-key; isolated_check (dt 60 s, 12 steps, analytic mass(t) = mass0 * exp(-lambda * frac * t)) documents the kernel check and is preserved here.",
+    "Scavenging aerosol SPECIES copied from upstream examples/Aerosol/SPECIES/SPECIES_040 with precipitating GRIB; dry path disabled by zero dry-deposition velocity in the candidate and by species/precip selection in the oracle."
+  ]
 }

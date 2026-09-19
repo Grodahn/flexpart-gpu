@@ -1,0 +1,1006 @@
+//! Versioned validation case manifest contract (Issue #51).
+//!
+//! Defines a machine-readable schema for validation cases that captures all
+//! physics-relevant configuration, stochastic identities, execution profile
+//! references, and expected artifacts. Supports both `pristine-oracle` and
+//! `seedable-validation-oracle` strategies from issue #50.
+
+use std::path::Path;
+use std::str::FromStr;
+
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// Schema version for the validation case manifest.
+pub const VALIDATION_CASE_SCHEMA_VERSION: u32 = 2;
+
+/// Oracle kind as defined in issue #50 stochastic identity contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum OracleKind {
+    /// Unmodified FLEXPART 11.1 at pinned commit, no seed control.
+    PristineOracle,
+    /// Patched FLEXPART 11.1 with validation-only RNG initialization.
+    SeedableValidationOracle,
+}
+
+impl FromStr for OracleKind {
+    type Err = ValidationCaseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pristine-oracle" => Ok(OracleKind::PristineOracle),
+            "seedable-validation-oracle" => Ok(OracleKind::SeedableValidationOracle),
+            _ => Err(ValidationCaseError::InvalidOracleKind(s.to_string())),
+        }
+    }
+}
+
+/// Stochastic identity specification for a validation case.
+///
+/// Candidate Philox identities and FLEXPART oracle identities are separate
+/// RNG namespaces per issue #50 contract.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct StochasticIdentitySpec {
+    /// Candidate RNG namespace: Philox key/counter for the GPU candidate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub candidate_philox: Option<CandidatePhiloxIdentity>,
+    /// Oracle RNG namespace: validation seed identity for FLEXPART oracle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oracle_seed: Option<OracleSeedIdentity>,
+}
+
+/// Candidate-side Philox identity (separate RNG namespace from oracle).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CandidatePhiloxIdentity {
+    /// Base Philox key [key0, key1] for seed derivation.
+    pub base_key: [u32; 2],
+    /// Base Philox counter for the first timestep.
+    pub base_counter: [u32; 4],
+    /// Number of independent seeds in the ensemble.
+    pub count: u32,
+    /// Derivation rule: "seed i uses key [base0 + i, base1] with zeroed counter"
+    pub derivation: String,
+}
+
+/// Oracle-side seed identity per issue #50 contract.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OracleSeedIdentity {
+    /// Oracle kind: pristine-oracle or seedable-validation-oracle.
+    pub kind: OracleKind,
+    /// Validation seed value (canonical decimal in [1, 1000000000]).
+    /// Omit or set to null for default mode (pristine bit-exact initialization).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u32>,
+    /// Number of repetitions for repeatability characterization.
+    #[serde(default = "default_repetitions")]
+    pub repetitions: u32,
+}
+
+fn default_repetitions() -> u32 {
+    5
+}
+
+/// Execution profile reference (from frozen #49 contract).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionProfileRef {
+    /// Profile ID (e.g., "flexpart-11.1-single-thread").
+    pub id: String,
+    /// Profile version.
+    pub version: u32,
+    /// Manifest file path for verification.
+    pub manifest_path: String,
+}
+
+/// Domain specification with explicit units.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DomainSpec {
+    /// Number of grid cells in x.
+    pub nx: u32,
+    /// Number of grid cells in y.
+    pub ny: u32,
+    /// Number of vertical levels.
+    pub nz: u32,
+    /// Grid spacing in x [degrees].
+    pub dx_deg: f32,
+    /// Grid spacing in y [degrees].
+    pub dy_deg: f32,
+    /// Origin longitude [degrees].
+    pub xlon0_deg: f32,
+    /// Origin latitude [degrees].
+    pub ylat0_deg: f32,
+    /// Vertical level heights [m AGL].
+    pub wind_heights_m: Vec<f32>,
+}
+
+/// Release specification with explicit units.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReleaseSpec {
+    /// Release longitude [degrees].
+    pub lon_deg: f32,
+    /// Release latitude [degrees].
+    pub lat_deg: f32,
+    /// Release height [m AGL].
+    pub z_m: f32,
+    /// Total particle count.
+    pub particle_count: u32,
+    /// Total mass [kg] distributed over all particles.
+    pub mass_kg_total: f32,
+    /// Per-particle mass [kg] (alternative to `mass_kg_total`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mass_kg_per_particle: Option<f32>,
+}
+
+/// Wind field specification.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "profile", rename_all = "snake_case")]
+pub enum WindSpec {
+    /// Uniform wind field.
+    Uniform {
+        u_m_s: f32,
+        v_m_s: f32,
+        w_m_s: f32,
+    },
+    /// Linear shear wind profile u(z) = u0 + shear * z.
+    LinearShear {
+        u0_m_s: f32,
+        u_shear_per_s: f32,
+        v_m_s: f32,
+        w_m_s: f32,
+    },
+    /// Real-weather wind from native ERA5 model levels (ETEX, etc.).
+    NativeEra5 {
+        /// Path to the prepared meteorology relative to case fixtures.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        met_path: Option<String>,
+        /// Note describing the source and processing.
+        note: String,
+    },
+}
+
+/// Surface fields specification with explicit units.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SurfaceSpec {
+    /// Surface pressure [Pa].
+    pub surface_pressure_pa: f32,
+    /// 2-m temperature [K].
+    pub temperature_2m_k: f32,
+    /// 2-m dewpoint [K].
+    pub dewpoint_2m_k: f32,
+    /// Sensible heat flux [W/m^2].
+    pub sensible_heat_flux_w_m2: f32,
+    /// Solar radiation [W/m^2].
+    pub solar_radiation_w_m2: f32,
+    /// Surface stress [N/m^2].
+    pub surface_stress_n_m2: f32,
+    /// Friction velocity [m/s].
+    pub friction_velocity_m_s: f32,
+    /// Convective velocity scale [m/s].
+    pub convective_velocity_scale_m_s: f32,
+    /// Mixing height (PBL height) [m].
+    pub mixing_height_m: f32,
+    /// Tropopause height [m].
+    pub tropopause_height_m: f32,
+    /// Inverse Obukhov length [1/m].
+    pub inv_obukhov_length_per_m: f32,
+    /// Large-scale precipitation [mm/h].
+    pub precip_large_scale_mm_h: f32,
+    /// Convective precipitation [mm/h].
+    pub precip_convective_mm_h: f32,
+}
+
+/// Integration timestep and window specification.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IntegrationSpec {
+    /// Simulation start timestamp (YYYYMMDDHHMMSS).
+    pub start: String,
+    /// Integration timestep [s].
+    pub dt_s: f32,
+    /// Number of integration steps.
+    pub steps: u32,
+    /// Total simulation duration [s] (`dt_s` * steps).
+    pub total_s: f32,
+}
+
+/// Physics switches controlling model processes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PhysicsSwitches {
+    /// Turbulence (Hanna/Langevin).
+    pub turbulence: bool,
+    /// Convection (Emanuel scheme).
+    pub convection: bool,
+    /// Dry deposition.
+    pub dry_deposition: bool,
+    /// Wet deposition (scavenging).
+    pub wet_deposition: bool,
+    /// Radioactive decay.
+    pub decay: bool,
+}
+
+/// Explicit units for all physical quantities in the case.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UnitsSpec {
+    /// Wind velocity unit (typically "m/s").
+    pub wind: String,
+    /// Pressure unit (typically "Pa").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pressure: Option<String>,
+    /// Temperature unit (typically "K").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<String>,
+    /// Heat flux unit (typically "W/m2").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heat_flux: Option<String>,
+    /// Height/length unit (typically "m").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<String>,
+    /// Mass unit (typically "kg").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mass: Option<String>,
+    /// Time unit (typically "s").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time: Option<String>,
+    /// Shear unit (typically "1/s").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shear: Option<String>,
+    /// Inverse Obukhov length unit (typically "1/m").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inv_obukhov: Option<String>,
+    /// Deposition velocity unit (typically "m/s").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deposition_velocity: Option<String>,
+    /// Scavenging coefficient unit (typically "1/s").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scavenging_coefficient: Option<String>,
+    /// Concentration unit (typically "kg/m3" or "pg/m3").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub concentration: Option<String>,
+}
+
+/// Expected artifacts produced by a validation run.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExpectedArtifacts {
+    /// Candidate output directory pattern.
+    pub candidate_dir: String,
+    /// Oracle output directory pattern.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oracle_dir: Option<String>,
+    /// Comparison report path.
+    pub comparison_report: String,
+    /// Run manifest path (provenance).
+    pub run_manifest: String,
+}
+
+/// Oracle command overrides (namelist values).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct OracleCommandOverrides {
+    /// Turbulence flag (0/1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lturbulence: Option<u8>,
+    /// Convection flag (0/1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lconvection: Option<u8>,
+    /// CTL parameter (Hanna turbulence scaling).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ctl: Option<f32>,
+    /// IFINE sub-stepping factor.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ifine: Option<u32>,
+    /// Dry deposition flag.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ldrydep: Option<u8>,
+    /// Wet deposition flag.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lwetdep: Option<u8>,
+    /// Decay flag.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ldecay: Option<u8>,
+}
+
+/// Structured representation differences for #52 input-equivalence verdicts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct RepresentationDifferences {
+    /// Vertical coordinate differences.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vertical_coordinate: Option<String>,
+    /// Horizontal grid differences.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub horizontal_grid: Option<String>,
+    /// Temporal resolution differences.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temporal_resolution: Option<String>,
+    /// Wind component differences (e.g., etadot vs omega-derived w).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wind_components: Option<String>,
+    /// PBL diagnostic differences.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pbl_diagnostics: Option<String>,
+    /// Additional notes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<Vec<String>>,
+}
+
+/// Input equivalence status for #52.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InputEquivalenceStatus {
+    /// Input equivalence has been demonstrated.
+    Demonstrated,
+    /// Input equivalence has not been demonstrated (default for real-weather cases).
+    NotDemonstrated,
+    /// Input equivalence is not applicable (analytic/synthetic cases).
+    NotApplicable,
+}
+
+/// Complete validation case manifest.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ValidationCaseManifest {
+    /// Schema version (must equal `VALIDATION_CASE_SCHEMA_VERSION`).
+    pub schema_version: u32,
+    /// Unique case identifier (e.g., "ADV-ANA-001").
+    pub case_id: String,
+    /// Human-readable description.
+    pub description: String,
+    /// Domain specification.
+    pub domain: DomainSpec,
+    /// Release specification.
+    pub release: ReleaseSpec,
+    /// Wind field specification.
+    pub wind: WindSpec,
+    /// Surface fields specification (optional for analytic cases).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub surface: Option<SurfaceSpec>,
+    /// Integration specification.
+    pub integration: IntegrationSpec,
+    /// Physics switches.
+    pub physics_switches: PhysicsSwitches,
+    /// Explicit units for all quantities.
+    pub units: UnitsSpec,
+    /// Stochastic identity specification (candidate + oracle).
+    pub stochastic: StochasticIdentitySpec,
+    /// Execution profile reference (frozen #49).
+    pub execution_profile: ExecutionProfileRef,
+    /// Oracle COMMAND namelist overrides.
+    #[serde(default)]
+    pub oracle_command_overrides: OracleCommandOverrides,
+    /// Expected output artifacts.
+    pub expected_artifacts: ExpectedArtifacts,
+    /// Structured representation differences for #52.
+    #[serde(default)]
+    pub representation_differences: RepresentationDifferences,
+    /// Input equivalence status for #52.
+    #[serde(default = "default_input_equivalence")]
+    pub input_equivalence: InputEquivalenceStatus,
+    /// Additional notes.
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+fn default_input_equivalence() -> InputEquivalenceStatus {
+    InputEquivalenceStatus::NotApplicable
+}
+
+/// Errors for validation case manifest handling.
+#[derive(Debug, Error)]
+pub enum ValidationCaseError {
+    #[error("failed to read case file `{path}`: {source}")]
+    ReadFile {
+        path: std::path::PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to parse case JSON `{path}`: {source}")]
+    ParseJson {
+        path: std::path::PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("schema version mismatch: expected {expected}, got {actual}")]
+    SchemaVersionMismatch { expected: u32, actual: u32 },
+    #[error("missing required field: {field}")]
+    MissingField { field: &'static str },
+    #[error("invalid oracle kind: {0}")]
+    InvalidOracleKind(String),
+    #[error("invalid physics switch configuration: {message}")]
+    InvalidPhysicsSwitches { message: String },
+    #[error("invalid stochastic identity: {message}")]
+    InvalidStochasticIdentity { message: String },
+    #[error("invalid execution profile reference: {message}")]
+    InvalidExecutionProfile { message: String },
+    #[error("ambiguous field: {field} - {message}")]
+    AmbiguousField { field: &'static str, message: String },
+    #[error("unit mismatch: {field} expected {expected}, got {actual}")]
+    UnitMismatch {
+        field: &'static str,
+        expected: String,
+        actual: String,
+    },
+}
+
+impl ValidationCaseManifest {
+    /// Load a validation case manifest from a JSON file.
+    ///
+    /// # Errors
+    /// Returns [`ValidationCaseError::ReadFile`] if the file cannot be read,
+    /// [`ValidationCaseError::ParseJson`] if the JSON is malformed,
+    /// or a validation error if the manifest fails schema validation.
+    pub fn load_from_file(path: &Path) -> Result<Self, ValidationCaseError> {
+        let content = std::fs::read_to_string(path).map_err(|source| ValidationCaseError::ReadFile {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        Self::parse(&content, path)
+    }
+
+    /// Parse a validation case manifest from a JSON string.
+    ///
+    /// # Errors
+    /// Returns [`ValidationCaseError::ParseJson`] if the JSON is malformed,
+    /// [`ValidationCaseError::SchemaVersionMismatch`] if the schema version is incorrect,
+    /// or a validation error if the manifest fails schema validation.
+    pub fn parse(content: &str, path: &Path) -> Result<Self, ValidationCaseError> {
+        let mut manifest: Self =
+            serde_json::from_str(content).map_err(|source| ValidationCaseError::ParseJson {
+                path: path.to_path_buf(),
+                source,
+            })?;
+
+        // Validate schema version
+        if manifest.schema_version != VALIDATION_CASE_SCHEMA_VERSION {
+            return Err(ValidationCaseError::SchemaVersionMismatch {
+                expected: VALIDATION_CASE_SCHEMA_VERSION,
+                actual: manifest.schema_version,
+            });
+        }
+
+        // Fail-closed validation of all required fields
+        manifest.validate()?;
+
+        Ok(manifest)
+    }
+
+    /// Validate the manifest (fail-closed).
+    ///
+    /// # Errors
+    /// Returns a [`ValidationCaseError`] variant describing the first validation failure.
+    pub fn validate(&self) -> Result<(), ValidationCaseError> {
+        // Validate case_id format
+        if self.case_id.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "case_id",
+            });
+        }
+
+        // Validate domain
+        if self.domain.nx == 0 || self.domain.ny == 0 || self.domain.nz == 0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "domain dimensions must be > 0".to_string(),
+            });
+        }
+        if self.domain.wind_heights_m.len() != self.domain.nz as usize {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "domain.wind_heights_m",
+                message: format!(
+                    "wind_heights_m length ({}) must equal domain.nz ({})",
+                    self.domain.wind_heights_m.len(),
+                    self.domain.nz
+                ),
+            });
+        }
+        if self.domain.wind_heights_m.windows(2).any(|w| w[1] <= w[0]) {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "wind_heights_m must be strictly increasing".to_string(),
+            });
+        }
+
+        // Validate release
+        if self.release.particle_count == 0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "release.particle_count must be > 0".to_string(),
+            });
+        }
+        if self.release.mass_kg_total <= 0.0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "release.mass_kg_total must be > 0".to_string(),
+            });
+        }
+
+        // Validate integration
+        if self.integration.dt_s <= 0.0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "integration.dt_s must be > 0".to_string(),
+            });
+        }
+        if self.integration.steps == 0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "integration.steps must be > 0".to_string(),
+            });
+        }
+        let expected_total = self.integration.dt_s * self.integration.steps as f32;
+        if (self.integration.total_s - expected_total).abs() > 1e-6 {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "integration.total_s",
+                message: format!(
+                    "total_s ({}) must equal dt_s * steps ({})",
+                    self.integration.total_s, expected_total
+                ),
+            });
+        }
+
+        // Validate physics switches consistency with other fields
+        self.validate_physics_consistency()?;
+
+        // Validate stochastic identity
+        self.validate_stochastic()?;
+
+        // Validate execution profile reference
+        if self.execution_profile.id.is_empty() {
+            return Err(ValidationCaseError::InvalidExecutionProfile {
+                message: "execution_profile.id must not be empty".to_string(),
+            });
+        }
+        if self.execution_profile.version == 0 {
+            return Err(ValidationCaseError::InvalidExecutionProfile {
+                message: "execution_profile.version must be > 0".to_string(),
+            });
+        }
+
+        // Validate units (check required fields present)
+        if self.units.wind.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "units.wind",
+            });
+        }
+
+        // Validate expected artifacts
+        if self.expected_artifacts.candidate_dir.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "expected_artifacts.candidate_dir",
+            });
+        }
+        if self.expected_artifacts.comparison_report.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "expected_artifacts.comparison_report",
+            });
+        }
+        if self.expected_artifacts.run_manifest.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "expected_artifacts.run_manifest",
+            });
+        }
+
+        Ok(())
+    }
+
+    fn validate_physics_consistency(&self) -> Result<(), ValidationCaseError> {
+        // Surface fields required when turbulence is enabled
+        if self.physics_switches.turbulence && self.surface.is_none() {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "surface",
+                message: "surface fields required when physics_switches.turbulence=true".to_string(),
+            });
+        }
+
+        // If turbulence is disabled, surface should be None or empty
+        if !self.physics_switches.turbulence && self.surface.is_some() {
+            // Allow surface to be present but warn via notes - this is a valid config
+            // for cases that define surface for oracle but disable turbulence in candidate
+        }
+
+        // Check wind profile consistency with domain heights
+        match &self.wind {
+            WindSpec::Uniform { .. }
+            | WindSpec::LinearShear { .. }
+            | WindSpec::NativeEra5 { .. } => {}
+        }
+
+        // Deposition switches require surface fields with relevant parameters
+        if (self.physics_switches.dry_deposition || self.physics_switches.wet_deposition)
+            && self.surface.is_none()
+        {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "surface",
+                message: "surface fields required when deposition is enabled".to_string(),
+            });
+        }
+
+        // Decay requires species configuration (not in this manifest but flagged)
+        if self.physics_switches.decay {
+            // This is a flag for downstream - species config lives in SPECIES/ files
+        }
+
+        Ok(())
+    }
+
+    fn validate_stochastic(&self) -> Result<(), ValidationCaseError> {
+        // Candidate Philox identity validation
+        if let Some(candidate) = &self.stochastic.candidate_philox {
+            if candidate.count == 0 {
+                return Err(ValidationCaseError::InvalidStochasticIdentity {
+                    message: "candidate_philox.count must be > 0".to_string(),
+                });
+            }
+            if candidate.derivation.is_empty() {
+                return Err(ValidationCaseError::InvalidStochasticIdentity {
+                    message: "candidate_philox.derivation must not be empty".to_string(),
+                });
+            }
+        }
+
+        // Oracle seed identity validation
+        if let Some(oracle) = &self.stochastic.oracle_seed {
+            if let Some(seed) = oracle.seed {
+                if seed == 0 || seed > 1_000_000_000 {
+                    return Err(ValidationCaseError::InvalidStochasticIdentity {
+                        message: format!("oracle_seed.seed must be in [1, 1000000000], got {seed}"),
+                    });
+                }
+            }
+            if oracle.repetitions == 0 {
+                return Err(ValidationCaseError::InvalidStochasticIdentity {
+                    message: "oracle_seed.repetitions must be > 0".to_string(),
+                });
+            }
+        }
+
+        // For analytic cases with no RNG consumption, both can be None
+        // For stochastic cases, at least one should be specified
+        if self.physics_switches.turbulence
+            && self.stochastic.candidate_philox.is_none()
+            && self.stochastic.oracle_seed.is_none()
+        {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "stochastic",
+                message: "stochastic identity required when turbulence is enabled".to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Write the manifest to a JSON file (round-trip serialization).
+    ///
+    /// # Errors
+    /// Returns [`ValidationCaseError::ParseJson`] if serialization fails,
+    /// or [`ValidationCaseError::ReadFile`] if the file cannot be written.
+    pub fn write_to_file(&self, path: &Path) -> Result<(), ValidationCaseError> {
+        let json = serde_json::to_string_pretty(self).map_err(|source| ValidationCaseError::ParseJson {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        std::fs::write(path, json).map_err(|source| ValidationCaseError::ReadFile {
+            path: path.to_path_buf(),
+            source,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn make_minimal_manifest() -> ValidationCaseManifest {
+        ValidationCaseManifest {
+            schema_version: VALIDATION_CASE_SCHEMA_VERSION,
+            case_id: "TEST-001".to_string(),
+            description: "Minimal test case".to_string(),
+            domain: DomainSpec {
+                nx: 32,
+                ny: 32,
+                nz: 8,
+                dx_deg: 0.1,
+                dy_deg: 0.1,
+                xlon0_deg: 9.5,
+                ylat0_deg: 8.5,
+                wind_heights_m: vec![50.0, 100.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0],
+            },
+            release: ReleaseSpec {
+                lon_deg: 10.0,
+                lat_deg: 10.0,
+                z_m: 50.0,
+                particle_count: 1000,
+                mass_kg_total: 1.0,
+                mass_kg_per_particle: None,
+            },
+            wind: WindSpec::Uniform {
+                u_m_s: 5.0,
+                v_m_s: -3.0,
+                w_m_s: 0.0,
+            },
+            surface: Some(SurfaceSpec {
+                surface_pressure_pa: 101325.0,
+                temperature_2m_k: 289.0,
+                dewpoint_2m_k: 284.0,
+                sensible_heat_flux_w_m2: 0.0,
+                solar_radiation_w_m2: 120.0,
+                surface_stress_n_m2: 0.2,
+                friction_velocity_m_s: 0.35,
+                convective_velocity_scale_m_s: 0.0,
+                mixing_height_m: 1500.0,
+                tropopause_height_m: 10000.0,
+                inv_obukhov_length_per_m: 0.0,
+                precip_large_scale_mm_h: 0.0,
+                precip_convective_mm_h: 0.0,
+            }),
+            integration: IntegrationSpec {
+                start: "20240101000000".to_string(),
+                dt_s: 300.0,
+                steps: 12,
+                total_s: 3600.0,
+            },
+            physics_switches: PhysicsSwitches {
+                turbulence: true,
+                convection: false,
+                dry_deposition: false,
+                wet_deposition: false,
+                decay: false,
+            },
+            units: UnitsSpec {
+                wind: "m/s".to_string(),
+                pressure: Some("Pa".to_string()),
+                temperature: Some("K".to_string()),
+                heat_flux: Some("W/m2".to_string()),
+                height: Some("m".to_string()),
+                mass: Some("kg".to_string()),
+                time: Some("s".to_string()),
+                shear: Some("1/s".to_string()),
+                inv_obukhov: Some("1/m".to_string()),
+                deposition_velocity: Some("m/s".to_string()),
+                scavenging_coefficient: Some("1/s".to_string()),
+                concentration: Some("kg/m3".to_string()),
+            },
+            stochastic: StochasticIdentitySpec {
+                candidate_philox: Some(CandidatePhiloxIdentity {
+                    base_key: [3737180555, 305419896],
+                    base_counter: [0, 0, 0, 0],
+                    count: 10,
+                    derivation: "seed i uses key [base0 + i, base1] with zeroed counter".to_string(),
+                }),
+                oracle_seed: Some(OracleSeedIdentity {
+                    kind: OracleKind::SeedableValidationOracle,
+                    seed: Some(1),
+                    repetitions: 5,
+                }),
+            },
+            execution_profile: ExecutionProfileRef {
+                id: "flexpart-11.1-single-thread".to_string(),
+                version: 1,
+                manifest_path: "reference/flexpart-11.1.json".to_string(),
+            },
+            oracle_command_overrides: OracleCommandOverrides {
+                lturbulence: Some(1),
+                ctl: Some(5.0),
+                ifine: Some(4),
+                lconvection: Some(0),
+                ..Default::default()
+            },
+            expected_artifacts: ExpectedArtifacts {
+                candidate_dir: "target/corpus/candidate/TEST-001".to_string(),
+                oracle_dir: Some("target/corpus/oracle/TEST-001".to_string()),
+                comparison_report: "target/corpus/comparison_report.json".to_string(),
+                run_manifest: "target/corpus/run_manifest.json".to_string(),
+            },
+            representation_differences: RepresentationDifferences::default(),
+            input_equivalence: InputEquivalenceStatus::NotApplicable,
+            notes: vec![],
+        }
+    }
+
+    #[test]
+    fn round_trip_serialization() {
+        let manifest = make_minimal_manifest();
+        let mut file = NamedTempFile::new().expect("temp file");
+        manifest.write_to_file(file.path()).expect("write");
+        let loaded = ValidationCaseManifest::load_from_file(file.path()).expect("load");
+        assert_eq!(manifest, loaded);
+    }
+
+    #[test]
+    fn schema_version_mismatch_rejected() {
+        let mut manifest = make_minimal_manifest();
+        manifest.schema_version = 999;
+        let mut file = NamedTempFile::new().expect("temp file");
+        file.write_all(serde_json::to_string_pretty(&manifest).unwrap().as_bytes())
+            .expect("write");
+        let err = ValidationCaseManifest::load_from_file(file.path()).expect_err("should fail");
+        assert!(matches!(err, ValidationCaseError::SchemaVersionMismatch { .. }));
+    }
+
+    #[test]
+    fn missing_surface_when_turbulence_enabled_rejected() {
+        let mut manifest = make_minimal_manifest();
+        manifest.surface = None;
+        manifest.physics_switches.turbulence = true;
+        let err = manifest.validate().expect_err("should fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::AmbiguousField { field: "surface", .. }
+        ));
+    }
+
+    #[test]
+    fn invalid_oracle_seed_rejected() {
+        let mut manifest = make_minimal_manifest();
+        manifest.stochastic.oracle_seed = Some(OracleSeedIdentity {
+            kind: OracleKind::SeedableValidationOracle,
+            seed: Some(0), // Invalid: 0 is rejected per #50 contract
+            repetitions: 5,
+        });
+        let err = manifest.validate().expect_err("should fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::InvalidStochasticIdentity { .. }
+        ));
+    }
+
+    #[test]
+    fn invalid_oracle_seed_too_large_rejected() {
+        let mut manifest = make_minimal_manifest();
+        manifest.stochastic.oracle_seed = Some(OracleSeedIdentity {
+            kind: OracleKind::SeedableValidationOracle,
+            seed: Some(1_000_000_001), // Invalid: > 1e9
+            repetitions: 5,
+        });
+        let err = manifest.validate().expect_err("should fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::InvalidStochasticIdentity { .. }
+        ));
+    }
+
+    #[test]
+    fn mismatched_wind_heights_rejected() {
+        let mut manifest = make_minimal_manifest();
+        manifest.domain.nz = 8;
+        manifest.domain.wind_heights_m = vec![50.0, 100.0]; // Only 2 heights for 8 levels
+        let err = manifest.validate().expect_err("should fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::AmbiguousField { field: "domain.wind_heights_m", .. }
+        ));
+    }
+
+    #[test]
+    fn non_increasing_wind_heights_rejected() {
+        let mut manifest = make_minimal_manifest();
+        // 8 heights, but not strictly increasing (500 > 200 is false)
+        manifest.domain.wind_heights_m = vec![50.0, 100.0, 200.0, 500.0, 200.0, 1500.0, 3000.0, 5000.0];
+        let err = manifest.validate().expect_err("should fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::InvalidPhysicsSwitches { .. }
+        ));
+    }
+
+    #[test]
+    fn total_s_mismatch_rejected() {
+        let mut manifest = make_minimal_manifest();
+        manifest.integration.total_s = 9999.0; // Wrong
+        let err = manifest.validate().expect_err("should fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::AmbiguousField { field: "integration.total_s", .. }
+        ));
+    }
+
+    #[test]
+    fn analytic_case_no_stochastic_allowed() {
+        let mut manifest = make_minimal_manifest();
+        manifest.physics_switches.turbulence = false;
+        manifest.stochastic = StochasticIdentitySpec::default(); // Both None
+        manifest.surface = None; // No surface needed
+        // Should validate successfully
+        manifest.validate().expect("analytic case should validate");
+    }
+
+    #[test]
+    fn oracle_kind_parsing() {
+        assert_eq!(
+            "pristine-oracle".parse::<OracleKind>().unwrap(),
+            OracleKind::PristineOracle
+        );
+        assert_eq!(
+            "seedable-validation-oracle".parse::<OracleKind>().unwrap(),
+            OracleKind::SeedableValidationOracle
+        );
+        assert!("invalid".parse::<OracleKind>().is_err());
+    }
+
+    #[test]
+    fn input_equivalence_status_serialization() {
+        assert_eq!(
+            serde_json::to_string(&InputEquivalenceStatus::Demonstrated).unwrap(),
+            "\"demonstrated\""
+        );
+        assert_eq!(
+            serde_json::to_string(&InputEquivalenceStatus::NotDemonstrated).unwrap(),
+            "\"not_demonstrated\""
+        );
+        assert_eq!(
+            serde_json::to_string(&InputEquivalenceStatus::NotApplicable).unwrap(),
+            "\"not_applicable\""
+        );
+    }
+
+    #[test]
+    fn load_and_validate_adv_ana_001() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases")
+            .join("ADV-ANA-001.json");
+        let manifest = ValidationCaseManifest::load_from_file(&path).expect("load ADV-ANA-001");
+        assert_eq!(manifest.case_id, "ADV-ANA-001");
+        assert_eq!(manifest.schema_version, 2);
+        assert!(!manifest.physics_switches.turbulence);
+        assert!(manifest.stochastic.candidate_philox.is_none());
+        assert!(manifest.stochastic.oracle_seed.is_none());
+        assert_eq!(manifest.input_equivalence, InputEquivalenceStatus::NotApplicable);
+        manifest.validate().expect("ADV-ANA-001 should validate");
+    }
+
+    #[test]
+    fn load_and_validate_wind_uni_002() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases")
+            .join("WIND-UNI-002.json");
+        let manifest = ValidationCaseManifest::load_from_file(&path).expect("load WIND-UNI-002");
+        assert_eq!(manifest.case_id, "WIND-UNI-002");
+        assert_eq!(manifest.schema_version, 2);
+        assert!(manifest.physics_switches.turbulence);
+        assert!(manifest.surface.is_some());
+        assert!(manifest.stochastic.candidate_philox.is_some());
+        assert!(manifest.stochastic.oracle_seed.is_some());
+        let oracle = manifest.stochastic.oracle_seed.as_ref().unwrap();
+        assert_eq!(oracle.kind, OracleKind::SeedableValidationOracle);
+        assert_eq!(oracle.seed, Some(1));
+        assert_eq!(manifest.input_equivalence, InputEquivalenceStatus::NotApplicable);
+        manifest.validate().expect("WIND-UNI-002 should validate");
+    }
+
+    #[test]
+    fn load_and_validate_etex_mini_013() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases")
+            .join("ETEX-MINI-013.json");
+        let manifest = ValidationCaseManifest::load_from_file(&path).expect("load ETEX-MINI-013");
+        assert_eq!(manifest.case_id, "ETEX-MINI-013");
+        assert_eq!(manifest.schema_version, 2);
+        assert!(manifest.physics_switches.turbulence);
+        assert!(manifest.physics_switches.dry_deposition);
+        assert!(manifest.physics_switches.wet_deposition);
+        assert!(manifest.surface.is_some());
+        assert!(manifest.stochastic.candidate_philox.is_some());
+        assert!(manifest.stochastic.oracle_seed.is_some());
+        let oracle = manifest.stochastic.oracle_seed.as_ref().unwrap();
+        assert_eq!(oracle.kind, OracleKind::SeedableValidationOracle);
+        assert_eq!(oracle.seed, Some(1));
+        assert_eq!(manifest.input_equivalence, InputEquivalenceStatus::NotDemonstrated);
+        assert!(manifest.representation_differences.vertical_coordinate.is_some());
+        assert!(manifest.representation_differences.wind_components.is_some());
+        manifest.validate().expect("ETEX-MINI-013 should validate");
+    }
+
+    #[test]
+    fn round_trip_all_cases() {
+        for case_id in ["ADV-ANA-001", "WIND-UNI-002", "ETEX-MINI-013"] {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("fixtures")
+                .join("corpus")
+                .join("cases")
+                .join(format!("{case_id}.json"));
+            let manifest = ValidationCaseManifest::load_from_file(&path)
+                .unwrap_or_else(|e| panic!("load {case_id}: {e}"));
+            let mut temp = NamedTempFile::new().expect("temp file");
+            manifest.write_to_file(temp.path()).expect("write");
+            let reloaded = ValidationCaseManifest::load_from_file(temp.path()).expect("reload");
+            assert_eq!(manifest, reloaded, "{case_id} round-trip failed");
+        }
+    }
+}

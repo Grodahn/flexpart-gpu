@@ -1,0 +1,119 @@
+{
+  "schema_version": 2,
+  "case_id": "ETEX-MINI-013",
+  "description": "Real-weather ETEX-1 mini run from ERA5 native model levels. GPU uses 16 AGL levels with omega-derived w; Oracle uses 137 hybrid levels with etadot.",
+  "domain": {
+    "nx": 85,
+    "ny": 73,
+    "nz": 16,
+    "dx_deg": 0.25,
+    "dy_deg": 0.25,
+    "xlon0_deg": -20.0,
+    "ylat0_deg": 30.0,
+    "wind_heights_m": [10.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 1500.0, 2000.0, 2500.0, 3000.0, 4000.0, 5000.0, 7000.0, 10000.0, 15000.0, 20000.0]
+  },
+  "release": {
+    "lon_deg": 3.7,
+    "lat_deg": 50.8,
+    "z_m": 100.0,
+    "particle_count": 50000,
+    "mass_kg_total": 340.0,
+    "mass_kg_per_particle": 0.0068
+  },
+  "wind": {
+    "profile": "native_era5",
+    "note": "Derived from ERA5 native model levels via scripts/etex/prepare_native_era5.py"
+  },
+  "surface": {
+    "surface_pressure_pa": 101325.0,
+    "temperature_2m_k": 288.0,
+    "dewpoint_2m_k": 283.0,
+    "sensible_heat_flux_w_m2": 10.0,
+    "solar_radiation_w_m2": 180.0,
+    "surface_stress_n_m2": 0.2,
+    "friction_velocity_m_s": 0.35,
+    "convective_velocity_scale_m_s": 0.1,
+    "mixing_height_m": 1200.0,
+    "tropopause_height_m": 10000.0,
+    "inv_obukhov_length_per_m": 0.0,
+    "precip_large_scale_mm_h": 0.0,
+    "precip_convective_mm_h": 0.0
+  },
+  "integration": {
+    "start": "19941023160000",
+    "dt_s": 180.0,
+    "steps": 240,
+    "total_s": 43200.0
+  },
+  "physics_switches": {
+    "turbulence": true,
+    "convection": false,
+    "dry_deposition": true,
+    "wet_deposition": true,
+    "decay": false
+  },
+  "units": {
+    "wind": "m/s",
+    "pressure": "Pa",
+    "temperature": "K",
+    "heat_flux": "W/m2",
+    "height": "m",
+    "mass": "kg",
+    "time": "s",
+    "concentration": "pg/m3",
+    "deposition_velocity": "m/s",
+    "scavenging_coefficient": "1/s"
+  },
+  "stochastic": {
+    "candidate_philox": {
+      "base_key": [3735928557, 305419896],
+      "base_counter": [0, 0, 0, 0],
+      "count": 10,
+      "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
+    },
+    "oracle_seed": {
+      "kind": "seedable-validation-oracle",
+      "seed": 1,
+      "repetitions": 5
+    }
+  },
+  "execution_profile": {
+    "id": "flexpart-11.1-single-thread",
+    "version": 1,
+    "manifest_path": "reference/flexpart-11.1.json"
+  },
+  "oracle_command_overrides": {
+    "lturbulence": 1,
+    "ctl": 5.0,
+    "ifine": 4,
+    "lconvection": 0,
+    "ldrydep": 1,
+    "lwetdep": 1
+  },
+  "expected_artifacts": {
+    "candidate_dir": "target/etex/mini/candidate",
+    "oracle_dir": "target/etex/mini/oracle",
+    "comparison_report": "target/etex/mini/comparison_report.json",
+    "run_manifest": "target/etex/mini/run_manifest.json"
+  },
+  "representation_differences": {
+    "vertical_coordinate": "GPU: 16 fixed AGL levels (10-20000m); Oracle: 137 native hybrid model levels.",
+    "horizontal_grid": "Both 0.25 deg, but GPU uses regular lat/lon; Oracle uses rotated grid.",
+    "temporal_resolution": "GPU: 180s fixed timestep; Oracle: adaptive timestep per FLEXPART.",
+    "wind_components": "GPU: omega-derived w (pressure velocity -> m/s); Oracle: native etadot (eta-coordinate velocity).",
+    "pbl_diagnostics": "GPU: computed from interpolated surface fields; Oracle: native PBL scheme.",
+    "notes": [
+      "INPUT_EQUIVALENCE_NOT_DEMONSTRATED per fixtures/etex/mini/README.md.",
+      "These are structural representation differences, not errors.",
+      "Input equivalence audit in target/etex/mini/input_equivalence_report.json."
+    ]
+  },
+  "input_equivalence": "not_demonstrated",
+  "notes": [
+    "Real-weather case from ETEX-1 tracer experiment (1994-10-23 to 1994-10-24).",
+    "Meteorology from ERA5 native model levels in fixtures/etex/native-mini/.",
+    "Paired run with DATEM station observations for model evaluation.",
+    "No scientific parity claimed: representation differences are documented in representation_differences.",
+    "Diagnostic metrics only: FB, NMSE, correlation, FAC2, timing/peak concentration."
+  ]
+}

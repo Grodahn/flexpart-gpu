@@ -4,6 +4,10 @@
 //! - run a synthetic ETEX-style scenario through the current pipeline,
 //! - compute comparison metrics against a reference field set,
 //! - emit structured artifacts for future real-dataset integration.
+//!
+//! Also provides the versioned validation case manifest contract (Issue #51).
+
+pub mod case;
 
 use std::fs;
 use std::path::{Path, PathBuf};

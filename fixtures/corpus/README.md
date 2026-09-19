@@ -15,9 +15,13 @@ Start from `fixtures/corpus/corpus.json` (versioned index) and
   requirement, fixture paths, runner, expected physical properties with units,
   fixed configuration, documented call, and status (`implemented` or `blocked`
   with a verifiable dependency).
-- `cases/*.json`: versioned per-case inputs for the candidate productive path
-  (synthetic wind, surface fields, release, timestep, seeds). Units are
-  documented per field. No candidate output is used as a reference.
+- `cases/*.json`: canonical `schema_version` 2 validation-case manifests
+  (Issue #51: domain, release, wind, surface, integration, physics switches,
+  deposition forcing, stochastic Philox identity, execution profile,
+  oracle overrides, expected artifacts). Units are documented per field.
+  No candidate output is used as a reference. The legacy v1 shape is
+  frozen and rejected; see `cases/MIGRATION_NOTES.md` for the field-by-field
+  v1 -> v2 mapping.
 - `fortran/<CASE>/`: versioned Fortran oracle inputs (`COMMAND`, `RELEASES`,
   `OUTGRID`, `AGECLASSES`, `RECEPTORS`, `SPECIES/`). They reuse the existing
   synthetic-GRIB workflow (`scripts/generate_synthetic_grib.py`) and the

@@ -98,14 +98,89 @@ def audit_fixture_case(case_id: str, case: dict, fort_dir: Path) -> None:
     check(f"{case_id} INPUT_DERIVATION.json present", (outdir / "INPUT_DERIVATION.json").is_file())
 
 
+def _as_u32_list(value, length: int):
+    if not isinstance(value, list) or len(value) != length:
+        return None
+    out = []
+    for item in value:
+        if not isinstance(item, int) or item < 0 or item >= 2**32:
+            return None
+        out.append(item)
+    return out
+
+
+def candidate_philox_identity(case_id: str, case: dict):
+    """Canonical v2 Philox identity reader (no silent fallback, no v1).
+
+    Returns ``(base_key, base_counter, count, deterministic, identical, error)``
+    where ``error`` is None on success and a human-readable reason otherwise.
+    Only ``schema_version`` 2 documents are accepted; legacy v1 (``seeds``,
+    ``version``) is frozen and rejected. ``ADV-ANA-001`` is the only
+    deterministic case allowed without an identity.
+    """
+    if case.get("schema_version") != 2 or "version" in case:
+        return None, None, None, False, False, (
+            f"case {case_id}: unsupported schema version; only schema_version 2 "
+            "is accepted (v1 is frozen, see MIGRATION_NOTES.md)"
+        )
+    stochastic = case.get("stochastic", {})
+    cand = stochastic.get("candidate_philox")
+    if cand is None:
+        if case_id == "ADV-ANA-001":
+            return None, None, 1, True, False, None
+        return None, None, None, False, False, (
+            f"case {case_id}: missing stochastic.candidate_philox; "
+            "no default key substituted"
+        )
+    base_key = _as_u32_list(cand.get("base_key"), 2)
+    base_counter = _as_u32_list(cand.get("base_counter"), 4)
+    count = cand.get("count")
+    identical = cand.get("identical_repeats", False)
+    if base_key is None:
+        return None, None, None, False, False, (
+            f"case {case_id}: stochastic.candidate_philox.base_key malformed"
+        )
+    if base_counter is None:
+        return None, None, None, False, False, (
+            f"case {case_id}: stochastic.candidate_philox.base_counter malformed"
+        )
+    if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+        return None, None, None, False, False, (
+            f"case {case_id}: stochastic.candidate_philox.count must be > 0"
+        )
+    if not isinstance(identical, bool):
+        return None, None, None, False, False, (
+            f"case {case_id}: stochastic.candidate_philox.identical_repeats "
+            "must be a boolean"
+        )
+    return base_key, base_counter, count, False, identical, None
+
+
+def expected_philox_for_seed(case_id: str, base_key, base_counter, seed_index: int,
+                             identical: bool = False):
+    """Declared key/counter for one seed.
+
+    Identical-repeat manifests (REPEAT-009) reuse the base key; all other
+    cases derive ``[(base0 + index) % 2**32, base1]``.
+    """
+    _ = case_id
+    if identical:
+        return list(base_key), list(base_counter)
+    return [(base_key[0] + seed_index) % 2**32, base_key[1]], list(base_counter)
+
+
 def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
     seeds = sorted(case_dir.glob("seed_*.json"))
     release = case["release"]
     expected_count = int(release["particle_count"])
     expected_mass = GEN.case_total_mass_kg(case)
-    base_key = None
-    if isinstance(case.get("seeds"), dict):
-        base_key = case["seeds"].get("base_philox_key")
+    base_key, base_counter, ensemble_count, deterministic, identical, identity_error = (
+        candidate_philox_identity(case_id, case)
+    )
+    if identity_error is not None:
+        check(f"{case_id} Philox identity declared", False, identity_error)
+    else:
+        check(f"{case_id} Philox identity declared", True)
     if case_id == "ADV-ANA-001":
         check(f"{case_id} exactly one deterministic seed", len(seeds) == 1, f"found {len(seeds)}")
     elif case_id == "REPEAT-009":
@@ -124,11 +199,23 @@ def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
         initial = seed.get("metrics", {}).get("initial_mass_kg")
         check(f"{stem} initial mass", initial is not None and math.isclose(initial, expected_mass, rel_tol=1e-12),
               f"{initial} vs {expected_mass}")
-        if base_key is not None and case_id != "REPEAT-009":
+        if deterministic:
+            pass
+        elif identity_error is not None:
+            check(f"{stem} Philox derivation", False, identity_error)
+        else:
             idx = seed.get("seed_index", 0)
-            expected_key = [(base_key[0] + idx) % 2**32, base_key[1]]
-            check(f"{stem} Philox derivation", seed.get("philox_key") == expected_key,
-                  f"{seed.get('philox_key')} vs {expected_key}")
+            if not isinstance(idx, int) or idx < 0 or idx >= ensemble_count:
+                check(f"{stem} seed_index in declared ensemble", False,
+                      f"seed_index {seed.get('seed_index')} outside [0, {ensemble_count})")
+            else:
+                expected_key, expected_counter = expected_philox_for_seed(
+                    case_id, base_key, base_counter, idx, identical
+                )
+                check(f"{stem} Philox derivation", seed.get("philox_key") == expected_key,
+                      f"{seed.get('philox_key')} vs {expected_key}")
+                check(f"{stem} Philox counter", seed.get("philox_counter") == expected_counter,
+                      f"{seed.get('philox_counter')} vs {expected_counter}")
         check(f"{stem} adapter recorded", bool(seed.get("adapter")))
 
 

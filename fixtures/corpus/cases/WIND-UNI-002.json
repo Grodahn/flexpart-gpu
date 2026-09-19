@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "schema_version": 2,
   "case_id": "WIND-UNI-002",
   "description": "Uniform wind with horizontal and vertical turbulence through the production ForwardTimeLoopDriver.",
   "domain": {
@@ -10,20 +10,37 @@
     "dy_deg": 0.1,
     "xlon0_deg": 9.5,
     "ylat0_deg": 8.5,
-    "wind_heights_m": [50.0, 100.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0]
+    "horizontal_ref": "geographic_lon_lat_degrees",
+    "wind_heights_m": [50.0, 100.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0],
+    "wind_heights_ref": "agl"
   },
   "release": {
-    "lon_deg": 10.0,
-    "lat_deg": 10.0,
-    "z_m": 50.0,
+    "geometry": {
+      "kind": "point",
+      "lon_deg": 10.0,
+      "lat_deg": 10.0,
+      "z_m": 50.0
+    },
+    "vertical_ref": "agl",
+    "timing": {
+      "kind": "instant",
+      "at": "20240101000000"
+    },
+    "species": {
+      "id": "SPECIES_024"
+    },
+    "inventory": {
+      "quantity_kg": 1.0,
+      "unit": "kg"
+    },
     "particle_count": 1000,
-    "mass_kg_total": 1.0
+    "mass_kg_per_particle": 0.001
   },
   "wind": {
+    "profile": "uniform",
     "u_m_s": 5.0,
     "v_m_s": -3.0,
-    "w_m_s": 0.0,
-    "profile": "uniform"
+    "w_m_s": 0.0
   },
   "surface": {
     "surface_pressure_pa": 101325.0,
@@ -42,9 +59,9 @@
   },
   "integration": {
     "start": "20240101000000",
-    "dt_s": 300,
+    "dt_s": 300.0,
     "steps": 12,
-    "total_s": 3600
+    "total_s": 3600.0
   },
   "physics_switches": {
     "turbulence": true,
@@ -59,18 +76,51 @@
     "temperature": "K",
     "heat_flux": "W/m2",
     "height": "m",
-    "mass": "kg"
+    "mass": "kg",
+    "time": "s",
+    "inv_obukhov": "1/m"
   },
-  "seeds": {
-    "base_philox_key": [3737180555, 305419896],
-    "base_counter": [0, 0, 0, 0],
-    "count": 10,
-    "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
+  "stochastic": {
+    "candidate_philox": {
+      "base_key": [3737180555, 305419896],
+      "base_counter": [0, 0, 0, 0],
+      "count": 10,
+      "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
+    },
+    "oracle_seed": {
+      "kind": "seedable-validation-oracle",
+      "seed": 1,
+      "repetitions": 5
+    }
+  },
+  "execution_profile": {
+    "id": "flexpart-11.1-single-thread",
+    "version": 1,
+    "manifest_path": "reference/flexpart-11.1.json"
   },
   "oracle_command_overrides": {
-    "LTURBULENCE": 1,
-    "CTL": 5.0,
-    "IFINE": 4,
-    "LCONVECTION": 0
-  }
+    "lturbulence": 1,
+    "ctl": 5.0,
+    "ifine": 4,
+    "lconvection": 0
+  },
+  "expected_artifacts": {
+    "candidate_dir": "target/corpus/candidate/WIND-UNI-002",
+    "oracle_dir": "target/corpus/oracle/WIND-UNI-002",
+    "comparison_report": "target/corpus/comparison_report.json",
+    "run_manifest": "target/corpus/run_manifest.json"
+  },
+  "representation_differences": {
+    "notes": [
+      "Candidate: 8 fixed AGL levels, Philox RNG, fused Hanna/Langevin kernel.",
+      "Oracle: 137 native hybrid levels, Knuth subtractive RNG, separate turbulence/convection modules.",
+      "Vertical coordinate differs (AGL vs hybrid); RNG namespaces are separate per #50 contract."
+    ]
+  },
+  "input_equivalence": "not_applicable",
+  "notes": [
+    "Stochastic case: 10 independent Philox seeds for candidate; 5 repetitions of seedable oracle with FLEXPART_VALIDATION_SEED=1.",
+    "Expected: COM advects east/south with 5/-3 m/s wind; plume spreads in x/y/z; all particles in [0, BLH]; mass conserved.",
+    "Oracle RNG: seed 1 maps to iseed1=-(7+0+1)=-8, iseed2=-(88+0+1)=-89, rannumb idummy=-(320+1)=-321 (single thread)."
+  ]
 }

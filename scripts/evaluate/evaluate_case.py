@@ -976,23 +976,52 @@ def _threshold_gate_value(thresholds_doc, criterion_id):
     raise ValueError(f"thresholds lack criterion {criterion_id}")
 
 
+def _candidate_philox_block(case_def, case_id):
+    """Canonical v2 Philox block for a case definition.
+
+    Reads ``stochastic.candidate_philox`` (base_key, base_counter, count,
+    identical_repeats). Raises ValueError for legacy v1 documents, missing
+    identities (except ADV-ANA-001, which hardcodes key ``[0, 0]``), and
+    malformed values. No default key is ever substituted.
+    """
+    if case_def.get("schema_version") != 2 or "version" in case_def:
+        raise ValueError(
+            f"case {case_id} is not a canonical v2 document "
+            "(schema_version 2 required; v1 is frozen)")
+    stochastic = case_def.get("stochastic") or {}
+    block = stochastic.get("candidate_philox")
+    if block is None:
+        if case_id == "ADV-ANA-001":
+            return None
+        raise ValueError(
+            f"case {case_id} declares no stochastic.candidate_philox; "
+            "no default key substituted")
+    base_key = block.get("base_key")
+    base_counter = block.get("base_counter")
+    if (not isinstance(base_key, list) or len(base_key) != 2
+            or not all(isinstance(v, int) and 0 <= v < 2**32 for v in base_key)):
+        raise ValueError(f"case {case_id} has malformed candidate base_key")
+    if (not isinstance(base_counter, list) or len(base_counter) != 4
+            or not all(isinstance(v, int) and 0 <= v < 2**32 for v in base_counter)):
+        raise ValueError(f"case {case_id} has malformed candidate base_counter")
+    return block
+
+
 def _expected_philox_identity(case_def, case_id, seed_index):
     """Expected (key, counter) for a seed file, or None when unchecked.
 
     Follows the corpus runner derivation: ``ADV-ANA-001`` hardcodes key
-    ``[0, 0]``; ``REPEAT-009`` reruns the base key identically by design;
-    all other driver cases use ``[base0 + seed_index, base1]`` with a zeroed
-    counter (wrapping at 2^32). Returns None when the case definition
-    carries no seeds block, in which case only uniqueness is enforced.
+    ``[0, 0]``; manifests with ``identical_repeats`` (REPEAT-009) rerun the
+    base key identically by design; all other driver cases use
+    ``[base0 + seed_index, base1]`` with the declared counter (wrapping at
+    2^32). Returns None only for ADV-ANA-001.
     """
     if case_id == "ADV-ANA-001":
         return [0, 0], [0, 0, 0, 0]
-    seeds_block = case_def.get("seeds") or {}
-    base_key = seeds_block.get("base_philox_key")
-    if base_key is None:
-        return None
-    base_counter = seeds_block.get("base_counter", [0, 0, 0, 0])
-    if case_id == "REPEAT-009":
+    block = _candidate_philox_block(case_def, case_id)
+    base_key = block["base_key"]
+    base_counter = block["base_counter"]
+    if block.get("identical_repeats", False):
         expected_key = [int(base_key[0]), int(base_key[1])]
     else:
         expected_key = [(int(base_key[0]) + int(seed_index)) % 2**32,
@@ -1058,11 +1087,13 @@ def run_corpus_seeds(args, oracle_manifest):
     notes = list(args.note or [])
     case_def = io_corpus.read_case_definition(args.case_def)
     case_id = case_def["case_id"]
-    release_mass = float(case_def["release"]["mass_kg_total"])
+    release_mass = float(case_def["release"]["inventory"]["quantity_kg"])
     switches = case_def["physics_switches"]
     deposition_on = bool(switches.get("dry_deposition") or
                          switches.get("wet_deposition") or switches.get("decay"))
-    expected_seeds = int(case_def["seeds"].get("count", 0)) or None
+    _candidate_philox_block(case_def, case_id)
+    candidate_block = (case_def.get("stochastic") or {}).get("candidate_philox") or {}
+    expected_seeds = int(candidate_block.get("count", 0)) or None
     thresholds_doc = json.loads(Path(args.thresholds).read_text(encoding="utf-8"))
     gate_value = _threshold_gate_value(thresholds_doc, "MASS_BUDGET_CLOSE")
 

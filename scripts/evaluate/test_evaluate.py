@@ -35,17 +35,21 @@ def _namespaced(**overrides):
     return argparse.Namespace(**defaults)
 
 
-def _demo_case(path, case_id="DEMO-001", base_key=(1, 2), count=2):
+def _demo_case(path, case_id="DEMO-001", base_key=(1, 2), count=2,
+               identical_repeats=False):
     path = Path(path)
     path.write_text(json.dumps({
+        "schema_version": 2,
         "case_id": case_id,
-        "release": {"mass_kg_total": 1.0},
+        "release": {"inventory": {"quantity_kg": 1.0, "unit": "kg"}},
         "physics_switches": {"turbulence": True, "convection": False,
                              "dry_deposition": False, "wet_deposition": False,
                              "decay": False},
-        "seeds": {"base_philox_key": list(base_key),
-                  "base_counter": [0, 0, 0, 0], "count": count,
-                  "derivation": "seed i uses key [base0 + i, base1]"},
+        "stochastic": {"candidate_philox": {
+            "base_key": list(base_key),
+            "base_counter": [0, 0, 0, 0], "count": count,
+            "derivation": "seed i uses key [base0 + i, base1]",
+            "identical_repeats": identical_repeats}},
         "domain": {"nx": 32, "ny": 32, "nz": 8, "dx_deg": 0.1, "dy_deg": 0.1,
                    "xlon0_deg": 9.5, "ylat0_deg": 8.5},
         "integration": {"start": "20240101000000", "dt_s": 300, "steps": 12,
@@ -108,8 +112,9 @@ class CorpusReaderTest(unittest.TestCase):
             self.assertAlmostEqual(sum(masses), 1.0)
             case_path = Path(directory) / "case.json"
             case_path.write_text(
-                '{"case_id": "OTHER", "release": {}, "physics_switches": {},'
-                ' "seeds": {}, "domain": {}}', encoding="utf-8")
+                '{"schema_version": 2, "case_id": "OTHER", "release": {},'
+                ' "physics_switches": {}, "stochastic": {}, "domain": {}}',
+                encoding="utf-8")
             case = io_corpus.read_case_definition(str(case_path))
             self.assertNotEqual(case["case_id"], data["case_id"])
 
@@ -305,7 +310,8 @@ class SeedIdentityTest(unittest.TestCase):
         import io_corpus
         with tempfile.TemporaryDirectory() as directory:
             case = Path(directory) / "case.json"
-            _demo_case(case, case_id="REPEAT-009", base_key=(5, 6))
+            _demo_case(case, case_id="REPEAT-009", base_key=(5, 6),
+                       identical_repeats=True)
             case_def = json.loads(case.read_text(encoding="utf-8"))
             seeds = []
             for index in (0, 1):

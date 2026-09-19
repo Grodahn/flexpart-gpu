@@ -31,6 +31,7 @@ use flexpart_gpu::simulation::{
     ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket,
     ParticleForcingField,
 };
+use flexpart_gpu::validation::case::ValidationCaseManifest;
 use flexpart_gpu::wind::{SurfaceFields, WindField3D, WindFieldGrid};
 use ndarray::Array1;
 use serde::Serialize;
@@ -116,10 +117,10 @@ struct CandidateMetrics {
     z_std_m: f64,
 }
 
-fn parse_args() -> (Vec<String>, usize, PathBuf, PathBuf) {
+fn parse_args() -> (Vec<String>, Option<usize>, PathBuf, PathBuf) {
     let mut cases: Vec<String> = Vec::new();
     let mut all = false;
-    let mut seeds: usize = 10;
+    let mut seeds: Option<usize> = None;
     let mut out_dir = PathBuf::from("target/corpus/candidate");
     let mut fixtures = PathBuf::from("fixtures/corpus/cases");
     let mut args = std::env::args().skip(1).peekable();
@@ -132,7 +133,8 @@ fn parse_args() -> (Vec<String>, usize, PathBuf, PathBuf) {
             "--all" => all = true,
             "--seeds" => {
                 let value = args.next().expect("--seeds needs a value");
-                seeds = value.parse().expect("seeds must be a number");
+                let parsed: usize = value.parse().expect("seeds must be a number");
+                seeds = Some(parsed);
             }
             "--out-dir" => {
                 out_dir = PathBuf::from(args.next().expect("--out-dir needs a value"));
@@ -161,6 +163,65 @@ fn candidate_revision() -> String {
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Load the canonical v2 manifest.
+///
+/// Only `schema_version` 2 is accepted. Legacy v1 documents are frozen and
+/// unsupported (see `fixtures/corpus/cases/MIGRATION_NOTES.md`); they are
+/// rejected fail-closed with a version error, never silently adapted.
+fn load_case_manifest(fixture_path: &Path, text: &str) -> Result<ValidationCaseManifest, String> {
+    ValidationCaseManifest::parse(text, fixture_path)
+        .map_err(|e| format!("invalid case manifest {}: {e}", fixture_path.display()))
+}
+
+/// Resolve the candidate Philox key/counter for one seed.
+///
+/// The canonical typed manifest is the only source. Stochastic cases without
+/// an identity are rejected before any GPU execution. No default key is ever
+/// substituted. Identical-repeat semantics (REPEAT-009) come from the
+/// manifest `identical_repeats` flag, never from hard-coded case IDs.
+fn resolve_candidate_seed(
+    case_id: &str,
+    manifest: &ValidationCaseManifest,
+    seed_index: u32,
+) -> Result<([u32; 2], [u32; 4]), String> {
+    manifest
+        .candidate_seed_identity(seed_index)
+        .map_err(|e| format!("case {case_id}: {e}"))
+}
+
+/// Resolve how many seeds to run.
+///
+/// The declared manifest count is authoritative. An explicit `--seeds N`
+/// selects a leading subset (`N <= declared`) for quick checks; it can
+/// never silently expand the ensemble or override the derivation.
+fn resolve_ensemble_count(
+    case_id: &str,
+    manifest: &ValidationCaseManifest,
+    cli_seeds: Option<usize>,
+) -> Result<usize, String> {
+    let declared = if case_id == "ADV-ANA-001" {
+        1
+    } else if let Some(candidate) = &manifest.stochastic.candidate_philox {
+        usize::try_from(candidate.count)
+            .map_err(|_| format!("case {case_id}: candidate_philox.count out of range"))?
+    } else {
+        return Err(format!(
+            "case {case_id}: missing stochastic.candidate_philox; ensemble count unknown"
+        ));
+    };
+    if declared == 0 {
+        return Err(format!("case {case_id}: declared ensemble count must be > 0"));
+    }
+    match cli_seeds {
+        None => Ok(declared),
+        Some(0) => Err(format!("case {case_id}: --seeds must be > 0")),
+        Some(requested) if requested > declared => Err(format!(
+            "case {case_id}: --seeds {requested} exceeds declared ensemble count {declared}; refusing to invent seeds"
+        )),
+        Some(requested) => Ok(requested),
+    }
 }
 
 fn end_timestamp(start: &str, total_s: i64) -> String {
@@ -403,10 +464,28 @@ fn run_advective_case(
         .map(|a| a.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect())
         .unwrap_or_else(|| vec![0.0; nz]);
     let release = &case["release"];
-    let start_lon = release["lon_deg"].as_f64().unwrap_or(10.0);
-    let start_lat = release["lat_deg"].as_f64().unwrap_or(50.0);
-    let start_z = release["z_m"].as_f64().unwrap_or(100.0) as f32;
-    let count = release["particle_count"].as_u64().unwrap_or(1024) as usize;
+    // Normalized point geometry; the isolated advection kernel has no
+    // box support, so non-point sources fail closed here.
+    let geometry = release.get("geometry").ok_or_else(|| {
+        format!("case {case_id}: missing release.geometry")
+    })?;
+    if geometry.get("kind").and_then(|v| v.as_str()) != Some("point") {
+        return Err(format!(
+            "case {case_id}: advective path requires a point release geometry"
+        ));
+    }
+    let start_lon = geometry.get("lon_deg").and_then(|v| v.as_f64()).ok_or_else(|| {
+        format!("case {case_id}: release.geometry.lon_deg missing or not a number")
+    })?;
+    let start_lat = geometry.get("lat_deg").and_then(|v| v.as_f64()).ok_or_else(|| {
+        format!("case {case_id}: release.geometry.lat_deg missing or not a number")
+    })?;
+    let start_z = geometry.get("z_m").and_then(|v| v.as_f64()).ok_or_else(|| {
+        format!("case {case_id}: release.geometry.z_m missing or not a number")
+    })? as f32;
+    let count = release["particle_count"].as_u64().ok_or_else(|| {
+        format!("case {case_id}: release.particle_count missing or not a number")
+    })? as usize;
     let u = case["wind"]["u_m_s"].as_f64().unwrap_or(10.0) as f32;
     let dt = case["integration"]["dt_s"].as_f64().unwrap_or(60.0) as f32;
     let steps = case["integration"]["steps"].as_u64().unwrap_or(60) as usize;
@@ -539,6 +618,7 @@ fn run_advective_case(
 fn run_driver_case(
     case_id: &str,
     case: &serde_json::Value,
+    manifest: &ValidationCaseManifest,
     seed_index: u32,
     out_dir: &Path,
     revision: &str,
@@ -552,14 +632,57 @@ fn run_driver_case(
         .map(|a| a.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect())
         .unwrap_or_else(|| vec![0.0; nz]);
     let release = &case["release"];
-    let lon = release["lon_deg"].as_f64().unwrap_or(10.0);
-    let lat = release["lat_deg"].as_f64().unwrap_or(10.0);
-    let z = release["z_m"].as_f64().unwrap_or(50.0);
-    let count = release["particle_count"].as_u64().unwrap_or(500);
+    // Normalized source geometry: points map directly; boxes are supported
+    // only with degenerate lon/lat (vertical line), matching the candidate
+    // ReleaseConfig shape. Anything else fails closed.
+    let geometry = release.get("geometry").ok_or_else(|| {
+        format!("case {case_id}: missing release.geometry")
+    })?;
+    let geometry_kind = geometry.get("kind").and_then(|v| v.as_str()).ok_or_else(|| {
+        format!("case {case_id}: release.geometry.kind missing")
+    })?;
+    let number = |object: &serde_json::Value, field: &str| -> Result<f64, String> {
+        object.get(field).and_then(|v| v.as_f64()).ok_or_else(|| {
+            format!("case {case_id}: release.geometry.{field} missing or not a number")
+        })
+    };
+    let (lon, lat, z_min, z_max) = match geometry_kind {
+        "point" => {
+            let lon = number(geometry, "lon_deg")?;
+            let lat = number(geometry, "lat_deg")?;
+            let z = number(geometry, "z_m")?;
+            (lon, lat, z, z)
+        }
+        "box" => {
+            let lon_min = number(geometry, "lon_min_deg")?;
+            let lon_max = number(geometry, "lon_max_deg")?;
+            let lat_min = number(geometry, "lat_min_deg")?;
+            let lat_max = number(geometry, "lat_max_deg")?;
+            if lon_min != lon_max || lat_min != lat_max {
+                return Err(format!(
+                    "case {case_id}: box lon/lat ranges are not supported by the candidate ReleaseConfig (only vertical ranges)"
+                ));
+            }
+            let z_min = number(geometry, "z_min_m")?;
+            let z_max = number(geometry, "z_max_m")?;
+            (lon_min, lat_min, z_min, z_max)
+        }
+        other => {
+            return Err(format!(
+                "case {case_id}: unknown release.geometry.kind {other:?}"
+            ));
+        }
+    };
+    let count = release["particle_count"].as_u64().ok_or_else(|| {
+        format!("case {case_id}: release.particle_count missing or not a number")
+    })?;
     let mass_total = release
-        .get("mass_kg_total")
+        .get("inventory")
+        .and_then(|v| v.get("quantity_kg"))
         .and_then(|v| v.as_f64())
-        .unwrap_or(1.0);
+        .ok_or_else(|| {
+            format!("case {case_id}: release.inventory.quantity_kg missing or not a number")
+        })?;
     let integration = &case["integration"];
     let start = integration
         .get("start")
@@ -580,23 +703,10 @@ fn run_driver_case(
     let dx = domain["dx_deg"].as_f64().unwrap_or(0.1);
     let dy = domain["dy_deg"].as_f64().unwrap_or(0.1);
 
-    let seeds = &case["seeds"];
-    let base_key = if let Some(arr) = seeds.get("base_philox_key").and_then(|v| v.as_array()) {
-        [
-            arr[0].as_u64().unwrap_or(0) as u32,
-            arr[1].as_u64().unwrap_or(0) as u32,
-        ]
-    } else {
-        [0xDECA_FBAD, 0x1234_5678]
-    };
-    // REPEAT-009 reruns the identical Philox key twice to prove deterministic
-    // reruns are bit-identical; all other driver cases derive independent keys
-    // per seed for the 10-member stochastic ensemble.
-    let key = if case_id == "REPEAT-009" {
-        base_key
-    } else {
-        [base_key[0].wrapping_add(seed_index), base_key[1]]
-    };
+    // Fail-closed Philox resolution happens before any GPU work below.
+    // Identical-repeat semantics come from the manifest flag, never from
+    // hard-coded case IDs.
+    let (key, counter) = resolve_candidate_seed(case_id, manifest, seed_index)?;
 
     let release_grid = GridDomain {
         xlon0,
@@ -606,14 +716,27 @@ fn run_driver_case(
         nx,
         ny,
     };
+    // Normalized release timing (validated equal to the integration start
+    // for instant releases) drives the candidate release window.
+    let timing = release.get("timing").ok_or_else(|| {
+        format!("case {case_id}: missing release.timing")
+    })?;
+    if timing.get("kind").and_then(|v| v.as_str()) != Some("instant") {
+        return Err(format!(
+            "case {case_id}: only instant release timing is supported by the candidate driver"
+        ));
+    }
+    let release_at = timing.get("at").and_then(|v| v.as_str()).ok_or_else(|| {
+        format!("case {case_id}: release.timing.at missing")
+    })?;
     let releases = vec![ReleaseConfig {
         name: case_id.to_string(),
-        start_time: start.to_string(),
-        end_time: start.to_string(),
+        start_time: release_at.to_string(),
+        end_time: release_at.to_string(),
         lon,
         lat,
-        z_min: z,
-        z_max: z,
+        z_min: z_min,
+        z_max: z_max,
         mass_kg: mass_total,
         particle_count: count,
         species_masses_kg: None,
@@ -626,7 +749,7 @@ fn run_driver_case(
         time_bounds_behavior: TimeBoundsBehavior::Clamp,
         velocity_to_grid_scale: velocity_scale(lat, &heights),
         philox_key: key,
-        initial_philox_counter: [0, 0, 0, 0],
+        initial_philox_counter: counter,
         sync_particle_store_each_step: true,
         collect_deposition_probabilities_each_step: true,
         ..ForwardTimeLoopConfig::default()
@@ -767,7 +890,7 @@ fn run_driver_case(
         case_id: case_id.to_string(),
         seed_index,
         philox_key: key,
-        philox_counter: [0, 0, 0, 0],
+        philox_counter: counter,
         adapter: adapter.clone(),
         is_software_adapter: software,
         candidate_revision: revision.to_string(),
@@ -798,26 +921,37 @@ fn run_driver_case(
 
 fn main() {
     env_logger::init();
-    let (cases, seeds, out_dir, fixtures) = parse_args();
+    let (cases, cli_seeds, out_dir, fixtures) = parse_args();
     let revision = candidate_revision();
     fs::create_dir_all(&out_dir).expect("create output directory");
     for case_id in &cases {
         let fixture_path = fixtures.join(format!("{case_id}.json"));
         let text = fs::read_to_string(&fixture_path)
             .unwrap_or_else(|_| panic!("read fixture {}", fixture_path.display()));
+        // Canonical v2 manifest first: legacy v1 is rejected fail-closed.
+        let manifest = load_case_manifest(&fixture_path, &text)
+            .unwrap_or_else(|e| panic!("{e}"));
+        if manifest.case_id != *case_id {
+            panic!(
+                "fixture {} declares case_id {}, expected {case_id}",
+                fixture_path.display(),
+                manifest.case_id
+            );
+        }
+        // Raw value still carries the driver physics blocks, whose shapes are
+        // unchanged by the migration (domain/release/wind/surface/integration/
+        // deposition); stochastic identity and ensemble count come only from
+        // the typed manifest above.
         let case: serde_json::Value = serde_json::from_str(&text).expect("parse case fixture");
         if case_id == "ADV-ANA-001" {
             run_advective_case(case_id, &case, &out_dir, &revision).expect("advective case failed");
         } else {
-            let count = if case_id == "REPEAT-009" { 2 } else { seeds };
-            // REPEAT-009 always runs its two identical repeats regardless of --seeds.
-            let run_seeds = if case_id == "REPEAT-009" {
-                2
-            } else {
-                count.min(10)
-            };
+            // Declared ensemble count is authoritative; --seeds may only
+            // select a leading subset and is rejected before any GPU work.
+            let run_seeds = resolve_ensemble_count(case_id, &manifest, cli_seeds)
+                .unwrap_or_else(|e| panic!("{e}"));
             for seed in 0..run_seeds as u32 {
-                run_driver_case(case_id, &case, seed, &out_dir, &revision)
+                run_driver_case(case_id, &case, &manifest, seed, &out_dir, &revision)
                     .unwrap_or_else(|e| panic!("{case_id} seed {seed} failed: {e}"));
             }
         }
@@ -827,4 +961,113 @@ fn main() {
         cases.len(),
         out_dir.display()
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn fixture_path(case_id: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases")
+            .join(format!("{case_id}.json"))
+    }
+
+    fn load_manifest(case_id: &str) -> ValidationCaseManifest {
+        let path = fixture_path(case_id);
+        let text = fs::read_to_string(&path).expect("read fixture");
+        load_case_manifest(&path, &text).expect("v2 manifest")
+    }
+
+    #[test]
+    fn wind_uni_002_seed_zero_uses_declared_key() {
+        let manifest = load_manifest("WIND-UNI-002");
+        let candidate = manifest
+            .stochastic
+            .candidate_philox
+            .as_ref()
+            .expect("declared identity");
+        assert_eq!(candidate.base_key, [3737180555, 305419896]);
+        let (key, counter) =
+            resolve_candidate_seed("WIND-UNI-002", &manifest, 0).expect("seed 0");
+        assert_eq!(key, [3737180555, 305419896]);
+        assert_eq!(counter, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn wind_uni_002_seed_n_uses_wrapping_derivation() {
+        let manifest = load_manifest("WIND-UNI-002");
+        let (key, _) =
+            resolve_candidate_seed("WIND-UNI-002", &manifest, 7).expect("seed 7");
+        assert_eq!(key, [3737180555u32.wrapping_add(7), 305419896]);
+    }
+
+    #[test]
+    fn stochastic_case_without_identity_is_rejected_before_execution() {
+        let manifest = load_manifest("WIND-UNI-002");
+        let mut hacked = manifest.clone();
+        hacked.stochastic.candidate_philox = None;
+        hacked.stochastic.oracle_seed = None;
+        let err = resolve_candidate_seed("WIND-UNI-002", &hacked, 0).expect_err("must fail");
+        assert!(err.contains("no stochastic"), "unexpected: {err}");
+        let err = resolve_ensemble_count("WIND-UNI-002", &hacked, None).expect_err("must fail");
+        assert!(err.contains("ensemble count"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn repeat_009_reuses_identical_key() {
+        let manifest = load_manifest("REPEAT-009");
+        let candidate = manifest
+            .stochastic
+            .candidate_philox
+            .as_ref()
+            .expect("REPEAT-009 declares an identity");
+        assert!(candidate.identical_repeats);
+        assert_eq!(candidate.count, 2);
+        let (key0, _) = resolve_candidate_seed("REPEAT-009", &manifest, 0).expect("seed 0");
+        let (key1, _) = resolve_candidate_seed("REPEAT-009", &manifest, 1).expect("seed 1");
+        assert_eq!(key0, key1);
+        assert_eq!(key0, [3737180555, 305419896]);
+        let count = resolve_ensemble_count("REPEAT-009", &manifest, None).expect("count");
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn legacy_v1_document_is_rejected() {
+        let path = fixture_path("WIND-UNI-002");
+        let legacy = r#"{"version": 1, "case_id": "WIND-UNI-002"}"#;
+        let err = load_case_manifest(&path, legacy).expect_err("v1 must fail");
+        assert!(err.contains("SchemaVersionMismatch") || err.contains("schema"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn cli_seeds_cannot_exceed_declared_ensemble() {
+        let manifest = load_manifest("WIND-UNI-002");
+        // Declared count is 10.
+        let full = resolve_ensemble_count("WIND-UNI-002", &manifest, None)
+            .expect("declared");
+        assert_eq!(full, 10);
+        // Explicit subset is allowed.
+        let subset =
+            resolve_ensemble_count("WIND-UNI-002", &manifest, Some(2))
+                .expect("subset");
+        assert_eq!(subset, 2);
+        // Silent expansion is rejected.
+        let err = resolve_ensemble_count("WIND-UNI-002", &manifest, Some(11))
+            .expect_err("must fail");
+        assert!(err.contains("exceeds declared"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn adv_ana_001_needs_no_rng_identity() {
+        let manifest = load_manifest("ADV-ANA-001");
+        assert!(manifest.stochastic.candidate_philox.is_none());
+        manifest.validate().expect("ADV-ANA-001 stays valid");
+        let err = resolve_candidate_seed("ADV-ANA-001", &manifest, 0)
+            .expect_err("deterministic case must not resolve a seed");
+        assert!(err.contains("no stochastic"), "unexpected: {err}");
+    }
 }

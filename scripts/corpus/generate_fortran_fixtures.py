@@ -31,6 +31,7 @@ Usage:
 import argparse
 import hashlib
 import json
+import math
 import re
 import shutil
 from pathlib import Path
@@ -61,13 +62,77 @@ RECEPTORS_ZERO = """************************************************************
 
 
 def case_total_mass_kg(case: dict) -> float:
-    """Total released mass [kg] for a case JSON release block."""
+    """Total released mass [kg] from the normalized release inventory."""
+    return float(case["release"]["inventory"]["quantity_kg"])
+
+
+def species_number_for_case(case_id: str, case: dict) -> int:
+    """Map the normalized species id (``SPECIES_<NNN>``) to ``SPECNUM_REL``."""
+    species_id = case["release"]["species"]["id"]
+    if not isinstance(species_id, str) or not species_id.startswith("SPECIES_"):
+        raise SystemExit(
+            f"{case_id}: release.species.id {species_id!r} must match SPECIES_<NNN>"
+        )
+    digits = species_id[len("SPECIES_"):]
+    if len(digits) != 3 or not digits.isdigit():
+        raise SystemExit(
+            f"{case_id}: release.species.id {species_id!r} must match SPECIES_<NNN>"
+        )
+    return int(digits)
+
+
+def release_window_datetimes(case_id: str, case: dict) -> tuple:
+    """Derive (start, end) YYYYMMDDHHMMSS release stamps from normalized timing."""
+    timing = case["release"]["timing"]
+    kind = timing.get("kind")
+    if kind == "instant":
+        stamp = timing["at"]
+        return stamp, stamp
+    if kind == "window":
+        return timing["start"], timing["end"]
+    raise SystemExit(f"{case_id}: unknown release.timing.kind {kind!r}")
+
+
+def flexpart_datetime(stamp: str) -> tuple:
+    """Split a YYYYMMDDHHMMSS stamp into (YYYYMMDD int, HHMMSS int)."""
+    return int(stamp[0:8]), int(stamp[8:14])
+
+
+def release_vertical(case_id: str, case: dict) -> tuple:
+    """Return (z1, z2, zkind) for FLEXPART RELEASES.
+
+    AGL maps to ``ZKIND=1`` (meters above ground, the repository convention
+    asserted by the ETEX input-equivalence audit). ASL has no established
+    ZKIND mapping and fails closed.
+    """
     release = case["release"]
-    if "mass_kg_total" in release:
-        return float(release["mass_kg_total"])
-    return float(release["particle_count"]) * float(
-        release.get("mass_kg_per_particle", 1.0)
-    )
+    if release.get("vertical_ref") != "agl":
+        raise SystemExit(
+            f"{case_id}: vertical_ref {release.get('vertical_ref')!r} has no "
+            "FLEXPART ZKIND mapping (only agl -> ZKIND=1 is established)"
+        )
+    geometry = release["geometry"]
+    kind = geometry.get("kind")
+    if kind == "point":
+        z = float(geometry["z_m"])
+        return z, z, 1
+    if kind == "box":
+        return float(geometry["z_min_m"]), float(geometry["z_max_m"]), 1
+    raise SystemExit(f"{case_id}: unknown release.geometry.kind {kind!r}")
+
+
+def release_lonlat(case_id: str, case: dict) -> tuple:
+    """Return (lon1, lon2, lat1, lat2) for FLEXPART RELEASES."""
+    geometry = case["release"]["geometry"]
+    kind = geometry.get("kind")
+    if kind == "point":
+        lon = float(geometry["lon_deg"])
+        lat = float(geometry["lat_deg"])
+        return lon, lon, lat, lat
+    if kind == "box":
+        return (float(geometry["lon_min_deg"]), float(geometry["lon_max_deg"]),
+                float(geometry["lat_min_deg"]), float(geometry["lat_max_deg"]))
+    raise SystemExit(f"{case_id}: unknown release.geometry.kind {kind!r}")
 
 
 def sim_end_date(start: str, total_s: int) -> tuple:
@@ -99,17 +164,132 @@ def outgrid_text(case: dict) -> str:
     )
 
 
-def command_text(case: dict) -> str:
+# Canonical (lowercase) Oracle override fields. The generated Fortran
+# namelist keeps uppercase spelling; only the JSON/Rust representation is
+# canonical lowercase. Legacy uppercase JSON keys are frozen and rejected
+# (see fixtures/corpus/cases/MIGRATION_NOTES.md): every checked-in case is
+# migrated to v2.
+CANONICAL_ORACLE_FIELDS = (
+    "lturbulence",
+    "lconvection",
+    "ctl",
+    "ifine",
+    "ldrydep",
+    "lwetdep",
+    "ldecay",
+)
+LEGACY_ORACLE_KEYS = frozenset({
+    "LTURBULENCE",
+    "LCONVECTION",
+    "CTL",
+    "IFINE",
+    "LDRYDEP",
+    "LWETDEP",
+    "LDECAY",
+})
+REQUIRED_ORACLE_FIELDS = ("lturbulence", "lconvection", "ctl", "ifine")
+FLAG_ORACLE_FIELDS = ("lturbulence", "lconvection", "ldrydep", "lwetdep", "ldecay")
+
+
+def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
+    """Canonical v2 Oracle override reader (no hidden defaults, no v1).
+
+    Reads the canonical lowercase fields. Legacy uppercase spellings are
+    rejected (frozen v1, see MIGRATION_NOTES.md), as are unknown keys,
+    missing required overrides, out-of-range values, and Oracle switches
+    conflicting with ``physics_switches``. Never substitutes
+    physics-altering defaults.
+    """
+    raw = case.get("oracle_command_overrides")
+    if raw is None:
+        raise SystemExit(
+            f"{case_id}: missing oracle_command_overrides; "
+            "lturbulence, lconvection, ctl and ifine must be declared explicitly"
+        )
+    if not isinstance(raw, dict):
+        raise SystemExit(f"{case_id}: oracle_command_overrides must be an object")
+    for key in raw:
+        if key in LEGACY_ORACLE_KEYS:
+            raise SystemExit(
+                f"{case_id}: legacy uppercase oracle override {key!r} is frozen "
+                "and unsupported; use the canonical lowercase form "
+                "(see MIGRATION_NOTES.md)"
+            )
+    normalized: dict = {}
+    for field in CANONICAL_ORACLE_FIELDS:
+        if field in raw:
+            normalized[field] = raw[field]
+    for key in raw:
+        if key not in CANONICAL_ORACLE_FIELDS:
+            raise SystemExit(f"{case_id}: unknown oracle override {key!r}")
+    for field in REQUIRED_ORACLE_FIELDS:
+        if field not in normalized:
+            raise SystemExit(
+                f"{case_id}: missing required oracle override {field}; "
+                "no hidden default substituted"
+            )
+    for field in FLAG_ORACLE_FIELDS:
+        if field in normalized:
+            value = normalized[field]
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise SystemExit(
+                    f"{case_id}: oracle override {field} must be exactly 0 or 1, "
+                    f"got {value!r}"
+                )
+            if value not in (0, 1):
+                raise SystemExit(
+                    f"{case_id}: oracle override {field} must be exactly 0 or 1, "
+                    f"got {value!r}"
+                )
+    ctl = normalized["ctl"]
+    if not isinstance(ctl, (int, float)) or isinstance(ctl, bool):
+        raise SystemExit(
+            f"{case_id}: oracle override ctl must be a finite number, got {ctl!r}"
+        )
+    if not math.isfinite(float(ctl)):
+        raise SystemExit(
+            f"{case_id}: oracle override ctl must be finite, got {ctl!r}"
+        )
+    ifine = normalized["ifine"]
+    if not isinstance(ifine, int) or isinstance(ifine, bool):
+        raise SystemExit(
+            f"{case_id}: oracle override ifine must be an integer in 1..=10, "
+            f"got {ifine!r}"
+        )
+    if not 1 <= ifine <= 10:
+        raise SystemExit(
+            f"{case_id}: oracle override ifine must be in 1..=10, got {ifine!r}"
+        )
+    physics = case.get("physics_switches", {})
+    if isinstance(physics, dict):
+        if "turbulence" in physics and isinstance(physics["turbulence"], bool):
+            if physics["turbulence"] != (normalized["lturbulence"] == 1):
+                raise SystemExit(
+                    f"{case_id}: physics_switches.turbulence={physics['turbulence']} "
+                    f"conflicts with oracle lturbulence={normalized['lturbulence']}; "
+                    "refusing to generate"
+                )
+        if "convection" in physics and isinstance(physics["convection"], bool):
+            if physics["convection"] != (normalized["lconvection"] == 1):
+                raise SystemExit(
+                    f"{case_id}: physics_switches.convection={physics['convection']} "
+                    f"conflicts with oracle lconvection={normalized['lconvection']}; "
+                    "refusing to generate"
+                )
+    return normalized
+
+
+def command_text(case_id: str, case: dict) -> str:
     """COMMAND namelist derived from case integration and switch overrides."""
     integration = case["integration"]
-    overrides = case.get("oracle_command_overrides", {})
+    overrides = normalize_oracle_overrides(case_id, case)
     iedate, ietime = sim_end_date(
         integration.get("start", "20240101000000"), int(integration["total_s"])
     )
-    ctl = float(overrides.get("CTL", 5.0))
-    ifine = int(overrides.get("IFINE", 4))
-    lturbulence = int(overrides.get("LTURBULENCE", 1))
-    lconvection = int(overrides.get("LCONVECTION", 0))
+    ctl = float(overrides["ctl"])
+    ifine = int(overrides["ifine"])
+    lturbulence = int(overrides["lturbulence"])
+    lconvection = int(overrides["lconvection"])
     return (
         "&COMMAND\n"
         " LDIRECT=               1,\n"
@@ -149,29 +329,34 @@ def command_text(case: dict) -> str:
 
 
 def releases_text(case_id: str, case: dict, specnum: int) -> str:
-    """RELEASES namelist derived from the case release block.
+    """RELEASES namelist derived from the normalized release block.
 
     FLEXPART MASS is in grams; the candidate works in kilograms.
     """
     release = case["release"]
     mass_g = case_total_mass_kg(case) * KG_TO_G
+    start_stamp, end_stamp = release_window_datetimes(case_id, case)
+    idate1, itime1 = flexpart_datetime(start_stamp)
+    idate2, itime2 = flexpart_datetime(end_stamp)
+    lon1, lon2, lat1, lat2 = release_lonlat(case_id, case)
+    z1, z2, zkind = release_vertical(case_id, case)
     return (
         "&RELEASES_CTRL\n"
         " NSPEC      =           1,\n"
         f" SPECNUM_REL=          {specnum},\n"
         " /\n"
         "&RELEASE\n"
-        " IDATE1  =       20240101,\n"
-        " ITIME1  =         000000,\n"
-        " IDATE2  =       20240101,\n"
-        " ITIME2  =         000000,\n"
-        f" LON1    =     {release['lon_deg']:8.3f},\n"
-        f" LON2    =     {release['lon_deg']:8.3f},\n"
-        f" LAT1    =     {release['lat_deg']:8.3f},\n"
-        f" LAT2    =     {release['lat_deg']:8.3f},\n"
-        f" Z1      =     {release['z_m']:9.3f},\n"
-        f" Z2      =     {release['z_m']:9.3f},\n"
-        " ZKIND   =              1,\n"
+        f" IDATE1  =       {idate1},\n"
+        f" ITIME1  =         {itime1:06d},\n"
+        f" IDATE2  =       {idate2},\n"
+        f" ITIME2  =         {itime2:06d},\n"
+        f" LON1    =     {lon1:8.3f},\n"
+        f" LON2    =     {lon2:8.3f},\n"
+        f" LAT1    =     {lat1:8.3f},\n"
+        f" LAT2    =     {lat2:8.3f},\n"
+        f" Z1      =     {z1:9.3f},\n"
+        f" Z2      =     {z2:9.3f},\n"
+        f" ZKIND   =              {zkind},\n"
         f" MASS    =       {mass_g:.4E},\n"
         f" PARTS   =       {int(release['particle_count']):10d},\n"
         f' COMMENT =    "{case_id}",\n'
@@ -186,8 +371,20 @@ def ageclass_text(case: dict) -> str:
 
 
 def meteo_args(case_id: str, case: dict) -> str:
-    """Exact synthetic-GRIB generator flags derived from case wind/surface."""
+    """Exact synthetic-GRIB generator flags derived from case wind/surface.
+
+    For real-weather cases (RealWeather profile), the meteorology comes from
+    the native ERA5 data in fixtures/etex/native-mini/ and is not generated
+    synthetically. This function returns an empty string for RealWeather cases.
+    """
     wind = case.get("wind", {})
+    profile = wind.get("profile", "uniform")
+    
+    if profile == "real_weather":
+        # Real-weather meteorology comes from native ERA5 fixture data
+        # (fixtures/etex/native-mini/), not synthetic GRIB generation.
+        return ""
+    
     surface = case.get("surface", {})
     u = wind.get("u_m_s", wind.get("u0_m_s", 5.0))
     v = wind.get("v_m_s", 0.0)
@@ -325,9 +522,22 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
             failures.append(f"{name}: fixture has {actual!r}, case needs {expected!r}")
 
     releases = (outdir / "RELEASES").read_text(encoding="utf-8")
-    check("RELEASES LON1", float(namelist_value(releases, "LON1")), float(release["lon_deg"]), 1e-9)
-    check("RELEASES LAT1", float(namelist_value(releases, "LAT1")), float(release["lat_deg"]), 1e-9)
-    check("RELEASES Z1", float(namelist_value(releases, "Z1")), float(release["z_m"]), 1e-9)
+    lon1, lon2, lat1, lat2 = release_lonlat(case_id, case)
+    z1, z2, zkind = release_vertical(case_id, case)
+    start_stamp, end_stamp = release_window_datetimes(case_id, case)
+    idate1, itime1 = flexpart_datetime(start_stamp)
+    idate2, itime2 = flexpart_datetime(end_stamp)
+    check("RELEASES LON1", float(namelist_value(releases, "LON1")), lon1, 1e-9)
+    check("RELEASES LON2", float(namelist_value(releases, "LON2")), lon2, 1e-9)
+    check("RELEASES LAT1", float(namelist_value(releases, "LAT1")), lat1, 1e-9)
+    check("RELEASES LAT2", float(namelist_value(releases, "LAT2")), lat2, 1e-9)
+    check("RELEASES Z1", float(namelist_value(releases, "Z1")), z1, 1e-9)
+    check("RELEASES Z2", float(namelist_value(releases, "Z2")), z2, 1e-9)
+    check("RELEASES ZKIND", int(namelist_value(releases, "ZKIND")), zkind)
+    check("RELEASES IDATE1", int(namelist_value(releases, "IDATE1")), idate1)
+    check("RELEASES ITIME1", int(namelist_value(releases, "ITIME1")), itime1)
+    check("RELEASES IDATE2", int(namelist_value(releases, "IDATE2")), idate2)
+    check("RELEASES ITIME2", int(namelist_value(releases, "ITIME2")), itime2)
     check("RELEASES PARTS", int(namelist_value(releases, "PARTS")), int(release["particle_count"]))
     check("RELEASES SPECNUM_REL", int(namelist_value(releases, "SPECNUM_REL")), specnum)
     expected_g = case_total_mass_kg(case) * KG_TO_G
@@ -344,10 +554,11 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
     check("OUTGRID DYOUT", float(namelist_value(outgrid, "DYOUT")), float(domain["dy_deg"]), 1e-9)
 
     command = (outdir / "COMMAND").read_text(encoding="utf-8")
-    overrides = case.get("oracle_command_overrides", {})
-    check("COMMAND LTURBULENCE", int(namelist_value(command, "LTURBULENCE")), int(overrides.get("LTURBULENCE", 1)))
-    check("COMMAND LCONVECTION", int(namelist_value(command, "LCONVECTION")), int(overrides.get("LCONVECTION", 0)))
-    check("COMMAND CTL", float(namelist_value(command, "CTL")), float(overrides.get("CTL", 5.0)), 1e-6)
+    overrides = normalize_oracle_overrides(case_id, case)
+    check("COMMAND LTURBULENCE", int(namelist_value(command, "LTURBULENCE")), int(overrides["lturbulence"]))
+    check("COMMAND LCONVECTION", int(namelist_value(command, "LCONVECTION")), int(overrides["lconvection"]))
+    check("COMMAND CTL", float(namelist_value(command, "CTL")), float(overrides["ctl"]), 1e-6)
+    check("COMMAND IFINE", int(namelist_value(command, "IFINE")), int(overrides["ifine"]))
 
     species_text = (outdir / "SPECIES" / f"SPECIES_{specnum:03d}").read_text(encoding="utf-8")
     code = re.sub(r"!.*", "", species_text)
@@ -369,6 +580,12 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
 
     if failures:
         raise SystemExit(f"{case_id}: derived fixtures drift from case JSON:\n" + "\n".join(failures))
+
+
+def is_real_weather(case: dict) -> bool:
+    """Check if the case uses real-weather meteorology (RealWeather profile)."""
+    wind = case.get("wind", {})
+    return wind.get("profile") == "real_weather"
 
 
 def main() -> None:
@@ -402,8 +619,8 @@ def main() -> None:
             case = json.loads((CASES / "PBL-NEUTRAL-005.json").read_text(encoding="utf-8"))
         outdir = FORTRAN_OUT / case_id
         (outdir / "SPECIES").mkdir(parents=True, exist_ok=True)
-        specnum = 40 if case_id in ("DRY-007", "WET-008") else 24
-        (outdir / "COMMAND").write_text(command_text(case), encoding="utf-8")
+        specnum = species_number_for_case(case_id, case)
+        (outdir / "COMMAND").write_text(command_text(case_id, case), encoding="utf-8")
         (outdir / "RELEASES").write_text(
             releases_text(case_id, case, specnum), encoding="utf-8"
         )
@@ -420,18 +637,38 @@ def main() -> None:
             )
         else:
             shutil.copyfile(tracer, outdir / "SPECIES" / "SPECIES_024")
-        args_line = meteo_args(case_id, case)
-        (outdir / "METEO_ARGS.txt").write_text(args_line + "\n", encoding="utf-8")
-        (outdir / "METEO.txt").write_text(
-            "python3 scripts/generate_synthetic_grib.py "
-            f"--output-dir target/corpus/meteo/{case_id} {args_line}\n",
-            encoding="utf-8",
-        )
+        
+        # Handle meteorology: synthetic cases generate GRIB, real-weather uses native fixture data
+        if is_real_weather(case):
+            # Real-weather case (e.g., ETEX-MINI-013): meteorology comes from native ERA5 fixture
+            # No synthetic GRIB generation; METEO_ARGS.txt is empty
+            (outdir / "METEO_ARGS.txt").write_text("\n", encoding="utf-8")
+            (outdir / "METEO.txt").write_text(
+                f"# Real-weather case: meteorology from native ERA5 fixture at {case['wind']['meteorology']['source_path']}\n"
+                f"# Dataset: {case['wind']['meteorology']['dataset_id']} version {case['wind']['meteorology']['version']}\n"
+                f"# Candidate transformation: {case['wind']['meteorology']['candidate_transformation']['script']}\n"
+                f"# Oracle transformation: {case['wind']['meteorology']['oracle_transformation']['script']}\n",
+                encoding="utf-8",
+            )
+        else:
+            # Synthetic case: generate GRIB from synthetic parameters
+            args_line = meteo_args(case_id, case)
+            (outdir / "METEO_ARGS.txt").write_text(args_line + "\n", encoding="utf-8")
+            (outdir / "METEO.txt").write_text(
+                "python3 scripts/generate_synthetic_grib.py "
+                f"--output-dir target/corpus/meteo/{case_id} {args_line}\n",
+                encoding="utf-8",
+            )
+        # Provenance shape is frozen byte-identical to the checked-in
+        # INPUT_DERIVATION.json files; values come from the normalized
+        # release (point geometries in all checked-in cases).
+        lon1, lon2, lat1, lat2 = release_lonlat(case_id, case)
+        z1, z2, _zkind = release_vertical(case_id, case)
         derivation = {
             "case_file": f"fixtures/corpus/cases/{case_path.name}",
-            "release_lon_deg": case["release"]["lon_deg"],
-            "release_lat_deg": case["release"]["lat_deg"],
-            "release_z_m": case["release"]["z_m"],
+            "release_lon_deg": lon1,
+            "release_lat_deg": lat1,
+            "release_z_m": z1,
             "particle_count": case["release"]["particle_count"],
             "candidate_mass_kg": case_total_mass_kg(case),
             "mass_conversion": "MASS_g = mass_kg * 1000 (FLEXPART MASS is in grams)",

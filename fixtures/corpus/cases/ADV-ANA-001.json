@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "schema_version": 2,
   "case_id": "ADV-ANA-001",
   "description": "Analytic advection without turbulence. Isolated production WGSL advection kernel; turbulence, convection and deposition disabled by construction.",
   "domain": {
@@ -10,22 +10,41 @@
     "dy_deg": 0.1,
     "xlon0_deg": 6.0,
     "ylat0_deg": 47.0,
-    "wind_heights_m": [0.0, 50.0, 100.0, 200.0, 500.0, 1500.0, 3000.0, 5000.0]
+    "horizontal_ref": "geographic_lon_lat_degrees",
+    "wind_heights_m": [0.0, 50.0, 100.0, 200.0, 500.0, 1500.0, 3000.0, 5000.0],
+    "wind_heights_ref": "agl"
   },
   "release": {
-    "lon_deg": 10.0,
-    "lat_deg": 50.0,
-    "z_m": 100.0,
+    "geometry": {
+      "kind": "point",
+      "lon_deg": 10.0,
+      "lat_deg": 50.0,
+      "z_m": 100.0
+    },
+    "vertical_ref": "agl",
+    "timing": {
+      "kind": "instant",
+      "at": "20240101000000"
+    },
+    "species": {
+      "id": "SPECIES_024"
+    },
+    "inventory": {
+      "quantity_kg": 1024.0,
+      "unit": "kg"
+    },
     "particle_count": 1024,
     "mass_kg_per_particle": 1.0
   },
   "wind": {
+    "profile": "uniform",
     "u_m_s": 10.0,
     "v_m_s": 0.0,
-    "w_m_s": 0.0,
-    "profile": "uniform"
+    "w_m_s": 0.0
   },
+  "surface": null,
   "integration": {
+    "start": "20240101000000",
     "dt_s": 60.0,
     "steps": 60,
     "total_s": 3600.0
@@ -37,23 +56,43 @@
     "wet_deposition": false,
     "decay": false
   },
-  "analytic_expectation": {
-    "east_displacement_m": 36000.0,
-    "north_displacement_m": 0.0,
-    "vertical_displacement_m": 0.0,
-    "plume_spread": "zero (identical wind for all particles)"
-  },
   "units": {
     "wind": "m/s",
     "displacement": "m",
     "mass": "kg",
-    "time": "s"
+    "time": "s",
+    "height": "m"
   },
-  "seeds": "deterministic (no RNG consumed)",
+  "stochastic": {
+    "candidate_philox": null,
+    "oracle_seed": null
+  },
+  "execution_profile": {
+    "id": "flexpart-11.1-single-thread",
+    "version": 1,
+    "manifest_path": "reference/flexpart-11.1.json"
+  },
   "oracle_command_overrides": {
-    "LTURBULENCE": 0,
-    "LCONVECTION": 0,
-    "CTL": 5.0,
-    "IFINE": 4
-  }
+    "lturbulence": 0,
+    "lconvection": 0,
+    "ctl": 5.0,
+    "ifine": 4
+  },
+  "expected_artifacts": {
+    "candidate_dir": "target/corpus/candidate/ADV-ANA-001",
+    "oracle_dir": "target/corpus/oracle/ADV-ANA-001",
+    "comparison_report": "target/corpus/comparison_report.json",
+    "run_manifest": "target/corpus/run_manifest.json"
+  },
+  "representation_differences": {
+    "notes": [
+      "Analytic case: no RNG consumed, no representation differences."
+    ]
+  },
+  "input_equivalence": "not_applicable",
+  "notes": [
+    "Deterministic case: no stochastic identity needed.",
+    "Candidate uses isolated advection kernel; oracle runs with LTURBULENCE=0, LCONVECTION=0.",
+    "Expected: 10 m/s * 3600 s = 36000 m eastward displacement; no spread; mass conserved."
+  ]
 }

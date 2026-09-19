@@ -31,6 +31,7 @@ use flexpart_gpu::simulation::{
     ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket,
     ParticleForcingField,
 };
+use flexpart_gpu::validation::case::ValidationCaseManifest;
 use flexpart_gpu::wind::{SurfaceFields, WindField3D, WindFieldGrid};
 use ndarray::Array1;
 use serde::Serialize;
@@ -116,10 +117,10 @@ struct CandidateMetrics {
     z_std_m: f64,
 }
 
-fn parse_args() -> (Vec<String>, usize, PathBuf, PathBuf) {
+fn parse_args() -> (Vec<String>, Option<usize>, PathBuf, PathBuf) {
     let mut cases: Vec<String> = Vec::new();
     let mut all = false;
-    let mut seeds: usize = 10;
+    let mut seeds: Option<usize> = None;
     let mut out_dir = PathBuf::from("target/corpus/candidate");
     let mut fixtures = PathBuf::from("fixtures/corpus/cases");
     let mut args = std::env::args().skip(1).peekable();
@@ -132,7 +133,8 @@ fn parse_args() -> (Vec<String>, usize, PathBuf, PathBuf) {
             "--all" => all = true,
             "--seeds" => {
                 let value = args.next().expect("--seeds needs a value");
-                seeds = value.parse().expect("seeds must be a number");
+                let parsed: usize = value.parse().expect("seeds must be a number");
+                seeds = Some(parsed);
             }
             "--out-dir" => {
                 out_dir = PathBuf::from(args.next().expect("--out-dir needs a value"));
@@ -161,6 +163,183 @@ fn candidate_revision() -> String {
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Load the canonical v2 manifest when the case document declares it.
+///
+/// Returns `Ok(None)` for legacy v1 documents, which are handled by the
+/// explicit legacy adapter below. Returns `Err` when a v2 document is
+/// present but malformed — never a silent fallback.
+fn typed_manifest_for_document(
+    fixture_path: &Path,
+    text: &str,
+    value: &serde_json::Value,
+) -> Result<Option<ValidationCaseManifest>, String> {
+    let is_v2 = value
+        .get("schema_version")
+        .and_then(|v| v.as_u64())
+        .is_some();
+    if !is_v2 {
+        return Ok(None);
+    }
+    ValidationCaseManifest::parse(text, fixture_path)
+        .map(Some)
+        .map_err(|e| format!("invalid v2 case manifest {}: {e}", fixture_path.display()))
+}
+
+fn read_u32_array<const N: usize>(
+    obj: &serde_json::Value,
+    field: &str,
+    case_id: &str,
+) -> Result<[u32; N], String> {
+    let arr = obj.get(field).and_then(|v| v.as_array()).ok_or_else(|| {
+        format!("case {case_id}: legacy seeds.{field} missing or not an array; no default key substituted")
+    })?;
+    if arr.len() != N {
+        return Err(format!(
+            "case {case_id}: legacy seeds.{field} must have length {N}, got {}",
+            arr.len()
+        ));
+    }
+    let mut out = [0u32; N];
+    for (i, item) in arr.iter().enumerate() {
+        out[i] = item.as_u64().and_then(|v| u32::try_from(v).ok()).ok_or_else(|| {
+            format!("case {case_id}: legacy seeds.{field}[{i}] is not a u32")
+        })?;
+    }
+    Ok(out)
+}
+
+/// Explicit legacy (v1) Philox adapter.
+///
+/// Isolated here so v1/v2 shapes are never mixed through scattered lookups.
+/// Fails closed when the legacy `seeds` object is missing or malformed.
+/// `REPEAT-009` reuses its base key unchanged for identical reruns; all
+/// other cases derive `base0.wrapping_add(seed_index)`.
+fn legacy_candidate_seed(
+    case_id: &str,
+    value: &serde_json::Value,
+    seed_index: u32,
+) -> Result<([u32; 2], [u32; 4]), String> {
+    let seeds = value.get("seeds").ok_or_else(|| {
+        format!("case {case_id}: missing stochastic identity (legacy seeds); no default key substituted")
+    })?;
+    if !seeds.is_object() {
+        return Err(format!(
+            "case {case_id}: legacy seeds is not an object (deterministic cases must use the advective path); no default key substituted"
+        ));
+    }
+    let base_key: [u32; 2] = read_u32_array(seeds, "base_philox_key", case_id)?;
+    let base_counter: [u32; 4] = read_u32_array(seeds, "base_counter", case_id)?;
+    if case_id == "REPEAT-009" {
+        return Ok((base_key, base_counter));
+    }
+    Ok((
+        [base_key[0].wrapping_add(seed_index), base_key[1]],
+        base_counter,
+    ))
+}
+
+/// Resolve the candidate Philox key/counter for one seed.
+///
+/// V2 documents use the canonical typed manifest. V1 documents use the
+/// explicit legacy adapter above. Stochastic cases without an identity are
+/// rejected before any GPU execution. No default key is ever substituted.
+fn resolve_candidate_seed(
+    case_id: &str,
+    value: &serde_json::Value,
+    manifest: Option<&ValidationCaseManifest>,
+    seed_index: u32,
+) -> Result<([u32; 2], [u32; 4]), String> {
+    if let Some(manifest) = manifest {
+        if case_id == "REPEAT-009" {
+            let Some(candidate) = &manifest.stochastic.candidate_philox else {
+                return Err(format!(
+                    "case {case_id}: missing stochastic.candidate_philox; no default key substituted"
+                ));
+            };
+            return Ok((candidate.base_key, candidate.base_counter));
+        }
+        return manifest
+            .candidate_seed_identity(seed_index)
+            .map_err(|e| format!("case {case_id}: {e}"));
+    }
+    legacy_candidate_seed(case_id, value, seed_index)
+}
+
+fn legacy_declared_ensemble_count(case_id: &str, value: &serde_json::Value) -> Result<usize, String> {
+    let seeds = value.get("seeds").ok_or_else(|| {
+        format!("case {case_id}: missing stochastic identity (legacy seeds); ensemble count unknown")
+    })?;
+    if !seeds.is_object() {
+        return Err(format!(
+            "case {case_id}: legacy seeds is not an object; ensemble count unknown"
+        ));
+    }
+    if case_id == "REPEAT-009" {
+        let repeats = seeds
+            .get("repeats")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| {
+                format!("case {case_id}: legacy seeds.repeats missing or not a number")
+            })?;
+        let count = usize::try_from(repeats)
+            .map_err(|_| format!("case {case_id}: legacy seeds.repeats out of range"))?;
+        if count == 0 {
+            return Err(format!("case {case_id}: legacy seeds.repeats must be > 0"));
+        }
+        return Ok(count);
+    }
+    let count = seeds
+        .get("count")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| {
+            format!("case {case_id}: legacy seeds.count missing or not a number; no CLI default substituted")
+        })?;
+    let count =
+        usize::try_from(count).map_err(|_| format!("case {case_id}: legacy seeds.count out of range"))?;
+    if count == 0 {
+        return Err(format!("case {case_id}: legacy seeds.count must be > 0"));
+    }
+    Ok(count)
+}
+
+/// Resolve how many seeds to run.
+///
+/// The declared manifest count is authoritative. An explicit `--seeds N`
+/// selects a leading subset (`N <= declared`) for quick checks; it can
+/// never silently expand the ensemble or override the derivation.
+fn resolve_ensemble_count(
+    case_id: &str,
+    value: &serde_json::Value,
+    manifest: Option<&ValidationCaseManifest>,
+    cli_seeds: Option<usize>,
+) -> Result<usize, String> {
+    let declared = if let Some(manifest) = manifest {
+        if case_id == "ADV-ANA-001" {
+            1
+        } else if let Some(candidate) = &manifest.stochastic.candidate_philox {
+            usize::try_from(candidate.count)
+                .map_err(|_| format!("case {case_id}: candidate_philox.count out of range"))?
+        } else {
+            return Err(format!(
+                "case {case_id}: missing stochastic.candidate_philox; ensemble count unknown"
+            ));
+        }
+    } else {
+        legacy_declared_ensemble_count(case_id, value)?
+    };
+    if declared == 0 {
+        return Err(format!("case {case_id}: declared ensemble count must be > 0"));
+    }
+    match cli_seeds {
+        None => Ok(declared),
+        Some(0) => Err(format!("case {case_id}: --seeds must be > 0")),
+        Some(requested) if requested > declared => Err(format!(
+            "case {case_id}: --seeds {requested} exceeds declared ensemble count {declared}; refusing to invent seeds"
+        )),
+        Some(requested) => Ok(requested),
+    }
 }
 
 fn end_timestamp(start: &str, total_s: i64) -> String {
@@ -539,6 +718,7 @@ fn run_advective_case(
 fn run_driver_case(
     case_id: &str,
     case: &serde_json::Value,
+    manifest: Option<&ValidationCaseManifest>,
     seed_index: u32,
     out_dir: &Path,
     revision: &str,
@@ -580,23 +760,10 @@ fn run_driver_case(
     let dx = domain["dx_deg"].as_f64().unwrap_or(0.1);
     let dy = domain["dy_deg"].as_f64().unwrap_or(0.1);
 
-    let seeds = &case["seeds"];
-    let base_key = if let Some(arr) = seeds.get("base_philox_key").and_then(|v| v.as_array()) {
-        [
-            arr[0].as_u64().unwrap_or(0) as u32,
-            arr[1].as_u64().unwrap_or(0) as u32,
-        ]
-    } else {
-        [0xDECA_FBAD, 0x1234_5678]
-    };
-    // REPEAT-009 reruns the identical Philox key twice to prove deterministic
-    // reruns are bit-identical; all other driver cases derive independent keys
-    // per seed for the 10-member stochastic ensemble.
-    let key = if case_id == "REPEAT-009" {
-        base_key
-    } else {
-        [base_key[0].wrapping_add(seed_index), base_key[1]]
-    };
+    // Fail-closed Philox resolution happens before any GPU work below.
+    // REPEAT-009 reuses its base key for identical reruns; all other cases
+    // derive independent keys per the declared wrapping rule.
+    let (key, counter) = resolve_candidate_seed(case_id, case, manifest, seed_index)?;
 
     let release_grid = GridDomain {
         xlon0,
@@ -626,7 +793,7 @@ fn run_driver_case(
         time_bounds_behavior: TimeBoundsBehavior::Clamp,
         velocity_to_grid_scale: velocity_scale(lat, &heights),
         philox_key: key,
-        initial_philox_counter: [0, 0, 0, 0],
+        initial_philox_counter: counter,
         sync_particle_store_each_step: true,
         collect_deposition_probabilities_each_step: true,
         ..ForwardTimeLoopConfig::default()
@@ -767,7 +934,7 @@ fn run_driver_case(
         case_id: case_id.to_string(),
         seed_index,
         philox_key: key,
-        philox_counter: [0, 0, 0, 0],
+        philox_counter: counter,
         adapter: adapter.clone(),
         is_software_adapter: software,
         candidate_revision: revision.to_string(),
@@ -798,7 +965,7 @@ fn run_driver_case(
 
 fn main() {
     env_logger::init();
-    let (cases, seeds, out_dir, fixtures) = parse_args();
+    let (cases, cli_seeds, out_dir, fixtures) = parse_args();
     let revision = candidate_revision();
     fs::create_dir_all(&out_dir).expect("create output directory");
     for case_id in &cases {
@@ -806,18 +973,17 @@ fn main() {
         let text = fs::read_to_string(&fixture_path)
             .unwrap_or_else(|_| panic!("read fixture {}", fixture_path.display()));
         let case: serde_json::Value = serde_json::from_str(&text).expect("parse case fixture");
+        let manifest = typed_manifest_for_document(&fixture_path, &text, &case)
+            .unwrap_or_else(|e| panic!("{e}"));
         if case_id == "ADV-ANA-001" {
             run_advective_case(case_id, &case, &out_dir, &revision).expect("advective case failed");
         } else {
-            let count = if case_id == "REPEAT-009" { 2 } else { seeds };
-            // REPEAT-009 always runs its two identical repeats regardless of --seeds.
-            let run_seeds = if case_id == "REPEAT-009" {
-                2
-            } else {
-                count.min(10)
-            };
+            // Declared ensemble count is authoritative; --seeds may only
+            // select a leading subset and is rejected before any GPU work.
+            let run_seeds = resolve_ensemble_count(case_id, &case, manifest.as_ref(), cli_seeds)
+                .unwrap_or_else(|e| panic!("{e}"));
             for seed in 0..run_seeds as u32 {
-                run_driver_case(case_id, &case, seed, &out_dir, &revision)
+                run_driver_case(case_id, &case, manifest.as_ref(), seed, &out_dir, &revision)
                     .unwrap_or_else(|e| panic!("{case_id} seed {seed} failed: {e}"));
             }
         }
@@ -827,4 +993,110 @@ fn main() {
         cases.len(),
         out_dir.display()
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn fixture_path(case_id: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases")
+            .join(format!("{case_id}.json"))
+    }
+
+    fn load_value_and_manifest(
+        case_id: &str,
+    ) -> (serde_json::Value, Option<ValidationCaseManifest>) {
+        let path = fixture_path(case_id);
+        let text = fs::read_to_string(&path).expect("read fixture");
+        let value: serde_json::Value = serde_json::from_str(&text).expect("parse fixture");
+        let manifest = typed_manifest_for_document(&path, &text, &value).expect("typed manifest");
+        (value, manifest)
+    }
+
+    #[test]
+    fn wind_uni_002_seed_zero_uses_declared_key() {
+        let (value, manifest) = load_value_and_manifest("WIND-UNI-002");
+        assert!(manifest.is_some());
+        let manifest = manifest.unwrap();
+        let candidate = manifest
+            .stochastic
+            .candidate_philox
+            .as_ref()
+            .expect("declared identity");
+        assert_eq!(candidate.base_key, [3737180555, 305419896]);
+        let (key, counter) =
+            resolve_candidate_seed("WIND-UNI-002", &value, Some(&manifest), 0).expect("seed 0");
+        assert_eq!(key, [3737180555, 305419896]);
+        assert_eq!(counter, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn wind_uni_002_seed_n_uses_wrapping_derivation() {
+        let (value, manifest) = load_value_and_manifest("WIND-UNI-002");
+        let manifest = manifest.unwrap();
+        let (key, _) =
+            resolve_candidate_seed("WIND-UNI-002", &value, Some(&manifest), 7).expect("seed 7");
+        assert_eq!(key, [3737180555u32.wrapping_add(7), 305419896]);
+    }
+
+    #[test]
+    fn stochastic_case_without_identity_is_rejected_before_execution() {
+        let mut value = serde_json::json!({
+            "domain": {"nx": 32},
+            "release": {"particle_count": 10},
+            "integration": {"start": "20240101000000", "dt_s": 300, "steps": 1, "total_s": 300}
+        });
+        // Legacy document with no seeds object at all.
+        value.as_object_mut().unwrap().remove("seeds");
+        let err = resolve_candidate_seed("WIND-UNI-002", &value, None, 0).expect_err("must fail");
+        assert!(err.contains("no default key"), "unexpected: {err}");
+        let err = resolve_ensemble_count("WIND-UNI-002", &value, None, None).expect_err("must fail");
+        assert!(err.contains("ensemble count"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn legacy_repeat_009_reuses_identical_key() {
+        let (value, manifest) = load_value_and_manifest("REPEAT-009");
+        assert!(manifest.is_none(), "REPEAT-009 is still a legacy v1 document");
+        let (key0, _) = resolve_candidate_seed("REPEAT-009", &value, None, 0).expect("seed 0");
+        let (key1, _) = resolve_candidate_seed("REPEAT-009", &value, None, 1).expect("seed 1");
+        assert_eq!(key0, key1);
+        assert_eq!(key0, [3737180555, 305419896]);
+        let count = resolve_ensemble_count("REPEAT-009", &value, None, None).expect("count");
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn cli_seeds_cannot_exceed_declared_ensemble() {
+        let (value, manifest) = load_value_and_manifest("WIND-UNI-002");
+        // Declared count is 10.
+        let full = resolve_ensemble_count("WIND-UNI-002", &value, manifest.as_ref(), None)
+            .expect("declared");
+        assert_eq!(full, 10);
+        // Explicit subset is allowed.
+        let subset =
+            resolve_ensemble_count("WIND-UNI-002", &value, manifest.as_ref(), Some(2))
+                .expect("subset");
+        assert_eq!(subset, 2);
+        // Silent expansion is rejected.
+        let err = resolve_ensemble_count("WIND-UNI-002", &value, manifest.as_ref(), Some(11))
+            .expect_err("must fail");
+        assert!(err.contains("exceeds declared"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn adv_ana_001_needs_no_rng_identity() {
+        let (value, manifest) = load_value_and_manifest("ADV-ANA-001");
+        let manifest = manifest.expect("v2 manifest");
+        assert!(manifest.stochastic.candidate_philox.is_none());
+        manifest.validate().expect("ADV-ANA-001 stays valid");
+        let err = resolve_candidate_seed("ADV-ANA-001", &value, Some(&manifest), 0)
+            .expect_err("deterministic case must not resolve a seed");
+        assert!(err.contains("no stochastic"), "unexpected: {err}");
+    }
 }

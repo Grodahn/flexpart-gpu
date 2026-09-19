@@ -63,6 +63,27 @@ pub struct CandidatePhiloxIdentity {
     pub derivation: String,
 }
 
+impl CandidatePhiloxIdentity {
+    /// Derive the Philox key for seed index `i`.
+    ///
+    /// Canonical rule: `[base0.wrapping_add(i), base1]`.
+    /// REPEAT-009-style identical reruns must not call this; they reuse
+    /// `base_key` unchanged (see `corpus-run` repeat handling).
+    #[must_use]
+    pub fn key_for_seed_index(&self, seed_index: u32) -> [u32; 2] {
+        [
+            self.base_key[0].wrapping_add(seed_index),
+            self.base_key[1],
+        ]
+    }
+
+    /// Counter for seed index `i` (currently the declared base counter).
+    #[must_use]
+    pub fn counter_for_seed_index(&self, _seed_index: u32) -> [u32; 4] {
+        self.base_counter
+    }
+}
+
 /// Oracle-side seed identity per issue #50 contract.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OracleSeedIdentity {
@@ -658,6 +679,33 @@ impl ValidationCaseManifest {
         Ok(())
     }
 
+    /// Resolve the candidate Philox key/counter for seed index `i`.
+    ///
+    /// Fail-closed: returns [`ValidationCaseError::InvalidStochasticIdentity`]
+    /// when no candidate RNG identity is declared. Deterministic cases
+    /// (e.g. `ADV-ANA-001`) must not call this; they declare no identity.
+    ///
+    /// # Errors
+    /// Returns [`ValidationCaseError::InvalidStochasticIdentity`] if
+    /// `stochastic.candidate_philox` is missing.
+    pub fn candidate_seed_identity(
+        &self,
+        seed_index: u32,
+    ) -> Result<([u32; 2], [u32; 4]), ValidationCaseError> {
+        let Some(candidate) = &self.stochastic.candidate_philox else {
+            return Err(ValidationCaseError::InvalidStochasticIdentity {
+                message: format!(
+                    "case {} declares no stochastic.candidate_philox; stochastic cases must declare a Philox identity, deterministic cases must not request one",
+                    self.case_id
+                ),
+            });
+        };
+        Ok((
+            candidate.key_for_seed_index(seed_index),
+            candidate.counter_for_seed_index(seed_index),
+        ))
+    }
+
     /// Write the manifest to a JSON file (round-trip serialization).
     ///
     /// # Errors
@@ -1002,5 +1050,66 @@ mod tests {
             let reloaded = ValidationCaseManifest::load_from_file(temp.path()).expect("reload");
             assert_eq!(manifest, reloaded, "{case_id} round-trip failed");
         }
+    }
+
+    #[test]
+    fn wind_uni_002_seed_zero_uses_declared_base_key() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases")
+            .join("WIND-UNI-002.json");
+        let manifest = ValidationCaseManifest::load_from_file(&path).expect("load WIND-UNI-002");
+        let candidate = manifest
+            .stochastic
+            .candidate_philox
+            .as_ref()
+            .expect("WIND-UNI-002 declares candidate_philox");
+        assert_eq!(candidate.base_key, [3737180555, 305419896]);
+        assert_eq!(candidate.base_counter, [0, 0, 0, 0]);
+        let (key0, counter0) = manifest
+            .candidate_seed_identity(0)
+            .expect("seed 0 resolves");
+        assert_eq!(key0, [3737180555, 305419896]);
+        assert_eq!(counter0, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn candidate_key_derivation_wraps_u32() {
+        let identity = CandidatePhiloxIdentity {
+            base_key: [u32::MAX, 305419896],
+            base_counter: [0, 0, 0, 0],
+            count: 10,
+            derivation: "seed i uses key [base0 + i, base1] with zeroed counter".to_string(),
+        };
+        assert_eq!(identity.key_for_seed_index(0), [u32::MAX, 305419896]);
+        assert_eq!(identity.key_for_seed_index(1), [0, 305419896]);
+        assert_eq!(identity.key_for_seed_index(2), [1, 305419896]);
+    }
+
+    #[test]
+    fn stochastic_case_without_candidate_philox_is_rejected() {
+        let mut manifest = make_minimal_manifest();
+        assert!(manifest.physics_switches.turbulence);
+        manifest.stochastic.candidate_philox = None;
+        manifest.stochastic.oracle_seed = None;
+        // Manifest-level validation rejects turbulence without any identity.
+        assert!(manifest.validate().is_err());
+        // Seed resolution also fails closed instead of substituting a key.
+        assert!(manifest.candidate_seed_identity(0).is_err());
+    }
+
+    #[test]
+    fn adv_ana_001_needs_no_rng_identity() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases")
+            .join("ADV-ANA-001.json");
+        let manifest = ValidationCaseManifest::load_from_file(&path).expect("load ADV-ANA-001");
+        assert!(!manifest.physics_switches.turbulence);
+        assert!(manifest.stochastic.candidate_philox.is_none());
+        manifest.validate().expect("ADV-ANA-001 stays valid");
+        assert!(manifest.candidate_seed_identity(0).is_err());
     }
 }

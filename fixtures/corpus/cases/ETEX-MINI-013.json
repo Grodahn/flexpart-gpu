@@ -37,8 +37,52 @@
     "mass_kg_per_particle": 0.0068
   },
   "wind": {
-    "profile": "native_era5",
-    "note": "Derived from ERA5 native model levels via scripts/etex/prepare_native_era5.py"
+    "profile": "real_weather",
+    "meteorology": {
+      "dataset_id": "era5-native-mini-19941023-24",
+      "version": "2024-09-19",
+      "source_path": "fixtures/etex/native-mini/",
+      "digest": "manifest:fixtures/etex/native-mini/DIGESTS.json",
+      "temporal_coverage": ["19941023150000", "19941024060000"],
+      "horizontal_coord": "geographic_lon_lat_degrees",
+      "vertical_coord": "era5_native_hybrid_137_levels",
+      "required_fields": [
+        "u",
+        "v",
+        "w",
+        "temperature",
+        "specific_humidity",
+        "pressure",
+        "geopotential",
+        "etadot",
+        "surface_pressure",
+        "2m_temperature",
+        "2m_dewpoint_temperature",
+        "10m_u_component_of_wind",
+        "10m_v_component_of_wind",
+        "surface_sensible_heat_flux",
+        "surface_net_solar_radiation",
+        "large_scale_precipitation",
+        "convective_precipitation",
+        "boundary_layer_height",
+        "mean_eastward_turbulent_surface_stress",
+        "mean_northward_turbulent_surface_stress",
+        "forecast_surface_roughness",
+        "geopotential_at_surface",
+        "land_sea_mask"
+      ],
+      "candidate_transformation": {
+        "description": "ERA5 native 137 hybrid levels -> 16 fixed AGL levels (10-20000m); omega-derived w (Pa/s -> m/s); horizontal interpolation to 0.25 deg regular lat/lon; temporal linear interpolation to 180s candidate timestep",
+        "script": "scripts/etex/prepare_native_era5.py",
+        "version": "2024-09-19"
+      },
+      "oracle_transformation": {
+        "description": "ERA5 native 137 hybrid levels retained; native etadot vertical velocity; horizontal interpolation to 0.25 deg rotated lat/lon; temporal interpolation per FLEXPART internal timestep",
+        "script": "scripts/etex/prepare_native_era5.py (oracle GRIB output path)",
+        "version": "2024-09-19"
+      },
+      "note": "Source ERA5 native model levels downloaded 2024-09-10; fixtures/etex/native-mini/ contains 6 snapshots (1994-10-23 15:00, 18:00, 21:00; 1994-10-24 00:00, 03:00, 06:00). DIGESTS.json in fixtures/etex/native-mini/ records SHA-256 of each GRIB file."
+    }
   },
   "surface": {
     "surface_pressure_pa": 101325.0,

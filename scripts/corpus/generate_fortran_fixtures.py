@@ -371,8 +371,20 @@ def ageclass_text(case: dict) -> str:
 
 
 def meteo_args(case_id: str, case: dict) -> str:
-    """Exact synthetic-GRIB generator flags derived from case wind/surface."""
+    """Exact synthetic-GRIB generator flags derived from case wind/surface.
+
+    For real-weather cases (RealWeather profile), the meteorology comes from
+    the native ERA5 data in fixtures/etex/native-mini/ and is not generated
+    synthetically. This function returns an empty string for RealWeather cases.
+    """
     wind = case.get("wind", {})
+    profile = wind.get("profile", "uniform")
+    
+    if profile == "real_weather":
+        # Real-weather meteorology comes from native ERA5 fixture data
+        # (fixtures/etex/native-mini/), not synthetic GRIB generation.
+        return ""
+    
     surface = case.get("surface", {})
     u = wind.get("u_m_s", wind.get("u0_m_s", 5.0))
     v = wind.get("v_m_s", 0.0)
@@ -570,6 +582,12 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
         raise SystemExit(f"{case_id}: derived fixtures drift from case JSON:\n" + "\n".join(failures))
 
 
+def is_real_weather(case: dict) -> bool:
+    """Check if the case uses real-weather meteorology (RealWeather profile)."""
+    wind = case.get("wind", {})
+    return wind.get("profile") == "real_weather"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--flexpart-dir", default=str(REPO.parent / "flexpart"))
@@ -619,13 +637,28 @@ def main() -> None:
             )
         else:
             shutil.copyfile(tracer, outdir / "SPECIES" / "SPECIES_024")
-        args_line = meteo_args(case_id, case)
-        (outdir / "METEO_ARGS.txt").write_text(args_line + "\n", encoding="utf-8")
-        (outdir / "METEO.txt").write_text(
-            "python3 scripts/generate_synthetic_grib.py "
-            f"--output-dir target/corpus/meteo/{case_id} {args_line}\n",
-            encoding="utf-8",
-        )
+        
+        # Handle meteorology: synthetic cases generate GRIB, real-weather uses native fixture data
+        if is_real_weather(case):
+            # Real-weather case (e.g., ETEX-MINI-013): meteorology comes from native ERA5 fixture
+            # No synthetic GRIB generation; METEO_ARGS.txt is empty
+            (outdir / "METEO_ARGS.txt").write_text("\n", encoding="utf-8")
+            (outdir / "METEO.txt").write_text(
+                f"# Real-weather case: meteorology from native ERA5 fixture at {case['wind']['meteorology']['source_path']}\n"
+                f"# Dataset: {case['wind']['meteorology']['dataset_id']} version {case['wind']['meteorology']['version']}\n"
+                f"# Candidate transformation: {case['wind']['meteorology']['candidate_transformation']['script']}\n"
+                f"# Oracle transformation: {case['wind']['meteorology']['oracle_transformation']['script']}\n",
+                encoding="utf-8",
+            )
+        else:
+            # Synthetic case: generate GRIB from synthetic parameters
+            args_line = meteo_args(case_id, case)
+            (outdir / "METEO_ARGS.txt").write_text(args_line + "\n", encoding="utf-8")
+            (outdir / "METEO.txt").write_text(
+                "python3 scripts/generate_synthetic_grib.py "
+                f"--output-dir target/corpus/meteo/{case_id} {args_line}\n",
+                encoding="utf-8",
+            )
         # Provenance shape is frozen byte-identical to the checked-in
         # INPUT_DERIVATION.json files; values come from the normalized
         # release (point geometries in all checked-in cases).

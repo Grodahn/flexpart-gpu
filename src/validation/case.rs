@@ -324,6 +324,59 @@ pub struct ReleaseSpec {
 /// rounding of short decimal representations such as 0.001 kg).
 pub const MASS_CONSISTENCY_TOLERANCE_REL: f64 = 1e-6;
 
+/// Candidate-side transformation step in the meteorology processing chain.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CandidateMetTransformation {
+    /// Description of the transformation (e.g., "ERA5 native 137 hybrid levels -> 16 AGL levels, omega to m/s").
+    pub description: String,
+    /// Script or tool identity that performs the transformation (e.g., "scripts/etex/prepare_native_era5.py", version or git hash).
+    pub script: String,
+    /// Version or commit of the script.
+    pub version: String,
+}
+
+/// Oracle-side transformation step in the meteorology processing chain.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OracleMetTransformation {
+    /// Description of the transformation (e.g., "ERA5 native 137 hybrid levels retained, etadot used").
+    pub description: String,
+    /// Script or tool identity that performs the transformation.
+    pub script: String,
+    /// Version or commit of the script.
+    pub version: String,
+}
+
+/// Meteorology source reference with complete identity and transformation chain.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MeteorologySpec {
+    /// Stable dataset or fixture identifier (e.g., "era5-native-mini-19941023-24").
+    pub dataset_id: String,
+    /// Version of the dataset (e.g., "v1", date-based, or content hash).
+    pub version: String,
+    /// Repository-relative source path to the native meteorology data (e.g., "fixtures/etex/native-mini/").
+    pub source_path: String,
+    /// SHA-256 digest of the source data, or reference to a versioned digest manifest.
+    pub digest: String,
+    /// Temporal coverage of the meteorology data [start, end] in YYYYMMDDHHMMSS.
+    pub temporal_coverage: [String; 2],
+    /// Horizontal coordinate identity (e.g., "geographic_lon_lat_degrees").
+    pub horizontal_coord: String,
+    /// Vertical coordinate identity (e.g., "era5_native_hybrid_137_levels" or "agl_16_levels").
+    pub vertical_coord: String,
+    /// Required meteorological fields present in the source data.
+    pub required_fields: Vec<String>,
+    /// Candidate-side transformation chain.
+    pub candidate_transformation: CandidateMetTransformation,
+    /// Oracle-side transformation chain.
+    pub oracle_transformation: OracleMetTransformation,
+    /// Optional note for human readers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
 /// Wind field specification.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "profile", rename_all = "snake_case", deny_unknown_fields)]
@@ -341,13 +394,10 @@ pub enum WindSpec {
         v_m_s: f32,
         w_m_s: f32,
     },
-    /// Real-weather wind from native ERA5 model levels (ETEX, etc.).
-    NativeEra5 {
-        /// Path to the prepared meteorology relative to case fixtures.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        met_path: Option<String>,
-        /// Note describing the source and processing.
-        note: String,
+    /// Real-weather wind from a versioned meteorology specification.
+    RealWeather {
+        /// Complete meteorology specification including identity, provenance, and transformations.
+        meteorology: MeteorologySpec,
     },
 }
 
@@ -1119,7 +1169,7 @@ impl ValidationCaseManifest {
         match &self.wind {
             WindSpec::Uniform { .. }
             | WindSpec::LinearShear { .. }
-            | WindSpec::NativeEra5 { .. } => {}
+            | WindSpec::RealWeather { .. } => {}
         }
 
         // Deposition switches require surface fields with relevant parameters
@@ -1135,6 +1185,197 @@ impl ValidationCaseManifest {
         // Decay requires species configuration (not in this manifest but flagged)
         if self.physics_switches.decay {
             // This is a flag for downstream - species config lives in SPECIES/ files
+        }
+
+        // Validate meteorology specification for real-weather cases
+        if let WindSpec::RealWeather { meteorology } = &self.wind {
+            self.validate_meteorology(meteorology)?;
+        }
+
+        Ok(())
+    }
+
+    fn validate_meteorology(&self, met: &MeteorologySpec) -> Result<(), ValidationCaseError> {
+        // Required fields present
+        if met.dataset_id.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.dataset_id",
+            });
+        }
+        if met.version.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.version",
+            });
+        }
+        if met.source_path.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.source_path",
+            });
+        }
+        if met.digest.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.digest",
+            });
+        }
+        if met.temporal_coverage[0].is_empty() || met.temporal_coverage[1].is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.temporal_coverage",
+            });
+        }
+        if met.horizontal_coord.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.horizontal_coord",
+            });
+        }
+        if met.vertical_coord.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.vertical_coord",
+            });
+        }
+        if met.required_fields.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.required_fields",
+            });
+        }
+
+        // Validate temporal coverage format (YYYYMMDDHHMMSS)
+        for (i, tc) in met.temporal_coverage.iter().enumerate() {
+            if tc.len() != 14 || !tc.bytes().all(|b| b.is_ascii_digit()) {
+                return Err(ValidationCaseError::AmbiguousField {
+                    field: "meteorology.temporal_coverage",
+                    message: format!("temporal_coverage[{}] must be YYYYMMDDHHMMSS", i),
+                });
+            }
+        }
+        // Start <= end
+        if met.temporal_coverage[0] > met.temporal_coverage[1] {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "meteorology.temporal_coverage",
+                message: "temporal_coverage end must be >= start".to_string(),
+            });
+        }
+
+        // Validate candidate transformation
+        if met.candidate_transformation.description.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.candidate_transformation.description",
+            });
+        }
+        if met.candidate_transformation.script.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.candidate_transformation.script",
+            });
+        }
+        if met.candidate_transformation.version.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.candidate_transformation.version",
+            });
+        }
+
+        // Validate oracle transformation
+        if met.oracle_transformation.description.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.oracle_transformation.description",
+            });
+        }
+        if met.oracle_transformation.script.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.oracle_transformation.script",
+            });
+        }
+        if met.oracle_transformation.version.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.oracle_transformation.version",
+            });
+        }
+
+        // Validate source_path is a non-empty, normalized repository-relative path
+        if met.source_path.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.source_path",
+            });
+        }
+        if met.source_path.starts_with('/') || met.source_path.starts_with('.') {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "meteorology.source_path",
+                message: "source_path must be a normalized repository-relative path (no leading '/' or '.')".to_string(),
+            });
+        }
+
+        // Validate digest format (sha256 or manifest reference)
+        if met.digest.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.digest",
+            });
+        }
+        // Accept either 64-char hex (sha256) or "manifest:<path>"
+        if met.digest.len() != 64 && !met.digest.starts_with("manifest:") {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "meteorology.digest",
+                message: "digest must be 64-char hex sha256 or 'manifest:<path>'".to_string(),
+            });
+        }
+        if met.digest.len() == 64 && !met.digest.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "meteorology.digest",
+                message: "sha256 digest must be hexadecimal".to_string(),
+            });
+        }
+
+        // Candidate transformation required fields
+        if met.candidate_transformation.description.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.candidate_transformation.description",
+            });
+        }
+        if met.candidate_transformation.script.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.candidate_transformation.script",
+            });
+        }
+        if met.candidate_transformation.version.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.candidate_transformation.version",
+            });
+        }
+
+        // Oracle transformation required fields
+        if met.oracle_transformation.description.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.oracle_transformation.description",
+            });
+        }
+        if met.oracle_transformation.script.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.oracle_transformation.script",
+            });
+        }
+        if met.oracle_transformation.version.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.oracle_transformation.version",
+            });
+        }
+
+        // Required fields non-empty
+        for (i, field) in met.required_fields.iter().enumerate() {
+            if field.is_empty() {
+                return Err(ValidationCaseError::AmbiguousField {
+                    field: "meteorology.required_fields",
+                    message: format!("required_fields[{}] must not be empty", i),
+                });
+            }
+        }
+
+        // Horizontal/vertical coordinate must be non-empty
+        if met.horizontal_coord.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.horizontal_coord",
+            });
+        }
+        if met.vertical_coord.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "meteorology.vertical_coord",
+            });
         }
 
         Ok(())
@@ -2429,6 +2670,255 @@ mod tests {
         assert!(
             matches!(err, ValidationCaseError::MissingField { .. }),
             "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn real_weather_case_requires_complete_meteorology() {
+        let mut raw = minimal_manifest_json();
+        raw["wind"] = serde_json::json!({
+            "profile": "real_weather",
+            "meteorology": {}
+        });
+        let err = parse_json_value(&raw).expect_err("empty meteorology fails");
+        let rendered = err.to_string();
+        // serde reports "missing field `dataset_id`" for missing required fields
+        assert!(
+            rendered.contains("dataset_id") || rendered.contains("missing field"),
+            "error must name missing dataset_id: {rendered}"
+        );
+    }
+
+    #[test]
+    fn real_weather_meteorology_missing_fields_rejected() {
+        let mut raw = minimal_manifest_json();
+        raw["wind"] = serde_json::json!({
+            "profile": "real_weather",
+            "meteorology": {
+                "dataset_id": "test",
+                "version": "1",
+                "source_path": "path",
+                "digest": "manifest:path",
+                "temporal_coverage": ["20240101000000", "20240101010000"],
+                "horizontal_coord": "test",
+                "vertical_coord": "test",
+                "required_fields": ["u"],
+                "candidate_transformation": {"description": "d", "script": "s", "version": "v"},
+                "oracle_transformation": {"description": "d", "script": "s", "version": "v"}
+            }
+        });
+        // Should pass
+        parse_json_value(&raw).expect("complete meteorology passes");
+
+        // Missing dataset_id
+        let mut raw2 = minimal_manifest_json();
+        raw2["wind"] = serde_json::json!({
+            "profile": "real_weather",
+            "meteorology": {
+                "version": "1",
+                "source_path": "path",
+                "digest": "manifest:path",
+                "temporal_coverage": ["20240101000000", "20240101010000"],
+                "horizontal_coord": "test",
+                "vertical_coord": "test",
+                "required_fields": ["u"],
+                "candidate_transformation": {"description": "d", "script": "s", "version": "v"},
+                "oracle_transformation": {"description": "d", "script": "s", "version": "v"}
+            }
+        });
+        let err = parse_json_value(&raw2).expect_err("missing dataset_id fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("dataset_id") || rendered.contains("missing field"),
+            "error must name missing dataset_id: {rendered}"
+        );
+    }
+
+    #[test]
+    fn real_weather_meteorology_bad_digest_rejected() {
+        let mut raw = minimal_manifest_json();
+        raw["wind"] = serde_json::json!({
+            "profile": "real_weather",
+            "meteorology": {
+                "dataset_id": "test",
+                "version": "1",
+                "source_path": "path",
+                "digest": "not-a-valid-digest",
+                "temporal_coverage": ["20240101000000", "20240101010000"],
+                "horizontal_coord": "test",
+                "vertical_coord": "test",
+                "required_fields": ["u"],
+                "candidate_transformation": {"description": "d", "script": "s", "version": "v"},
+                "oracle_transformation": {"description": "d", "script": "s", "version": "v"}
+            }
+        });
+        let err = parse_json_value(&raw).expect_err("bad digest fails");
+        assert!(err.to_string().contains("meteorology.digest"));
+    }
+
+    #[test]
+    fn real_weather_meteorology_temporal_coverage_invalid() {
+        let mut raw = minimal_manifest_json();
+        raw["wind"] = serde_json::json!({
+            "profile": "real_weather",
+            "meteorology": {
+                "dataset_id": "test",
+                "version": "1",
+                "source_path": "path",
+                "digest": "manifest:path",
+                "temporal_coverage": ["not-a-date", "20240101010000"],
+                "horizontal_coord": "test",
+                "vertical_coord": "test",
+                "required_fields": ["u"],
+                "candidate_transformation": {"description": "d", "script": "s", "version": "v"},
+                "oracle_transformation": {"description": "d", "script": "s", "version": "v"}
+            }
+        });
+        let err = parse_json_value(&raw).expect_err("bad temporal_coverage fails");
+        assert!(err.to_string().contains("temporal_coverage"));
+    }
+
+    #[test]
+    fn real_weather_meteorology_temporal_coverage_end_before_start_rejected() {
+        let mut raw = minimal_manifest_json();
+        raw["wind"] = serde_json::json!({
+            "profile": "real_weather",
+            "meteorology": {
+                "dataset_id": "test",
+                "version": "1",
+                "source_path": "path",
+                "digest": "manifest:path",
+                "temporal_coverage": ["20240101010000", "20240101000000"],
+                "horizontal_coord": "test",
+                "vertical_coord": "test",
+                "required_fields": ["u"],
+                "candidate_transformation": {"description": "d", "script": "s", "version": "v"},
+                "oracle_transformation": {"description": "d", "script": "s", "version": "v"}
+            }
+        });
+        let err = parse_json_value(&raw).expect_err("end before start fails");
+        assert!(err.to_string().contains("temporal_coverage"));
+    }
+
+    #[test]
+    fn real_weather_meteorology_bad_transformation_rejected() {
+        let mut raw = minimal_manifest_json();
+        raw["wind"] = serde_json::json!({
+            "profile": "real_weather",
+            "meteorology": {
+                "dataset_id": "test",
+                "version": "1",
+                "source_path": "path",
+                "digest": "manifest:path",
+                "temporal_coverage": ["20240101000000", "20240101010000"],
+                "horizontal_coord": "test",
+                "vertical_coord": "test",
+                "required_fields": ["u"],
+                "candidate_transformation": {"description": "", "script": "s", "version": "v"},
+                "oracle_transformation": {"description": "d", "script": "s", "version": "v"}
+            }
+        });
+        let err = parse_json_value(&raw).expect_err("empty candidate description fails");
+        assert!(err.to_string().contains("candidate_transformation.description"));
+    }
+
+    #[test]
+    fn real_weather_meteorology_bad_source_path_rejected() {
+        let mut raw = minimal_manifest_json();
+        raw["wind"] = serde_json::json!({
+            "profile": "real_weather",
+            "meteorology": {
+                "dataset_id": "test",
+                "version": "1",
+                "source_path": "/absolute/path",
+                "digest": "manifest:path",
+                "temporal_coverage": ["20240101000000", "20240101010000"],
+                "horizontal_coord": "test",
+                "vertical_coord": "test",
+                "required_fields": ["u"],
+                "candidate_transformation": {"description": "d", "script": "s", "version": "v"},
+                "oracle_transformation": {"description": "d", "script": "s", "version": "v"}
+            }
+        });
+        let err = parse_json_value(&raw).expect_err("absolute source_path fails");
+        assert!(err.to_string().contains("source_path"));
+    }
+
+    #[test]
+    fn real_weather_meteorology_with_only_note_fails() {
+        // The old NativeEra5 variant had only a note; this must fail with the new schema
+        let mut raw = minimal_manifest_json();
+        raw["wind"] = serde_json::json!({
+            "profile": "real_weather",
+            "meteorology": {
+                "note": "some note"
+            }
+        });
+        let err = parse_json_value(&raw).expect_err("note-only meteorology fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("dataset_id") || rendered.contains("missing field"),
+            "error must name missing dataset_id: {rendered}"
+        );
+    }
+
+    #[test]
+    fn synthetic_cases_do_not_require_meteorology() {
+        let adv = load_checked_in_case("ADV-ANA-001");
+        match &adv.wind {
+            WindSpec::Uniform { .. } => {}
+            other => panic!("ADV-ANA-001 wind changed: {other:?}"),
+        }
+        // Should validate without meteorology
+        adv.validate().expect("ADV-ANA-001 validates without meteorology");
+
+        let wind = load_checked_in_case("WIND-UNI-002");
+        match &wind.wind {
+            WindSpec::Uniform { .. } => {}
+            other => panic!("WIND-UNI-002 wind changed: {other:?}"),
+        }
+        wind.validate().expect("WIND-UNI-002 validates without meteorology");
+    }
+
+    #[test]
+    fn etex_mini_013_meteorology_complete() {
+        let etex = load_checked_in_case("ETEX-MINI-013");
+        match &etex.wind {
+            WindSpec::RealWeather { meteorology } => {
+                assert_eq!(meteorology.dataset_id, "era5-native-mini-19941023-24");
+                assert_eq!(meteorology.version, "2024-09-19");
+                assert_eq!(meteorology.source_path, "fixtures/etex/native-mini/");
+                assert_eq!(meteorology.digest, "manifest:fixtures/etex/native-mini/DIGESTS.json");
+                assert_eq!(meteorology.temporal_coverage[0], "19941023150000");
+                assert_eq!(meteorology.temporal_coverage[1], "19941024060000");
+                assert_eq!(meteorology.horizontal_coord, "geographic_lon_lat_degrees");
+                assert_eq!(meteorology.vertical_coord, "era5_native_hybrid_137_levels");
+                assert!(!meteorology.required_fields.is_empty());
+                assert!(!meteorology.candidate_transformation.description.is_empty());
+                assert!(!meteorology.candidate_transformation.script.is_empty());
+                assert!(!meteorology.candidate_transformation.version.is_empty());
+                assert!(!meteorology.oracle_transformation.description.is_empty());
+                assert!(!meteorology.oracle_transformation.script.is_empty());
+                assert!(!meteorology.oracle_transformation.version.is_empty());
+            }
+            other => panic!("ETEX-MINI-013 wind changed: {other:?}"),
+        }
+        etex.validate().expect("ETEX-MINI-013 validates with complete meteorology");
+    }
+
+    #[test]
+    fn synthetic_cases_reject_real_weather_profile() {
+        let mut raw = minimal_manifest_json();
+        raw["wind"] = serde_json::json!({
+            "profile": "real_weather",
+            "meteorology": {}
+        });
+        let err = parse_json_value(&raw).expect_err("synthetic case with real_weather fails");
+        let rendered = err.to_string();
+        // serde reports missing field for missing required fields
+        assert!(
+            rendered.contains("dataset_id") || rendered.contains("missing field"),
+            "error must name missing dataset_id: {rendered}"
         );
     }
 }

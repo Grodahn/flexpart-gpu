@@ -464,10 +464,28 @@ fn run_advective_case(
         .map(|a| a.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect())
         .unwrap_or_else(|| vec![0.0; nz]);
     let release = &case["release"];
-    let start_lon = release["lon_deg"].as_f64().unwrap_or(10.0);
-    let start_lat = release["lat_deg"].as_f64().unwrap_or(50.0);
-    let start_z = release["z_m"].as_f64().unwrap_or(100.0) as f32;
-    let count = release["particle_count"].as_u64().unwrap_or(1024) as usize;
+    // Normalized point geometry; the isolated advection kernel has no
+    // box support, so non-point sources fail closed here.
+    let geometry = release.get("geometry").ok_or_else(|| {
+        format!("case {case_id}: missing release.geometry")
+    })?;
+    if geometry.get("kind").and_then(|v| v.as_str()) != Some("point") {
+        return Err(format!(
+            "case {case_id}: advective path requires a point release geometry"
+        ));
+    }
+    let start_lon = geometry.get("lon_deg").and_then(|v| v.as_f64()).ok_or_else(|| {
+        format!("case {case_id}: release.geometry.lon_deg missing or not a number")
+    })?;
+    let start_lat = geometry.get("lat_deg").and_then(|v| v.as_f64()).ok_or_else(|| {
+        format!("case {case_id}: release.geometry.lat_deg missing or not a number")
+    })?;
+    let start_z = geometry.get("z_m").and_then(|v| v.as_f64()).ok_or_else(|| {
+        format!("case {case_id}: release.geometry.z_m missing or not a number")
+    })? as f32;
+    let count = release["particle_count"].as_u64().ok_or_else(|| {
+        format!("case {case_id}: release.particle_count missing or not a number")
+    })? as usize;
     let u = case["wind"]["u_m_s"].as_f64().unwrap_or(10.0) as f32;
     let dt = case["integration"]["dt_s"].as_f64().unwrap_or(60.0) as f32;
     let steps = case["integration"]["steps"].as_u64().unwrap_or(60) as usize;
@@ -614,14 +632,57 @@ fn run_driver_case(
         .map(|a| a.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect())
         .unwrap_or_else(|| vec![0.0; nz]);
     let release = &case["release"];
-    let lon = release["lon_deg"].as_f64().unwrap_or(10.0);
-    let lat = release["lat_deg"].as_f64().unwrap_or(10.0);
-    let z = release["z_m"].as_f64().unwrap_or(50.0);
-    let count = release["particle_count"].as_u64().unwrap_or(500);
+    // Normalized source geometry: points map directly; boxes are supported
+    // only with degenerate lon/lat (vertical line), matching the candidate
+    // ReleaseConfig shape. Anything else fails closed.
+    let geometry = release.get("geometry").ok_or_else(|| {
+        format!("case {case_id}: missing release.geometry")
+    })?;
+    let geometry_kind = geometry.get("kind").and_then(|v| v.as_str()).ok_or_else(|| {
+        format!("case {case_id}: release.geometry.kind missing")
+    })?;
+    let number = |object: &serde_json::Value, field: &str| -> Result<f64, String> {
+        object.get(field).and_then(|v| v.as_f64()).ok_or_else(|| {
+            format!("case {case_id}: release.geometry.{field} missing or not a number")
+        })
+    };
+    let (lon, lat, z_min, z_max) = match geometry_kind {
+        "point" => {
+            let lon = number(geometry, "lon_deg")?;
+            let lat = number(geometry, "lat_deg")?;
+            let z = number(geometry, "z_m")?;
+            (lon, lat, z, z)
+        }
+        "box" => {
+            let lon_min = number(geometry, "lon_min_deg")?;
+            let lon_max = number(geometry, "lon_max_deg")?;
+            let lat_min = number(geometry, "lat_min_deg")?;
+            let lat_max = number(geometry, "lat_max_deg")?;
+            if lon_min != lon_max || lat_min != lat_max {
+                return Err(format!(
+                    "case {case_id}: box lon/lat ranges are not supported by the candidate ReleaseConfig (only vertical ranges)"
+                ));
+            }
+            let z_min = number(geometry, "z_min_m")?;
+            let z_max = number(geometry, "z_max_m")?;
+            (lon_min, lat_min, z_min, z_max)
+        }
+        other => {
+            return Err(format!(
+                "case {case_id}: unknown release.geometry.kind {other:?}"
+            ));
+        }
+    };
+    let count = release["particle_count"].as_u64().ok_or_else(|| {
+        format!("case {case_id}: release.particle_count missing or not a number")
+    })?;
     let mass_total = release
-        .get("mass_kg_total")
+        .get("inventory")
+        .and_then(|v| v.get("quantity_kg"))
         .and_then(|v| v.as_f64())
-        .unwrap_or(1.0);
+        .ok_or_else(|| {
+            format!("case {case_id}: release.inventory.quantity_kg missing or not a number")
+        })?;
     let integration = &case["integration"];
     let start = integration
         .get("start")
@@ -655,14 +716,27 @@ fn run_driver_case(
         nx,
         ny,
     };
+    // Normalized release timing (validated equal to the integration start
+    // for instant releases) drives the candidate release window.
+    let timing = release.get("timing").ok_or_else(|| {
+        format!("case {case_id}: missing release.timing")
+    })?;
+    if timing.get("kind").and_then(|v| v.as_str()) != Some("instant") {
+        return Err(format!(
+            "case {case_id}: only instant release timing is supported by the candidate driver"
+        ));
+    }
+    let release_at = timing.get("at").and_then(|v| v.as_str()).ok_or_else(|| {
+        format!("case {case_id}: release.timing.at missing")
+    })?;
     let releases = vec![ReleaseConfig {
         name: case_id.to_string(),
-        start_time: start.to_string(),
-        end_time: start.to_string(),
+        start_time: release_at.to_string(),
+        end_time: release_at.to_string(),
         lon,
         lat,
-        z_min: z,
-        z_max: z,
+        z_min: z_min,
+        z_max: z_max,
         mass_kg: mass_total,
         particle_count: count,
         species_masses_kg: None,

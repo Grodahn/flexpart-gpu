@@ -162,36 +162,167 @@ pub struct DomainSpec {
     pub ny: u32,
     /// Number of vertical levels.
     pub nz: u32,
-    /// Grid spacing in x [degrees].
+    /// Grid spacing in x [degrees, must be finite and strictly positive].
     pub dx_deg: f32,
-    /// Grid spacing in y [degrees].
+    /// Grid spacing in y [degrees, must be finite and strictly positive].
     pub dy_deg: f32,
-    /// Origin longitude [degrees].
+    /// Origin longitude [degrees, `horizontal_ref` convention].
     pub xlon0_deg: f32,
-    /// Origin latitude [degrees].
+    /// Origin latitude [degrees, `horizontal_ref` convention].
     pub ylat0_deg: f32,
-    /// Vertical level heights [m AGL].
+    /// Horizontal coordinate convention for origin, spacing, and release
+    /// geometry. Required: a domain without convention metadata is rejected.
+    pub horizontal_ref: HorizontalCoordRef,
+    /// Vertical level heights [m, `wind_heights_ref` reference].
     pub wind_heights_m: Vec<f32>,
+    /// Vertical reference for `wind_heights_m` (all checked-in cases AGL).
+    pub wind_heights_ref: VerticalRef,
 }
 
-/// Release specification with explicit units.
+/// Horizontal coordinate convention for domain and release geometry.
+///
+/// All checked-in cases use geographic coordinates. The convention is part of
+/// the contract so runners never assume a projection or axis order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HorizontalCoordRef {
+    /// Geographic longitude (east-positive, decimal degrees) and latitude
+    /// (decimal degrees) on the WGS84 ellipsoid.
+    GeographicLonLatDegrees,
+}
+
+/// Vertical height reference.
+///
+/// Distinguishes above-ground-level from above-sea-level heights. Every
+/// checked-in case uses AGL: candidate particle heights, PBL diagnostics,
+/// and `wind_heights_m` are heights above ground, and FLEXPART `RELEASES`
+/// uses `ZKIND=1` (meters above ground; see the source-contract mapping in
+/// `fixtures/corpus/cases/MIGRATION_NOTES.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VerticalRef {
+    /// Height above ground level [m].
+    Agl,
+    /// Height above sea level [m].
+    Asl,
+}
+
+/// Mass unit for the released inventory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MassUnit {
+    /// Kilograms (all checked-in cases).
+    Kg,
+}
+
+/// Normalized source geometry.
+///
+/// Point releases carry a single position; box releases carry inclusive
+/// lon/lat/height ranges. All checked-in cases are points.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum SourceGeometry {
+    /// Single release position.
+    Point {
+        /// Longitude [decimal degrees, `horizontal_ref` convention].
+        lon_deg: f32,
+        /// Latitude [decimal degrees, `horizontal_ref` convention].
+        lat_deg: f32,
+        /// Height [m, `vertical_ref` reference].
+        z_m: f32,
+    },
+    /// Inclusive release box (lon/lat/height ranges).
+    Box {
+        /// Minimum longitude [decimal degrees].
+        lon_min_deg: f64,
+        /// Maximum longitude [decimal degrees].
+        lon_max_deg: f64,
+        /// Minimum latitude [decimal degrees].
+        lat_min_deg: f64,
+        /// Maximum latitude [decimal degrees].
+        lat_max_deg: f64,
+        /// Minimum height [m, `vertical_ref` reference].
+        z_min_m: f32,
+        /// Maximum height [m, `vertical_ref` reference].
+        z_max_m: f32,
+    },
+}
+
+/// Release timing semantics.
+///
+/// Timestamps are `YYYYMMDDHHMMSS`. Instant releases inject all particles at
+/// one timestamp; window releases span start to end inclusive. All
+/// checked-in cases are instants at the integration start.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ReleaseTiming {
+    /// Single release timestamp.
+    Instant {
+        /// Release timestamp (`YYYYMMDDHHMMSS`).
+        at: String,
+    },
+    /// Release window from start to end inclusive.
+    Window {
+        /// Window start (`YYYYMMDDHHMMSS`).
+        start: String,
+        /// Window end (`YYYYMMDDHHMMSS`, must be >= start).
+        end: String,
+    },
+}
+
+/// Released species identifier.
+///
+/// FLEXPART-native `SPECIES_<NNN>` file identifier (e.g. `SPECIES_024` for
+/// the inert tracer, `SPECIES_040` for the depositing aerosol). The trailing
+/// number maps to `SPECNUM_REL` and the `SPECIES/SPECIES_<NNN>` oracle file;
+/// see the mapping notes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpeciesRef {
+    /// Species identifier (`SPECIES_<NNN>`).
+    pub id: String,
+}
+
+/// Released inventory (physical mass, distinct from particle sampling).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseInventory {
+    /// Released quantity in `unit`.
+    pub quantity_kg: f32,
+    /// Inventory unit.
+    pub unit: MassUnit,
+}
+
+/// Normalized release (source) definition.
+///
+/// Position, timing, species, and inventory are explicit: no workflow
+/// defaults. `particle_count` stays a separate execution/sampling parameter
+/// (number of computational particles representing the inventory).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReleaseSpec {
-    /// Release longitude [degrees].
-    pub lon_deg: f32,
-    /// Release latitude [degrees].
-    pub lat_deg: f32,
-    /// Release height [m AGL].
-    pub z_m: f32,
-    /// Total particle count.
+    /// Source geometry (point or box).
+    pub geometry: SourceGeometry,
+    /// Vertical reference for geometry heights.
+    pub vertical_ref: VerticalRef,
+    /// Release timing.
+    pub timing: ReleaseTiming,
+    /// Released species.
+    pub species: SpeciesRef,
+    /// Released inventory.
+    pub inventory: ReleaseInventory,
+    /// Number of computational particles (execution/sampling parameter).
     pub particle_count: u32,
-    /// Total mass [kg] distributed over all particles.
-    pub mass_kg_total: f32,
-    /// Per-particle mass [kg] (alternative to `mass_kg_total`).
+    /// Per-particle mass [kg]. When present it must agree with
+    /// `inventory.quantity_kg / particle_count` within 1e-6 relative
+    /// (f32 rounding); see `MASS_CONSISTENCY_TOLERANCE_REL`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mass_kg_per_particle: Option<f32>,
 }
+
+/// Relative tolerance for total vs per-particle mass consistency (f32
+/// rounding of short decimal representations such as 0.001 kg).
+pub const MASS_CONSISTENCY_TOLERANCE_REL: f64 = 1e-6;
 
 /// Wind field specification.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -454,6 +585,12 @@ pub struct ValidationCaseManifest {
     /// Input equivalence status for #52.
     #[serde(default = "default_input_equivalence")]
     pub input_equivalence: InputEquivalenceStatus,
+    /// Whether the release geometry must lie inside the domain.
+    /// Synthetic corpus cases require containment; ETEX-MINI-013 waives it
+    /// (placeholder domain/release pending #52 input-equivalence work) with
+    /// rationale in `notes`. Defaults to true.
+    #[serde(default = "default_containment_required")]
+    pub require_source_containment: bool,
     /// Additional notes.
     #[serde(default)]
     pub notes: Vec<String>,
@@ -461,6 +598,10 @@ pub struct ValidationCaseManifest {
 
 fn default_input_equivalence() -> InputEquivalenceStatus {
     InputEquivalenceStatus::NotApplicable
+}
+
+fn default_containment_required() -> bool {
+    true
 }
 
 /// Errors for validation case manifest handling.
@@ -600,6 +741,42 @@ impl ValidationCaseManifest {
                 message: "domain dimensions must be > 0".to_string(),
             });
         }
+        for (name, spacing) in [
+            ("domain.dx_deg", self.domain.dx_deg),
+            ("domain.dy_deg", self.domain.dy_deg),
+        ] {
+            if !spacing.is_finite() || spacing <= 0.0 {
+                return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                    message: format!("{name} must be finite and strictly positive, got {spacing}"),
+                });
+            }
+        }
+        for (name, value) in [
+            ("domain.xlon0_deg", self.domain.xlon0_deg),
+            ("domain.ylat0_deg", self.domain.ylat0_deg),
+        ] {
+            if !value.is_finite() {
+                return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                    message: format!("{name} must be finite, got {value}"),
+                });
+            }
+        }
+        if !( -180.0..=360.0).contains(&self.domain.xlon0_deg) {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "domain.xlon0_deg must be in [-180, 360], got {}",
+                    self.domain.xlon0_deg
+                ),
+            });
+        }
+        if !(-90.0..=90.0).contains(&self.domain.ylat0_deg) {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "domain.ylat0_deg must be in [-90, 90], got {}",
+                    self.domain.ylat0_deg
+                ),
+            });
+        }
         if self.domain.wind_heights_m.len() != self.domain.nz as usize {
             return Err(ValidationCaseError::AmbiguousField {
                 field: "domain.wind_heights_m",
@@ -610,23 +787,19 @@ impl ValidationCaseManifest {
                 ),
             });
         }
+        if self.domain.wind_heights_m.iter().any(|h| !h.is_finite() || *h < 0.0) {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "wind_heights_m must be finite and >= 0".to_string(),
+            });
+        }
         if self.domain.wind_heights_m.windows(2).any(|w| w[1] <= w[0]) {
             return Err(ValidationCaseError::InvalidPhysicsSwitches {
                 message: "wind_heights_m must be strictly increasing".to_string(),
             });
         }
 
-        // Validate release
-        if self.release.particle_count == 0 {
-            return Err(ValidationCaseError::InvalidPhysicsSwitches {
-                message: "release.particle_count must be > 0".to_string(),
-            });
-        }
-        if self.release.mass_kg_total <= 0.0 {
-            return Err(ValidationCaseError::InvalidPhysicsSwitches {
-                message: "release.mass_kg_total must be > 0".to_string(),
-            });
-        }
+        // Validate normalized release (geometry, timing, species, inventory)
+        self.validate_release()?;
 
         // Validate integration
         if self.integration.dt_s <= 0.0 {
@@ -698,6 +871,232 @@ impl ValidationCaseManifest {
             });
         }
 
+        Ok(())
+    }
+
+    fn validate_timestamp(value: &str, field: &'static str) -> Result<(), ValidationCaseError> {
+        if value.len() != 14 || !value.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(ValidationCaseError::AmbiguousField {
+                field,
+                message: format!("{value} must be YYYYMMDDHHMMSS (14 digits)"),
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_release(&self) -> Result<(), ValidationCaseError> {
+        let release = &self.release;
+        if release.particle_count == 0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "release.particle_count must be > 0".to_string(),
+            });
+        }
+        if !release.inventory.quantity_kg.is_finite() || release.inventory.quantity_kg <= 0.0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "release.inventory.quantity_kg must be finite and > 0, got {}",
+                    release.inventory.quantity_kg
+                ),
+            });
+        }
+        if let Some(per_particle) = release.mass_kg_per_particle {
+            if !per_particle.is_finite() || per_particle <= 0.0 {
+                return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                    message: format!(
+                        "release.mass_kg_per_particle must be finite and > 0, got {per_particle}"
+                    ),
+                });
+            }
+            let implied =
+                f64::from(per_particle) * f64::from(release.particle_count);
+            let total = f64::from(release.inventory.quantity_kg);
+            let rel = ((implied - total) / total).abs();
+            if rel > MASS_CONSISTENCY_TOLERANCE_REL {
+                return Err(ValidationCaseError::AmbiguousField {
+                    field: "release.mass_kg_per_particle",
+                    message: format!(
+                        "per-particle mass {per_particle} x count {} implies {implied}, inconsistent with inventory {total}"
+                        ,
+                        release.particle_count
+                    ),
+                });
+            }
+        }
+        if release.species.id.is_empty() {
+            return Err(ValidationCaseError::MissingField {
+                field: "release.species.id",
+            });
+        }
+        if !release.species.id.starts_with("SPECIES_")
+            || release.species.id.len() != "SPECIES_".len() + 3
+            || !release.species.id["SPECIES_".len()..]
+                .bytes()
+                .all(|b| b.is_ascii_digit())
+        {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "release.species.id",
+                message: format!(
+                    "{} must match SPECIES_<NNN>",
+                    release.species.id
+                ),
+            });
+        }
+        match &release.timing {
+            ReleaseTiming::Instant { at } => {
+                Self::validate_timestamp(at, "release.timing.at")?;
+                if at != &self.integration.start {
+                    return Err(ValidationCaseError::AmbiguousField {
+                        field: "release.timing.at",
+                        message: format!(
+                            "instant release {at} must equal integration start {}",
+                            self.integration.start
+                        ),
+                    });
+                }
+            }
+            ReleaseTiming::Window { start, end } => {
+                Self::validate_timestamp(start, "release.timing.start")?;
+                Self::validate_timestamp(end, "release.timing.end")?;
+                if end < start {
+                    return Err(ValidationCaseError::AmbiguousField {
+                        field: "release.timing.end",
+                        message: format!("window end {end} must be >= start {start}"),
+                    });
+                }
+            }
+        }
+        let check_lon = |name: &'static str, lon: f64| -> Result<(), ValidationCaseError> {
+            if !lon.is_finite() || !(-180.0..=360.0).contains(&lon) {
+                return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                    message: format!("{name} must be finite and in [-180, 360], got {lon}"),
+                });
+            }
+            Ok(())
+        };
+        let check_lat = |name: &'static str, lat: f64| -> Result<(), ValidationCaseError> {
+            if !lat.is_finite() || !(-90.0..=90.0).contains(&lat) {
+                return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                    message: format!("{name} must be finite and in [-90, 90], got {lat}"),
+                });
+            }
+            Ok(())
+        };
+        let check_height = |name: &'static str, z: f32| -> Result<(), ValidationCaseError> {
+            if !z.is_finite() {
+                return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                    message: format!("{name} must be finite, got {z}"),
+                });
+            }
+            if release.vertical_ref == VerticalRef::Agl && z < 0.0 {
+                return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                    message: format!("{name} must be >= 0 for AGL releases, got {z}"),
+                });
+            }
+            Ok(())
+        };
+        match &release.geometry {
+            SourceGeometry::Point { lon_deg, lat_deg, z_m } => {
+                check_lon("release.geometry.lon_deg", f64::from(*lon_deg))?;
+                check_lat("release.geometry.lat_deg", f64::from(*lat_deg))?;
+                check_height("release.geometry.z_m", *z_m)?;
+            }
+            SourceGeometry::Box {
+                lon_min_deg,
+                lon_max_deg,
+                lat_min_deg,
+                lat_max_deg,
+                z_min_m,
+                z_max_m,
+            } => {
+                check_lon("release.geometry.lon_min_deg", *lon_min_deg)?;
+                check_lon("release.geometry.lon_max_deg", *lon_max_deg)?;
+                check_lat("release.geometry.lat_min_deg", *lat_min_deg)?;
+                check_lat("release.geometry.lat_max_deg", *lat_max_deg)?;
+                check_height("release.geometry.z_min_m", *z_min_m)?;
+                check_height("release.geometry.z_max_m", *z_max_m)?;
+                if lon_max_deg < lon_min_deg {
+                    return Err(ValidationCaseError::AmbiguousField {
+                        field: "release.geometry.lon_max_deg",
+                        message: format!(
+                            "lon_max {lon_max_deg} must be >= lon_min {lon_min_deg}"
+                        ),
+                    });
+                }
+                if lat_max_deg < lat_min_deg {
+                    return Err(ValidationCaseError::AmbiguousField {
+                        field: "release.geometry.lat_max_deg",
+                        message: format!(
+                            "lat_max {lat_max_deg} must be >= lat_min {lat_min_deg}"
+                        ),
+                    });
+                }
+                if z_max_m < z_min_m {
+                    return Err(ValidationCaseError::AmbiguousField {
+                        field: "release.geometry.z_max_m",
+                        message: format!("z_max {z_max_m} must be >= z_min {z_min_m}"),
+                    });
+                }
+            }
+        }
+        if self.require_source_containment {
+            self.validate_source_containment()?;
+        }
+        Ok(())
+    }
+
+    fn validate_source_containment(&self) -> Result<(), ValidationCaseError> {
+        let domain = &self.domain;
+        let lon_min = f64::from(domain.xlon0_deg);
+        let lon_max = lon_min + f64::from(domain.nx) * f64::from(domain.dx_deg);
+        let lat_min = f64::from(domain.ylat0_deg);
+        let lat_max = lat_min + f64::from(domain.ny) * f64::from(domain.dy_deg);
+        let height_min = f64::from(*domain.wind_heights_m.first().unwrap_or(&0.0));
+        let height_max = f64::from(*domain.wind_heights_m.last().unwrap_or(&0.0));
+        let epsilon = 1e-6;
+        let mut check_point =
+            |name: &'static str, lon: f64, lat: f64, z: f64| -> Result<(), ValidationCaseError> {
+                if lon < lon_min - epsilon || lon > lon_max + epsilon {
+                    return Err(ValidationCaseError::AmbiguousField {
+                        field: "release.geometry",
+                        message: format!(
+                            "{name} lon {lon} outside domain [{lon_min}, {lon_max}]"
+                        ),
+                    });
+                }
+                if lat < lat_min - epsilon || lat > lat_max + epsilon {
+                    return Err(ValidationCaseError::AmbiguousField {
+                        field: "release.geometry",
+                        message: format!(
+                            "{name} lat {lat} outside domain [{lat_min}, {lat_max}]"
+                        ),
+                    });
+                }
+                if z < height_min - epsilon || z > height_max + epsilon {
+                    return Err(ValidationCaseError::AmbiguousField {
+                        field: "release.geometry",
+                        message: format!(
+                            "{name} height {z} outside domain levels [{height_min}, {height_max}]"
+                        ),
+                    });
+                }
+                Ok(())
+            };
+        match &self.release.geometry {
+            SourceGeometry::Point { lon_deg, lat_deg, z_m } => {
+                check_point("point", f64::from(*lon_deg), f64::from(*lat_deg), f64::from(*z_m))?;
+            }
+            SourceGeometry::Box {
+                lon_min_deg,
+                lon_max_deg,
+                lat_min_deg,
+                lat_max_deg,
+                z_min_m,
+                z_max_m,
+            } => {
+                check_point("box-min", *lon_min_deg, *lat_min_deg, f64::from(*z_min_m))?;
+                check_point("box-max", *lon_max_deg, *lat_max_deg, f64::from(*z_max_m))?;
+            }
+        }
         Ok(())
     }
 
@@ -994,14 +1393,28 @@ mod tests {
                 dy_deg: 0.1,
                 xlon0_deg: 9.5,
                 ylat0_deg: 8.5,
+                horizontal_ref: HorizontalCoordRef::GeographicLonLatDegrees,
                 wind_heights_m: vec![50.0, 100.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0],
+                wind_heights_ref: VerticalRef::Agl,
             },
             release: ReleaseSpec {
-                lon_deg: 10.0,
-                lat_deg: 10.0,
-                z_m: 50.0,
+                geometry: SourceGeometry::Point {
+                    lon_deg: 10.0,
+                    lat_deg: 10.0,
+                    z_m: 50.0,
+                },
+                vertical_ref: VerticalRef::Agl,
+                timing: ReleaseTiming::Instant {
+                    at: "20240101000000".to_string(),
+                },
+                species: SpeciesRef {
+                    id: "SPECIES_024".to_string(),
+                },
+                inventory: ReleaseInventory {
+                    quantity_kg: 1.0,
+                    unit: MassUnit::Kg,
+                },
                 particle_count: 1000,
-                mass_kg_total: 1.0,
                 mass_kg_per_particle: None,
             },
             wind: WindSpec::Uniform {
@@ -1087,6 +1500,7 @@ mod tests {
             },
             representation_differences: RepresentationDifferences::default(),
             input_equivalence: InputEquivalenceStatus::NotApplicable,
+            require_source_containment: true,
             notes: vec![],
         }
     }
@@ -1761,6 +2175,8 @@ mod tests {
     /// Explicit JSON `null` in the source is equivalent to an absent key in
     /// the output (`skip_serializing_if` on `Option` fields); anything else
     /// must match exactly so silently discarded fields fail loudly.
+    /// Fields with defaults that are serialized even when absent from source
+    /// (e.g. `require_source_containment` defaulting to true) are exempted.
     fn assert_source_keys_preserved(source: &serde_json::Value, output: &serde_json::Value, path: &str) {
         match (source, output) {
             (serde_json::Value::Object(source_map), serde_json::Value::Object(output_map)) => {
@@ -1775,6 +2191,11 @@ mod tests {
                     assert_source_keys_preserved(source_value, output_value, &child);
                 }
                 for key in output_map.keys() {
+                    if key == "require_source_containment" {
+                        // This field has a default (true) that serializes even
+                        // when absent from source; exempt from the round-trip check.
+                        continue;
+                    }
                     assert!(
                         source_map.contains_key(key),
                         "serialized field {path}.{key} has no source counterpart"
@@ -1828,6 +2249,145 @@ mod tests {
                 serde_json::from_str(&serialized).expect("output parses");
             assert_source_keys_preserved(&source, &output, case_id);
         }
+    }
+
+    fn minimal_manifest_json() -> serde_json::Value {
+        serde_json::to_value(make_minimal_manifest()).expect("serialize minimal")
+    }
+
+    fn parse_json_value(value: &serde_json::Value) -> Result<ValidationCaseManifest, ValidationCaseError> {
+        let text = serde_json::to_string(value).expect("re-serialize");
+        ValidationCaseManifest::parse(&text, Path::new("test.json"))
+    }
+
+    #[test]
+    fn release_height_without_vertical_ref_is_rejected() {
+        let mut raw = minimal_manifest_json();
+        raw["release"]
+            .as_object_mut()
+            .expect("release object")
+            .remove("vertical_ref");
+        let err = parse_json_value(&raw).expect_err("missing vertical_ref fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("vertical_ref"),
+            "error must name the missing reference: {rendered}"
+        );
+    }
+
+    #[test]
+    fn domain_without_convention_metadata_is_rejected() {
+        let mut raw = minimal_manifest_json();
+        raw["domain"]
+            .as_object_mut()
+            .expect("domain object")
+            .remove("horizontal_ref");
+        let err = parse_json_value(&raw).expect_err("missing horizontal_ref fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("horizontal_ref"),
+            "error must name the missing convention: {rendered}"
+        );
+        let mut raw = minimal_manifest_json();
+        raw["domain"]
+            .as_object_mut()
+            .expect("domain object")
+            .remove("wind_heights_ref");
+        let err = parse_json_value(&raw).expect_err("missing wind_heights_ref fails");
+        assert!(
+            err.to_string().contains("wind_heights_ref"),
+            "error must name the missing reference: {err}"
+        );
+    }
+
+    #[test]
+    fn inconsistent_total_and_per_particle_mass_is_rejected() {
+        let mut manifest = make_minimal_manifest();
+        manifest.release.inventory.quantity_kg = 1.0;
+        manifest.release.particle_count = 1000;
+        manifest.release.mass_kg_per_particle = Some(0.5);
+        let err = manifest.validate().expect_err("inconsistent mass fails");
+        assert!(
+            matches!(
+                err,
+                ValidationCaseError::AmbiguousField { field: "release.mass_kg_per_particle", .. }
+            ),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn invalid_coordinates_spacing_and_placement_are_rejected() {
+        let mut manifest = make_minimal_manifest();
+        // Longitude out of range.
+        if let SourceGeometry::Point { ref mut lon_deg, .. } = manifest.release.geometry {
+            *lon_deg = 500.0;
+        }
+        assert!(manifest.validate().is_err());
+        let mut manifest = make_minimal_manifest();
+        if let SourceGeometry::Point { ref mut lat_deg, .. } = manifest.release.geometry {
+            *lat_deg = f32::INFINITY;
+        }
+        assert!(manifest.validate().is_err());
+        // Non-positive grid spacing.
+        let mut manifest = make_minimal_manifest();
+        manifest.domain.dx_deg = 0.0;
+        assert!(manifest.validate().is_err());
+        // Out-of-domain release with containment required.
+        let mut manifest = make_minimal_manifest();
+        if let SourceGeometry::Point { ref mut lon_deg, .. } = manifest.release.geometry {
+            *lon_deg = 100.0;
+        }
+        let err = manifest.validate().expect_err("out-of-domain fails");
+        assert!(
+            matches!(err, ValidationCaseError::AmbiguousField { field: "release.geometry", .. }),
+            "unexpected: {err}"
+        );
+        // Same placement validates when containment is waived.
+        let mut manifest = make_minimal_manifest();
+        if let SourceGeometry::Point { ref mut lon_deg, .. } = manifest.release.geometry {
+            *lon_deg = 100.0;
+        }
+        manifest.require_source_containment = false;
+        manifest.validate().expect("waived containment passes");
+    }
+
+    #[test]
+    fn adv_and_wind_retain_their_original_source_meaning() {
+        let adv = load_checked_in_case("ADV-ANA-001");
+        match &adv.release.geometry {
+            SourceGeometry::Point { lon_deg, lat_deg, z_m } => {
+                assert_eq!((*lon_deg, *lat_deg, *z_m), (10.0, 50.0, 100.0));
+            }
+            other => panic!("ADV geometry changed: {other:?}"),
+        }
+        assert_eq!(adv.release.vertical_ref, VerticalRef::Agl);
+        assert_eq!(
+            adv.release.timing,
+            ReleaseTiming::Instant { at: "20240101000000".to_string() }
+        );
+        assert_eq!(adv.release.species.id, "SPECIES_024");
+        assert_eq!(adv.release.inventory.quantity_kg, 1024.0);
+        assert_eq!(adv.release.inventory.unit, MassUnit::Kg);
+        assert_eq!(adv.release.particle_count, 1024);
+        assert_eq!(adv.domain.horizontal_ref, HorizontalCoordRef::GeographicLonLatDegrees);
+        assert_eq!(adv.domain.wind_heights_ref, VerticalRef::Agl);
+
+        let wind = load_checked_in_case("WIND-UNI-002");
+        match &wind.release.geometry {
+            SourceGeometry::Point { lon_deg, lat_deg, z_m } => {
+                assert_eq!((*lon_deg, *lat_deg, *z_m), (10.0, 10.0, 50.0));
+            }
+            other => panic!("WIND geometry changed: {other:?}"),
+        }
+        assert_eq!(wind.release.vertical_ref, VerticalRef::Agl);
+        assert_eq!(
+            wind.release.timing,
+            ReleaseTiming::Instant { at: "20240101000000".to_string() }
+        );
+        assert_eq!(wind.release.species.id, "SPECIES_024");
+        assert_eq!(wind.release.inventory.quantity_kg, 1.0);
+        assert_eq!(wind.release.particle_count, 1000);
     }
 
     #[test]

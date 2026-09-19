@@ -41,7 +41,7 @@ def _demo_case(path, case_id="DEMO-001", base_key=(1, 2), count=2,
     path.write_text(json.dumps({
         "schema_version": 2,
         "case_id": case_id,
-        "release": {"mass_kg_total": 1.0},
+        "release": {"inventory": {"quantity_kg": 1.0, "unit": "kg"}},
         "physics_switches": {"turbulence": True, "convection": False,
                              "dry_deposition": False, "wet_deposition": False,
                              "decay": False},

@@ -62,13 +62,77 @@ RECEPTORS_ZERO = """************************************************************
 
 
 def case_total_mass_kg(case: dict) -> float:
-    """Total released mass [kg] for a case JSON release block."""
+    """Total released mass [kg] from the normalized release inventory."""
+    return float(case["release"]["inventory"]["quantity_kg"])
+
+
+def species_number_for_case(case_id: str, case: dict) -> int:
+    """Map the normalized species id (``SPECIES_<NNN>``) to ``SPECNUM_REL``."""
+    species_id = case["release"]["species"]["id"]
+    if not isinstance(species_id, str) or not species_id.startswith("SPECIES_"):
+        raise SystemExit(
+            f"{case_id}: release.species.id {species_id!r} must match SPECIES_<NNN>"
+        )
+    digits = species_id[len("SPECIES_"):]
+    if len(digits) != 3 or not digits.isdigit():
+        raise SystemExit(
+            f"{case_id}: release.species.id {species_id!r} must match SPECIES_<NNN>"
+        )
+    return int(digits)
+
+
+def release_window_datetimes(case_id: str, case: dict) -> tuple:
+    """Derive (start, end) YYYYMMDDHHMMSS release stamps from normalized timing."""
+    timing = case["release"]["timing"]
+    kind = timing.get("kind")
+    if kind == "instant":
+        stamp = timing["at"]
+        return stamp, stamp
+    if kind == "window":
+        return timing["start"], timing["end"]
+    raise SystemExit(f"{case_id}: unknown release.timing.kind {kind!r}")
+
+
+def flexpart_datetime(stamp: str) -> tuple:
+    """Split a YYYYMMDDHHMMSS stamp into (YYYYMMDD int, HHMMSS int)."""
+    return int(stamp[0:8]), int(stamp[8:14])
+
+
+def release_vertical(case_id: str, case: dict) -> tuple:
+    """Return (z1, z2, zkind) for FLEXPART RELEASES.
+
+    AGL maps to ``ZKIND=1`` (meters above ground, the repository convention
+    asserted by the ETEX input-equivalence audit). ASL has no established
+    ZKIND mapping and fails closed.
+    """
     release = case["release"]
-    if "mass_kg_total" in release:
-        return float(release["mass_kg_total"])
-    return float(release["particle_count"]) * float(
-        release.get("mass_kg_per_particle", 1.0)
-    )
+    if release.get("vertical_ref") != "agl":
+        raise SystemExit(
+            f"{case_id}: vertical_ref {release.get('vertical_ref')!r} has no "
+            "FLEXPART ZKIND mapping (only agl -> ZKIND=1 is established)"
+        )
+    geometry = release["geometry"]
+    kind = geometry.get("kind")
+    if kind == "point":
+        z = float(geometry["z_m"])
+        return z, z, 1
+    if kind == "box":
+        return float(geometry["z_min_m"]), float(geometry["z_max_m"]), 1
+    raise SystemExit(f"{case_id}: unknown release.geometry.kind {kind!r}")
+
+
+def release_lonlat(case_id: str, case: dict) -> tuple:
+    """Return (lon1, lon2, lat1, lat2) for FLEXPART RELEASES."""
+    geometry = case["release"]["geometry"]
+    kind = geometry.get("kind")
+    if kind == "point":
+        lon = float(geometry["lon_deg"])
+        lat = float(geometry["lat_deg"])
+        return lon, lon, lat, lat
+    if kind == "box":
+        return (float(geometry["lon_min_deg"]), float(geometry["lon_max_deg"]),
+                float(geometry["lat_min_deg"]), float(geometry["lat_max_deg"]))
+    raise SystemExit(f"{case_id}: unknown release.geometry.kind {kind!r}")
 
 
 def sim_end_date(start: str, total_s: int) -> tuple:
@@ -265,29 +329,34 @@ def command_text(case_id: str, case: dict) -> str:
 
 
 def releases_text(case_id: str, case: dict, specnum: int) -> str:
-    """RELEASES namelist derived from the case release block.
+    """RELEASES namelist derived from the normalized release block.
 
     FLEXPART MASS is in grams; the candidate works in kilograms.
     """
     release = case["release"]
     mass_g = case_total_mass_kg(case) * KG_TO_G
+    start_stamp, end_stamp = release_window_datetimes(case_id, case)
+    idate1, itime1 = flexpart_datetime(start_stamp)
+    idate2, itime2 = flexpart_datetime(end_stamp)
+    lon1, lon2, lat1, lat2 = release_lonlat(case_id, case)
+    z1, z2, zkind = release_vertical(case_id, case)
     return (
         "&RELEASES_CTRL\n"
         " NSPEC      =           1,\n"
         f" SPECNUM_REL=          {specnum},\n"
         " /\n"
         "&RELEASE\n"
-        " IDATE1  =       20240101,\n"
-        " ITIME1  =         000000,\n"
-        " IDATE2  =       20240101,\n"
-        " ITIME2  =         000000,\n"
-        f" LON1    =     {release['lon_deg']:8.3f},\n"
-        f" LON2    =     {release['lon_deg']:8.3f},\n"
-        f" LAT1    =     {release['lat_deg']:8.3f},\n"
-        f" LAT2    =     {release['lat_deg']:8.3f},\n"
-        f" Z1      =     {release['z_m']:9.3f},\n"
-        f" Z2      =     {release['z_m']:9.3f},\n"
-        " ZKIND   =              1,\n"
+        f" IDATE1  =       {idate1},\n"
+        f" ITIME1  =         {itime1:06d},\n"
+        f" IDATE2  =       {idate2},\n"
+        f" ITIME2  =         {itime2:06d},\n"
+        f" LON1    =     {lon1:8.3f},\n"
+        f" LON2    =     {lon2:8.3f},\n"
+        f" LAT1    =     {lat1:8.3f},\n"
+        f" LAT2    =     {lat2:8.3f},\n"
+        f" Z1      =     {z1:9.3f},\n"
+        f" Z2      =     {z2:9.3f},\n"
+        f" ZKIND   =              {zkind},\n"
         f" MASS    =       {mass_g:.4E},\n"
         f" PARTS   =       {int(release['particle_count']):10d},\n"
         f' COMMENT =    "{case_id}",\n'
@@ -441,9 +510,22 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
             failures.append(f"{name}: fixture has {actual!r}, case needs {expected!r}")
 
     releases = (outdir / "RELEASES").read_text(encoding="utf-8")
-    check("RELEASES LON1", float(namelist_value(releases, "LON1")), float(release["lon_deg"]), 1e-9)
-    check("RELEASES LAT1", float(namelist_value(releases, "LAT1")), float(release["lat_deg"]), 1e-9)
-    check("RELEASES Z1", float(namelist_value(releases, "Z1")), float(release["z_m"]), 1e-9)
+    lon1, lon2, lat1, lat2 = release_lonlat(case_id, case)
+    z1, z2, zkind = release_vertical(case_id, case)
+    start_stamp, end_stamp = release_window_datetimes(case_id, case)
+    idate1, itime1 = flexpart_datetime(start_stamp)
+    idate2, itime2 = flexpart_datetime(end_stamp)
+    check("RELEASES LON1", float(namelist_value(releases, "LON1")), lon1, 1e-9)
+    check("RELEASES LON2", float(namelist_value(releases, "LON2")), lon2, 1e-9)
+    check("RELEASES LAT1", float(namelist_value(releases, "LAT1")), lat1, 1e-9)
+    check("RELEASES LAT2", float(namelist_value(releases, "LAT2")), lat2, 1e-9)
+    check("RELEASES Z1", float(namelist_value(releases, "Z1")), z1, 1e-9)
+    check("RELEASES Z2", float(namelist_value(releases, "Z2")), z2, 1e-9)
+    check("RELEASES ZKIND", int(namelist_value(releases, "ZKIND")), zkind)
+    check("RELEASES IDATE1", int(namelist_value(releases, "IDATE1")), idate1)
+    check("RELEASES ITIME1", int(namelist_value(releases, "ITIME1")), itime1)
+    check("RELEASES IDATE2", int(namelist_value(releases, "IDATE2")), idate2)
+    check("RELEASES ITIME2", int(namelist_value(releases, "ITIME2")), itime2)
     check("RELEASES PARTS", int(namelist_value(releases, "PARTS")), int(release["particle_count"]))
     check("RELEASES SPECNUM_REL", int(namelist_value(releases, "SPECNUM_REL")), specnum)
     expected_g = case_total_mass_kg(case) * KG_TO_G
@@ -519,7 +601,7 @@ def main() -> None:
             case = json.loads((CASES / "PBL-NEUTRAL-005.json").read_text(encoding="utf-8"))
         outdir = FORTRAN_OUT / case_id
         (outdir / "SPECIES").mkdir(parents=True, exist_ok=True)
-        specnum = 40 if case_id in ("DRY-007", "WET-008") else 24
+        specnum = species_number_for_case(case_id, case)
         (outdir / "COMMAND").write_text(command_text(case_id, case), encoding="utf-8")
         (outdir / "RELEASES").write_text(
             releases_text(case_id, case, specnum), encoding="utf-8"
@@ -544,11 +626,16 @@ def main() -> None:
             f"--output-dir target/corpus/meteo/{case_id} {args_line}\n",
             encoding="utf-8",
         )
+        # Provenance shape is frozen byte-identical to the checked-in
+        # INPUT_DERIVATION.json files; values come from the normalized
+        # release (point geometries in all checked-in cases).
+        lon1, lon2, lat1, lat2 = release_lonlat(case_id, case)
+        z1, z2, _zkind = release_vertical(case_id, case)
         derivation = {
             "case_file": f"fixtures/corpus/cases/{case_path.name}",
-            "release_lon_deg": case["release"]["lon_deg"],
-            "release_lat_deg": case["release"]["lat_deg"],
-            "release_z_m": case["release"]["z_m"],
+            "release_lon_deg": lon1,
+            "release_lat_deg": lat1,
+            "release_z_m": z1,
             "particle_count": case["release"]["particle_count"],
             "candidate_mass_kg": case_total_mass_kg(case),
             "mass_conversion": "MASS_g = mass_kg * 1000 (FLEXPART MASS is in grams)",

@@ -1087,7 +1087,7 @@ def run_corpus_seeds(args, oracle_manifest):
     notes = list(args.note or [])
     case_def = io_corpus.read_case_definition(args.case_def)
     case_id = case_def["case_id"]
-    release_mass = float(case_def["release"]["mass_kg_total"])
+    release_mass = float(case_def["release"]["inventory"]["quantity_kg"])
     switches = case_def["physics_switches"]
     deposition_on = bool(switches.get("dry_deposition") or
                          switches.get("wet_deposition") or switches.get("decay"))

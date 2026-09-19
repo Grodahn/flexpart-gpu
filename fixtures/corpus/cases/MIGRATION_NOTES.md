@@ -72,6 +72,36 @@ V1 `units` blocks were partial per case; v2 carries the full explicit set.
 The ADV-ANA-001 `displacement: m` unit is preserved as the typed
 `units.displacement` field (it was silently discarded before strict
 parsing).
+
+## Coordinate semantics and source normalization
+
+v1 used loosely typed `lon_deg`/`lat_deg`/`z_m` without vertical reference
+or horizontal convention metadata, and `seeds` with free-form derivation.
+v2 introduces typed enums and structures so runners never guess:
+
+| v1 | v2 | Note |
+|----|----|------|
+| (none) | `domain.horizontal_ref` | Required: `GeographicLonLatDegrees`. |
+| (none) | `domain.wind_heights_ref` | Required: `agl` (all checked-in cases). |
+| (none) | `release.vertical_ref` | Required: `agl` (all checked-in cases). |
+| `release.lon_deg`/`lat_deg`/`z_m` | `release.geometry` (Point/Box) | Typed; `kind` disambiguates. |
+| (none) | `release.geometry.vertical_ref` | AGL (checked-in cases). |
+| `release` (implicit instant) | `release.timing` | Explicit: `Instant { at: "YYYYMMDDHHMMSS" }` equals integration start. |
+| (none) | `release.species` | Required: `SPECIES_<NNN>` mapping to FLEXPART `SPECNUM_REL`. |
+| `release.mass_kg_total` | `release.inventory` | Typed: `quantity_kg` + `unit` (`kg`). |
+| `release.mass_kg_per_particle` | `release.mass_kg_per_particle` | Kept; validated consistent with `quantity_kg / particle_count` within 1e-6. |
+| (none) | `domain.wind_heights_ref` | Required: `agl` (all checked-in cases). |
+| `domain`/`release` (implicit) | `require_source_containment` | Synthetic cases must lie inside domain; ETEX-MINI-013 waives it with note. |
+
+All checked-in cases use `SourceGeometry::Point` with `VerticalRef::Agl`,
+`ReleaseTiming::Instant` matching the integration start, and
+`SpeciesRef { id: "SPECIES_024" }` (or `SPECIES_040` for DRY/WET).
+Inventory uses `MassUnit::Kg`. The manifest `vertical_ref` maps to
+FLEXPART `RELEASES` `ZKIND=1` (meters above ground, confirmed by the
+ETEX input-equivalence audit). `HorizontalCoordRef::GeographicLonLatDegrees`
+maps to FLEXPART geographic coordinates. The generator and audit reject
+legacy fields (`ZKIND` still written as `1` in the Fortran namelist, but
+the manifest never accepts `ZKIND` directly).
 Preserved values: heat_flux/inv_obukhov/height (PBL), shear (SHEAR),
 deposition_velocity/rate (DRY), scavenging/precipitating_fraction/mass
 (WET). Introduced (non-scientific, standard SI): `wind: m/s`, `mass: kg`,

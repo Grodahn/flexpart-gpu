@@ -10,14 +10,30 @@
     "dy_deg": 0.1,
     "xlon0_deg": 9.5,
     "ylat0_deg": 8.5,
-    "wind_heights_m": [50.0, 100.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0]
+    "horizontal_ref": "geographic_lon_lat_degrees",
+    "wind_heights_m": [50.0, 100.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0],
+    "wind_heights_ref": "agl"
   },
   "release": {
-    "lon_deg": 10.0,
-    "lat_deg": 10.0,
-    "z_m": 50.0,
+    "geometry": {
+      "kind": "point",
+      "lon_deg": 10.0,
+      "lat_deg": 10.0,
+      "z_m": 50.0
+    },
+    "vertical_ref": "agl",
+    "timing": {
+      "kind": "instant",
+      "at": "20240101000000"
+    },
+    "species": {
+      "id": "SPECIES_040"
+    },
+    "inventory": {
+      "quantity_kg": 1.0,
+      "unit": "kg"
+    },
     "particle_count": 500,
-    "mass_kg_total": 1.0,
     "mass_kg_per_particle": 0.002
   },
   "wind": {

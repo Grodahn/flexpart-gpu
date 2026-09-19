@@ -113,7 +113,7 @@ class PhiloxIdentityTest(unittest.TestCase):
             case_dir = Path(tmp)
             seed = {
                 "particle_count": int(case["release"]["particle_count"]),
-                "metrics": {"initial_mass_kg": float(case["release"]["mass_kg_total"])},
+                "metrics": {"initial_mass_kg": float(case["release"]["inventory"]["quantity_kg"])},
                 "seed_index": 0,
                 "philox_key": [1, 2],
                 "philox_counter": [0, 0, 0, 0],
@@ -138,7 +138,7 @@ class PhiloxIdentityTest(unittest.TestCase):
             case_dir = Path(tmp)
             seed = {
                 "particle_count": int(case["release"]["particle_count"]),
-                "metrics": {"initial_mass_kg": float(case["release"]["mass_kg_total"])},
+                "metrics": {"initial_mass_kg": float(case["release"]["inventory"]["quantity_kg"])},
                 "seed_index": 0,
                 "philox_key": list(base_key),
                 "philox_counter": [9, 9, 9, 9],
@@ -161,7 +161,7 @@ class PhiloxIdentityTest(unittest.TestCase):
             case_dir = Path(tmp)
             seed = {
                 "particle_count": int(case["release"]["particle_count"]),
-                "metrics": {"initial_mass_kg": float(case["release"]["mass_kg_total"])},
+                "metrics": {"initial_mass_kg": float(case["release"]["inventory"]["quantity_kg"])},
                 "seed_index": 0,
                 "philox_key": [3737180555, 305419896],
                 "philox_counter": [0, 0, 0, 0],

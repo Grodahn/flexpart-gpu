@@ -57,9 +57,21 @@ No scientific value changed in migration; only representation.
 | `oracle_species_note` (DRY-007/WET-008) | `notes` + `representation_differences.notes` | Moved verbatim (species provenance stays in notes; comparison role summarized in representation differences). |
 | `based_on` (REPEAT-009) | `notes` | Moved ("based_on PBL-NEUTRAL-005" plus the shared-configuration statement). |
 
+## Closed contract (no silent field loss)
+
+Every v2 object uses `#[serde(deny_unknown_fields)]`: typos, stray
+extension keys, legacy `seeds`/`seed` fields, and uppercase override keys
+fail with an error naming the offending field. Deliberate extensions belong
+in `notes` or a versioned schema revision, never in ad-hoc keys.
+`write_to_file` validates before serializing so invalid in-memory values
+can never be written as apparently valid documents.
+
 ## Units
 
 V1 `units` blocks were partial per case; v2 carries the full explicit set.
+The ADV-ANA-001 `displacement: m` unit is preserved as the typed
+`units.displacement` field (it was silently discarded before strict
+parsing).
 Preserved values: heat_flux/inv_obukhov/height (PBL), shear (SHEAR),
 deposition_velocity/rate (DRY), scavenging/precipitating_fraction/mass
 (WET). Introduced (non-scientific, standard SI): `wind: m/s`, `mass: kg`,

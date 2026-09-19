@@ -46,6 +46,7 @@ impl FromStr for OracleKind {
 /// Candidate Philox identities and FLEXPART oracle identities are separate
 /// RNG namespaces per issue #50 contract.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct StochasticIdentitySpec {
     /// Candidate RNG namespace: Philox key/counter for the GPU candidate.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -57,6 +58,7 @@ pub struct StochasticIdentitySpec {
 
 /// Candidate-side Philox identity (separate RNG namespace from oracle).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CandidatePhiloxIdentity {
     /// Base Philox key [key0, key1] for seed derivation.
     pub base_key: [u32; 2],
@@ -70,7 +72,9 @@ pub struct CandidatePhiloxIdentity {
     /// bit-identical reruns (REPEAT-009). Defaults to false (wrapping
     /// derivation). Introduced in the v1 -> v2 migration to make repeat
     /// semantics explicit instead of hard-coding case IDs in tooling.
-    #[serde(default)]
+    /// Skipped on serialize when false so migrated documents without the
+    /// key round-trip byte-identically.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub identical_repeats: bool,
 }
 
@@ -104,6 +108,7 @@ impl CandidatePhiloxIdentity {
 /// keep byte-identical scientific values. `None` when both deposition
 /// switches are off.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DepositionSpec {
     /// Dry deposition velocity [m/s].
     pub dry_deposition_velocity_m_s: f32,
@@ -118,6 +123,7 @@ pub struct DepositionSpec {
 
 /// Oracle-side seed identity per issue #50 contract.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OracleSeedIdentity {
     /// Oracle kind: pristine-oracle or seedable-validation-oracle.
     pub kind: OracleKind,
@@ -136,6 +142,7 @@ fn default_repetitions() -> u32 {
 
 /// Execution profile reference (from frozen #49 contract).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExecutionProfileRef {
     /// Profile ID (e.g., "flexpart-11.1-single-thread").
     pub id: String,
@@ -147,6 +154,7 @@ pub struct ExecutionProfileRef {
 
 /// Domain specification with explicit units.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DomainSpec {
     /// Number of grid cells in x.
     pub nx: u32,
@@ -168,6 +176,7 @@ pub struct DomainSpec {
 
 /// Release specification with explicit units.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReleaseSpec {
     /// Release longitude [degrees].
     pub lon_deg: f32,
@@ -186,7 +195,7 @@ pub struct ReleaseSpec {
 
 /// Wind field specification.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "profile", rename_all = "snake_case")]
+#[serde(tag = "profile", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WindSpec {
     /// Uniform wind field.
     Uniform {
@@ -213,6 +222,7 @@ pub enum WindSpec {
 
 /// Surface fields specification with explicit units.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SurfaceSpec {
     /// Surface pressure [Pa].
     pub surface_pressure_pa: f32,
@@ -244,6 +254,7 @@ pub struct SurfaceSpec {
 
 /// Integration timestep and window specification.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IntegrationSpec {
     /// Simulation start timestamp (YYYYMMDDHHMMSS).
     pub start: String,
@@ -257,6 +268,7 @@ pub struct IntegrationSpec {
 
 /// Physics switches controlling model processes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PhysicsSwitches {
     /// Turbulence (Hanna/Langevin).
     pub turbulence: bool,
@@ -272,9 +284,14 @@ pub struct PhysicsSwitches {
 
 /// Explicit units for all physical quantities in the case.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UnitsSpec {
     /// Wind velocity unit (typically "m/s").
     pub wind: String,
+    /// Displacement/length unit for analytic expectations (typically "m").
+    /// Carries the ADV-ANA-001 `displacement` semantics as a typed field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub displacement: Option<String>,
     /// Pressure unit (typically "Pa").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pressure: Option<String>,
@@ -312,6 +329,7 @@ pub struct UnitsSpec {
 
 /// Expected artifacts produced by a validation run.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExpectedArtifacts {
     /// Candidate output directory pattern.
     pub candidate_dir: String,
@@ -326,6 +344,7 @@ pub struct ExpectedArtifacts {
 
 /// Oracle command overrides (namelist values).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct OracleCommandOverrides {
     /// Turbulence flag (0/1).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -352,6 +371,7 @@ pub struct OracleCommandOverrides {
 
 /// Structured representation differences for #52 input-equivalence verdicts.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct RepresentationDifferences {
     /// Vertical coordinate differences.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -386,7 +406,13 @@ pub enum InputEquivalenceStatus {
 }
 
 /// Complete validation case manifest.
+///
+/// Closed contract: unknown fields are rejected at every level so typos and
+/// stray extension keys fail instead of being silently discarded. Deliberate
+/// extensions belong in `notes` or a versioned schema revision, never in
+/// ad-hoc top-level keys.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ValidationCaseManifest {
     /// Schema version (must equal `VALIDATION_CASE_SCHEMA_VERSION`).
     pub schema_version: u32,
@@ -929,10 +955,15 @@ impl ValidationCaseManifest {
 
     /// Write the manifest to a JSON file (round-trip serialization).
     ///
+    /// Validates first so invalid in-memory values can never be serialized
+    /// as apparently valid contract documents.
+    ///
     /// # Errors
-    /// Returns [`ValidationCaseError::ParseJson`] if serialization fails,
+    /// Returns the validation error if the manifest is invalid,
+    /// [`ValidationCaseError::ParseJson`] if serialization fails,
     /// or [`ValidationCaseError::ReadFile`] if the file cannot be written.
     pub fn write_to_file(&self, path: &Path) -> Result<(), ValidationCaseError> {
+        self.validate()?;
         let json = serde_json::to_string_pretty(self).map_err(|source| ValidationCaseError::ParseJson {
             path: path.to_path_buf(),
             source,
@@ -1009,6 +1040,7 @@ mod tests {
             deposition: None,
             units: UnitsSpec {
                 wind: "m/s".to_string(),
+                displacement: None,
                 pressure: Some("Pa".to_string()),
                 temperature: Some("K".to_string()),
                 heat_flux: Some("W/m2".to_string()),
@@ -1579,6 +1611,223 @@ mod tests {
             matches!(err, ValidationCaseError::MissingField { field: "schema_version" }),
             "unexpected: {err}"
         );
+    }
+
+    #[test]
+    fn unknown_top_level_field_is_rejected() {
+        let mut raw: serde_json::Value = serde_json::to_value(make_minimal_manifest())
+            .expect("serialize minimal");
+        raw.as_object_mut()
+            .expect("manifest object")
+            .insert("bogus_extension".to_string(), serde_json::json!(1));
+        let text = serde_json::to_string(&raw).expect("re-serialize");
+        let err =
+            ValidationCaseManifest::parse(&text, Path::new("bogus.json")).expect_err("fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("bogus_extension"),
+            "error must name the unknown field: {rendered}"
+        );
+    }
+
+    #[test]
+    fn unknown_nested_field_is_rejected() {
+        let mut raw: serde_json::Value = serde_json::to_value(make_minimal_manifest())
+            .expect("serialize minimal");
+        raw["domain"]
+            .as_object_mut()
+            .expect("domain object")
+            .insert("nx_typo".to_string(), serde_json::json!(32));
+        let text = serde_json::to_string(&raw).expect("re-serialize");
+        let err =
+            ValidationCaseManifest::parse(&text, Path::new("nested.json")).expect_err("fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("nx_typo"),
+            "error must name the unknown nested field: {rendered}"
+        );
+    }
+
+    #[test]
+    fn generic_shared_seed_field_is_rejected() {
+        let mut raw: serde_json::Value = serde_json::to_value(make_minimal_manifest())
+            .expect("serialize minimal");
+        raw["stochastic"]
+            .as_object_mut()
+            .expect("stochastic object")
+            .insert("seed".to_string(), serde_json::json!(7));
+        let text = serde_json::to_string(&raw).expect("re-serialize");
+        let err =
+            ValidationCaseManifest::parse(&text, Path::new("seed.json")).expect_err("fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("seed"),
+            "generic shared seed must fail with a useful error: {rendered}"
+        );
+    }
+
+    #[test]
+    fn legacy_top_level_seeds_field_is_rejected() {
+        let mut raw: serde_json::Value = serde_json::to_value(make_minimal_manifest())
+            .expect("serialize minimal");
+        raw.as_object_mut()
+            .expect("manifest object")
+            .insert(
+                "seeds".to_string(),
+                serde_json::json!({"base_philox_key": [1, 2]}),
+            );
+        let text = serde_json::to_string(&raw).expect("re-serialize");
+        let err =
+            ValidationCaseManifest::parse(&text, Path::new("seeds.json")).expect_err("fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("seeds"),
+            "legacy seeds block must fail with a useful error: {rendered}"
+        );
+    }
+
+    #[test]
+    fn typo_in_physics_fields_is_rejected_with_useful_error() {
+        let mut raw: serde_json::Value = serde_json::to_value(make_minimal_manifest())
+            .expect("serialize minimal");
+        raw["release"]
+            .as_object_mut()
+            .expect("release object")
+            .insert("particle_cout".to_string(), serde_json::json!(10));
+        let text = serde_json::to_string(&raw).expect("re-serialize");
+        let err =
+            ValidationCaseManifest::parse(&text, Path::new("typo.json")).expect_err("fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("particle_cout"),
+            "error must name the typo: {rendered}"
+        );
+
+        let mut raw: serde_json::Value = serde_json::to_value(make_minimal_manifest())
+            .expect("serialize minimal");
+        raw["oracle_command_overrides"]
+            .as_object_mut()
+            .expect("overrides object")
+            .insert("lturbulance".to_string(), serde_json::json!(1));
+        let text = serde_json::to_string(&raw).expect("re-serialize");
+        let err =
+            ValidationCaseManifest::parse(&text, Path::new("typo2.json")).expect_err("fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("lturbulance"),
+            "error must name the typo: {rendered}"
+        );
+    }
+
+    #[test]
+    fn typo_inside_wind_variant_is_rejected() {
+        let mut raw: serde_json::Value = serde_json::to_value(make_minimal_manifest())
+            .expect("serialize minimal");
+        raw["wind"]
+            .as_object_mut()
+            .expect("wind object")
+            .insert("u_m_ss".to_string(), serde_json::json!(5.0));
+        let text = serde_json::to_string(&raw).expect("re-serialize");
+        let err =
+            ValidationCaseManifest::parse(&text, Path::new("windtypo.json")).expect_err("fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("u_m_ss"),
+            "error must name the wind typo: {rendered}"
+        );
+    }
+
+    #[test]
+    fn adv_ana_001_retains_displacement_unit_semantics() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases")
+            .join("ADV-ANA-001.json");
+        let manifest = ValidationCaseManifest::load_from_file(&path).expect("load ADV-ANA-001");
+        assert_eq!(manifest.units.displacement.as_deref(), Some("m"));
+        let json = serde_json::to_string_pretty(&manifest).expect("serialize");
+        assert!(
+            json.contains("\"displacement\""),
+            "serialized manifest must retain the displacement unit"
+        );
+        let reparsed =
+            ValidationCaseManifest::parse(&json, Path::new("adv.json")).expect("reparse");
+        assert_eq!(reparsed.units.displacement.as_deref(), Some("m"));
+    }
+
+    /// Recursively assert the serialized manifest preserves every source key.
+    ///
+    /// Explicit JSON `null` in the source is equivalent to an absent key in
+    /// the output (`skip_serializing_if` on `Option` fields); anything else
+    /// must match exactly so silently discarded fields fail loudly.
+    fn assert_source_keys_preserved(source: &serde_json::Value, output: &serde_json::Value, path: &str) {
+        match (source, output) {
+            (serde_json::Value::Object(source_map), serde_json::Value::Object(output_map)) => {
+                for (key, source_value) in source_map {
+                    let child = format!("{path}.{key}");
+                    if source_value.is_null() && !output_map.contains_key(key) {
+                        continue;
+                    }
+                    let output_value = output_map.get(key).unwrap_or_else(|| {
+                        panic!("source field {child} lost during parse/serialize")
+                    });
+                    assert_source_keys_preserved(source_value, output_value, &child);
+                }
+                for key in output_map.keys() {
+                    assert!(
+                        source_map.contains_key(key),
+                        "serialized field {path}.{key} has no source counterpart"
+                    );
+                }
+            }
+            (serde_json::Value::Array(source_items), serde_json::Value::Array(output_items)) => {
+                assert_eq!(
+                    source_items.len(),
+                    output_items.len(),
+                    "array length changed at {path}"
+                );
+                for (index, (source_item, output_item)) in
+                    source_items.iter().zip(output_items.iter()).enumerate()
+                {
+                    assert_source_keys_preserved(
+                        source_item,
+                        output_item,
+                        &format!("{path}[{index}]"),
+                    );
+                }
+            }
+            (serde_json::Value::Number(source_num), serde_json::Value::Number(output_num)) => {
+                let source_f = source_num.as_f64().expect("numeric source");
+                let output_f = output_num.as_f64().expect("numeric output");
+                let tolerance = 1e-9 * source_f.abs().max(1.0);
+                assert!(
+                    (source_f - output_f).abs() <= tolerance,
+                    "numeric value changed at {path}: {source_f} vs {output_f}"
+                );
+            }
+            _ => assert_eq!(source, output, "value changed at {path}"),
+        }
+    }
+
+    #[test]
+    fn source_documents_survive_parse_and_serialize_without_loss() {
+        for case_id in ALL_CHECKED_IN_CASES {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("fixtures")
+                .join("corpus")
+                .join("cases")
+                .join(format!("{case_id}.json"));
+            let text = std::fs::read_to_string(&path).expect("read source");
+            let source: serde_json::Value =
+                serde_json::from_str(&text).expect("source parses");
+            let manifest = ValidationCaseManifest::load_from_file(&path)
+                .unwrap_or_else(|e| panic!("load {case_id}: {e}"));
+            let serialized = serde_json::to_string_pretty(&manifest).expect("serialize");
+            let output: serde_json::Value =
+                serde_json::from_str(&serialized).expect("output parses");
+            assert_source_keys_preserved(&source, &output, case_id);
+        }
     }
 
     #[test]

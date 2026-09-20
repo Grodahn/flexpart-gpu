@@ -47,6 +47,77 @@ def git_state(path):
     }
 
 
+def meteorology_contract_identity(candidate_checkout):
+    """Read the canonical meteorology schema identity from the checked-in fixture.
+
+    The synthetic fixture is validated by the Rust meteorology-contract CI tests
+    before this writer runs, so it is the machine-readable bridge to the Rust
+    schema constants without duplicating them in Python.
+    """
+    fixture = Path(candidate_checkout) / "fixtures" / "meteorology" / "synthetic-v1.json"
+    if not fixture.is_file():
+        raise ValueError(f"canonical meteorology schema fixture is missing: {fixture}")
+    try:
+        payload = json.loads(fixture.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError("canonical meteorology schema fixture is malformed") from error
+    schema = payload.get("schema")
+    if not isinstance(schema, dict):
+        raise ValueError("canonical meteorology schema identity is missing")
+    schema_id = schema.get("id")
+    schema_version = schema.get("version")
+    if not isinstance(schema_id, str) or not schema_id:
+        raise ValueError("canonical meteorology schema id is missing or invalid")
+    if not isinstance(schema_version, int) or isinstance(schema_version, bool) or schema_version <= 0:
+        raise ValueError("canonical meteorology schema version is missing or invalid")
+    return {
+        "schema_id": schema_id,
+        "schema_version": schema_version,
+        "identity_source": str(fixture.resolve()),
+        "identity_source_sha256": digest(fixture),
+    }
+
+
+def meteorology_input_provenance(paths, contract):
+    """Bind run provenance to the actual canonical meteorology snapshots used.
+
+    Callers that do not consume canonical meteorology leave paths empty; the
+    manifest records that explicitly instead of implying that the checked-in
+    schema fixture was a runtime input.
+    """
+    if not paths:
+        return {
+            "status": "NOT_BOUND_TO_RUN",
+            "inputs": {},
+        }
+
+    inputs = {}
+    for name in paths:
+        path = Path(name)
+        if not path.is_file():
+            raise ValueError(f"canonical meteorology runtime input is missing: {path}")
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise ValueError(f"canonical meteorology runtime input is malformed: {path}") from error
+        schema = payload.get("schema")
+        if not isinstance(schema, dict):
+            raise ValueError(f"canonical meteorology runtime input lacks schema identity: {path}")
+        if (schema.get("id") != contract["schema_id"]
+                or schema.get("version") != contract["schema_version"]):
+            raise ValueError(f"canonical meteorology runtime input schema mismatch: {path}")
+        inputs[str(path.resolve())] = {
+            "sha256": digest(path),
+            "schema_id": schema["id"],
+            "schema_version": schema["version"],
+        }
+
+    return {
+        "status": "BOUND_TO_CANONICAL_INPUTS",
+        "inputs": inputs,
+    }
+
+
 def adapter_line(path):
     with open(path, encoding="utf-8", errors="replace") as source:
         matches = [line.strip() for line in source
@@ -96,11 +167,15 @@ def make_manifest(args):
     image = json.loads(command("docker", "image", "inspect", args.image))[0]
     packages = command("docker", "run", "--rm", args.image, "dpkg-query", "-W")
     compiler = command("docker", "run", "--rm", args.image, "gfortran", "--version").splitlines()[0]
+    meteorology_contract = meteorology_contract_identity(args.candidate_checkout)
     report = {
         "status": "PROVENANCE_ONLY_NO_PARITY_VERDICT",
         "scenario": args.scenario,
         "oracle": oracle,
         "candidate": git_state(args.candidate_checkout),
+        "meteorology_contract": meteorology_contract,
+        "meteorology_input": meteorology_input_provenance(
+            args.meteorology_input, meteorology_contract),
         "container": {
             "image": args.image,
             "image_id": image["Id"],
@@ -141,6 +216,9 @@ def main():
     parser.add_argument("--candidate-checkout", required=True)
     parser.add_argument("--candidate-executable")
     parser.add_argument("--candidate-log", required=True)
+    parser.add_argument(
+        "--meteorology-input", action="append", default=[],
+        help="actual canonical meteorology snapshot used by this run; may be repeated")
     parser.add_argument("--image", default="flexpart-fortran:latest")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--input", action="append", default=[])

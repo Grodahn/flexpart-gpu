@@ -5,6 +5,7 @@ pub mod config;
 pub mod coords;
 pub mod gpu;
 pub mod io;
+pub mod meteorology;
 pub mod particles;
 pub mod pbl;
 pub mod physics;

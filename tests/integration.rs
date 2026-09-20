@@ -18,3 +18,6 @@ mod software_advection;
 mod source_receptor_consistency;
 #[path = "integration/species_nuclide.rs"]
 mod species_nuclide;
+
+#[path = "integration/vertical_runtime.rs"]
+mod vertical_runtime;

@@ -11,6 +11,8 @@ PRESSURE_ABS_TOL_PA = 0.05
 PRESSURE_REL_TOL = 1.0e-6
 HEIGHT_ABS_TOL_M = 0.02
 HEIGHT_REL_TOL = 1.0e-5
+VERTICAL_VELOCITY_ABS_TOL_MS = 2.0e-5
+VERTICAL_VELOCITY_REL_TOL = 1.0e-5
 
 REQUIRED_VERTTRANSFORM_SNIPPETS = (
     "tvold=tt2_tmp(ix,jy)*(1.+0.378*ew(td2_tmp(ix,jy),ps_tmp(ix,jy))/",
@@ -19,6 +21,10 @@ REQUIRED_VERTTRANSFORM_SNIPPETS = (
     "if (abs(tv-tvold).gt.0.2) then",
     "log(pold/pint)*(tv-tvold)/log(tv/tvold)",
     "log(pold/pint)*tv",
+    "pinmconv(ix,jy,1)=(uvzlev(ix,jy,2))/",
+    "pinmconv(ix,jy,kz)=(uvzlev(ix,jy,kz+1)-uvzlev(ix,jy,kz-1))/",
+    "pinmconv(ix,jy,nz)=(uvzlev(ix,jy,nz)-uvzlev(ix,jy,nz-1))/",
+    "ww(ix,jy,1,n)=wwh(ix,jy,1)*pinmconv(ix,jy,1)",
 )
 
 REQUIRED_WINDFIELDS_SNIPPETS = (
@@ -27,6 +33,8 @@ REQUIRED_WINDFIELDS_SNIPPETS = (
     "akz(i+1)=0.5*(akm(i+1)+akm(i))",
     "bkz(i+1)=0.5*(bkm(i+1)+bkm(i))",
     "nuvz=nuvz+1",
+    "aknew(i)=akz(i)",
+    "bknew(i)=bkz(i)",
 )
 
 
@@ -49,23 +57,71 @@ def close(actual, expected, abs_tol, rel_tol):
 
 def read_oracle(path):
     lines = path.read_text(encoding="utf-8").splitlines()
-    if len(lines) < 3 or lines[0] != "FLEXPART_VERTICAL_COLUMN_ORACLE_V1":
+    if len(lines) < 4 or lines[0] != "FLEXPART_VERTICAL_COLUMN_ORACLE_V1":
         raise ValueError("invalid oracle output header")
     nz = int(lines[1])
-    if len(lines) != nz + 2:
-        raise ValueError("oracle output level count mismatch")
-    result = []
-    for expected_index, line in enumerate(lines[2:]):
-        parts = line.split()
+    position = 2
+    levels = []
+    for expected_index in range(nz):
+        if position >= len(lines):
+            raise ValueError("oracle output ended before all level rows")
+        parts = lines[position].split()
+        position += 1
         if len(parts) != 4 or int(parts[0]) != expected_index:
             raise ValueError(f"invalid oracle output row {expected_index}")
-        result.append({
+        levels.append({
             "level": expected_index,
             "pressure_pa": float(parts[1]),
             "height_agl_m": float(parts[2]),
             "height_asl_m": float(parts[3]),
         })
-    return result
+
+    if position >= len(lines):
+        raise ValueError("oracle output lacks MOTION section")
+    motion_header = lines[position].split()
+    position += 1
+    if len(motion_header) != 2 or motion_header[0] != "MOTION":
+        raise ValueError("invalid oracle MOTION header")
+    has_motion = int(motion_header[1])
+    if has_motion not in (0, 1):
+        raise ValueError("invalid oracle MOTION flag")
+
+    motion = None
+    if has_motion:
+        if position >= len(lines):
+            raise ValueError("oracle output lacks motion level count")
+        count = int(lines[position])
+        position += 1
+        if count != nz + 1:
+            raise ValueError("oracle interface-motion level count mismatch")
+        motion = []
+        for expected_index in range(count):
+            if position >= len(lines):
+                raise ValueError("oracle output ended before all motion rows")
+            parts = lines[position].split()
+            position += 1
+            if len(parts) != 3 or int(parts[0]) != expected_index:
+                raise ValueError(f"invalid oracle motion row {expected_index}")
+            motion.append({
+                "interface": expected_index,
+                "omega_pa_s": float(parts[1]),
+                "vertical_velocity_ms": float(parts[2]),
+            })
+
+    if position != len(lines):
+        raise ValueError("unexpected trailing oracle output")
+    return {"levels": levels, "motion": motion}
+
+
+def compare_scalar(actual, expected, abs_tol, rel_tol):
+    passed, diff, limit = close(actual, expected, abs_tol, rel_tol)
+    return {
+        "candidate": actual,
+        "oracle": expected,
+        "absolute_difference": diff,
+        "allowed_difference": limit,
+        "pass": passed,
+    }
 
 
 def main():
@@ -75,6 +131,7 @@ def main():
     parser.add_argument("--oracle-checkout", type=Path, required=True)
     parser.add_argument("--reference-manifest", type=Path, required=True)
     parser.add_argument("--source-snapshot", type=Path, required=True)
+    parser.add_argument("--source-motion", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -115,43 +172,89 @@ def main():
     if (nx, ny) != (1, 1):
         raise ValueError("candidate report is not a 1x1 column")
     oracle = read_oracle(args.oracle)
-    if len(oracle) != nz:
+    if len(oracle["levels"]) != nz:
         raise ValueError("candidate/oracle vertical level count mismatch")
 
     rows = []
     overall = True
-    for level, expected in enumerate(oracle):
-        actual_values = {
-            "pressure_pa": result["level_pressure_pa"][level],
-            "height_agl_m": result["height_agl_m"][level],
-            "height_asl_m": result["height_asl_m"][level],
+    for level, expected in enumerate(oracle["levels"]):
+        comparisons = {
+            "pressure_pa": compare_scalar(
+                result["level_pressure_pa"][level],
+                expected["pressure_pa"],
+                PRESSURE_ABS_TOL_PA,
+                PRESSURE_REL_TOL,
+            ),
+            "height_agl_m": compare_scalar(
+                result["height_agl_m"][level],
+                expected["height_agl_m"],
+                HEIGHT_ABS_TOL_M,
+                HEIGHT_REL_TOL,
+            ),
+            "height_asl_m": compare_scalar(
+                result["height_asl_m"][level],
+                expected["height_asl_m"],
+                HEIGHT_ABS_TOL_M,
+                HEIGHT_REL_TOL,
+            ),
         }
-        comparisons = {}
-        for field_name, actual in actual_values.items():
-            expected_value = expected[field_name]
-            if field_name == "pressure_pa":
-                abs_tol, rel_tol = PRESSURE_ABS_TOL_PA, PRESSURE_REL_TOL
-            else:
-                abs_tol, rel_tol = HEIGHT_ABS_TOL_M, HEIGHT_REL_TOL
-            passed, diff, limit = close(actual, expected_value, abs_tol, rel_tol)
-            overall = overall and passed
-            comparisons[field_name] = {
-                "candidate": actual,
-                "oracle": expected_value,
-                "absolute_difference": diff,
-                "allowed_difference": limit,
-                "pass": passed,
-            }
+        overall = overall and all(item["pass"] for item in comparisons.values())
         rows.append({"level": level, "fields": comparisons})
 
+    candidate_motion = result.get("vertical_velocity")
+    oracle_motion = oracle["motion"]
+    if (candidate_motion is None) != (oracle_motion is None):
+        raise ValueError("candidate/oracle motion presence differs")
+
+    motion_rows = None
+    if candidate_motion is not None:
+        if candidate_motion.get("vertical_staggering") != "level_interface":
+            raise ValueError("candidate oracle motion must retain level_interface staggering")
+        candidate_values = candidate_motion.get("values_ms")
+        if not isinstance(candidate_values, list) or len(candidate_values) != nz + 1:
+            raise ValueError("candidate interface-motion value count mismatch")
+        motion_rows = []
+        for interface, expected in enumerate(oracle_motion):
+            comparison = compare_scalar(
+                candidate_values[interface],
+                expected["vertical_velocity_ms"],
+                VERTICAL_VELOCITY_ABS_TOL_MS,
+                VERTICAL_VELOCITY_REL_TOL,
+            )
+            overall = overall and comparison["pass"]
+            motion_rows.append({
+                "interface": interface,
+                "omega_pa_s": expected["omega_pa_s"],
+                "vertical_velocity_ms": comparison,
+            })
+
+    source_motion = None
+    if args.source_motion is not None:
+        source_motion = {
+            "path": str(args.source_motion),
+            "sha256": sha256(args.source_motion),
+        }
+        if candidate_motion is None:
+            raise ValueError("--source-motion was supplied but candidate contains no motion")
+    elif candidate_motion is not None:
+        raise ValueError("candidate contains motion but --source-motion provenance is missing")
+
+    scientific_scope = (
+        "hybrid pressure, FLEXPART-11.1 hypsometric model-level heights"
+        + (
+            ", and pressure vertical velocity (omega) to geometric m/s via pinmconv"
+            if candidate_motion is not None else ""
+        )
+    )
     report = {
         "schema": "flexpart-gpu.vertical-column-comparison.v1",
         "status": "PASS" if overall else "FAIL",
-        "scientific_scope": "hybrid pressure and FLEXPART-11.1 hypsometric model-level heights",
+        "scientific_scope": scientific_scope,
         "source_snapshot": {
             "path": str(args.source_snapshot),
             "sha256": sha256(args.source_snapshot),
         },
+        "source_motion": source_motion,
         "candidate": {
             "report_path": str(args.candidate),
             "sha256": sha256(args.candidate),
@@ -168,17 +271,24 @@ def main():
             "harness_output_sha256": sha256(args.oracle),
             "source_contract_snippets_verified": True,
             "hybrid_level_construction_verified": True,
+            "pinmconv_contract_verified": True,
             "note": (
                 "The harness links the pinned oracle par_mod/qvsat_mod directly and "
-                "replays the scalar column loop from verttransform_ecmwf_heights; "
+                "replays scalar column equations from verttransform_ecmwf_heights, "
+                "including FLEXPART pinmconv for omega->geometric-W conversion; "
                 "the pristine oracle checkout is not modified."
             ),
         },
         "tolerances": {
             "pressure": {"absolute_pa": PRESSURE_ABS_TOL_PA, "relative": PRESSURE_REL_TOL},
             "height": {"absolute_m": HEIGHT_ABS_TOL_M, "relative": HEIGHT_REL_TOL},
+            "vertical_velocity": {
+                "absolute_m_s": VERTICAL_VELOCITY_ABS_TOL_MS,
+                "relative": VERTICAL_VELOCITY_REL_TOL,
+            },
         },
         "levels": rows,
+        "motion_interfaces": motion_rows,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

@@ -379,6 +379,21 @@ impl Snapshot {
         }
 
         let grid = &self.horizontal_grid;
+        let (nx, ny) = match field.horizontal_staggering {
+            HorizontalStaggering::CellCenter => (grid.nx, grid.ny),
+            HorizontalStaggering::XFace => (
+                grid.nx
+                    .checked_add(1)
+                    .ok_or(ContractError::ShapeMismatch(field.id))?,
+                grid.ny,
+            ),
+            HorizontalStaggering::YFace => (
+                grid.nx,
+                grid.ny
+                    .checked_add(1)
+                    .ok_or(ContractError::ShapeMismatch(field.id))?,
+            ),
+        };
         let (shape, axes) = if field.id.is_3d() {
             let nz = match field.vertical_staggering {
                 VerticalStaggering::LevelCenter => self.vertical_coordinate.level_values.len(),
@@ -392,12 +407,12 @@ impl Snapshot {
                     return Err(ContractError::InvalidStaggering(field.id));
                 }
             };
-            (vec![grid.nx, grid.ny, nz], vec![Axis::X, Axis::Y, Axis::Z])
+            (vec![nx, ny, nz], vec![Axis::X, Axis::Y, Axis::Z])
         } else {
             if field.vertical_staggering != VerticalStaggering::NotApplicable {
                 return Err(ContractError::InvalidStaggering(field.id));
             }
-            (vec![grid.nx, grid.ny], vec![Axis::X, Axis::Y])
+            (vec![nx, ny], vec![Axis::X, Axis::Y])
         };
 
         if field.shape != shape || field.axis_order != axes {

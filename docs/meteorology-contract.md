@@ -23,6 +23,13 @@ The Rust implementation lives in src/meteorology/mod.rs.
 - Canonical axes are explicit. Schema v1 serializes volume fields as X,Y,Z, surface
   fields as X,Y, and FLEXPART land-use fractions as X,Y,Class(13). Every field declares
   `storage_order`; schema v1 supports `x_fastest` with the last axis outermost.
+- `xlon0_deg` / `ylat0_deg` are the X=0/Y=0 **scalar cell-center** coordinates.
+  An X-face is half a `dx` west of the corresponding center; a Y-face is half a
+  `dy` south. This is schema-v1 semantics, not a provider convention.
+- X periodicity is also canonical: a grid wraps iff `nx * dx_deg == 360°` within
+  schema tolerance. Other grids are non-periodic and their full cell coverage must
+  fit inside the declared longitude domain. Full latitude cell coverage must remain
+  inside [-90°, 90°]. Invalid/wrapping regional geometry fails at the boundary.
 - Horizontal and vertical staggering are validated per field rather than by dimensions alone.
   Schema v1 permits cell-centered fields generally, plus `wind_u` on X faces, `wind_v` on Y
   faces, and `vertical_velocity` on level interfaces. Scalar face staggering, cross-axis wind
@@ -43,6 +50,12 @@ The Rust implementation lives in src/meteorology/mod.rs.
   as a lossy substitute.
 - Missing/non-finite values are rejected by schema-v1 validation rather than silently
   substituted.
+- Time-invariant ancillary fields use explicit `static` semantics. In schema v1 this
+  applies to `orography`, `land_sea_mask`, and `land_use_fractions`; their serialized
+  timestamp is provenance-only and must never trigger temporal interpolation.
+- Every non-static field in one `Snapshot` must share the same validity timestamp and
+  calendar. Interval/accumulated fields may have their own start/reset metadata, but the
+  interval end is the common snapshot validity time. Mixed dynamic times/calendars fail closed.
 - Unknown calendars or enum values fail deserialization. Supported calendars in v1 are
   Gregorian and proleptic Gregorian.
 
@@ -67,8 +80,8 @@ requirement sets describe the subsets needed by the individual P0 paths.
 | `temperature` | 3-D air temperature | readwind T -> `tth`; vertical transform -> `tt` | X,Y,Z level center; K | instantaneous | continuous 3-D | #30; PBL; Emanuel convection; wet deposition; settling |
 | `specific_humidity` | water-vapour mass fraction | readwind Q -> `qvh`; vertical transform -> `qv` | X,Y,Z level center; kg/kg, non-negative | instantaneous | continuous 3-D | #30; PBL; Emanuel convection; cloud fallback |
 | `surface_pressure` | surface pressure | readwind SP -> `ps` | X,Y cell center; Pa, positive | instantaneous | continuous 2-D | #30 hybrid pressure; PBL; Emanuel convection; dry deposition |
-| `orography` | surface elevation above mean sea level | readwind geopotential -> `oro` after division by g | X,Y; m ASL, signed (below-sea-level terrain allowed) | static ancillary serialized at snapshot time | static spatial field; no temporal interpolation | #30 AGL/ASL |
-| `land_sea_mask` | land fraction / land-sea discriminator | readwind -> `lsm`; `drydepo_mod::assignland` only uses it as fallback when detailed inventory is absent | X,Y; fraction [0,1] | static ancillary | static | surface provenance/fallback only; P0 dry deposition requires explicit land-use fractions |
+| `orography` | surface elevation above mean sea level | readwind geopotential -> `oro` after division by g | X,Y; m ASL, signed (below-sea-level terrain allowed) | `static`; timestamp provenance-only | static spatial field; no temporal interpolation | #30 AGL/ASL |
+| `land_sea_mask` | land fraction / land-sea discriminator | readwind -> `lsm`; `drydepo_mod::assignland` only uses it as fallback when detailed inventory is absent | X,Y; fraction [0,1] | `static`; timestamp provenance-only | static | surface provenance/fallback only; P0 dry deposition requires explicit land-use fractions |
 | `snow_depth` | snow water equivalent depth | readwind SD -> `sd`; passed by `getfields_mod::calcpar` to `drydepo_mod::getvdep` | X,Y; m water equivalent, non-negative | instantaneous | continuous 2-D forcing at met time | dry deposition |
 | `wind_u10m` | 10-m eastward wind | readwind -> `u10` | X,Y; m/s eastward + | instantaneous | continuous 2-D | `pbl_profile` fallback / near-surface diagnosis |
 | `wind_v10m` | 10-m northward wind | readwind -> `v10` | X,Y; m/s northward + | instantaneous | continuous 2-D | `pbl_profile` fallback / near-surface diagnosis |
@@ -82,7 +95,7 @@ requirement sets describe the subsets needed by the individual P0 paths.
 | `surface_solar_radiation` | surface short-wave/net-solar radiation rate used by dry deposition | readwind -> `ssr`; `calcpar -> getvdep` as `gr` | X,Y; W/m2, non-negative | instantaneous or explicit interval mean | continuous 2-D | dry deposition |
 | `surface_stress_eastward` | eastward turbulent surface-stress component | readwind EWSS; FLEXPART forms `sfcstress=sqrt(ewss^2+nsss^2)` | X,Y; N/m2 eastward + | instantaneous or explicit interval mean | components normalized before PBL diagnosis | friction-velocity diagnosis |
 | `surface_stress_northward` | northward turbulent surface-stress component | readwind NSSS; combined into `sfcstress` | X,Y; N/m2 northward + | instantaneous or explicit interval mean | same as EWSS | friction-velocity diagnosis |
-| `land_use_fractions` | fractional cover of each FLEXPART dry-deposition land-use class | `drydepo_mod::assignland -> xlanduse(ix,jy,1:numclass)`; pinned contract has 13 classes and normalizes fractions to unity | X,Y,Class(13); fraction [0,1], per-cell sum=1 | static ancillary | no generic temporal interpolation; spatial preparation must preserve normalized fractions | `drydepo_mod::getvdep` / resistance weighting |
+| `land_use_fractions` | fractional cover of each FLEXPART dry-deposition land-use class | `drydepo_mod::assignland -> xlanduse(ix,jy,1:numclass)`; pinned contract has 13 classes and normalizes fractions to unity | X,Y,Class(13); fraction [0,1], per-cell sum=1 | `static`; timestamp provenance-only | no generic temporal interpolation; spatial preparation must preserve normalized fractions | `drydepo_mod::getvdep` / resistance weighting |
 
 All required source/forcing fields reject non-finite values. Missing required fields fail before physics.
 The land-use field is deliberately **13 fractions**, not one categorical class index: FLEXPART computes
@@ -158,7 +171,9 @@ The corresponding machine-readable subsets are
 
 - Schema-v1 has no provider sentinel values: required missing fields, NaN/Inf and impossible domains
   fail at the canonical boundary.
-- Normal state variables and static ancillary fields use `instantaneous` snapshot semantics.
+- Normal dynamic state variables use `instantaneous` snapshot semantics and must share one
+  validity time/calendar per Snapshot. Orography, land/sea mask and land-use fractions use
+  explicit `static` semantics; their timestamp is provenance-only.
 - Surface rate/flux fields (`sensible_heat_flux`, `surface_solar_radiation`, stress components)
   may be instantaneous or explicit interval means; accumulated energy/momentum must be normalized
   before crossing the boundary.
@@ -204,8 +219,10 @@ Implemented:
   the represented/omitted field lists, the baseline FLEXPART 11.1 oracle reference and
   the half-level averaging consistency of level_values/interface_values;
 - representative fail-closed tests for missing fields, unit mismatch, dimensions,
-  unsupported calendar values, field-specific staggering, invalid hybrid metadata and
-  ambiguous/invalid accumulation reset semantics.
+  unsupported calendar values, field-specific staggering, invalid hybrid metadata,
+  ambiguous/invalid accumulation reset semantics, whole-grid longitude/latitude extent,
+  regional seam crossing, canonical global periodicity, static ancillary semantics and
+  mixed dynamic validity times/calendars.
 
 The P0 meteorology crosswalk is now frozen for #29. Process-specific formula/rate parity remains
 owned by #23/#33/#36, and provider-adapter normalization remains #32 non-scope; neither requires an

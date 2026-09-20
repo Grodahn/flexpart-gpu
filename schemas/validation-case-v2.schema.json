@@ -911,12 +911,32 @@
           ]
         },
         "strategy": {
-          "$ref": "#/$defs/oracle_strategy"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/oracle_strategy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mode": {
+          "enum": [
+            "default",
+            "requested_identity"
+          ]
         },
         "seed": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 1000000000
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000000
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "repetitions": {
           "type": "integer",
@@ -925,7 +945,83 @@
       },
       "required": [
         "kind",
+        "strategy",
+        "mode",
+        "seed",
         "repetitions"
+      ],
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "pristine-oracle"
+            },
+            "strategy": {
+              "type": "null"
+            },
+            "mode": {
+              "const": "default"
+            },
+            "seed": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "kind",
+            "strategy",
+            "mode",
+            "seed"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "seedable-validation-oracle"
+            },
+            "strategy": {
+              "$ref": "#/$defs/oracle_strategy"
+            },
+            "mode": {
+              "const": "default"
+            },
+            "seed": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "kind",
+            "strategy",
+            "mode",
+            "seed"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "seedable-validation-oracle"
+            },
+            "strategy": {
+              "$ref": "#/$defs/oracle_strategy"
+            },
+            "mode": {
+              "const": "requested_identity"
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000000
+            }
+          },
+          "required": [
+            "kind",
+            "strategy",
+            "mode",
+            "seed"
+          ]
+        }
       ]
     },
     "stochastic": {

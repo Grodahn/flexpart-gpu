@@ -190,19 +190,31 @@ impl OracleStrategyRef {
     }
 }
 
+/// Closed oracle identity mode. The mode is explicit so neither an omitted
+/// seed nor a null seed carries hidden semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OracleSeedMode {
+    /// Normative/default oracle mode. `seed` must be explicit null.
+    Default,
+    /// Validation-only requested identity from the #50 seedable strategy.
+    RequestedIdentity,
+}
+
 /// Oracle-side stochastic identity per issue #50 contract.
+///
+/// Every field is serialized explicitly. In particular, `strategy` and `seed`
+/// serialize as null when absent, while `mode` states why the seed is null.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OracleSeedIdentity {
     /// Oracle kind: pristine-oracle or seedable-validation-oracle.
     pub kind: OracleKind,
-    /// Required for seedable-validation-oracle; forbidden for pristine-oracle.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Exact #50 strategy for seedable-validation-oracle; explicit null for pristine.
     pub strategy: Option<OracleStrategyRef>,
-    /// Requested identity [1, 1000000000]. Null means default mode.
-    /// For pristine-oracle it MUST be null; for the seedable oracle null is
-    /// the #50 default-equivalent offset-zero mode.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Explicit mode: default or requested_identity.
+    pub mode: OracleSeedMode,
+    /// Requested identity [1, 1000000000], or explicit null in default mode.
     pub seed: Option<u32>,
     /// Number of repetitions for repeatability characterization.
     /// Required explicitly; no workflow/default repetition count is implied.
@@ -1100,6 +1112,21 @@ impl ValidationCaseManifest {
                         "stochastic.oracle_seed"
                     },
                 });
+            }
+        }
+        if let Some(oracle) = stochastic
+            .get("oracle_seed")
+            .and_then(serde_json::Value::as_object)
+        {
+            for field in ["kind", "strategy", "mode", "seed", "repetitions"] {
+                if !oracle.contains_key(field) {
+                    return Err(ValidationCaseError::AmbiguousField {
+                        field: "stochastic.oracle_seed",
+                        message: format!(
+                            "{field} is required explicitly; null is distinct from omission"
+                        ),
+                    });
+                }
             }
         }
         let manifest: Self =
@@ -2321,21 +2348,26 @@ impl ValidationCaseManifest {
             }
             match oracle.kind {
                 OracleKind::PristineOracle => {
-                    if oracle.seed.is_some() {
-                        return Err(ValidationCaseError::InvalidStochasticIdentity {
-                            message: "pristine-oracle cannot carry a requested seed; use seed=null for pristine/default mode".to_string(),
-                        });
-                    }
                     if oracle.strategy.is_some() {
                         return Err(ValidationCaseError::InvalidStochasticIdentity {
-                            message: "pristine-oracle cannot declare the seedable #50 strategy".to_string(),
+                            message: "pristine-oracle requires strategy=null".to_string(),
+                        });
+                    }
+                    if oracle.mode != OracleSeedMode::Default {
+                        return Err(ValidationCaseError::InvalidStochasticIdentity {
+                            message: "pristine-oracle requires mode=default".to_string(),
+                        });
+                    }
+                    if oracle.seed.is_some() {
+                        return Err(ValidationCaseError::InvalidStochasticIdentity {
+                            message: "pristine-oracle default mode requires seed=null".to_string(),
                         });
                     }
                 }
                 OracleKind::SeedableValidationOracle => {
                     let strategy = oracle.strategy.as_ref().ok_or_else(|| {
                         ValidationCaseError::InvalidStochasticIdentity {
-                            message: "seedable-validation-oracle requires a stable #50 strategy reference".to_string(),
+                            message: "seedable-validation-oracle requires the explicit #50 strategy reference".to_string(),
                         }
                     })?;
                     if strategy.strategy != ORACLE_STOCHASTIC_STRATEGY_ID
@@ -2354,13 +2386,27 @@ impl ValidationCaseManifest {
                             ),
                         });
                     }
-                    if let Some(seed) = oracle.seed {
-                        if seed == 0 || seed > 1_000_000_000 {
-                            return Err(ValidationCaseError::InvalidStochasticIdentity {
-                                message: format!(
-                                    "oracle_seed.seed must be in [1, 1000000000], got {seed}"
-                                ),
-                            });
+                    match oracle.mode {
+                        OracleSeedMode::Default => {
+                            if oracle.seed.is_some() {
+                                return Err(ValidationCaseError::InvalidStochasticIdentity {
+                                    message: "seedable-validation-oracle mode=default requires seed=null".to_string(),
+                                });
+                            }
+                        }
+                        OracleSeedMode::RequestedIdentity => {
+                            let seed = oracle.seed.ok_or_else(|| {
+                                ValidationCaseError::InvalidStochasticIdentity {
+                                    message: "seedable-validation-oracle mode=requested_identity requires an explicit seed".to_string(),
+                                }
+                            })?;
+                            if seed == 0 || seed > 1_000_000_000 {
+                                return Err(ValidationCaseError::InvalidStochasticIdentity {
+                                    message: format!(
+                                        "oracle_seed.seed must be in [1, 1000000000], got {seed}"
+                                    ),
+                                });
+                            }
                         }
                     }
                 }
@@ -2960,6 +3006,7 @@ mod tests {
                 oracle_seed: Some(OracleSeedIdentity {
                     kind: OracleKind::SeedableValidationOracle,
                     strategy: Some(OracleStrategyRef::canonical()),
+                    mode: OracleSeedMode::RequestedIdentity,
                     seed: Some(1),
                     repetitions: 5,
                 }),
@@ -3141,6 +3188,7 @@ mod tests {
         manifest.stochastic.oracle_seed = Some(OracleSeedIdentity {
             kind: OracleKind::SeedableValidationOracle,
             strategy: Some(OracleStrategyRef::canonical()),
+            mode: OracleSeedMode::RequestedIdentity,
             seed: Some(0), // Invalid: 0 is rejected per #50 contract
             repetitions: 5,
         });
@@ -3157,6 +3205,7 @@ mod tests {
         manifest.stochastic.oracle_seed = Some(OracleSeedIdentity {
             kind: OracleKind::SeedableValidationOracle,
             strategy: Some(OracleStrategyRef::canonical()),
+            mode: OracleSeedMode::RequestedIdentity,
             seed: Some(1_000_000_001), // Invalid: > 1e9
             repetitions: 5,
         });
@@ -3173,6 +3222,7 @@ mod tests {
         manifest.stochastic.oracle_seed = Some(OracleSeedIdentity {
             kind: OracleKind::PristineOracle,
             strategy: None,
+            mode: OracleSeedMode::Default,
             seed: None,
             repetitions: 2,
         });
@@ -3200,10 +3250,69 @@ mod tests {
         assert!(err.to_string().contains("unsupported oracle strategy reference"));
 
         let mut manifest = make_minimal_manifest();
-        manifest.stochastic.oracle_seed.as_mut().unwrap().seed = None;
+        {
+            let oracle = manifest.stochastic.oracle_seed.as_mut().unwrap();
+            oracle.mode = OracleSeedMode::Default;
+            oracle.seed = None;
+        }
         manifest.validate().expect("seedable default-equivalent mode validates");
     }
 
+    #[test]
+    fn oracle_default_mode_serializes_explicit_null_state() {
+        let mut manifest = make_minimal_manifest();
+        manifest.stochastic.oracle_seed = Some(OracleSeedIdentity {
+            kind: OracleKind::PristineOracle,
+            strategy: None,
+            mode: OracleSeedMode::Default,
+            seed: None,
+            repetitions: 1,
+        });
+        manifest.validate().expect("explicit pristine default mode validates");
+        let value = serde_json::to_value(&manifest).expect("serialize manifest");
+        let oracle = &value["stochastic"]["oracle_seed"];
+        assert_eq!(oracle["mode"], serde_json::json!("default"));
+        assert!(oracle.get("strategy").expect("strategy key").is_null());
+        assert!(oracle.get("seed").expect("seed key").is_null());
+    }
+
+    #[test]
+    fn oracle_seed_state_fields_cannot_be_omitted() {
+        let schema = load_validation_case_schema();
+        for field in ["strategy", "mode", "seed"] {
+            let mut raw = minimal_manifest_json();
+            raw["stochastic"]["oracle_seed"]
+                .as_object_mut()
+                .expect("oracle object")
+                .remove(field);
+            assert!(
+                validate_json_schema_subset(&schema, &schema, &raw, "$").is_err(),
+                "JSON Schema must reject omitted oracle state field {field}"
+            );
+            let err = parse_json_value(&raw).expect_err("Rust parser must reject omission");
+            assert!(
+                err.to_string().contains(field) || err.to_string().contains("oracle_seed"),
+                "unexpected error for omitted {field}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn requested_identity_mode_requires_seed_and_default_mode_forbids_it() {
+        let mut manifest = make_minimal_manifest();
+        manifest.stochastic.oracle_seed.as_mut().unwrap().seed = None;
+        let err = manifest.validate().expect_err("requested identity needs seed");
+        assert!(err.to_string().contains("requested_identity"));
+
+        let mut manifest = make_minimal_manifest();
+        {
+            let oracle = manifest.stochastic.oracle_seed.as_mut().unwrap();
+            oracle.mode = OracleSeedMode::Default;
+            oracle.seed = Some(3);
+        }
+        let err = manifest.validate().expect_err("default mode forbids seed");
+        assert!(err.to_string().contains("mode=default"));
+    }
     #[test]
     fn candidate_physics_profile_reference_is_pinned() {
         let mut manifest = make_minimal_manifest();

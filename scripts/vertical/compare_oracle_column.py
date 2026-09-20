@@ -375,10 +375,10 @@ def main():
             "pinmconv_contract_verified": True,
             "wzlev_contract_verified": True,
             "note": (
-                "Normative: executes the exact verttransform_ecmwf_heights source "
-                "slice extracted at CI time from the pinned pristine FLEXPART 11.1 "
-                "checkout; only the routine's required module state is supplied by "
-                "the focused driver."
+                "Normative: the focused driver is linked against the object files "
+                "from the pinned pristine full FLEXPART 11.1 build and calls "
+                "verttransform_mod::verttransform_ecmwf_heights directly; "
+                "windfields_mod supplies the routine's real module state."
                 if oracle["execution_mode"] == "pinned_routine"
                 else
                 "Secondary conformance harness: independently replays the scalar "

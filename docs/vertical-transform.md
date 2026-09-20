@@ -198,3 +198,47 @@ conversion provenance therefore distinguishes:
 The eta-dot preprocessing stage is validated independently from the FLEXPART
 core oracle because the pristine FLEXPART 11.1 executable expects the
 preprocessed pressure-velocity quantity, not raw eta-dot.
+
+## Integration boundaries for #28 and #31
+
+### Release heights consumed by #28
+
+#30 exposes `resolve_release_height` and `resolve_release_height_at_column`.
+They require an explicit `VerticalReference::AboveGroundLevel` or
+`VerticalReference::AboveMeanSeaLevel`; `ModelNative` is rejected.
+
+The returned `ResolvedReleaseHeight` preserves:
+
+- the original numeric input and reference;
+- local terrain ASL;
+- resolved AGL height;
+- resolved ASL height.
+
+AGL must be non-negative. ASL below local terrain fails closed. Terrain below
+mean sea level remains valid. #28 should perform release sampling in the
+reference declared by canonical `ReleaseSpec`, then call this API at the
+resolved horizontal source column before particle injection. #28 must not
+reimplement terrain offsets or infer AGL/ASL from legacy configuration.
+
+#26 still owns the canonical `ReleaseSpec` field that declares AGL vs ASL;
+#27 owns particle creation/injection. #30 intentionally does not modify
+`ReleaseConfig` or guess a reference while those tickets remain open.
+
+### Runtime geometry consumed by #31
+
+`VerticalTransformResult::runtime_view()` is the provider-independent runtime
+boundary for interpolation/sampling. Construction validates all derived array
+shapes, including normalized vertical-motion staggering, before exposing data.
+
+The borrowed `VerticalRuntimeView` provides:
+
+- runtime dimensions;
+- local terrain ASL by horizontal cell;
+- pressure, AGL height and ASL height at model-level indices;
+- interface pressure;
+- the normalized vertical-motion field with its retained staggering.
+
+The view performs no clamping or interpolation. Out-of-bounds access fails.
+#31 owns horizontal/vertical/temporal interpolation and must consume this
+runtime geometry instead of deriving a second height coordinate or using
+legacy `WindFieldGrid::heights_m`.

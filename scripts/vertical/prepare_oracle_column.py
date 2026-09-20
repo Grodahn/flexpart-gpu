@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 
@@ -82,7 +83,7 @@ def main():
         motion_values = motion.get("values")
         if not isinstance(motion_values, list) or len(motion_values) != nz + 1:
             raise ValueError("oracle interface omega must contain nz+1 values")
-        if any(not np.isfinite(value) for value in motion_values):
+        if any(not math.isfinite(value) for value in motion_values):
             raise ValueError("oracle interface omega contains non-finite values")
         lines.append("1")
         lines.extend(str(value) for value in motion_values)

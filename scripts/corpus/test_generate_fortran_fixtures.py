@@ -64,6 +64,22 @@ class OracleOverrideTest(unittest.TestCase):
         self.assertEqual(int(GEN.namelist_value(text, "LCONVECTION")), 0)
         self.assertEqual(int(GEN.namelist_value(text, "IFINE")), 4)
 
+    def test_unknown_candidate_philox_derivation_is_rejected(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        case["stochastic"]["candidate_philox"]["derivation"] = "typo_or_future_mode"
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("unsupported", str(ctx.exception))
+        self.assertIn("derivation", str(ctx.exception))
+
+    def test_legacy_identical_repeats_flag_is_rejected(self):
+        case = load_case("REPEAT-009")
+        case = copy.deepcopy(case)
+        case["stochastic"]["candidate_philox"]["identical_repeats"] = True
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("REPEAT-009", case)
+        self.assertIn("identical_repeats", str(ctx.exception))
     def test_legacy_uppercase_document_is_rejected(self):
         legacy = {
             "integration": {"start": "20240101000000", "total_s": 3600},

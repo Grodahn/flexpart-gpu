@@ -131,8 +131,7 @@
         0
       ],
       "count": 2,
-      "derivation": "identical Philox key and counter reused for both repeats to prove bit-identical reruns",
-      "identical_repeats": true
+      "derivation": "reuse_base_identity_v1"
     },
     "oracle_seed": null
   },

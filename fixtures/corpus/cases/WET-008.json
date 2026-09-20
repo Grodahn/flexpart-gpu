@@ -137,7 +137,7 @@
         0
       ],
       "count": 10,
-      "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
+      "derivation": "wrapping_add_key0_v1"
     },
     "oracle_seed": {
       "kind": "seedable-validation-oracle",

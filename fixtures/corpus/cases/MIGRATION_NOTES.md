@@ -18,13 +18,22 @@ No scientific value changed in migration; only representation.
 | `seeds.base_philox_key` | `stochastic.candidate_philox.base_key` | Renamed, values preserved. |
 | `seeds.base_counter` | `stochastic.candidate_philox.base_counter` | Renamed, values preserved. Now flows into the driver config and seed artifacts (was hard-coded zero). |
 | `seeds.count` | `stochastic.candidate_philox.count` | Renamed, values preserved. Authoritative ensemble size; `--seeds` may only select a leading subset. |
-| `seeds.repeats` (REPEAT-009 only) | `stochastic.candidate_philox.count = 2` + `identical_repeats: true` | Split: the repeat count moves to `count`; the identical-reuse semantics move to the new explicit `identical_repeats` flag (default `false`) instead of hard-coded case IDs in tooling. |
-| `seeds.derivation` | `stochastic.candidate_philox.derivation` | Preserved verbatim (including the PBL-NEUTRAL-005 CI seed-0 suffix). REPEAT-009 documents identical reuse. |
+| `seeds.repeats` (REPEAT-009 only) | `stochastic.candidate_philox.count = 2` + `derivation: reuse_base_identity_v1` | Split: the repeat count moves to `count`; exact key/counter reuse is an executable, versioned derivation policy instead of a side flag or hard-coded case ID. |
+| `seeds.derivation` | `stochastic.candidate_philox.derivation` | Free-form prose is replaced by the closed versioned enum `wrapping_add_key0_v1` or `reuse_base_identity_v1`. The runner and audit execute this field directly; unknown values fail closed. |
 | `seeds.requirement` (REPEAT-009) | `notes` | Moved to notes ("bit-identical particle states across repeats"). |
 | `seeds` as a string (ADV-ANA-001 `"deterministic (no RNG consumed)"`) | `stochastic: {candidate_philox: null, oracle_seed: null}` | Removed free-form marker; deterministic cases declare no identity and validate without one. |
 | - | `stochastic.oracle_seed` | Typed oracle stochastic namespace. `pristine-oracle` is seedless and carries no seedable strategy. `seedable-validation-oracle` references the completed #50 contract by stable strategy id/version/path and may carry a requested identity or seed=null for the #50 default-equivalent mode. Candidate Philox values are never interpreted as oracle identities. |
 | `fortran_repeatability_note` (REPEAT-009) | `notes` | Moved verbatim. |
 
+### Candidate Philox derivation semantics
+
+`candidate_philox.derivation` is executable contract data, not a descriptive
+string. `wrapping_add_key0_v1` derives seed `i` as
+`[base_key[0].wrapping_add(i), base_key[1]]` with the declared base counter.
+`reuse_base_identity_v1` reuses the exact declared base key and counter for
+every repetition. The former `identical_repeats` side flag is forbidden.
+Rust deserialization, the raw-Python generator, the candidate-output audit,
+and the JSON Schema all reject unknown derivation values fail-closed.
 ## Oracle command overrides (generated namelist stays uppercase)
 
 | v1 | v2 | Note |

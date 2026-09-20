@@ -52,6 +52,13 @@ GEN = load_generator()
 
 FAILURES: list = []
 
+PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1 = "wrapping_add_key0_v1"
+PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1 = "reuse_base_identity_v1"
+SUPPORTED_PHILOX_DERIVATIONS = {
+    PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1,
+    PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1,
+}
+
 
 def check(name: str, ok: bool, detail: str = "") -> None:
     print(("PASS " if ok else "FAIL ") + name + (f" ({detail})" if detail and not ok else ""))
@@ -112,14 +119,12 @@ def _as_u32_list(value, length: int):
 def candidate_philox_identity(case_id: str, case: dict):
     """Canonical v2 Philox identity reader (no silent fallback, no v1).
 
-    Returns ``(base_key, base_counter, count, deterministic, identical, error)``
-    where ``error`` is None on success and a human-readable reason otherwise.
-    Only ``schema_version`` 2 documents are accepted; legacy v1 (``seeds``,
-    ``version``) is frozen and rejected. ``ADV-ANA-001`` is the only
-    deterministic case allowed without an identity.
+    Returns (base_key, base_counter, count, deterministic, derivation, error).
+    derivation is one of the versioned executable contract values.
+    Unknown or missing derivations fail closed.
     """
     if case.get("schema_version") != 2 or "version" in case:
-        return None, None, None, False, False, (
+        return None, None, None, False, None, (
             f"case {case_id}: unsupported schema version; only schema_version 2 "
             "is accepted (v1 is frozen, see MIGRATION_NOTES.md)"
         )
@@ -127,46 +132,50 @@ def candidate_philox_identity(case_id: str, case: dict):
     cand = stochastic.get("candidate_philox")
     if cand is None:
         if case_id == "ADV-ANA-001":
-            return None, None, 1, True, False, None
-        return None, None, None, False, False, (
+            return None, None, 1, True, None, None
+        return None, None, None, False, None, (
             f"case {case_id}: missing stochastic.candidate_philox; "
             "no default key substituted"
         )
     base_key = _as_u32_list(cand.get("base_key"), 2)
     base_counter = _as_u32_list(cand.get("base_counter"), 4)
     count = cand.get("count")
-    identical = cand.get("identical_repeats", False)
+    derivation = cand.get("derivation")
     if base_key is None:
-        return None, None, None, False, False, (
+        return None, None, None, False, None, (
             f"case {case_id}: stochastic.candidate_philox.base_key malformed"
         )
     if base_counter is None:
-        return None, None, None, False, False, (
+        return None, None, None, False, None, (
             f"case {case_id}: stochastic.candidate_philox.base_counter malformed"
         )
     if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
-        return None, None, None, False, False, (
+        return None, None, None, False, None, (
             f"case {case_id}: stochastic.candidate_philox.count must be > 0"
         )
-    if not isinstance(identical, bool):
-        return None, None, None, False, False, (
-            f"case {case_id}: stochastic.candidate_philox.identical_repeats "
-            "must be a boolean"
+    if derivation not in SUPPORTED_PHILOX_DERIVATIONS:
+        return None, None, None, False, None, (
+            f"case {case_id}: unsupported stochastic.candidate_philox.derivation "
+            f"{derivation!r}; supported={sorted(SUPPORTED_PHILOX_DERIVATIONS)}"
         )
-    return base_key, base_counter, count, False, identical, None
+    if "identical_repeats" in cand:
+        return None, None, None, False, None, (
+            f"case {case_id}: legacy stochastic.candidate_philox.identical_repeats "
+            "is forbidden; encode semantics in derivation"
+        )
+    return base_key, base_counter, count, False, derivation, None
 
 
 def expected_philox_for_seed(case_id: str, base_key, base_counter, seed_index: int,
-                             identical: bool = False):
-    """Declared key/counter for one seed.
-
-    Identical-repeat manifests (REPEAT-009) reuse the base key; all other
-    cases derive ``[(base0 + index) % 2**32, base1]``.
-    """
-    _ = case_id
-    if identical:
+                             derivation: str):
+    """Derive one key/counter exactly from the declared versioned policy."""
+    if derivation == PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1:
         return list(base_key), list(base_counter)
-    return [(base_key[0] + seed_index) % 2**32, base_key[1]], list(base_counter)
+    if derivation == PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1:
+        return [(base_key[0] + seed_index) % 2**32, base_key[1]], list(base_counter)
+    raise ValueError(
+        f"case {case_id}: unsupported Philox derivation {derivation!r}"
+    )
 
 
 def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
@@ -174,7 +183,7 @@ def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
     release = case["release"]
     expected_count = int(release["particle_count"])
     expected_mass = GEN.case_total_mass_kg(case_id, case)
-    base_key, base_counter, ensemble_count, deterministic, identical, identity_error = (
+    base_key, base_counter, ensemble_count, deterministic, derivation, identity_error = (
         candidate_philox_identity(case_id, case)
     )
     if identity_error is not None:
@@ -210,7 +219,7 @@ def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
                       f"seed_index {seed.get('seed_index')} outside [0, {ensemble_count})")
             else:
                 expected_key, expected_counter = expected_philox_for_seed(
-                    case_id, base_key, base_counter, idx, identical
+                    case_id, base_key, base_counter, idx, derivation
                 )
                 check(f"{stem} Philox derivation", seed.get("philox_key") == expected_key,
                       f"{seed.get('philox_key')} vs {expected_key}")

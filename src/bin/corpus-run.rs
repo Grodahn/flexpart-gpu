@@ -31,7 +31,7 @@ use flexpart_gpu::simulation::{
     ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket,
     ParticleForcingField,
 };
-use flexpart_gpu::validation::case::ValidationCaseManifest;
+use flexpart_gpu::validation::case::{CandidatePhiloxDerivation, ValidationCaseManifest};
 use flexpart_gpu::wind::{SurfaceFields, WindField3D, WindFieldGrid};
 use ndarray::Array1;
 use serde::Serialize;
@@ -179,8 +179,8 @@ fn load_case_manifest(fixture_path: &Path, text: &str) -> Result<ValidationCaseM
 ///
 /// The canonical typed manifest is the only source. Stochastic cases without
 /// an identity are rejected before any GPU execution. No default key is ever
-/// substituted. Identical-repeat semantics (REPEAT-009) come from the
-/// manifest `identical_repeats` flag, never from hard-coded case IDs.
+/// substituted. Seed/repeat semantics come from the manifest's typed,
+/// versioned `candidate_philox.derivation`, never from hard-coded case IDs.
 fn resolve_candidate_seed(
     case_id: &str,
     manifest: &ValidationCaseManifest,
@@ -1006,6 +1006,20 @@ mod tests {
     }
 
     #[test]
+    fn runner_uses_declared_derivation_policy() {
+        let mut manifest = load_manifest("WIND-UNI-002");
+        let candidate = manifest
+            .stochastic
+            .candidate_philox
+            .as_mut()
+            .expect("declared identity");
+        candidate.derivation = CandidatePhiloxDerivation::ReuseBaseIdentityV1;
+        let a = resolve_candidate_seed("WIND-UNI-002", &manifest, 0).expect("seed 0");
+        let b = resolve_candidate_seed("WIND-UNI-002", &manifest, 7).expect("seed 7");
+        assert_eq!(a, b, "runner must execute the declared derivation policy");
+    }
+
+    #[test]
     fn stochastic_case_without_identity_is_rejected_before_execution() {
         let manifest = load_manifest("WIND-UNI-002");
         let mut hacked = manifest.clone();
@@ -1025,7 +1039,10 @@ mod tests {
             .candidate_philox
             .as_ref()
             .expect("REPEAT-009 declares an identity");
-        assert!(candidate.identical_repeats);
+        assert_eq!(
+            candidate.derivation,
+            CandidatePhiloxDerivation::ReuseBaseIdentityV1
+        );
         assert_eq!(candidate.count, 2);
         let (key0, _) = resolve_candidate_seed("REPEAT-009", &manifest, 0).expect("seed 0");
         let (key1, _) = resolve_candidate_seed("REPEAT-009", &manifest, 1).expect("seed 1");

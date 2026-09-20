@@ -53,6 +53,12 @@ MASS_CONSISTENCY_TOLERANCE_REL = 1e-6
 ORACLE_STOCHASTIC_STRATEGY_ID = "flexpart-oracle-validation-seed-offset"
 ORACLE_STOCHASTIC_STRATEGY_VERSION = 1
 ORACLE_STOCHASTIC_CONTRACT_PATH = "reference/oracle-stochastic-identity.json"
+PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1 = "wrapping_add_key0_v1"
+PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1 = "reuse_base_identity_v1"
+SUPPORTED_PHILOX_DERIVATIONS = {
+    PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1,
+    PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1,
+}
 
 CANONICAL_UNIT_VALUES = {
     "wind": "m/s",
@@ -646,8 +652,17 @@ def _validate_stochastic_contract(case_id: str, case: dict, physics: dict) -> No
         count = candidate.get("count")
         if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
             raise SystemExit(f"{case_id}: stochastic.candidate_philox.count must be > 0")
-        if not isinstance(candidate.get("derivation"), str) or not candidate["derivation"]:
-            raise SystemExit(f"{case_id}: stochastic.candidate_philox.derivation must not be empty")
+        derivation = candidate.get("derivation")
+        if derivation not in SUPPORTED_PHILOX_DERIVATIONS:
+            raise SystemExit(
+                f"{case_id}: unsupported stochastic.candidate_philox.derivation "
+                f"{derivation!r}; supported={sorted(SUPPORTED_PHILOX_DERIVATIONS)}"
+            )
+        if "identical_repeats" in candidate:
+            raise SystemExit(
+                f"{case_id}: legacy stochastic.candidate_philox.identical_repeats "
+                "is forbidden; encode semantics in derivation"
+            )
 
     oracle = stochastic.get("oracle_seed")
     if oracle is not None:

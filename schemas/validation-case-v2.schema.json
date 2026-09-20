@@ -828,11 +828,10 @@
           "minimum": 1
         },
         "derivation": {
-          "type": "string",
-          "minLength": 1
-        },
-        "identical_repeats": {
-          "type": "boolean"
+          "enum": [
+            "wrapping_add_key0_v1",
+            "reuse_base_identity_v1"
+          ]
         }
       },
       "required": [

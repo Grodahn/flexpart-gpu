@@ -67,6 +67,24 @@ pub struct StochasticIdentitySpec {
     pub oracle_seed: Option<OracleSeedIdentity>,
 }
 
+/// Versioned candidate-side Philox identity derivation.
+///
+/// This enum is executable contract data, not documentation. Adding a new
+/// derivation requires a new explicit variant and corresponding runner/audit
+/// semantics; unknown strings fail deserialization closed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidatePhiloxDerivation {
+    /// Seed i uses [base_key[0] + i (wrapping u32), base_key[1]] and the
+    /// declared base counter.
+    #[serde(rename = "wrapping_add_key0_v1")]
+    WrappingAddKey0V1,
+    /// Every ensemble member reuses the exact declared base key and counter.
+    /// Used by REPEAT-009 to prove bit-identical reruns.
+    #[serde(rename = "reuse_base_identity_v1")]
+    ReuseBaseIdentityV1,
+}
+
 /// Candidate-side Philox identity (separate RNG namespace from oracle).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -75,41 +93,32 @@ pub struct CandidatePhiloxIdentity {
     pub base_key: [u32; 2],
     /// Base Philox counter for the first timestep.
     pub base_counter: [u32; 4],
-    /// Number of independent seeds in the ensemble.
+    /// Number of ensemble identities/repetitions.
     pub count: u32,
-    /// Derivation rule: "seed i uses key [base0 + i, base1] with zeroed counter"
-    pub derivation: String,
-    /// When true, every seed reuses the base key unchanged to prove
-    /// bit-identical reruns (REPEAT-009). Defaults to false (wrapping
-    /// derivation). Introduced in the v1 -> v2 migration to make repeat
-    /// semantics explicit instead of hard-coding case IDs in tooling.
-    /// Skipped on serialize when false so migrated documents without the
-    /// key round-trip byte-identically.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub identical_repeats: bool,
+    /// Versioned executable derivation policy.
+    pub derivation: CandidatePhiloxDerivation,
 }
 
 impl CandidatePhiloxIdentity {
-    /// Derive the Philox key for seed index `i`.
-    ///
-    /// Canonical rule: `[base0.wrapping_add(i), base1]`, unless
-    /// `identical_repeats` is set, in which case the base key is reused
-    /// unchanged for every seed.
+    /// Derive the Philox key for seed index `i` from the declared policy.
     #[must_use]
     pub fn key_for_seed_index(&self, seed_index: u32) -> [u32; 2] {
-        if self.identical_repeats {
-            return self.base_key;
+        match self.derivation {
+            CandidatePhiloxDerivation::WrappingAddKey0V1 => [
+                self.base_key[0].wrapping_add(seed_index),
+                self.base_key[1],
+            ],
+            CandidatePhiloxDerivation::ReuseBaseIdentityV1 => self.base_key,
         }
-        [
-            self.base_key[0].wrapping_add(seed_index),
-            self.base_key[1],
-        ]
     }
 
-    /// Counter for seed index `i` (currently the declared base counter).
+    /// Derive the Philox counter for seed index `i` from the declared policy.
     #[must_use]
     pub fn counter_for_seed_index(&self, _seed_index: u32) -> [u32; 4] {
-        self.base_counter
+        match self.derivation {
+            CandidatePhiloxDerivation::WrappingAddKey0V1
+            | CandidatePhiloxDerivation::ReuseBaseIdentityV1 => self.base_counter,
+        }
     }
 }
 
@@ -1824,11 +1833,6 @@ impl ValidationCaseManifest {
                     message: "candidate_philox.count must be > 0".to_string(),
                 });
             }
-            if candidate.derivation.is_empty() {
-                return Err(ValidationCaseError::InvalidStochasticIdentity {
-                    message: "candidate_philox.derivation must not be empty".to_string(),
-                });
-            }
         }
 
         if let Some(oracle) = &self.stochastic.oracle_seed {
@@ -2460,8 +2464,7 @@ mod tests {
                     base_key: [3737180555, 305419896],
                     base_counter: [0, 0, 0, 0],
                     count: 10,
-                    derivation: "seed i uses key [base0 + i, base1] with zeroed counter".to_string(),
-                    identical_repeats: false,
+                    derivation: CandidatePhiloxDerivation::WrappingAddKey0V1,
                 }),
                 oracle_seed: Some(OracleSeedIdentity {
                     kind: OracleKind::SeedableValidationOracle,
@@ -3125,12 +3128,47 @@ mod tests {
             base_key: [u32::MAX, 305419896],
             base_counter: [0, 0, 0, 0],
             count: 10,
-            derivation: "seed i uses key [base0 + i, base1] with zeroed counter".to_string(),
-            identical_repeats: false,
+            derivation: CandidatePhiloxDerivation::WrappingAddKey0V1,
         };
         assert_eq!(identity.key_for_seed_index(0), [u32::MAX, 305419896]);
         assert_eq!(identity.key_for_seed_index(1), [0, 305419896]);
         assert_eq!(identity.key_for_seed_index(2), [1, 305419896]);
+    }
+
+    #[test]
+    fn candidate_derivation_is_executable_and_unknown_values_fail_closed() {
+        let mut manifest = make_minimal_manifest();
+        manifest
+            .stochastic
+            .candidate_philox
+            .as_mut()
+            .expect("candidate identity")
+            .derivation = CandidatePhiloxDerivation::WrappingAddKey0V1;
+        assert_ne!(
+            manifest.candidate_seed_identity(0).expect("seed 0"),
+            manifest.candidate_seed_identity(1).expect("seed 1")
+        );
+
+        manifest
+            .stochastic
+            .candidate_philox
+            .as_mut()
+            .expect("candidate identity")
+            .derivation = CandidatePhiloxDerivation::ReuseBaseIdentityV1;
+        assert_eq!(
+            manifest.candidate_seed_identity(0).expect("repeat 0"),
+            manifest.candidate_seed_identity(1).expect("repeat 1")
+        );
+
+        let mut raw = minimal_manifest_json();
+        raw["stochastic"]["candidate_philox"]["derivation"] =
+            serde_json::json!("some_future_or_misspelled_policy");
+        let err = parse_json_value(&raw).expect_err("unknown derivation must fail closed");
+        assert!(
+            err.to_string().contains("derivation")
+                || err.to_string().contains("unknown variant"),
+            "unexpected: {err}"
+        );
     }
 
     #[test]
@@ -3515,7 +3553,10 @@ mod tests {
             .candidate_philox
             .as_ref()
             .expect("repeat identity");
-        assert!(candidate.identical_repeats);
+        assert_eq!(
+            candidate.derivation,
+            CandidatePhiloxDerivation::ReuseBaseIdentityV1
+        );
         assert_eq!(candidate.count, 2);
         assert_eq!(
             repeat.candidate_seed_identity(0).expect("repeat seed 0"),

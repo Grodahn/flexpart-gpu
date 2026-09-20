@@ -37,7 +37,7 @@ def load_case(case_id: str) -> dict:
 class PhiloxIdentityTest(unittest.TestCase):
     def test_wind_uni_002_seed_zero_matches_manifest(self):
         case = load_case("WIND-UNI-002")
-        base_key, base_counter, count, deterministic, identical, error = (
+        base_key, base_counter, count, deterministic, derivation, error = (
             AUDIT.candidate_philox_identity("WIND-UNI-002", case)
         )
         self.assertIsNone(error)
@@ -45,28 +45,52 @@ class PhiloxIdentityTest(unittest.TestCase):
         self.assertEqual(base_key, [3737180555, 305419896])
         self.assertEqual(base_counter, [0, 0, 0, 0])
         self.assertEqual(count, 10)
+        self.assertEqual(
+            derivation, AUDIT.PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1
+        )
         key, counter = AUDIT.expected_philox_for_seed(
-            "WIND-UNI-002", base_key, base_counter, 0
+            "WIND-UNI-002", base_key, base_counter, 0, derivation
         )
         self.assertEqual(key, [3737180555, 305419896])
         self.assertEqual(counter, [0, 0, 0, 0])
 
     def test_seed_n_uses_wrapping_derivation(self):
         case = load_case("WIND-UNI-002")
-        base_key, base_counter, _, _, _, error = AUDIT.candidate_philox_identity(
+        base_key, base_counter, _, _, derivation, error = AUDIT.candidate_philox_identity(
             "WIND-UNI-002", case
         )
         self.assertIsNone(error)
+        self.assertEqual(
+            derivation, AUDIT.PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1
+        )
         key, _ = AUDIT.expected_philox_for_seed(
-            "WIND-UNI-002", base_key, base_counter, 7
+            "WIND-UNI-002", base_key, base_counter, 7, derivation
         )
         self.assertEqual(key, [(3737180555 + 7) % 2**32, 305419896])
         # Wrapping past u32::MAX.
         key, _ = AUDIT.expected_philox_for_seed(
-            "WIND-UNI-002", [2**32 - 1, 1], [0, 0, 0, 0], 1
+            "WIND-UNI-002",
+            [2**32 - 1, 1],
+            [0, 0, 0, 0],
+            1,
+            AUDIT.PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1,
         )
         self.assertEqual(key, [0, 1])
 
+    def test_unknown_derivation_fails_closed(self):
+        case = load_case("WIND-UNI-002")
+        case["stochastic"]["candidate_philox"]["derivation"] = "typo_or_future_mode"
+        _, _, _, _, _, error = AUDIT.candidate_philox_identity("WIND-UNI-002", case)
+        self.assertIsNotNone(error)
+        self.assertIn("unsupported", error)
+        self.assertIn("derivation", error)
+
+    def test_legacy_identical_repeats_flag_is_rejected(self):
+        case = load_case("REPEAT-009")
+        case["stochastic"]["candidate_philox"]["identical_repeats"] = True
+        _, _, _, _, _, error = AUDIT.candidate_philox_identity("REPEAT-009", case)
+        self.assertIsNotNone(error)
+        self.assertIn("identical_repeats", error)
     def test_stochastic_case_without_identity_fails(self):
         case = load_case("WIND-UNI-002")
         case["stochastic"] = {"candidate_philox": None, "oracle_seed": None}
@@ -82,28 +106,31 @@ class PhiloxIdentityTest(unittest.TestCase):
 
     def test_repeat_009_reuses_identical_key(self):
         case = load_case("REPEAT-009")
-        base_key, base_counter, count, deterministic, identical, error = (
+        base_key, base_counter, count, deterministic, derivation, error = (
             AUDIT.candidate_philox_identity("REPEAT-009", case)
         )
         self.assertIsNone(error)
-        self.assertTrue(identical)
+        self.assertEqual(
+            derivation, AUDIT.PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1
+        )
         self.assertEqual(count, 2)
         key0, _ = AUDIT.expected_philox_for_seed(
-            "REPEAT-009", base_key, base_counter, 0, identical
+            "REPEAT-009", base_key, base_counter, 0, derivation
         )
         key1, _ = AUDIT.expected_philox_for_seed(
-            "REPEAT-009", base_key, base_counter, 1, identical
+            "REPEAT-009", base_key, base_counter, 1, derivation
         )
         self.assertEqual(key0, key1)
         self.assertEqual(key0, [3737180555, 305419896])
 
     def test_adv_ana_001_valid_without_identity(self):
         case = load_case("ADV-ANA-001")
-        base_key, base_counter, count, deterministic, identical, error = (
+        base_key, base_counter, count, deterministic, derivation, error = (
             AUDIT.candidate_philox_identity("ADV-ANA-001", case)
         )
         self.assertIsNone(error)
         self.assertTrue(deterministic)
+        self.assertIsNone(derivation)
         self.assertIsNone(base_key)
         self.assertEqual(count, 1)
 

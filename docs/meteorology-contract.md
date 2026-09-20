@@ -20,9 +20,9 @@ The Rust implementation lives in src/meteorology/mod.rs.
 
 ## Canonical invariants
 
-- Canonical axes are explicit. Schema v1 serializes volume fields as X,Y,Z and surface
-  fields as X,Y. Every field also declares `storage_order`; schema v1 supports `x_fastest`,
-  with 3-D offset `x + nx * (y + ny * z)` and 2-D offset `x + nx * y`.
+- Canonical axes are explicit. Schema v1 serializes volume fields as X,Y,Z, surface
+  fields as X,Y, and FLEXPART land-use fractions as X,Y,Class(13). Every field declares
+  `storage_order`; schema v1 supports `x_fastest` with the last axis outermost.
 - Horizontal and vertical staggering are validated per field rather than by dimensions alone.
   Schema v1 permits cell-centered fields generally, plus `wind_u` on X faces, `wind_v` on Y
   faces, and `vertical_velocity` on level interfaces. Scalar face staggering, cross-axis wind
@@ -48,58 +48,122 @@ The Rust implementation lives in src/meteorology/mod.rs.
 
 ## P0 field matrix
 
-The source names below are the FLEXPART 11.1/com_mod or readwind concepts already
-documented by the current Rust port. The matrix is intentionally independent of a
-specific provider encoding.
+This crosswalk is derived backwards from the pinned FLEXPART 11.1 oracle
+`c70586c2b7f5258850705325881c61f557ea9bd8`. File/routine names below are oracle
+trace points, not provider identifiers required by the canonical schema. Provider-specific GRIB
+or NetCDF names remain #32 adapter concerns.
 
-| Canonical id | FLEXPART 11.1 counterpart / trace | Canonical unit/sign | Rank | Main consumers |
+The matrix distinguishes **normalized/source forcing** from **FLEXPART-derived diagnostics**.
+`Requirements::p0_complete()` describes the complete physics-ready P0 snapshot; capability
+requirement sets describe the subsets needed by the individual P0 paths.
+
+### Normalized/source forcing
+
+| Canonical id | Physical meaning | Pinned FLEXPART 11.1 trace | Layout / canonical unit and sign | Time semantics | #31 interpolation / handoff | Consumers |
+| --- | --- | --- | --- | --- | --- | --- |
+| `wind_u` | horizontal wind, east component | `windfields_mod::readwind_ecmwf` U -> `uuh`; `verttransform_ecmwf_windfields` -> `uu` | X,Y,Z; cell center or X face; m/s eastward + | instantaneous | continuous 3-D spatial + temporal sampling | advection; PBL/turbulence |
+| `wind_v` | horizontal wind, north component | readwind V -> `vvh`; vertical transform -> `vv` | X,Y,Z; cell center or Y face; m/s northward + | instantaneous | continuous 3-D spatial + temporal sampling | advection; PBL/turbulence |
+| `vertical_velocity` | geometric vertical air velocity at the physics boundary | readwind omega/eta-dot -> `wwh`; `verttransform_ecmwf_windfields` converts with `pinmconv` to `ww` | X,Y,Z; level center or interface; m/s upward + | instantaneous | #30 performs representation/sign conversion; #31 samples resulting field | vertical advection |
+| `temperature` | 3-D air temperature | readwind T -> `tth`; vertical transform -> `tt` | X,Y,Z level center; K | instantaneous | continuous 3-D | #30; PBL; Emanuel convection; wet deposition; settling |
+| `specific_humidity` | water-vapour mass fraction | readwind Q -> `qvh`; vertical transform -> `qv` | X,Y,Z level center; kg/kg, non-negative | instantaneous | continuous 3-D | #30; PBL; Emanuel convection; cloud fallback |
+| `surface_pressure` | surface pressure | readwind SP -> `ps` | X,Y cell center; Pa, positive | instantaneous | continuous 2-D | #30 hybrid pressure; PBL; Emanuel convection; dry deposition |
+| `orography` | surface elevation above mean sea level | readwind geopotential -> `oro` after division by g | X,Y; m ASL, non-negative in schema v1 | static ancillary serialized at snapshot time | static spatial field; no temporal interpolation | #30 AGL/ASL |
+| `land_sea_mask` | land fraction / land-sea discriminator | readwind -> `lsm`; `drydepo_mod::assignland` only uses it as fallback when detailed inventory is absent | X,Y; fraction [0,1] | static ancillary | static | surface provenance/fallback only; P0 dry deposition requires explicit land-use fractions |
+| `snow_depth` | snow water equivalent depth | readwind SD -> `sd`; passed by `getfields_mod::calcpar` to `drydepo_mod::getvdep` | X,Y; m water equivalent, non-negative | instantaneous | continuous 2-D forcing at met time | dry deposition |
+| `wind_u10m` | 10-m eastward wind | readwind -> `u10` | X,Y; m/s eastward + | instantaneous | continuous 2-D | `pbl_profile` fallback / near-surface diagnosis |
+| `wind_v10m` | 10-m northward wind | readwind -> `v10` | X,Y; m/s northward + | instantaneous | continuous 2-D | `pbl_profile` fallback / near-surface diagnosis |
+| `temperature2m` | 2-m air temperature | readwind -> `tt2` | X,Y; K | instantaneous | continuous 2-D | PBL; Emanuel convection; dry deposition |
+| `dewpoint2m` | 2-m dew-point temperature | readwind -> `td2` | X,Y; K | instantaneous | continuous 2-D | PBL; Emanuel convection; dry-deposition RH derivation |
+| `large_scale_precipitation` | water-equivalent large-scale precipitation amount over a known interval | readwind -> `lsprec`; FLEXPART internal forcing is converted to mm/h before `interpol_rain` | X,Y; kg/m2 interval amount, non-negative | interval total or accumulation with explicit reset | #31 alone converts amount to interval rate and applies FLEXPART-compatible rain interpolation | wet deposition; dry-deposition precipitation forcing |
+| `convective_precipitation` | water-equivalent convective precipitation amount over a known interval | readwind -> `convprec`; internal forcing converted to mm/h | X,Y; kg/m2 interval amount, non-negative | interval total or accumulation with explicit reset | same special rain class as LSP | wet deposition; dry deposition. **Not** an Emanuel-convection input |
+| `total_cloud_cover` | grid-cell total cloud fraction | readwind -> `tcc`; `wetdepo_mod::get_wetscav -> interpol_rain` returns `cc` | X,Y; fraction [0,1] | instantaneous | wet-deposition rain/cloud interpolation class | wet deposition |
+| `cloud_liquid_water` | cloud liquid-water mixing ratio | readwind CLWC -> `clwch/clwc`; `verttransform_ecmwf_cloud` | X,Y,Z level center; kg/kg, non-negative | instantaneous | #30 vertical normalization; then cloud-state derivation | wet-deposition cloud-state derivation |
+| `cloud_ice_water` | cloud ice-water mixing ratio | readwind CIWC -> `ciwch/ciwc`; combined with CLWC by `verttransform_ecmwf_cloud` when separate fields are supplied | X,Y,Z level center; kg/kg, non-negative | instantaneous | same as CLWC | wet-deposition cloud-state derivation |
+| `sensible_heat_flux` | surface sensible heat-flux rate | readwind -> `sshf`; `calcpar -> obukhov` | X,Y; W/m2, upward + at canonical boundary | instantaneous or explicit interval mean; accumulated energy is invalid past boundary | continuous 2-D | PBL/Obukhov |
+| `surface_solar_radiation` | surface short-wave/net-solar radiation rate used by dry deposition | readwind -> `ssr`; `calcpar -> getvdep` as `gr` | X,Y; W/m2, non-negative | instantaneous or explicit interval mean | continuous 2-D | dry deposition |
+| `surface_stress_eastward` | eastward turbulent surface-stress component | readwind EWSS; FLEXPART forms `sfcstress=sqrt(ewss^2+nsss^2)` | X,Y; N/m2 eastward + | instantaneous or explicit interval mean | components normalized before PBL diagnosis | friction-velocity diagnosis |
+| `surface_stress_northward` | northward turbulent surface-stress component | readwind NSSS; combined into `sfcstress` | X,Y; N/m2 northward + | instantaneous or explicit interval mean | same as EWSS | friction-velocity diagnosis |
+| `land_use_fractions` | fractional cover of each FLEXPART dry-deposition land-use class | `drydepo_mod::assignland -> xlanduse(ix,jy,1:numclass)`; pinned contract has 13 classes and normalizes fractions to unity | X,Y,Class(13); fraction [0,1], per-cell sum=1 | static ancillary | no generic temporal interpolation; spatial preparation must preserve normalized fractions | `drydepo_mod::getvdep` / resistance weighting |
+
+All required source/forcing fields reject non-finite values. Missing required fields fail before physics.
+The land-use field is deliberately **13 fractions**, not one categorical class index: FLEXPART computes
+weighted deposition over all classes. Likewise, `roughness_length` is not a P0 meteorological field:
+the dry-deposition path uses class-table roughness and a water-surface value derived internally.
+
+### FLEXPART-derived physics-ready fields
+
+These are canonical fields because later consumers need the derived state, but they are not independent
+provider requirements.
+
+| Canonical id | Physical meaning / oracle derivation | Layout / unit | Time semantics | Consumers |
 | --- | --- | --- | --- | --- |
-| wind_u | com_mod uu; readwind wind U | m/s, eastward + | 3-D | advection, PBL, convection |
-| wind_v | com_mod vv; readwind wind V | m/s, northward + | 3-D | advection, PBL, convection |
-| vertical_velocity | com_mod ww after vertical normalization; native eta-dot/omega must be converted before physics | m/s, upward + | 3-D | vertical advection, convection |
-| temperature | com_mod tt | K | 3-D | vertical transform, PBL, convection, wet/dry deposition |
-| specific_humidity | com_mod qv | kg/kg | 3-D | vertical transform, convection |
-| pressure | com_mod prs / reconstructed model pressure | Pa | 3-D | vertical transform, density, deposition |
-| air_density | com_mod rho; derived from canonical thermodynamic state where not supplied | kg/m3 | 3-D | turbulence/deposition support |
-| density_gradient | com_mod drhodz | kg/m4 | 3-D | vertical transport forcing |
-| surface_pressure | com_mod ps; ECMWF sp | Pa | 2-D | hybrid pressure reconstruction, PBL |
-| orography | com_mod oro; ECMWF geopotential z normalized to height | m ASL | 2-D | terrain/AGL-ASL transform |
-| land_sea_mask | com_mod lsm | fraction 0..1 | 2-D | land/surface mapping |
-| wind_u10m | com_mod u10; ECMWF 10u | m/s, eastward + | 2-D | PBL/friction diagnostics |
-| wind_v10m | com_mod v10; ECMWF 10v | m/s, northward + | 2-D | PBL/friction diagnostics |
-| temperature2m | com_mod tt2; ECMWF 2t | K | 2-D | PBL, dry deposition |
-| dewpoint2m | com_mod td2; ECMWF 2d | K | 2-D | near-surface moisture diagnostics |
-| large_scale_precipitation | com_mod lsprec; ECMWF lsp normalized with interval/reset semantics | kg/m2 interval total | 2-D | wet deposition |
-| convective_precipitation | com_mod convprec; ECMWF cp normalized with interval/reset semantics | kg/m2 interval total | 2-D | convection, wet deposition |
-| total_cloud_cover | readwind total-cloud-cover input; wet-deposition cloud exposure | fraction 0..1 | 2-D | wet deposition |
-| cloud_liquid_water | cloud-water path feeding FLEXPART wet-deposition ctwc semantics | kg/kg | 3-D | wet deposition, convection |
-| cloud_ice_water | cloud-ice path feeding FLEXPART wet-deposition ctwc/phase semantics | kg/kg | 3-D | wet deposition |
-| sensible_heat_flux | com_mod sshf after sign normalization | W/m2, upward + | 2-D | PBL/Obukhov diagnosis |
-| surface_solar_radiation | com_mod ssr | W/m2 | 2-D | PBL diagnostics |
-| surface_stress_eastward | ECMWF ewss/readwind stress input before magnitude derivation | N/m2, eastward + | 2-D | PBL/friction velocity |
-| surface_stress_northward | ECMWF nsss/readwind stress input before magnitude derivation | N/m2, northward + | 2-D | PBL/friction velocity |
-| friction_velocity | com_mod ustar; may be diagnosed from canonical stress | m/s | 2-D | PBL, dry deposition |
-| convective_velocity_scale | com_mod wstar | m/s | 2-D | PBL, convection |
-| mixing_height | com_mod hmix | m AGL | 2-D | turbulence, convection, deposition |
-| tropopause_height | com_mod tropopause | m | 2-D | vertical transport regime |
-| inverse_obukhov_length | com_mod oli | 1/m, signed | 2-D | PBL, dry deposition |
-| roughness_length | dry-deposition/PBL surface mapping input; no provider name is allowed past normalization | m | 2-D | PBL, dry deposition |
-| land_use_class | FLEXPART land-use mapping/table input; class ids must be explicit and provenance-tracked | class index | 2-D | dry deposition |
+| `pressure` | layer pressure; ECMWF path reconstructs with `akz + bkz * ps` / half-level `akm + bkm * ps` in `verttransform_mod` and `conv_mod::calcmatrix` | X,Y,Z; Pa | instantaneous derived | #30; convection; deposition thermodynamics |
+| `air_density` | moist-air density from pressure/virtual temperature in `verttransform_ecmwf_heights` -> `rho` | X,Y,Z; kg/m3 | instantaneous derived | turbulence; cloud-water integration; settling |
+| `density_gradient` | d(rho)/dz in `verttransform_ecmwf_windfields`; the actual finite-difference formula has SI unit kg/m4 even though an old Fortran declaration comment says kg/m2 | X,Y,Z; kg/m4, signed | instantaneous derived | PBL/turbulent vertical transport |
+| `friction_velocity` | `ustar`; `getfields_mod::calcpar -> scalev(ps,tt2,td2,sfcstress)` or profile fallback | X,Y; m/s | instantaneous derived | PBL; dry deposition |
+| `convective_velocity_scale` | `wstar`, diagnosed by `calcpar -> richardson` together with mixing height | X,Y; m/s | instantaneous derived | PBL/turbulence |
+| `mixing_height` | boundary-layer height `hmix`, diagnosed in `calcpar -> richardson` | X,Y; m AGL | instantaneous derived | PBL/turbulence |
+| `tropopause_height` | thermal tropopause `tropopause`, diagnosed in `calcpar` from thermodynamic profile | X,Y; m | instantaneous derived | vertical-regime logic |
+| `inverse_obukhov_length` | `oli=1/L`; `calcpar -> obukhov` from surface/thermodynamic forcing | X,Y; 1/m, signed | instantaneous derived | PBL; dry deposition |
 
-### Current consumer cross-check
+### Required derived wet-deposition state (not provider fields)
 
-The existing code already exposes the following provider-independent consumer surfaces:
+FLEXPART does **not** feed CLWC/CIWC directly into `get_wetscav`. The preparation path
+`verttransform_ecmwf_cloud/identify_cloud` combines liquid+ice and produces:
 
-- src/wind/mod.rs: uu/vv/ww/tt/qv/prs/rho/drhodz equivalents plus ps/u10/v10/tt2/td2,
-  lsprec/convprec/sshf/ssr/ustar/wstar/hmix/tropopause/oli and oro/lsm.
-- src/io/pbl_params.rs: surface pressure, 2 m temperature, 10 m winds, stress,
-  sensible heat flux, radiation, hmix, ustar and inverse Obukhov length.
-- src/physics/wet_scavenging.rs: large-scale/convective precipitation, cloud cover,
-  local temperature and cloud water/ice content.
-- src/physics/deposition.rs: ustar, Obukhov length, temperature, pressure plus
-  land-use/roughness/resistance mapping.
-- src/physics/convection.rs: the current simplified path consumes convective precipitation,
-  wstar and boundary-layer height; #23/#24 will replace this with the full v11.1 contract.
+| Derived quantity | Oracle trace and canonical handoff |
+| --- | --- |
+| column total cloud water `ctwc` | vertical integral `(CLWC+CIWC) * rho * dz`, kg/m2 |
+| cloud bottom | first cloudy model height, metres above the internal surface-relative height origin |
+| cloud top | top cloudy model height, with FLEXPART cloud-bound corrections |
+| precipitation rate | #31 converts canonical interval amounts to the oracle mm/h forcing before `interpol_rain` |
+
+`wetdepo_mod::get_wetscav` then calls `interpol_rain` for LSP, convective precipitation,
+total cloud cover, particle temperature, `ctwc`, cloud bottom and cloud top. Rain/snow activation
+uses temperature; CLWC vs CIWC is not passed as two independent scavenging coefficients.
+The typed process-state representation and branch-by-branch rate validation remain #33, but there is
+no longer an undocumented meteorological input between #29 and #33.
+
+### Process-to-field proof map
+
+- **Advection / #7:** `uu/vv/ww` -> `wind_u/wind_v/vertical_velocity`. #30 owns conversion of
+  provider pressure/eta vertical motion into canonical upward-positive m/s; #31 owns sampling.
+- **PBL/turbulence / #8:** `calcpar` derives `ustar/oli/hmix/wstar/tropopause` from
+  `ps,tt2,td2,u10,v10,sshf,sfcstress` plus the lowest 3-D thermodynamic/wind profile.
+  `rho/drhodz` are consumed by turbulent vertical transport.
+- **Emanuel convection / #9:** the pinned `conv_mod::convmix` interpolates `ps,tt2,td2`
+  and the 3-D `tth/qvh` thermodynamic profile; `calcmatrix` reconstructs layer/interface
+  pressure from hybrid A/B + surface pressure before calling Emanuel convection. The existing
+  simplified Rust convection helper's `convective_precipitation/wstar/hmix` inputs are therefore
+  **not** the normative #9 meteorology contract; #23/#24 must replace that provisional path.
+- **Wet deposition / #13:** `get_wetscav -> interpol_rain` consumes LSP, convective precipitation,
+  TCC, particle temperature, CTWC and cloud bounds. CTWC/bounds are derived from the canonical
+  cloud-water/thermodynamic state as described above.
+- **Dry deposition / #14:** `getfields_mod::calcpar -> drydepo_mod::getvdep` consumes
+  `ustar,tt2,ps,L,ssr,RH,precipitation_rate,sd` and `xlanduse(13)`. RH is derived from
+  `td2/tt2/ps`; total precipitation rate is derived from LSP+convective precipitation; season is
+  derived from simulation date and latitude. Roughness is a land-use table/internal water-surface
+  derivation, not a provider meteorology field.
+- **Gravitational settling / #14/#35:** `settling_mod::get_settling` consumes local air
+  temperature and air density in addition to species/carrier properties.
+
+The corresponding machine-readable subsets are
+`Requirements::convection()`, `Requirements::wet_deposition()`,
+`Requirements::dry_deposition()`, and `Requirements::settling()`.
+
+### Missing-value and temporal policy
+
+- Schema-v1 has no provider sentinel values: required missing fields, NaN/Inf and impossible domains
+  fail at the canonical boundary.
+- Normal state variables and static ancillary fields use `instantaneous` snapshot semantics.
+- Surface rate/flux fields (`sensible_heat_flux`, `surface_solar_radiation`, stress components)
+  may be instantaneous or explicit interval means; accumulated energy/momentum must be normalized
+  before crossing the boundary.
+- Precipitation remains an interval amount (`kg/m2`, numerically equivalent to mm water amount)
+  with explicit start/end and reset metadata. #31 performs the only amount-to-rate conversion.
+- Land-use fractions are bounded [0,1] and must sum to 1 within `1e-5` independently for each cell.
+- Provider-specific missing-value handling, accumulated-field decoding and unit conversion belong to
+  #32 and must fail rather than silently default when source semantics are ambiguous.
 
 ## Handoff to #30/#31/#32
 
@@ -140,8 +204,6 @@ Implemented:
   unsupported calendar values, field-specific staggering, invalid hybrid metadata and
   ambiguous/invalid accumulation reset semantics.
 
-Still required before #29 can close:
-
-- finish the pinned FLEXPART 11.1 source crosswalk for cloud phase/water and land-use/season
-  mapping when #23/#33/#36 oracle contracts expose the exact v11.1 branches;
-- add provider-adapter normalization in #32, not here.
+The P0 meteorology crosswalk is now frozen for #29. Process-specific formula/rate parity remains
+owned by #23/#33/#36, and provider-adapter normalization remains #32 non-scope; neither requires an
+additional meteorological input to be invented outside this contract.

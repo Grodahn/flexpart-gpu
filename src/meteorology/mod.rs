@@ -12,6 +12,8 @@ use thiserror::Error;
 pub const SCHEMA_ID: &str = "flexpart-gpu.canonical-meteorology";
 /// Current canonical meteorology schema version.
 pub const SCHEMA_VERSION: u32 = 1;
+/// Number of land-use fractions in the pinned FLEXPART 11.1 dry-deposition contract.
+pub const FLEXPART_LAND_USE_CLASS_COUNT: usize = 13;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SchemaIdentity {
@@ -103,6 +105,7 @@ pub enum FieldId {
     SurfacePressure,
     Orography,
     LandSeaMask,
+    SnowDepth,
     WindU10m,
     WindV10m,
     Temperature2m,
@@ -121,8 +124,7 @@ pub enum FieldId {
     MixingHeight,
     TropopauseHeight,
     InverseObukhovLength,
-    RoughnessLength,
-    LandUseClass,
+    LandUseFractions,
 }
 
 impl FieldId {
@@ -131,15 +133,14 @@ impl FieldId {
         &[
             Self::WindU, Self::WindV, Self::VerticalVelocity, Self::Temperature,
             Self::SpecificHumidity, Self::Pressure, Self::AirDensity, Self::DensityGradient,
-            Self::SurfacePressure, Self::Orography, Self::LandSeaMask, Self::WindU10m,
-            Self::WindV10m, Self::Temperature2m, Self::Dewpoint2m,
+            Self::SurfacePressure, Self::Orography, Self::LandSeaMask, Self::SnowDepth,
+            Self::WindU10m, Self::WindV10m, Self::Temperature2m, Self::Dewpoint2m,
             Self::LargeScalePrecipitation, Self::ConvectivePrecipitation,
             Self::TotalCloudCover, Self::CloudLiquidWater, Self::CloudIceWater,
             Self::SensibleHeatFlux, Self::SurfaceSolarRadiation,
             Self::SurfaceStressEastward, Self::SurfaceStressNorthward,
             Self::FrictionVelocity, Self::ConvectiveVelocityScale, Self::MixingHeight,
-            Self::TropopauseHeight, Self::InverseObukhovLength, Self::RoughnessLength,
-            Self::LandUseClass,
+            Self::TropopauseHeight, Self::InverseObukhovLength, Self::LandUseFractions,
         ]
     }
 
@@ -150,6 +151,13 @@ impl FieldId {
                 | Self::SpecificHumidity | Self::Pressure | Self::AirDensity
                 | Self::DensityGradient | Self::CloudLiquidWater | Self::CloudIceWater
         )
+    }
+
+    fn class_count(self) -> Option<usize> {
+        match self {
+            Self::LandUseFractions => Some(FLEXPART_LAND_USE_CLASS_COUNT),
+            _ => None,
+        }
     }
 
     fn supports_horizontal_staggering(self, staggering: HorizontalStaggering) -> bool {
@@ -192,9 +200,9 @@ impl FieldId {
             Self::Pressure | Self::SurfacePressure => Unit::Pascal,
             Self::AirDensity => Unit::KilogramPerCubicMeter,
             Self::DensityGradient => Unit::KilogramPerQuarticMeter,
-            Self::Orography | Self::MixingHeight | Self::TropopauseHeight
-            | Self::RoughnessLength => Unit::Meter,
-            Self::LandSeaMask | Self::TotalCloudCover => Unit::Fraction,
+            Self::Orography | Self::SnowDepth | Self::MixingHeight
+            | Self::TropopauseHeight => Unit::Meter,
+            Self::LandSeaMask | Self::TotalCloudCover | Self::LandUseFractions => Unit::Fraction,
             Self::LargeScalePrecipitation | Self::ConvectivePrecipitation => {
                 Unit::KilogramPerSquareMeter
             }
@@ -203,7 +211,6 @@ impl FieldId {
                 Unit::NewtonPerSquareMeter
             }
             Self::InverseObukhovLength => Unit::PerMeter,
-            Self::LandUseClass => Unit::ClassIndex,
         }
     }
 
@@ -235,7 +242,6 @@ pub enum Unit {
     WattPerSquareMeter,
     NewtonPerSquareMeter,
     PerMeter,
-    ClassIndex,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -255,13 +261,15 @@ pub enum Axis {
     X,
     Y,
     Z,
+    Class,
 }
 
 /// Linearization of the multidimensional canonical field values.
 ///
 /// Schema v1 supports only X-fastest storage. For shape [nx, ny, nz],
 /// offset(x,y,z) = x + nx * (y + ny * z); for [nx, ny],
-/// offset(x,y) = x + nx * y.
+/// offset(x,y) = x + nx * y. Class-axis fields use the same rule:
+/// offset(x,y,class) = x + nx * (y + ny * class).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum StorageOrder {
@@ -369,6 +377,73 @@ impl Requirements {
         }
     }
 
+    /// Meteorological state used by the pinned FLEXPART 11.1 Emanuel-convection path.
+    #[must_use]
+    pub fn convection() -> Self {
+        Self {
+            required_fields: [
+                FieldId::SurfacePressure,
+                FieldId::Temperature2m,
+                FieldId::Dewpoint2m,
+                FieldId::Temperature,
+                FieldId::SpecificHumidity,
+                FieldId::Pressure,
+            ]
+            .into_iter()
+            .collect(),
+        }
+    }
+
+    /// Canonical inputs needed to derive and sample the pinned wet-deposition forcing.
+    #[must_use]
+    pub fn wet_deposition() -> Self {
+        Self {
+            required_fields: [
+                FieldId::LargeScalePrecipitation,
+                FieldId::ConvectivePrecipitation,
+                FieldId::TotalCloudCover,
+                FieldId::Temperature,
+                FieldId::SpecificHumidity,
+                FieldId::AirDensity,
+                FieldId::CloudLiquidWater,
+                FieldId::CloudIceWater,
+            ]
+            .into_iter()
+            .collect(),
+        }
+    }
+
+    /// Physics-ready surface forcing used by the pinned dry-deposition path.
+    #[must_use]
+    pub fn dry_deposition() -> Self {
+        Self {
+            required_fields: [
+                FieldId::FrictionVelocity,
+                FieldId::Temperature2m,
+                FieldId::Dewpoint2m,
+                FieldId::SurfacePressure,
+                FieldId::InverseObukhovLength,
+                FieldId::SurfaceSolarRadiation,
+                FieldId::LargeScalePrecipitation,
+                FieldId::ConvectivePrecipitation,
+                FieldId::SnowDepth,
+                FieldId::LandUseFractions,
+            ]
+            .into_iter()
+            .collect(),
+        }
+    }
+
+    /// Meteorology consumed by FLEXPART gravitational settling.
+    #[must_use]
+    pub fn settling() -> Self {
+        Self {
+            required_fields: [FieldId::Temperature, FieldId::AirDensity]
+                .into_iter()
+                .collect(),
+        }
+    }
+
     /// Fields genuinely represented by the checked-in real-data native-level
     /// fixture (`fixtures/meteorology/era5-etex-native-v1.json`).
     ///
@@ -468,7 +543,15 @@ impl Snapshot {
                     .ok_or(ContractError::ShapeMismatch(field.id))?,
             ),
         };
-        let (shape, axes) = if field.id.is_3d() {
+        let (shape, axes) = if let Some(class_count) = field.id.class_count() {
+            if field.vertical_staggering != VerticalStaggering::NotApplicable {
+                return Err(ContractError::InvalidStaggering(field.id));
+            }
+            (
+                vec![nx, ny, class_count],
+                vec![Axis::X, Axis::Y, Axis::Class],
+            )
+        } else if field.id.is_3d() {
             let nz = match field.vertical_staggering {
                 VerticalStaggering::LevelCenter => self.vertical_coordinate.level_values.len(),
                 VerticalStaggering::LevelInterface => self
@@ -692,12 +775,24 @@ fn validate_time(id: FieldId, time: &FieldTime) -> Result<(), ContractError> {
         }
     }
 
-    if matches!(id, FieldId::LargeScalePrecipitation | FieldId::ConvectivePrecipitation)
-        && !matches!(
+    if matches!(id, FieldId::LargeScalePrecipitation | FieldId::ConvectivePrecipitation) {
+        if !matches!(
             time.kind,
             TemporalKind::IntervalTotal | TemporalKind::AccumulatedSinceReset
-        )
-    {
+        ) {
+            return Err(ContractError::InvalidTemporalMetadata(id));
+        }
+    } else if matches!(
+        id,
+        FieldId::SensibleHeatFlux
+            | FieldId::SurfaceSolarRadiation
+            | FieldId::SurfaceStressEastward
+            | FieldId::SurfaceStressNorthward
+    ) {
+        if !matches!(time.kind, TemporalKind::Instantaneous | TemporalKind::IntervalMean) {
+            return Err(ContractError::InvalidTemporalMetadata(id));
+        }
+    } else if time.kind != TemporalKind::Instantaneous {
         return Err(ContractError::InvalidTemporalMetadata(id));
     }
     Ok(())
@@ -720,10 +815,26 @@ fn validate_domain(field: &Field) -> Result<(), ContractError> {
     if field.sign == SignConvention::NonNegative && field.values.iter().any(|value| *value < 0.0) {
         return Err(ContractError::InvalidValueDomain(field.id));
     }
-    if matches!(field.id, FieldId::LandSeaMask | FieldId::TotalCloudCover)
-        && field.values.iter().any(|value| !(0.0..=1.0).contains(value))
+    if matches!(
+        field.id,
+        FieldId::LandSeaMask | FieldId::TotalCloudCover | FieldId::LandUseFractions
+    ) && field.values.iter().any(|value| !(0.0..=1.0).contains(value))
     {
         return Err(ContractError::InvalidValueDomain(field.id));
+    }
+    if field.id == FieldId::LandUseFractions {
+        let nx = field.shape[0];
+        let ny = field.shape[1];
+        for y in 0..ny {
+            for x in 0..nx {
+                let sum: f32 = (0..FLEXPART_LAND_USE_CLASS_COUNT)
+                    .map(|class| field.values[x + nx * (y + ny * class)])
+                    .sum();
+                if (sum - 1.0).abs() > 1.0e-5 {
+                    return Err(ContractError::InvalidValueDomain(field.id));
+                }
+            }
+        }
     }
     if matches!(
         field.id,
@@ -821,6 +932,98 @@ mod tests {
         assert_eq!(
             value.validate(&Requirements::advection()),
             Err(ContractError::MissingRequiredField(FieldId::SpecificHumidity))
+        );
+    }
+
+    #[test]
+    fn land_use_fractions_require_13_normalized_classes() {
+        let mut value = snapshot();
+        let mut fractions = vec![0.0; 2 * FLEXPART_LAND_USE_CLASS_COUNT];
+        for x in 0..2 {
+            fractions[x + 2 * 6] = 1.0;
+        }
+        value.fields.push(Field {
+            id: FieldId::LandUseFractions,
+            shape: vec![2, 1, FLEXPART_LAND_USE_CLASS_COUNT],
+            axis_order: vec![Axis::X, Axis::Y, Axis::Class],
+            unit: Unit::Fraction,
+            sign: SignConvention::NonNegative,
+            storage_order: StorageOrder::XFastest,
+            horizontal_staggering: HorizontalStaggering::CellCenter,
+            vertical_staggering: VerticalStaggering::NotApplicable,
+            time: instant(),
+            values: fractions,
+        });
+        value
+            .validate(&Requirements {
+                required_fields: [FieldId::LandUseFractions].into_iter().collect(),
+            })
+            .expect("normalized 13-class land-use fractions must validate");
+
+        let land_use = value
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::LandUseFractions)
+            .expect("land-use fractions");
+        land_use.values[2 * 7] = 0.1;
+        assert_eq!(
+            value.validate(&Requirements {
+                required_fields: [FieldId::LandUseFractions].into_iter().collect(),
+            }),
+            Err(ContractError::InvalidValueDomain(FieldId::LandUseFractions))
+        );
+    }
+
+    #[test]
+    fn flux_accumulation_must_be_normalized_before_canonical_boundary() {
+        let mut value = snapshot();
+        value.fields.push(Field {
+            id: FieldId::SurfaceSolarRadiation,
+            shape: vec![2, 1],
+            axis_order: vec![Axis::X, Axis::Y],
+            unit: Unit::WattPerSquareMeter,
+            sign: SignConvention::NonNegative,
+            storage_order: StorageOrder::XFastest,
+            horizontal_staggering: HorizontalStaggering::CellCenter,
+            vertical_staggering: VerticalStaggering::NotApplicable,
+            time: FieldTime {
+                calendar: Calendar::Gregorian,
+                kind: TemporalKind::IntervalTotal,
+                valid_time_epoch_seconds: 1_000,
+                interval_start_epoch_seconds: Some(0),
+                interval_end_epoch_seconds: Some(1_000),
+                accumulation: None,
+            },
+            values: vec![100.0, 100.0],
+        });
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InvalidTemporalMetadata(
+                FieldId::SurfaceSolarRadiation
+            ))
+        );
+    }
+
+    #[test]
+    fn non_precip_state_rejects_interval_total_semantics() {
+        let mut value = snapshot();
+        let temperature = value
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::Temperature)
+            .expect("temperature field");
+        temperature.time = FieldTime {
+            calendar: Calendar::Gregorian,
+            kind: TemporalKind::IntervalTotal,
+            valid_time_epoch_seconds: 1_000,
+            interval_start_epoch_seconds: Some(0),
+            interval_end_epoch_seconds: Some(1_000),
+            accumulation: None,
+        };
+
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InvalidTemporalMetadata(FieldId::Temperature))
         );
     }
 

@@ -282,16 +282,26 @@ impl VerticalRuntimeView<'_> {
 pub struct VerticalTransformProvenance {
     pub source_schema_id: String,
     pub source_schema_version: u32,
+    pub source_vertical_ordering: VerticalOrdering,
+    pub source_level_count: usize,
+    pub pressure_algorithm_id: String,
+    pub height_algorithm_id: String,
+    pub terrain_reference: VerticalReference,
     pub pressure_reconstruction: String,
     pub height_reconstruction: String,
     pub height_reference: String,
 }
 
-impl Default for VerticalTransformProvenance {
-    fn default() -> Self {
+impl VerticalTransformProvenance {
+    fn from_snapshot(snapshot: &Snapshot) -> Self {
         Self {
             source_schema_id: SCHEMA_ID.to_string(),
             source_schema_version: SCHEMA_VERSION,
+            source_vertical_ordering: snapshot.vertical_coordinate.ordering,
+            source_level_count: snapshot.vertical_coordinate.level_values.len(),
+            pressure_algorithm_id: "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1".to_string(),
+            height_algorithm_id: "flexpart11_verttransform_ecmwf_heights_v1".to_string(),
+            terrain_reference: VerticalReference::AboveMeanSeaLevel,
             pressure_reconstruction: "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)".to_string(),
             height_reconstruction: "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q".to_string(),
             height_reference: "agl_integrated_from_local_surface; asl=agl+orography_asl".to_string(),
@@ -686,7 +696,7 @@ pub fn reconstruct_vertical_geometry(
         height_asl_m,
         height_agl_m,
         vertical_velocity: None,
-        provenance: VerticalTransformProvenance::default(),
+        provenance: VerticalTransformProvenance::from_snapshot(snapshot),
     })
 }
 

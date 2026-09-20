@@ -222,10 +222,9 @@ class OracleOverrideTest(unittest.TestCase):
         self.assertIn("adaptive_w_sigw", str(ctx.exception))
 
         case["oracle_command_overrides"]["turbulence_formulation"] = "fixed_sync_w"
-        case["oracle_command_overrides"]["lsynctime_s"] = 900
         text = GEN.command_text("WIND-UNI-002", case)
         self.assertAlmostEqual(float(GEN.namelist_value(text, "CTL")), -5.0, places=6)
-        self.assertEqual(int(GEN.namelist_value(text, "LSYNCTIME")), 900)
+        self.assertEqual(int(GEN.namelist_value(text, "LSYNCTIME")), 300)
 
     def test_small_positive_ctl_rejected_for_turbulence_formulation(self):
         case = load_case("WIND-UNI-002")

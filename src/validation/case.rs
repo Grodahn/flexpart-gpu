@@ -3706,7 +3706,6 @@ mod tests {
 
         manifest.oracle_command_overrides.turbulence_formulation =
             OracleTurbulenceFormulation::FixedSyncW;
-        manifest.oracle_command_overrides.lsynctime_s = Some(900);
         manifest.validate().expect("explicit fixed_sync_w mode validates");
     }
 

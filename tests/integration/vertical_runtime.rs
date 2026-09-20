@@ -139,8 +139,12 @@ fn runtime_view_exposes_column_local_geometry_without_interpolation() {
     assert!(middle.height_agl_m > bottom.height_agl_m);
     assert_eq!(top.height_asl_m - top.height_agl_m, 250.0);
 
-    assert!(runtime.interface_pressure_pa(0, 0, 0).expect("top interface")
-        < runtime.interface_pressure_pa(0, 0, 3).expect("surface interface"));
+    let top_interface = runtime.interface(0, 0, 0).expect("top W/interface");
+    let surface_interface = runtime.interface(0, 0, 3).expect("surface W/interface");
+    assert!(top_interface.pressure_pa < surface_interface.pressure_pa);
+    assert_eq!(surface_interface.height_agl_m, 0.0);
+    assert_eq!(surface_interface.height_asl_m, 250.0);
+    assert!(top_interface.height_agl_m > top.height_agl_m);
 }
 
 #[test]
@@ -163,6 +167,12 @@ fn runtime_view_preserves_normalized_motion_staggering_for_interpolation() {
         flexpart_gpu::meteorology::VerticalStaggering::LevelInterface
     );
     assert_eq!(normalized.values_ms.len(), 4);
+    assert_eq!(
+        normalized.values_ms.len(),
+        (0..4)
+            .map(|interface| runtime.interface(0, 0, interface).expect("W geometry"))
+            .count()
+    );
     assert_eq!(
         normalized.provenance.algorithm_id,
         "omega_interface_flexpart11_pinmconv_v1"

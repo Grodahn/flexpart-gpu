@@ -140,7 +140,7 @@ program vertical_column_oracle
   endif
 
   open(newunit=output_unit, file=trim(output_path), status="replace", action="write")
-  write(output_unit,'(A)') "FLEXPART_VERTICAL_COLUMN_ORACLE_V1"
+  write(output_unit,'(A)') "FLEXPART_VERTICAL_CONFORMANCE_HARNESS_V1"
   write(output_unit,'(I0)') nz
   do k=1,nz
     write(output_unit,'(I0,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') &

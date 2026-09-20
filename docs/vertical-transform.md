@@ -113,32 +113,31 @@ Fortran paths with different roles.
 
 ### Normative pinned-routine oracle
 
-The normative #30 comparison executes the **actual FLEXPART 11.1
-`verttransform_ecmwf_heights` routine source**, not a locally rewritten copy of
-its equations.
+The normative #30 comparison executes the **compiled FLEXPART 11.1
+`verttransform_mod::verttransform_ecmwf_heights` routine from the pinned full
+model build**, not a locally rewritten or extracted copy of its equations.
 
-At CI runtime, `scripts/vertical/extract_flexpart_vertical_routine.py`:
+The technical gate first builds the complete pristine FLEXPART checkout at the
+commit pinned by `reference/flexpart-11.1.json`. The focused
+`direct_oracle_driver.f90` is then compiled against the resulting
+`verttransform_mod.mod` / `windfields_mod.mod` interfaces and linked with the
+same FLEXPART object files produced by that build. Only `FLEXPART.o` is
+excluded because it defines the normal model main program.
 
-1. verifies the oracle checkout is clean and exactly at the commit pinned by
-   `reference/flexpart-11.1.json`;
-2. reads `src/verttransform_mod.f90` from that pristine checkout;
-3. extracts the exact contiguous source slice from
-   `subroutine verttransform_ecmwf_heights` through its matching
-   `end subroutine`;
-4. hashes both the original source and extracted routine and writes
-   `routine-oracle-provenance.json`;
-5. wraps that unchanged routine text only with the imports/state required to
-   compile it as a focused column oracle.
+The driver initializes the vertical-coordinate state in the **real
+`windfields_mod` module** from the canonical column fixture and calls
+`verttransform_ecmwf_heights` directly. CI additionally verifies that the
+resulting oracle binary contains the gfortran module symbol for that routine and
+records SHA-256 hashes for the driver binary, `verttransform_mod.f90`,
+`windfields_mod.f90`, `verttransform_mod.o`, and `windfields_mod.o`.
+The sibling FLEXPART checkout remains clean and unmodified throughout.
 
-The generated routine module is compiled with the pinned FLEXPART
-`par_mod.f90` and `qvsat_mod.f90`. A small driver supplies the same
-bottom-to-top `akz/bkz/aknew/bknew` state that FLEXPART constructs from the
-canonical half-level A/B coefficients, including its artificial surface model
-level. The FLEXPART checkout itself is never modified.
-
-This isolates #30 from GRIB/ecCodes/NetCDF and the full model executable while
-still executing the pinned FLEXPART implementation of pressure, hypsometric
-height, `wzlev`, and `pinmconv`.
+This gives #30 a direct execution oracle for FLEXPART's pressure,
+hypsometric-height, `wzlev`, and `pinmconv` calculations while avoiding a
+full meteorological file/model run for each column test. The small amount of
+driver plumbing that maps canonical top-to-bottom half-level A/B metadata into
+FLEXPART's bottom-to-top module state is separately guarded against the pinned
+`windfields_mod` source contract.
 
 ### Secondary source-conformance harness
 

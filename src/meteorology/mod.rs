@@ -193,7 +193,7 @@ impl FieldId {
                 Unit::MeterPerSecond
             }
             Self::Temperature | Self::Temperature2m | Self::Dewpoint2m => Unit::Kelvin,
-            Self::SpecificHumidity | Self::CloudTotalWater => Unit::KilogramPerKilogram
+            Self::SpecificHumidity | Self::CloudTotalWater => Unit::KilogramPerKilogram,
             Self::Pressure | Self::SurfacePressure => Unit::Pascal,
             Self::AirDensity => Unit::KilogramPerCubicMeter,
             Self::DensityGradient => Unit::KilogramPerQuarticMeter,

@@ -14,7 +14,7 @@ use crate::constants::{GA, R_AIR};
 
 use super::{
     ContractError, FieldId, Requirements, Snapshot, VerticalCoordinateKind, VerticalOrdering,
-    VerticalStaggering, SCHEMA_ID, SCHEMA_VERSION,
+    VerticalReference, VerticalStaggering, SCHEMA_ID, SCHEMA_VERSION,
 };
 
 /// Provider-independent representation of native vertical air motion before
@@ -123,6 +123,160 @@ pub struct VerticalTransformResult {
     pub provenance: VerticalTransformProvenance,
 }
 
+/// Explicit terrain-dependent release-height resolution for #28.
+///
+/// This type preserves both references so downstream release/injection code
+/// never has to infer whether a source height was AGL or ASL.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct ResolvedReleaseHeight {
+    pub input_m: f32,
+    pub input_reference: VerticalReference,
+    pub terrain_asl_m: f32,
+    pub height_agl_m: f32,
+    pub height_asl_m: f32,
+}
+
+/// One model-level point exposed through the immutable #30 runtime boundary.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VerticalLevelPoint {
+    pub pressure_pa: f32,
+    pub height_agl_m: f32,
+    pub height_asl_m: f32,
+}
+
+/// Borrowed, validated provider-independent runtime view intended for #31.
+///
+/// It exposes vertical geometry and motion without performing horizontal,
+/// vertical, or temporal interpolation.
+#[derive(Debug, Clone, Copy)]
+pub struct VerticalRuntimeView<'a> {
+    result: &'a VerticalTransformResult,
+}
+
+impl VerticalTransformResult {
+    /// Validate all derived array shapes before exposing this result to #31.
+    pub fn runtime_view(&self) -> Result<VerticalRuntimeView<'_>, VerticalTransformError> {
+        let horizontal = self
+            .nx
+            .checked_mul(self.ny)
+            .ok_or(VerticalTransformError::RuntimeShapeMismatch {
+                field: "horizontal",
+                expected: usize::MAX,
+                actual: 0,
+            })?;
+        let level_count = horizontal
+            .checked_mul(self.nz)
+            .ok_or(VerticalTransformError::RuntimeShapeMismatch {
+                field: "level_geometry",
+                expected: usize::MAX,
+                actual: 0,
+            })?;
+        let interface_count = horizontal
+            .checked_mul(self.nz + 1)
+            .ok_or(VerticalTransformError::RuntimeShapeMismatch {
+                field: "interface_pressure_pa",
+                expected: usize::MAX,
+                actual: 0,
+            })?;
+
+        for (field, actual, expected) in [
+            ("terrain_asl_m", self.terrain_asl_m.len(), horizontal),
+            ("level_pressure_pa", self.level_pressure_pa.len(), level_count),
+            ("height_asl_m", self.height_asl_m.len(), level_count),
+            ("height_agl_m", self.height_agl_m.len(), level_count),
+            (
+                "interface_pressure_pa",
+                self.interface_pressure_pa.len(),
+                interface_count,
+            ),
+        ] {
+            if actual != expected {
+                return Err(VerticalTransformError::RuntimeShapeMismatch {
+                    field,
+                    expected,
+                    actual,
+                });
+            }
+        }
+
+        if let Some(motion) = &self.vertical_velocity {
+            let expected = match motion.vertical_staggering {
+                VerticalStaggering::LevelCenter => level_count,
+                VerticalStaggering::LevelInterface => interface_count,
+                VerticalStaggering::NotApplicable => {
+                    return Err(VerticalTransformError::InvalidNativeVerticalMotion {
+                        reason: "normalized vertical motion cannot use not_applicable staggering",
+                    });
+                }
+            };
+            if motion.values_ms.len() != expected {
+                return Err(VerticalTransformError::RuntimeShapeMismatch {
+                    field: "vertical_velocity.values_ms",
+                    expected,
+                    actual: motion.values_ms.len(),
+                });
+            }
+        }
+
+        Ok(VerticalRuntimeView { result: self })
+    }
+}
+
+impl VerticalRuntimeView<'_> {
+    #[must_use]
+    pub const fn dimensions(&self) -> (usize, usize, usize) {
+        (self.result.nx, self.result.ny, self.result.nz)
+    }
+
+    pub fn terrain_asl_m(&self, x: usize, y: usize) -> Result<f32, VerticalTransformError> {
+        validate_xy(x, y, self.result.nx, self.result.ny)?;
+        Ok(self.result.terrain_asl_m[surface_offset(x, y, self.result.nx)])
+    }
+
+    pub fn level(
+        &self,
+        x: usize,
+        y: usize,
+        z: usize,
+    ) -> Result<VerticalLevelPoint, VerticalTransformError> {
+        validate_xyz(x, y, z, self.result.nx, self.result.ny, self.result.nz)?;
+        let index = volume_offset(x, y, z, self.result.nx, self.result.ny);
+        Ok(VerticalLevelPoint {
+            pressure_pa: self.result.level_pressure_pa[index],
+            height_agl_m: self.result.height_agl_m[index],
+            height_asl_m: self.result.height_asl_m[index],
+        })
+    }
+
+    pub fn interface_pressure_pa(
+        &self,
+        x: usize,
+        y: usize,
+        interface: usize,
+    ) -> Result<f32, VerticalTransformError> {
+        validate_xyz(
+            x,
+            y,
+            interface,
+            self.result.nx,
+            self.result.ny,
+            self.result.nz + 1,
+        )?;
+        Ok(self.result.interface_pressure_pa[interface_offset(
+            x,
+            y,
+            interface,
+            self.result.nx,
+            self.result.ny,
+        )])
+    }
+
+    #[must_use]
+    pub fn vertical_velocity(&self) -> Option<&NormalizedVerticalMotion> {
+        self.result.vertical_velocity.as_ref()
+    }
+}
+
 /// Machine-readable identity of the canonical vertical transformation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct VerticalTransformProvenance {
@@ -196,6 +350,29 @@ pub enum VerticalTransformError {
         field: &'static str,
         expected: usize,
         actual: usize,
+    },
+    #[error("runtime vertical shape mismatch for {field}: expected {expected}, got {actual}")]
+    RuntimeShapeMismatch {
+        field: &'static str,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("vertical runtime index out of bounds: x={x}, y={y}, z={z:?}, shape=({nx},{ny},{nz:?})")]
+    RuntimeIndexOutOfBounds {
+        x: usize,
+        y: usize,
+        z: Option<usize>,
+        nx: usize,
+        ny: usize,
+        nz: Option<usize>,
+    },
+    #[error("release height must use explicit AGL or ASL reference, got {reference:?}")]
+    UnsupportedReleaseHeightReference { reference: VerticalReference },
+    #[error("invalid release height {height_m} m for {reference:?} over terrain {terrain_asl_m} m ASL")]
+    InvalidReleaseHeight {
+        height_m: f32,
+        reference: VerticalReference,
+        terrain_asl_m: f32,
     },
     #[error("unsupported or ambiguous native vertical-motion semantics: {reason}")]
     InvalidNativeVerticalMotion { reason: &'static str },
@@ -1060,6 +1237,72 @@ fn validate_column_ordering(
     Ok(())
 }
 
+/// Resolve one explicitly referenced release height against local terrain.
+///
+/// AGL must be non-negative. ASL below local terrain is impossible for a
+/// release point and fails closed. ModelNative is never accepted here.
+pub fn resolve_release_height(
+    height_m: f32,
+    reference: VerticalReference,
+    terrain_asl_m: f32,
+) -> Result<ResolvedReleaseHeight, VerticalTransformError> {
+    if !height_m.is_finite() || !terrain_asl_m.is_finite() {
+        return Err(VerticalTransformError::InvalidReleaseHeight {
+            height_m,
+            reference,
+            terrain_asl_m,
+        });
+    }
+
+    let (height_agl_m, height_asl_m) = match reference {
+        VerticalReference::AboveGroundLevel => {
+            if height_m < 0.0 {
+                return Err(VerticalTransformError::InvalidReleaseHeight {
+                    height_m,
+                    reference,
+                    terrain_asl_m,
+                });
+            }
+            (height_m, height_m + terrain_asl_m)
+        }
+        VerticalReference::AboveMeanSeaLevel => {
+            let agl = height_m - terrain_asl_m;
+            if agl < 0.0 {
+                return Err(VerticalTransformError::InvalidReleaseHeight {
+                    height_m,
+                    reference,
+                    terrain_asl_m,
+                });
+            }
+            (agl, height_m)
+        }
+        VerticalReference::ModelNative => {
+            return Err(VerticalTransformError::UnsupportedReleaseHeightReference {
+                reference,
+            });
+        }
+    };
+
+    Ok(ResolvedReleaseHeight {
+        input_m: height_m,
+        input_reference: reference,
+        terrain_asl_m,
+        height_agl_m,
+        height_asl_m,
+    })
+}
+
+/// Resolve a release height using terrain from a validated #30 runtime column.
+pub fn resolve_release_height_at_column(
+    runtime: VerticalRuntimeView<'_>,
+    x: usize,
+    y: usize,
+    height_m: f32,
+    reference: VerticalReference,
+) -> Result<ResolvedReleaseHeight, VerticalTransformError> {
+    resolve_release_height(height_m, reference, runtime.terrain_asl_m(x, y)?)
+}
+
 /// Convert a column-wise ASL height field to AGL using local terrain.
 ///
 /// Heights meaningfully below terrain fail closed instead of becoming a
@@ -1167,6 +1410,45 @@ fn validate_height_shapes(
     Ok(())
 }
 
+fn validate_xy(
+    x: usize,
+    y: usize,
+    nx: usize,
+    ny: usize,
+) -> Result<(), VerticalTransformError> {
+    if x >= nx || y >= ny {
+        return Err(VerticalTransformError::RuntimeIndexOutOfBounds {
+            x,
+            y,
+            z: None,
+            nx,
+            ny,
+            nz: None,
+        });
+    }
+    Ok(())
+}
+
+fn validate_xyz(
+    x: usize,
+    y: usize,
+    z: usize,
+    nx: usize,
+    ny: usize,
+    nz: usize,
+) -> Result<(), VerticalTransformError> {
+    if x >= nx || y >= ny || z >= nz {
+        return Err(VerticalTransformError::RuntimeIndexOutOfBounds {
+            x,
+            y,
+            z: Some(z),
+            nx,
+            ny,
+            nz: Some(nz),
+        });
+    }
+    Ok(())
+}
 #[inline]
 const fn surface_offset(x: usize, y: usize, nx: usize) -> usize {
     x + nx * y

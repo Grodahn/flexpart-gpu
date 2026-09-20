@@ -976,71 +976,117 @@ def _threshold_gate_value(thresholds_doc, criterion_id):
     raise ValueError(f"thresholds lack criterion {criterion_id}")
 
 
-def _candidate_philox_block(case_def, case_id):
-    """Canonical v2 Philox block for a case definition.
+PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1 = "wrapping_add_key0_v1"
+PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1 = "reuse_base_identity_v1"
+SUPPORTED_PHILOX_DERIVATIONS = {
+    PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1,
+    PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1,
+}
 
-    Reads ``stochastic.candidate_philox`` (base_key, base_counter, count,
-    identical_repeats). Raises ValueError for legacy v1 documents, missing
-    identities (except ADV-ANA-001, which hardcodes key ``[0, 0]``), and
-    malformed values. No default key is ever substituted.
+
+def _candidate_philox_block(case_def, case_id):
+    """Return the canonical v2 candidate Philox block, or None if deterministic.
+
+    Candidate Philox semantics are contract data. The evaluator accepts only
+    the same versioned derivations executed by the Rust runner and raw-Python
+    audit. Legacy side flags such as identical_repeats are rejected rather
+    than interpreted.
     """
     if case_def.get("schema_version") != 2 or "version" in case_def:
         raise ValueError(
             f"case {case_id} is not a canonical v2 document "
             "(schema_version 2 required; v1 is frozen)")
-    stochastic = case_def.get("stochastic") or {}
+
+    stochastic = case_def.get("stochastic")
+    if not isinstance(stochastic, dict):
+        raise ValueError(f"case {case_id} has malformed stochastic block")
     block = stochastic.get("candidate_philox")
     if block is None:
-        if case_id == "ADV-ANA-001":
-            return None
+        turbulence = (case_def.get("physics_switches") or {}).get("turbulence")
+        if turbulence is True:
+            raise ValueError(
+                f"case {case_id} enables turbulence but declares no "
+                "stochastic.candidate_philox identity")
+        return None
+    if not isinstance(block, dict):
         raise ValueError(
-            f"case {case_id} declares no stochastic.candidate_philox; "
-            "no default key substituted")
+            f"case {case_id} stochastic.candidate_philox must be an object or null")
+
+    if "identical_repeats" in block:
+        raise ValueError(
+            f"case {case_id} uses forbidden legacy candidate_philox."
+            "identical_repeats; encode repeat semantics in derivation")
+
     base_key = block.get("base_key")
     base_counter = block.get("base_counter")
+    count = block.get("count")
+    derivation = block.get("derivation")
     if (not isinstance(base_key, list) or len(base_key) != 2
-            or not all(isinstance(v, int) and 0 <= v < 2**32 for v in base_key)):
+            or not all(isinstance(v, int) and not isinstance(v, bool)
+                       and 0 <= v < 2**32 for v in base_key)):
         raise ValueError(f"case {case_id} has malformed candidate base_key")
     if (not isinstance(base_counter, list) or len(base_counter) != 4
-            or not all(isinstance(v, int) and 0 <= v < 2**32 for v in base_counter)):
+            or not all(isinstance(v, int) and not isinstance(v, bool)
+                       and 0 <= v < 2**32 for v in base_counter)):
         raise ValueError(f"case {case_id} has malformed candidate base_counter")
+    if (not isinstance(count, int) or isinstance(count, bool) or count <= 0):
+        raise ValueError(
+            f"case {case_id} candidate_philox.count must be a positive integer")
+    if derivation not in SUPPORTED_PHILOX_DERIVATIONS:
+        raise ValueError(
+            f"case {case_id} has unsupported candidate Philox derivation "
+            f"{derivation!r}; supported={sorted(SUPPORTED_PHILOX_DERIVATIONS)}")
     return block
 
 
 def _expected_philox_identity(case_def, case_id, seed_index):
-    """Expected (key, counter) for a seed file, or None when unchecked.
+    """Return the declared Philox identity for seed_index.
 
-    Follows the corpus runner derivation: ``ADV-ANA-001`` hardcodes key
-    ``[0, 0]``; manifests with ``identical_repeats`` (REPEAT-009) rerun the
-    base key identically by design; all other driver cases use
-    ``[base0 + seed_index, base1]`` with the declared counter (wrapping at
-    2^32). Returns None only for ADV-ANA-001.
+    Returns None only when the case explicitly declares candidate_philox null.
+    No deterministic identity is invented.
     """
-    if case_id == "ADV-ANA-001":
-        return [0, 0], [0, 0, 0, 0]
     block = _candidate_philox_block(case_def, case_id)
+    if block is None:
+        return None
+
     base_key = block["base_key"]
     base_counter = block["base_counter"]
-    if block.get("identical_repeats", False):
+    derivation = block["derivation"]
+    if derivation == PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1:
         expected_key = [int(base_key[0]), int(base_key[1])]
+    elif derivation == PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1:
+        expected_key = [
+            (int(base_key[0]) + int(seed_index)) % 2**32,
+            int(base_key[1]),
+        ]
     else:
-        expected_key = [(int(base_key[0]) + int(seed_index)) % 2**32,
-                        int(base_key[1])]
+        raise ValueError(
+            f"case {case_id} has unsupported candidate Philox derivation "
+            f"{derivation!r}")
     return expected_key, [int(v) for v in base_counter]
 
 
 def _validate_seed_identities(seeds, case_def, case_id):
-    """Reject files that are not distinct, correctly derived seeds.
+    """Reject seed artifacts that contradict the manifest derivation policy."""
+    block = _candidate_philox_block(case_def, case_id)
+    derivation = block["derivation"] if block is not None else None
 
-    Every file must carry a unique ``seed_index`` and a Philox identity
-    matching the case derivation. Duplicate (key, counter) pairs are
-    rejected, except for ``REPEAT-009`` whose designed repeat reruns one
-    identity across its files (all of which must then share it).
-    """
+    if block is None and len(seeds) != 1:
+        raise ValueError(
+            f"deterministic case {case_id} declares candidate_philox=null and "
+            f"must have exactly one candidate artifact, found {len(seeds)}")
+
     seen_indices = set()
     seen_identities = set()
     for path, data in seeds:
         seed_index = data["seed_index"]
+        if (not isinstance(seed_index, int) or isinstance(seed_index, bool)
+                or seed_index < 0):
+            raise ValueError(f"invalid seed_index {seed_index!r} in {path}")
+        if block is not None and seed_index >= block["count"]:
+            raise ValueError(
+                f"seed_index {seed_index} in {path} exceeds declared candidate "
+                f"count {block['count']}")
         if seed_index in seen_indices:
             raise ValueError(f"duplicate seed_index {seed_index} in {path}")
         seen_indices.add(seed_index)
@@ -1056,17 +1102,21 @@ def _validate_seed_identities(seeds, case_def, case_id):
                 f"seed file {path} counter {list(identity[1])} does not match "
                 f"the case Philox derivation (expected {expected[1]})")
         seen_identities.add(identity)
-    if case_id == "REPEAT-009":
+
+    if derivation == PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1:
         if len(seen_identities) != 1:
-            raise ValueError("REPEAT-009 must rerun a single Philox identity; "
-                             f"found {len(seen_identities)} distinct identities")
-    elif len(seen_identities) != len(seeds):
-        raise ValueError("seed files contain duplicate Philox identities; "
-                         "files are not independent seeds")
+            raise ValueError(
+                f"derivation {derivation} requires one reused Philox identity; "
+                f"found {len(seen_identities)} distinct identities")
+    elif derivation == PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1:
+        if len(seen_identities) != len(seeds):
+            raise ValueError(
+                f"derivation {derivation} requires distinct Philox identities; "
+                "seed files contain duplicates")
 
 
 def run_corpus_seeds(args, oracle_manifest):
-    """Evaluate corpus candidate particle ensembles over independent seeds.
+    """Evaluate corpus candidate particle ensembles under the declared seed policy.
 
     Consumes ``seed_*.json`` files from ``src/bin/corpus-run.rs`` together
     with the versioned case definition. Seed files are validated as distinct,
@@ -1091,9 +1141,8 @@ def run_corpus_seeds(args, oracle_manifest):
     switches = case_def["physics_switches"]
     deposition_on = bool(switches.get("dry_deposition") or
                          switches.get("wet_deposition") or switches.get("decay"))
-    _candidate_philox_block(case_def, case_id)
-    candidate_block = (case_def.get("stochastic") or {}).get("candidate_philox") or {}
-    expected_seeds = int(candidate_block.get("count", 0)) or None
+    candidate_block = _candidate_philox_block(case_def, case_id)
+    expected_seeds = 1 if candidate_block is None else int(candidate_block["count"])
     thresholds_doc = json.loads(Path(args.thresholds).read_text(encoding="utf-8"))
     gate_value = _threshold_gate_value(thresholds_doc, "MASS_BUDGET_CLOSE")
 

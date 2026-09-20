@@ -36,20 +36,25 @@ def _namespaced(**overrides):
 
 
 def _demo_case(path, case_id="DEMO-001", base_key=(1, 2), count=2,
-               identical_repeats=False):
+               derivation="wrapping_add_key0_v1", candidate_philox=True):
     path = Path(path)
+    philox = None
+    if candidate_philox:
+        philox = {
+            "base_key": list(base_key),
+            "base_counter": [0, 0, 0, 0],
+            "count": count,
+            "derivation": derivation,
+        }
     path.write_text(json.dumps({
         "schema_version": 2,
         "case_id": case_id,
         "release": {"inventory": {"quantity_kg": 1.0, "unit": "kg"}},
-        "physics_switches": {"turbulence": True, "convection": False,
+        "physics_switches": {"turbulence": bool(candidate_philox),
+                             "convection": False,
                              "dry_deposition": False, "wet_deposition": False,
                              "decay": False},
-        "stochastic": {"candidate_philox": {
-            "base_key": list(base_key),
-            "base_counter": [0, 0, 0, 0], "count": count,
-            "derivation": "seed i uses key [base0 + i, base1]",
-            "identical_repeats": identical_repeats}},
+        "stochastic": {"candidate_philox": philox},
         "domain": {"nx": 32, "ny": 32, "nz": 8, "dx_deg": 0.1, "dy_deg": 0.1,
                    "xlon0_deg": 9.5, "ylat0_deg": 8.5},
         "integration": {"start": "20240101000000", "dt_s": 300, "steps": 12,
@@ -306,23 +311,113 @@ class SeedIdentityTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "derivation"):
                 evaluate_case._validate_seed_identities(seeds, case_def, "DEMO-001")
 
-    def test_repeat009_designed_repeat_allowed(self):
+    def test_reuse_derivation_allows_repeat_without_case_id_special_case(self):
         import io_corpus
         with tempfile.TemporaryDirectory() as directory:
             case = Path(directory) / "case.json"
-            _demo_case(case, case_id="REPEAT-009", base_key=(5, 6),
-                       identical_repeats=True)
+            _demo_case(
+                case,
+                case_id="ARBITRARY-REPEAT-123",
+                base_key=(5, 6),
+                derivation="reuse_base_identity_v1",
+            )
             case_def = json.loads(case.read_text(encoding="utf-8"))
             seeds = []
             for index in (0, 1):
                 path = Path(directory) / f"seed_{index:03d}.json"
                 _demo_seed(path, index, 0.0)
                 data = json.loads(path.read_text(encoding="utf-8"))
-                data["case_id"] = "REPEAT-009"
+                data["case_id"] = "ARBITRARY-REPEAT-123"
                 data["philox_key"] = [5, 6]
                 path.write_text(json.dumps(data), encoding="utf-8")
                 seeds.append((str(path), io_corpus.read_seed_file(str(path))))
-            evaluate_case._validate_seed_identities(seeds, case_def, "REPEAT-009")
+            evaluate_case._validate_seed_identities(
+                seeds, case_def, "ARBITRARY-REPEAT-123"
+            )
+
+    def test_checked_in_repeat009_uses_executable_reuse_derivation(self):
+        import io_corpus
+        case_path = (
+            evaluate_case.REPO_ROOT
+            / "fixtures"
+            / "corpus"
+            / "cases"
+            / "REPEAT-009.json"
+        )
+        case_def = json.loads(case_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            case_def["stochastic"]["candidate_philox"]["derivation"],
+            "reuse_base_identity_v1",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            seeds = []
+            for index in (0, 1):
+                path = Path(directory) / f"seed_{index:03d}.json"
+                _demo_seed(path, index, 0.0)
+                data = json.loads(path.read_text(encoding="utf-8"))
+                data["case_id"] = "REPEAT-009"
+                data["philox_key"] = list(
+                    case_def["stochastic"]["candidate_philox"]["base_key"]
+                )
+                data["philox_counter"] = list(
+                    case_def["stochastic"]["candidate_philox"]["base_counter"]
+                )
+                path.write_text(json.dumps(data), encoding="utf-8")
+                seeds.append((str(path), io_corpus.read_seed_file(str(path))))
+            evaluate_case._validate_seed_identities(
+                seeds, case_def, "REPEAT-009"
+            )
+
+    def test_unknown_derivation_rejected_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            case = Path(directory) / "case.json"
+            _demo_case(case, derivation="future_or_typo_policy")
+            case_def = json.loads(case.read_text(encoding="utf-8"))
+            with self.assertRaisesRegex(ValueError, "unsupported.*derivation"):
+                evaluate_case._candidate_philox_block(case_def, "DEMO-001")
+
+    def test_legacy_identical_repeats_flag_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            case = Path(directory) / "case.json"
+            _demo_case(case, derivation="reuse_base_identity_v1")
+            case_def = json.loads(case.read_text(encoding="utf-8"))
+            case_def["stochastic"]["candidate_philox"]["identical_repeats"] = True
+            with self.assertRaisesRegex(ValueError, "identical_repeats"):
+                evaluate_case._candidate_philox_block(case_def, "DEMO-001")
+
+    def test_seed_index_beyond_declared_count_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            case = Path(directory) / "case.json"
+            _demo_case(case, count=2)
+            case_def = json.loads(case.read_text(encoding="utf-8"))
+            seeds = self._seeds(directory, [(1, 2)])
+            seeds[0][1]["seed_index"] = 2
+            with self.assertRaisesRegex(ValueError, "exceeds declared candidate count"):
+                evaluate_case._validate_seed_identities(
+                    seeds, case_def, "DEMO-001"
+                )
+
+    def test_wrapping_derivation_wraps_u32_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            case = Path(directory) / "case.json"
+            _demo_case(case, base_key=(2**32 - 1, 7), count=2)
+            case_def = json.loads(case.read_text(encoding="utf-8"))
+            self.assertEqual(
+                evaluate_case._expected_philox_identity(case_def, "DEMO-001", 1),
+                ([0, 7], [0, 0, 0, 0]),
+            )
+
+    def test_deterministic_case_requires_exactly_one_candidate_artifact(self):
+        import io_corpus
+        with tempfile.TemporaryDirectory() as directory:
+            case = Path(directory) / "case.json"
+            _demo_case(case, candidate_philox=False)
+            case_def = json.loads(case.read_text(encoding="utf-8"))
+            seeds = self._seeds(directory, [(0, 0), (0, 0)])
+            with self.assertRaisesRegex(ValueError, "exactly one"):
+                evaluate_case._validate_seed_identities(
+                    seeds, case_def, "DETERMINISTIC-001"
+                )
 
     def test_nonexistent_oracle_directory_rejected(self):
         oracle_manifest = evaluate_case.load_oracle_manifest(

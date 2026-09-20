@@ -214,9 +214,7 @@
     "lturbulence": 1,
     "ctl": 5,
     "ifine": 4,
-    "lconvection": 0,
-    "ldrydep": 0,
-    "lwetdep": 0
+    "lconvection": 0
   },
   "expected_artifacts": {
     "required": [

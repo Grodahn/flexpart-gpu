@@ -3197,8 +3197,12 @@ mod tests {
         assert_eq!(manifest.case_id, "ETEX-MINI-013");
         assert_eq!(manifest.schema_version, 2);
         assert!(manifest.physics_switches.turbulence);
-        assert!(manifest.physics_switches.dry_deposition);
-        assert!(manifest.physics_switches.wet_deposition);
+        assert!(!manifest.physics_switches.dry_deposition);
+        assert!(!manifest.physics_switches.wet_deposition);
+        assert_eq!(
+            manifest.release.species.physics_contract.profile,
+            SpeciesPhysicsProfile::Species024InertV1
+        );
         assert!(manifest.surface.is_some());
         assert!(manifest.stochastic.candidate_philox.is_some());
         assert!(manifest.stochastic.oracle_seed.is_some());

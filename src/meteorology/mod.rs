@@ -169,10 +169,6 @@ impl FieldId {
             .expect("every canonical FieldId must have exactly one FieldSpec")
     }
 
-    fn is_static_ancillary(self) -> bool {
-        self.spec().temporal_policy == TemporalPolicy::Static
-    }
-
     fn supports_horizontal_staggering(self, staggering: HorizontalStaggering) -> bool {
         match self {
             Self::WindU => matches!(
@@ -1087,10 +1083,10 @@ mod tests {
     #[test]
     fn missing_field_fails_closed() {
         let mut value = snapshot();
-        value.fields.retain(|field| field.id != FieldId::SpecificHumidity);
+        value.fields.retain(|field| field.id != FieldId::VerticalVelocity);
         assert_eq!(
             value.validate(&Requirements::advection()),
-            Err(ContractError::MissingRequiredField(FieldId::SpecificHumidity))
+            Err(ContractError::MissingRequiredField(FieldId::VerticalVelocity))
         );
     }
 

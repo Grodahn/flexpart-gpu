@@ -775,6 +775,8 @@ fn validate_vertical(vertical: &VerticalCoordinate) -> Result<(), ContractError>
                 || b.len() != vertical.level_values.len() + 1
                 || interfaces.len() != vertical.level_values.len() + 1
                 || a.iter().chain(b.iter()).any(|value| !value.is_finite())
+                || vertical.level_values.iter().any(|value| *value <= 0.0)
+                || interfaces.iter().any(|value| *value < 0.0)
                 || !reference_surface_pressure_pa.is_finite()
                 || reference_surface_pressure_pa <= 0.0
                 || vertical.surface_pressure_dependency != Some(FieldId::SurfacePressure)
@@ -1434,6 +1436,27 @@ mod tests {
             level_values: vec![25_000.0, 75_000.0],
             interface_values: Some(vec![0.0, 50_000.0, 100_000.0]),
             hybrid_a_interface_pa: Some(vec![0.0, 0.0]),
+            hybrid_b_interface: Some(vec![0.0, 0.5, 1.0]),
+            reference_surface_pressure_pa: Some(100_000.0),
+            surface_pressure_dependency: Some(FieldId::SurfacePressure),
+        };
+
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InvalidVerticalCoordinate)
+        );
+    }
+
+    #[test]
+    fn negative_hybrid_interface_pressure_fails_closed() {
+        let mut value = snapshot();
+        value.vertical_coordinate = VerticalCoordinate {
+            kind: VerticalCoordinateKind::HybridSigmaPressure,
+            reference: VerticalReference::ModelNative,
+            ordering: VerticalOrdering::Increasing,
+            level_values: vec![24_950.0, 75_000.0],
+            interface_values: Some(vec![-100.0, 50_000.0, 100_000.0]),
+            hybrid_a_interface_pa: Some(vec![-100.0, 0.0, 0.0]),
             hybrid_b_interface: Some(vec![0.0, 0.5, 1.0]),
             reference_surface_pressure_pa: Some(100_000.0),
             surface_pressure_dependency: Some(FieldId::SurfacePressure),

@@ -687,6 +687,11 @@ pub struct OutputSpec {
     pub quantity: OutputQuantity,
 }
 
+/// Frozen FLEXPART synchronisation interval for the schema-v2 corpus
+/// execution profile. The generator emits `LSYNCTIME=300`; output timings
+/// must satisfy the corresponding pinned FLEXPART readoptions constraints.
+pub const FLEXPART_CORPUS_LSYNCTIME_S: u32 = 300;
+
 /// Complete validation case manifest.
 ///
 /// Closed contract: unknown fields are rejected at every level so typos and
@@ -1064,8 +1069,14 @@ impl ValidationCaseManifest {
     }
 
     fn validate_output(&self) -> Result<(), ValidationCaseError> {
+        if self.simulation_direction != SimulationDirection::Forward {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "simulation_direction",
+                message: "backward is a valid FLEXPART mode but is deliberately unsupported by schema v2: the current OutputQuantity models forward time-averaged mass concentration, while backward IOUT=1 uses source-receptor/residence-time semantics".to_string(),
+            });
+        }
+
         let output = &self.output;
-        // Values are unsigned, so only the "zero" and ordering bounds apply.
         for (name, magnitude) in [
             ("output.interval_s", output.interval_s),
             ("output.averaging_window_s", output.averaging_window_s),
@@ -1092,6 +1103,42 @@ impl ValidationCaseManifest {
                 message: format!(
                     "averaging window {} s must not exceed output interval {} s (FLEXPART LOUTAVER <= LOUTSTEP)",
                     output.averaging_window_s, output.interval_s
+                ),
+            });
+        }
+
+        let sync = FLEXPART_CORPUS_LSYNCTIME_S;
+        for (name, magnitude) in [
+            ("output.interval_s", output.interval_s),
+            ("output.averaging_window_s", output.averaging_window_s),
+            ("output.sampling_interval_s", output.sampling_interval_s),
+        ] {
+            if magnitude % sync != 0 {
+                return Err(ValidationCaseError::AmbiguousField {
+                    field: name,
+                    message: format!(
+                        "{name}={magnitude} s must be a multiple of the frozen FLEXPART LSYNCTIME={sync} s"
+                    ),
+                });
+            }
+        }
+        if output.averaging_window_s < 2 * sync {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "output.averaging_window_s",
+                message: format!(
+                    "averaging window {} s must be at least 2*LSYNCTIME={} s",
+                    output.averaging_window_s,
+                    2 * sync
+                ),
+            });
+        }
+        if output.interval_s < 2 * sync {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "output.interval_s",
+                message: format!(
+                    "output interval {} s must be at least 2*LSYNCTIME={} s",
+                    output.interval_s,
+                    2 * sync
                 ),
             });
         }
@@ -2215,16 +2262,33 @@ mod tests {
     }
 
     #[test]
-    fn backward_direction_and_timing_survive_round_trip() {
+    fn backward_direction_is_rejected_until_output_semantics_are_modeled() {
         let mut manifest = make_minimal_manifest();
         manifest.simulation_direction = SimulationDirection::Backward;
-        manifest.output.sampling_interval_s = 900;
-        let json = serde_json::to_string(&manifest).expect("serialize");
-        let reparsed =
-            ValidationCaseManifest::parse(&json, Path::new("backward.json")).expect("reparse");
-        assert_eq!(reparsed.simulation_direction, SimulationDirection::Backward);
-        assert_eq!(reparsed.output.sampling_interval_s, 900);
-        assert_eq!(reparsed.simulation_direction.flexpart_ldirect(), -1);
+        let err = manifest.validate().expect_err("backward must fail closed in schema v2");
+        assert!(matches!(
+            err,
+            ValidationCaseError::AmbiguousField {
+                field: "simulation_direction",
+                ..
+            }
+        ));
+        assert!(err.to_string().contains("source-receptor"));
+    }
+
+    #[test]
+    fn output_timings_must_match_frozen_sync_interval() {
+        let mut manifest = make_minimal_manifest();
+        manifest.output.sampling_interval_s = 301;
+        let err = manifest.validate().expect_err("non-multiple sample must fail");
+        assert!(err.to_string().contains("LSYNCTIME"));
+
+        let mut manifest = make_minimal_manifest();
+        manifest.output.interval_s = FLEXPART_CORPUS_LSYNCTIME_S;
+        manifest.output.averaging_window_s = FLEXPART_CORPUS_LSYNCTIME_S;
+        manifest.output.sampling_interval_s = FLEXPART_CORPUS_LSYNCTIME_S;
+        let err = manifest.validate().expect_err("interval/average below 2*sync must fail");
+        assert!(err.to_string().contains("2*LSYNCTIME"));
     }
 
     #[test]

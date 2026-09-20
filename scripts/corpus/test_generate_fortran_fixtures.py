@@ -501,6 +501,30 @@ class PreflightFailClosedTest(unittest.TestCase):
 
         self._assert_aborts_before_writes(mutate, "ctl")
 
+    def test_outgrid_rounding_mismatch_aborts_before_any_write(self):
+        def mutate(case):
+            case["domain"]["dx_deg"] = 0.251
+
+        self._assert_aborts_before_writes(mutate, "OUTGRID DXOUT")
+
+    def test_release_longitude_rounding_mismatch_aborts_before_any_write(self):
+        def mutate(case):
+            case["release"]["geometry"]["lon_deg"] = 10.0004
+
+        self._assert_aborts_before_writes(mutate, "RELEASES LON1")
+
+    def test_release_latitude_rounding_mismatch_aborts_before_any_write(self):
+        def mutate(case):
+            case["release"]["geometry"]["lat_deg"] = 10.0004
+
+        self._assert_aborts_before_writes(mutate, "RELEASES LAT1")
+
+    def test_release_height_rounding_mismatch_aborts_before_any_write(self):
+        def mutate(case):
+            case["release"]["geometry"]["z_m"] = 50.0004
+
+        self._assert_aborts_before_writes(mutate, "RELEASES Z1")
+
     def test_real_weather_validates_meteorology_metadata_in_preflight(self):
         GEN.CASES = self.cases_dir
         GEN.FORTRAN_OUT = self.out_root
@@ -532,7 +556,14 @@ class PreflightFailClosedTest(unittest.TestCase):
         GEN.FORTRAN_OUT = self.out_root
         prepared = GEN.prepare_cases(["ADV-ANA-001"], self.tracer, self.aerosol)
         self.assertEqual(len(prepared), 1)
-        GEN.write_case_fixtures(prepared[0], self.out_root)
+        original_verify = GEN.verify_case
+        try:
+            GEN.verify_case = lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("writer must not perform scientific verification")
+            )
+            GEN.write_case_fixtures(prepared[0], self.out_root)
+        finally:
+            GEN.verify_case = original_verify
         case_dir = self.out_root / "ADV-ANA-001"
         for name in (
             "COMMAND",
@@ -695,15 +726,36 @@ class DirectionOutputSemanticsTest(unittest.TestCase):
         self.assertIn("LOUTSTEP=           3600,\n", text)
         self.assertNotEqual(text, GEN.command_text("WIND-UNI-002", self._case()))
 
-    def test_changing_direction_changes_generated_direction(self):
+    def test_backward_direction_rejected_until_semantics_are_modeled(self):
         case = self._case()
         case["simulation_direction"] = "backward"
-        text = GEN.command_text("WIND-UNI-002", case)
-        self.assertEqual(int(GEN.namelist_value(text, "LDIRECT")), -1)
-        forward = GEN.command_text("WIND-UNI-002", self._case())
-        self.assertNotEqual(text, forward)
-        self.assertIn("LDIRECT", text)
-        self.assertIn("LDIRECT", forward)
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        rendered = str(ctx.exception)
+        self.assertIn("deliberately unsupported", rendered)
+        self.assertIn("source-receptor", rendered)
+
+    def test_output_quantity_is_closed_like_rust_enum(self):
+        case = self._case()
+        case["output"]["quantity"] = "banana"
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("output.quantity", str(ctx.exception))
+
+    def test_output_timings_must_match_frozen_lsynctime(self):
+        case = self._case()
+        case["output"]["sampling_interval_s"] = 301
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("LSYNCTIME", str(ctx.exception))
+
+        case = self._case()
+        case["output"]["interval_s"] = GEN.FLEXPART_CORPUS_LSYNCTIME_S
+        case["output"]["averaging_window_s"] = GEN.FLEXPART_CORPUS_LSYNCTIME_S
+        case["output"]["sampling_interval_s"] = GEN.FLEXPART_CORPUS_LSYNCTIME_S
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("2*LSYNCTIME", str(ctx.exception))
 
     def test_checked_in_fixtures_preserve_effective_configuration(self):
         for case_id in (

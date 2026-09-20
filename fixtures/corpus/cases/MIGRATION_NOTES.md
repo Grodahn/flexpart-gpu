@@ -180,7 +180,7 @@ substitutes for a missing block.
 
 | v1 | v2 | Note |
 |----|----|------|
-| (implicit forward) | `simulation_direction` | Required typed enum: `forward` (`LDIRECT=1`) / `backward` (`LDIRECT=-1`), mapping per `readoptions_mod.f90`. All checked-in cases are `forward` (ETEX COMMAND `LDIRECT=1`). |
+| (implicit forward) | `simulation_direction` | Required typed enum: `forward` (`LDIRECT=1`) / `backward` (`LDIRECT=-1`). Schema v2 validates only `forward`: FLEXPART backward runs are valid but produce source-receptor/residence-time semantics for IOUT=1, which are not yet represented by the current concentration-only `OutputQuantity`. |
 | (generator constant `1800`) | `output.interval_s` | Output interval [s], FLEXPART `LOUTSTEP`. Synthetic cases `1800`; ETEX-MINI-013 `10800` (its real COMMAND). |
 | (generator constant `1800`) | `output.averaging_window_s` | Averaging window [s], FLEXPART `LOUTAVER`. Synthetic cases `1800`; ETEX-MINI-013 `10800`. |
 | (generator constant `300`) | `output.sampling_interval_s` | Sampling interval [s], FLEXPART `LOUTSAMPLE`. Synthetic cases `300`; ETEX-MINI-013 `900`. |
@@ -188,9 +188,14 @@ substitutes for a missing block.
 
 Validated fail-closed in both the Rust validator and the Python generator:
 every timing value is whole positive seconds; `sampling_interval_s <=
-averaging_window_s <= interval_s` (the FLEXPART binary header writes the
-triplet verbatim, `binary_output_mod.f90`); a missing `simulation_direction`
-or `output` block (or any sub-field) is rejected with a field-specific error.
+averaging_window_s <= interval_s`; the frozen corpus execution profile uses
+`LSYNCTIME=300` and therefore all three output timings must be multiples of
+300 s, while averaging/output intervals must each be at least 600 s, matching
+the pinned FLEXPART `readoptions_mod.f90` checks. The Python raw path accepts
+only the same closed output quantity as the Rust enum. Backward simulations
+are rejected until their source-receptor output semantics and units are
+modeled explicitly. A missing `simulation_direction` or `output` block (or
+any sub-field) is rejected with a field-specific error.
 The generated COMMAND column layout for the historical values
 (`LDIRECT=1`, `LOUTSTEP=1800`, `LOUTAVER=1800`, `LOUTSAMPLE=300`) is
 byte-identical to the previously checked-in fixtures; no scientific value

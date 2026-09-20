@@ -304,11 +304,29 @@ SIMULATION_DIRECTIONS = frozenset({"forward", "backward"})
 LDIRECT_FORWARD = 1
 LDIRECT_BACKWARD = -1
 
+# Schema-v2 deliberately supports only forward concentration runs. FLEXPART
+# backward runs are valid, but IOUT=1 then represents source-receptor /
+# residence-time semantics rather than the concentration quantity modeled by
+# OutputQuantity. Keep the enum value recognizable so the error can name the
+# unsupported mode, but fail closed before rendering a backward COMMAND.
+SUPPORTED_SIMULATION_DIRECTIONS = frozenset({"forward"})
+
+# The corpus execution profile freezes FLEXPART LSYNCTIME=300 s. This is not a
+# hidden fallback: every output timing is validated against it using the same
+# constraints enforced by pinned FLEXPART readoptions_mod.f90 (LOUTAVER,
+# LOUTSTEP and LOUTSAMPLE multiples of LSYNCTIME; LOUTAVER/LOUTSTEP at least
+# twice LSYNCTIME).
+FLEXPART_CORPUS_LSYNCTIME_S = 300
+
+# Closed scientific output semantics mirrored by Rust OutputQuantity.
+SUPPORTED_OUTPUT_QUANTITIES = frozenset(
+    {"time_averaged_mass_concentration_kg_m3"}
+)
+
 # Output timing contract (Issue #51 / #57): every COMMAND output key is
 # derived from the manifest `output` block (Interval_s -> LOUTSTEP,
-# Averaging_window_s -> LOUTAVER, Sampling_interval_s -> LOUTSAMPLE). The
-# generator must never substitute a hard-coded value, so no such constant
-# exists here; `_required_output` is the single reading path.
+# Averaging_window_s -> LOUTAVER, Sampling_interval_s -> LOUTSAMPLE).
+# `_required_output` is the single reading/validation path.
 
 
 # Physics switches are mandatory in the canonical contract (the Rust
@@ -415,17 +433,21 @@ def _required_simulation_direction(case_id: str, case: dict) -> str:
             f"{', '.join(sorted(SIMULATION_DIRECTIONS))}, got {direction!r} "
             "(the FLEXPART LDIRECT numeric key is derived, never defaulted)"
         )
+    if direction not in SUPPORTED_SIMULATION_DIRECTIONS:
+        raise SystemExit(
+            f"{case_id}: simulation_direction={direction!r} is a valid FLEXPART "
+            "mode but is deliberately unsupported by schema v2: the current "
+            "output.quantity models forward time-averaged mass concentration, "
+            "while backward IOUT=1 uses source-receptor/residence-time semantics"
+        )
     return direction
 
 
 def _required_output(case_id: str, case: dict) -> dict:
     """Fail-closed output-timing reader (LOUTSTEP/LOUTAVER/LOUTSAMPLE).
 
-    Mirrors the canonical `OutputSpec` contract: every timing value must be
-    whole positive seconds and, where the document declares them, the windows
-    must be internally consistent (sampling <= averaging <= interval, matching
-    the Rust validator). The dict returned is the only source of the COMMAND
-    output keys.
+    Mirrors the canonical OutputSpec contract and the pinned FLEXPART
+    readoptions checks for the frozen corpus LSYNCTIME.
     """
     output = case.get("output")
     if not isinstance(output, dict):
@@ -469,11 +491,34 @@ def _required_output(case_id: str, case: dict) -> dict:
             f"must not exceed output.interval_s ({interval_s}s); "
             "FLEXPART LOUTAVER <= LOUTSTEP"
         )
-    quantity = output.get("quantity")
-    if not isinstance(quantity, str) or not quantity:
+
+    sync_s = FLEXPART_CORPUS_LSYNCTIME_S
+    for name, value in (
+        ("interval_s", interval_s),
+        ("averaging_window_s", averaging_window_s),
+        ("sampling_interval_s", sampling_interval_s),
+    ):
+        if value % sync_s != 0:
+            raise SystemExit(
+                f"{case_id}: output.{name} ({value}s) must be a multiple of "
+                f"the frozen FLEXPART LSYNCTIME={sync_s}s"
+            )
+    if averaging_window_s < 2 * sync_s:
         raise SystemExit(
-            f"{case_id}: output.quantity must be a non-empty string naming the "
-            f"scientific quantity, got {quantity!r}"
+            f"{case_id}: output.averaging_window_s ({averaging_window_s}s) "
+            f"must be at least 2*LSYNCTIME ({2 * sync_s}s)"
+        )
+    if interval_s < 2 * sync_s:
+        raise SystemExit(
+            f"{case_id}: output.interval_s ({interval_s}s) must be at least "
+            f"2*LSYNCTIME ({2 * sync_s}s)"
+        )
+
+    quantity = output.get("quantity")
+    if quantity not in SUPPORTED_OUTPUT_QUANTITIES:
+        raise SystemExit(
+            f"{case_id}: unsupported output.quantity {quantity!r}; supported: "
+            f"{', '.join(sorted(SUPPORTED_OUTPUT_QUANTITIES))}"
         )
     return {
         "interval_s": interval_s,
@@ -774,7 +819,7 @@ def command_text(case_id: str, case: dict) -> str:
         f" LOUTAVER={output['averaging_window_s']:>15},\n"
         f" LOUTSAMPLE={output['sampling_interval_s']:>14},\n"
         " ITSPLIT=        99999999,\n"
-        " LSYNCTIME=            300,\n"
+        f" LSYNCTIME={FLEXPART_CORPUS_LSYNCTIME_S:>15},\n"
         f" CTL=            {ctl:.7f},\n"
         f" IFINE=                 {ifine},\n"
         " IOUT=                  1,\n"
@@ -1016,8 +1061,8 @@ def namelist_value(text: str, key: str) -> str:
     return match.group(1).strip().strip("\"'")
 
 
-def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
-    """Re-parse every written fixture and fail loudly on any drift."""
+def verify_rendered_case(case_id: str, case: dict, files: dict, specnum: int) -> None:
+    """Verify rendered scientific fixture content in memory before any write."""
     release = case["release"]
     domain = case["domain"]
     failures = []
@@ -1028,9 +1073,9 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
         else:
             ok = actual == expected
         if not ok:
-            failures.append(f"{name}: fixture has {actual!r}, case needs {expected!r}")
+            failures.append(f"{name}: rendered fixture has {actual!r}, case needs {expected!r}")
 
-    releases = (outdir / "RELEASES").read_text(encoding="utf-8")
+    releases = files["RELEASES"]
     lon1, lon2, lat1, lat2 = release_lonlat(case_id, case)
     z1, z2, zkind = release_vertical(case_id, case)
     start_stamp, end_stamp = release_window_datetimes(case_id, case)
@@ -1051,10 +1096,9 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
     check("RELEASES SPECNUM_REL", int(namelist_value(releases, "SPECNUM_REL")), specnum)
     expected_g = case_total_mass_kg(case_id, case) * KG_TO_G
     actual_g = float(namelist_value(releases, "MASS").replace("D", "E"))
-    # MASS is written with %.4E (5 significant digits).
     check("RELEASES MASS_g", actual_g, expected_g, 1e-4 * expected_g)
 
-    outgrid = (outdir / "OUTGRID").read_text(encoding="utf-8")
+    outgrid = files["OUTGRID"]
     check("OUTGRID OUTLON0", float(namelist_value(outgrid, "OUTLON0")), float(domain["xlon0_deg"]), 1e-9)
     check("OUTGRID OUTLAT0", float(namelist_value(outgrid, "OUTLAT0")), float(domain["ylat0_deg"]), 1e-9)
     check("OUTGRID NUMXGRID", int(namelist_value(outgrid, "NUMXGRID")), int(domain["nx"]))
@@ -1062,7 +1106,7 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
     check("OUTGRID DXOUT", float(namelist_value(outgrid, "DXOUT")), float(domain["dx_deg"]), 1e-9)
     check("OUTGRID DYOUT", float(namelist_value(outgrid, "DYOUT")), float(domain["dy_deg"]), 1e-9)
 
-    command = (outdir / "COMMAND").read_text(encoding="utf-8")
+    command = files["COMMAND"]
     overrides = normalize_oracle_overrides(case_id, case)
     check("COMMAND LTURBULENCE", int(namelist_value(command, "LTURBULENCE")), int(overrides["lturbulence"]))
     check("COMMAND LCONVECTION", int(namelist_value(command, "LCONVECTION")), int(overrides["lconvection"]))
@@ -1075,27 +1119,56 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
     check("COMMAND LOUTSTEP", int(namelist_value(command, "LOUTSTEP")), output["interval_s"])
     check("COMMAND LOUTAVER", int(namelist_value(command, "LOUTAVER")), output["averaging_window_s"])
     check("COMMAND LOUTSAMPLE", int(namelist_value(command, "LOUTSAMPLE")), output["sampling_interval_s"])
-
-    species_text = (outdir / "SPECIES" / f"SPECIES_{specnum:03d}").read_text(encoding="utf-8")
-    code = re.sub(r"!.*", "", species_text)
     check(
-        f"SPECIES_{specnum:03d} has no PNDIA (unknown to v11.1)",
-        re.search(r"(?im)^\s*PNDIA\s*=", code) is None,
+        "COMMAND LSYNCTIME",
+        int(namelist_value(command, "LSYNCTIME")),
+        FLEXPART_CORPUS_LSYNCTIME_S,
     )
-    if specnum == 40:
+
+    species_text = files["SPECIES"]
+    if not isinstance(species_text, str):
+        failures.append(f"SPECIES_{specnum:03d}: rendered content is missing")
+    else:
+        code = re.sub(r"!.*", "", species_text)
         check(
-            "SPECIES_040.PROVENANCE.txt present",
-            (outdir / "SPECIES" / "SPECIES_040.PROVENANCE.txt").is_file(),
+            f"SPECIES_{specnum:03d} has no PNDIA (unknown to v11.1)",
+            re.search(r"(?im)^\s*PNDIA\s*=", code) is None,
         )
-    if case_id == "DRY-007":
-        # 2.0 cm/s = 0.02 m/s, exactly the candidate dry velocity.
-        check(
-            "DRY SPECIES PDRYVEL=2.0",
-            float(namelist_value(species_text, "PDRYVEL")) == 2.0,
-        )
+        if specnum == 40:
+            check(
+                "SPECIES_040.PROVENANCE.txt rendered",
+                isinstance(files.get("SPECIES_PROVENANCE"), str)
+                and bool(files["SPECIES_PROVENANCE"]),
+            )
+        if case_id == "DRY-007":
+            check(
+                "DRY SPECIES PDRYVEL=2.0",
+                float(namelist_value(species_text, "PDRYVEL")) == 2.0,
+            )
 
     if failures:
-        raise SystemExit(f"{case_id}: derived fixtures drift from case JSON:\n" + "\n".join(failures))
+        raise SystemExit(
+            f"{case_id}: rendered fixtures drift from case JSON before write:\n"
+            + "\n".join(failures)
+        )
+
+
+def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
+    """Optional post-hoc disk audit; generation itself verifies before writing."""
+    species_path = outdir / "SPECIES" / f"SPECIES_{specnum:03d}"
+    provenance_path = outdir / "SPECIES" / f"SPECIES_{specnum:03d}.PROVENANCE.txt"
+    files = {
+        "COMMAND": (outdir / "COMMAND").read_text(encoding="utf-8"),
+        "RELEASES": (outdir / "RELEASES").read_text(encoding="utf-8"),
+        "OUTGRID": (outdir / "OUTGRID").read_text(encoding="utf-8"),
+        "SPECIES": species_path.read_text(encoding="utf-8"),
+        "SPECIES_PROVENANCE": (
+            provenance_path.read_text(encoding="utf-8")
+            if provenance_path.is_file()
+            else None
+        ),
+    }
+    verify_rendered_case(case_id, case, files, specnum)
 
 
 def is_real_weather(case_id: str, case: dict) -> bool:
@@ -1194,7 +1267,8 @@ def validate_and_normalize_case_for_generation(
     elif specnum == 24:
         if tracer is None or not tracer.is_file():
             raise SystemExit(f"{case_id}: upstream tracer species not found: {tracer}")
-        species_text, species_provenance = None, None
+        species_text = tracer.read_text(encoding="utf-8")
+        species_provenance = None
         species_source = str(tracer)
     else:
         raise SystemExit(
@@ -1230,6 +1304,22 @@ def validate_and_normalize_case_for_generation(
         "outheights_note": "Standard concentration output levels shared by all "
         "synthetic cases; independent of wind-field levels.",
     }
+    files = {
+        "COMMAND": command_text(case_id, case),
+        "RELEASES": releases_text(case_id, case, specnum),
+        "OUTGRID": outgrid_text(case),
+        "AGECLASSES": ageclass_text(case_id, case),
+        "RECEPTORS": RECEPTORS_ZERO,
+        "SPECIES": species_text,
+        "SPECIES_PROVENANCE": species_provenance,
+        "SPECIES_SOURCE": species_source,
+        "METEO_ARGS.txt": meteo_args_txt,
+        "METEO.txt": meteo_txt,
+        "INPUT_DERIVATION.json": json.dumps(derivation, indent=2) + "\n",
+        "RESTART-NOTE.txt": RESTART_NOTE if case_id == "RESTART-010" else None,
+    }
+    verify_rendered_case(case_id, case, files, specnum)
+
     return {
         "case_id": case_id,
         "case": copy.deepcopy(case),
@@ -1242,20 +1332,7 @@ def validate_and_normalize_case_for_generation(
         "physics": physics,
         "wind_profile": profile,
         "meteorology": meteorology,
-        "files": {
-            "COMMAND": command_text(case_id, case),
-            "RELEASES": releases_text(case_id, case, specnum),
-            "OUTGRID": outgrid_text(case),
-            "AGECLASSES": ageclass_text(case_id, case),
-            "RECEPTORS": RECEPTORS_ZERO,
-            "SPECIES": species_text,
-            "SPECIES_PROVENANCE": species_provenance,
-            "SPECIES_SOURCE": species_source,
-            "METEO_ARGS.txt": meteo_args_txt,
-            "METEO.txt": meteo_txt,
-            "INPUT_DERIVATION.json": json.dumps(derivation, indent=2) + "\n",
-            "RESTART-NOTE.txt": RESTART_NOTE if case_id == "RESTART-010" else None,
-        },
+        "files": files,
     }
 
 
@@ -1285,11 +1362,10 @@ def prepare_cases(desired, tracer, aerosol) -> list:
 
 
 def write_case_fixtures(normalized: dict, out_root: Path = None) -> None:
-    """Write one fully preflighted case's fixture files, then re-verify.
+    """Persist one fully preflighted and in-memory-verified case.
 
-    Consumes only the precomputed, validated content from the preflight step;
-    a malformed input can never reach this phase. ``out_root`` defaults to
-    FORTRAN_OUT evaluated at call time (so tests can redirect it).
+    No scientific/semantic validation occurs here. Failures in this phase are
+    operational filesystem errors only.
     """
     if out_root is None:
         out_root = FORTRAN_OUT
@@ -1298,15 +1374,15 @@ def write_case_fixtures(normalized: dict, out_root: Path = None) -> None:
     files = normalized["files"]
     outdir = out_root / case_id
     (outdir / "SPECIES").mkdir(parents=True, exist_ok=True)
-    if files["SPECIES_SOURCE"] is not None:
-        shutil.copyfile(files["SPECIES_SOURCE"], outdir / "SPECIES" / f"SPECIES_{specnum:03d}")
-    else:
-        (outdir / "SPECIES" / f"SPECIES_{specnum:03d}").write_text(
-            files["SPECIES"], encoding="utf-8"
-        )
+
+    (outdir / "SPECIES" / f"SPECIES_{specnum:03d}").write_text(
+        files["SPECIES"], encoding="utf-8"
+    )
+    if files["SPECIES_PROVENANCE"] is not None:
         (outdir / "SPECIES" / f"SPECIES_{specnum:03d}.PROVENANCE.txt").write_text(
             files["SPECIES_PROVENANCE"], encoding="utf-8"
         )
+
     for name in (
         "COMMAND",
         "RELEASES",
@@ -1319,9 +1395,10 @@ def write_case_fixtures(normalized: dict, out_root: Path = None) -> None:
     ):
         (outdir / name).write_text(files[name], encoding="utf-8")
     if files["RESTART-NOTE.txt"] is not None:
-        (outdir / "RESTART-NOTE.txt").write_text(files["RESTART-NOTE.txt"], encoding="utf-8")
-    verify_case(case_id, normalized["case"], outdir, specnum)
-    print(f"wrote and verified {outdir}")
+        (outdir / "RESTART-NOTE.txt").write_text(
+            files["RESTART-NOTE.txt"], encoding="utf-8"
+        )
+    print(f"wrote preflight-verified {outdir}")
 
 
 def main() -> None:

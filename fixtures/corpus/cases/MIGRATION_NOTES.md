@@ -31,10 +31,52 @@ No scientific value changed in migration; only representation.
 |----|----|------|
 | `oracle_command_overrides.LTURBULENCE` | `oracle_command_overrides.lturbulence` | Renamed, values preserved. Required; flags must be exactly 0/1. |
 | `oracle_command_overrides.LCONVECTION` | `oracle_command_overrides.lconvection` | Renamed, values preserved. Required; flags must be exactly 0/1. |
-| `oracle_command_overrides.CTL` | `oracle_command_overrides.ctl` | Renamed, values preserved. Required; must be finite. |
-| `oracle_command_overrides.IFINE` | `oracle_command_overrides.ifine` | Renamed, values preserved. Required; must be in 1..=10. |
+| `oracle_command_overrides.CTL` | `oracle_command_overrides.ctl` | Renamed, values preserved. Required; must be consistent with the declared `turbulence_formulation` (see the Issue #67 section below). |
+| `oracle_command_overrides.IFINE` | `oracle_command_overrides.ifine` | Renamed, values preserved. Required; must be in 1..=10 (`readoptions_mod.f90:624` silently clamps `IFINE` to `>= 1`). |
 | - | `oracle_command_overrides.ldrydep/lwetdep/ldecay` | Introduced as optional flags (exactly 0/1 when present). Unset in migrated cases; deposition is selected via `physics_switches` + SPECIES. |
 | (absent in DRY-007/WET-008) | explicit `lturbulence/ctl/ifine/lconvection` | Introduced with the values the generator previously defaulted to (`1/5.0/4/0`), matching the checked-in fixtures byte-for-byte. No scientific change. |
+| (none) | `oracle_command_overrides.turbulence_formulation` | Introduced (Issue #67). Required typed enum making the frozen FLEXPART mode machine-readable; see below. |
+
+## Turbulence/integration formulation (Issue #67)
+
+The corpus freezes exactly one FLEXPART turbulence/time-step formulation,
+declared explicitly by the required
+
+`oracle_command_overrides.turbulence_formulation` field (= `adaptive_w_sigw`).
+Scientific choice is never inferred from a numeric `CTL` value alone.
+
+Rationale from the pinned oracle (`reference/flexpart-11.1.json`, commit
+`c70586c2b7f5258850705325881c61f557ea9bd8`):
+
+- FLEXPART derives the dispersion method from the sign of `CTL`
+  (`readoptions_mod.f90:786-795`): `CTL > 0` selects the adaptive method
+  (`method=1`, `mintime=minstep=1`); `CTL <= 0` selects the fixed-timestep
+  method (`method=0`, `mintime=lsynctime`). The adaptive method sizes the
+  particle step from the local Lagrangian time scales
+  (`advance_mod.f90:557-568`).
+- FLEXPART derives the Markov-chain formulation from the magnitude of `CTL`
+  (`readoptions_mod.f90:626,645-650`): `CTL >= 0.1` selects the w/sigw
+  formulation (`turbswitch=.true.`); `CTL < 0.1` silently selects the w
+  formulation and re-sets `ifine=1`.
+
+Every checked-in case runs `CTL=5.0 / IFINE=4` (adaptive, w/sigw). The
+contract states that choice explicitly and rejects, in both the Rust
+validator and the Python generator (single documented threshold constant
+`CTL_W_SIGW_FORMULATION_THRESHOLD` / `CTL_FORMULATION_THRESHOLD = 0.1`):
+
+- missing or unknown `turbulence_formulation` values (typed enum; this schema
+  revision supports exactly `adaptive_w_sigw`);
+- `CTL = 0`: the oracle computes `ctl = 1./ctl` unconditionally
+  (`readoptions_mod.f90:653`) and sizes particle steps from it, so this is a
+  division by zero producing a divergent step;
+- `CTL < 0`: the fixed-timestep method (`method=0`) is a valid FLEXPART mode
+  — it is the oracle's own `CTL=-5.0` default — and is *deliberately
+  unsupported* by this validation contract (the error names the mode and the
+  reason instead of hiding behind `CTL >= 0.1`);
+- `0 < CTL < 0.1`: silently re-interpreted as the w formulation with
+  `ifine=1`, inconsistent with the declared formulation;
+- `IFINE = 0`: silently clamped to 1 by `max(ifine,1)`
+  (`readoptions_mod.f90:624`); the contract requires `1..=10`.
 
 ## Deposition forcing
 

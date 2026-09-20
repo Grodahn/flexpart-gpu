@@ -168,8 +168,12 @@ def outgrid_text(case: dict) -> str:
 # namelist keeps uppercase spelling; only the JSON/Rust representation is
 # canonical lowercase. Legacy uppercase JSON keys are frozen and rejected
 # (see fixtures/corpus/cases/MIGRATION_NOTES.md): every checked-in case is
-# migrated to v2.
+# migrated to v2. `turbulence_formulation` is the typed Issue #67 contract
+# decision: FLEXPART derives the dispersion method and Markov-chain
+# formulation from the sign/magnitude of CTL, and the corpus freezes one
+# explicit mode instead of inferring it from a numeric threshold.
 CANONICAL_ORACLE_FIELDS = (
+    "turbulence_formulation",
     "lturbulence",
     "lconvection",
     "ctl",
@@ -187,7 +191,7 @@ LEGACY_ORACLE_FIELDS = {
     "LWETDEP": "lwetdep",
     "LDECAY": "ldecay",
 }
-REQUIRED_ORACLE_FIELDS = ("lturbulence", "lconvection", "ctl", "ifine")
+REQUIRED_ORACLE_FIELDS = ("turbulence_formulation", "lturbulence", "lconvection", "ctl", "ifine")
 FLAG_ORACLE_FIELDS = ("lturbulence", "lconvection", "ldrydep", "lwetdep", "ldecay")
 
 # Oracle flag -> physics_switches agreement required by the fail-closed
@@ -201,12 +205,29 @@ PHYSICS_AGREEMENT = (
     ("ldecay", "decay"),
 )
 
-# readoptions_mod.f90:645-653: CTL >= 0.1 selects the w/Markov formulation
-# (turbswitch); smaller positive values silently switch to the
-# position formulation and rewrite ifine=1, a physics-altering fallback we
-# refuse to reproduce. CTL must also be non-zero: the oracle always computes
-# `ctl = 1./ctl` (readoptions_mod.f90:653) and divides by it when sizing
-# particle time steps.
+# Turbulence/integration formulation contract (Issue #67), pinned to
+# reference/flexpart-11.1.json (commit c70586c). FLEXPART derives two coupled
+# behaviours from the COMMAND CTL value:
+#
+# - dispersion method (readoptions_mod.f90:786-795): CTL > 0 selects the
+#   adaptive particle-timestep method (method=1, mintime=minstep); CTL <= 0
+#   selects the fixed-timestep method (method=0, mintime=lsynctime);
+# - Markov-chain formulation (readoptions_mod.f90:626,645-650): CTL >= 0.1
+#   selects the w/sigw formulation (turbswitch=.true.); CTL < 0.1 silently
+#   selects the w formulation and forces ifine=1.
+#
+# The validation contract deliberately freezes exactly one mode — the
+# adaptive Lagrangian-time-scale integration with the w/sigw Markov
+# formulation — and requires the typed `turbulence_formulation` field so the
+# scientific choice is machine-readable. Every other mode (including negative
+# CTL's fixed-timestep mode) is rejected with an explicit "unsupported mode"
+# error instead of being inferred from a numeric CTL threshold.
+SUPPORTED_TURBULENCE_FORMULATIONS = frozenset({"adaptive_w_sigw"})
+
+# CTL >= this value keeps the pinned oracle's w/sigw Markov formulation
+# (turbswitch=.true., readoptions_mod.f90:645-650); below it the oracle
+# silently switches to the w formulation and forces ifine=1. Single documented
+# constant shared with the Rust validator (CTL_W_SIGW_FORMULATION_THRESHOLD).
 CTL_FORMULATION_THRESHOLD = 0.1
 
 
@@ -224,15 +245,17 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
     Reads the canonical lowercase fields. A document declaring both a legacy
     uppercase key and the canonical lowercase form is ambiguous and rejected;
     a legacy-only spelling is frozen and rejected (see MIGRATION_NOTES.md), as
-    are unknown keys, missing required overrides, out-of-range values, and
-    Oracle flags conflicting with ``physics_switches``. Never substitutes
+    are unknown keys, missing required overrides, out-of-range values, Oracle
+    flags conflicting with ``physics_switches``, and any ``ctl`` value that
+    contradicts the declared ``turbulence_formulation``. Never substitutes
     physics-altering defaults.
     """
     raw = case.get("oracle_command_overrides")
     if raw is None:
         raise SystemExit(
             f"{case_id}: missing oracle_command_overrides; "
-            "lturbulence, lconvection, ctl and ifine must be declared explicitly"
+            "turbulence_formulation, lturbulence, lconvection, ctl and ifine "
+            "must be declared explicitly"
         )
     if not isinstance(raw, dict):
         raise SystemExit(f"{case_id}: oracle_command_overrides must be an object")
@@ -262,6 +285,16 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
                 f"{case_id}: missing required oracle override {field}; "
                 "no hidden default substituted"
             )
+    formulation = normalized["turbulence_formulation"]
+    if (
+        not isinstance(formulation, str)
+        or formulation not in SUPPORTED_TURBULENCE_FORMULATIONS
+    ):
+        raise SystemExit(
+            f"{case_id}: unsupported oracle override turbulence_formulation "
+            f"{formulation!r}; supported: "
+            f"{', '.join(sorted(SUPPORTED_TURBULENCE_FORMULATIONS))}"
+        )
     for field in FLAG_ORACLE_FIELDS:
         if field in normalized:
             value = normalized[field]
@@ -280,21 +313,35 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
         raise SystemExit(
             f"{case_id}: oracle override ctl must be a finite number, got {ctl!r}"
         )
-    if not math.isfinite(float(ctl)):
+    ctl_f = float(ctl)
+    if not math.isfinite(ctl_f):
         raise SystemExit(
             f"{case_id}: oracle override ctl must be finite, got {ctl!r}"
         )
-    if float(ctl) == 0.0:
+    if ctl_f == 0.0:
         raise SystemExit(
-            f"{case_id}: oracle override ctl must be non-zero (the oracle sizes "
-            f"time steps by dt = min(tscale)/ctl), got {ctl!r}"
+            f"{case_id}: oracle override ctl must be non-zero: the oracle computes "
+            "ctl = 1./ctl unconditionally (readoptions_mod.f90:653) and sizes "
+            "particle time steps from it (advance_mod.f90:557-568), "
+            f"got {ctl!r}"
         )
-    if normalized["lturbulence"] == 1 and float(ctl) < CTL_FORMULATION_THRESHOLD:
+    if ctl_f < 0.0:
         raise SystemExit(
-            f"{case_id}: oracle override ctl must be >= {CTL_FORMULATION_THRESHOLD} "
-            f"when lturbulence=1 (readoptions_mod.f90:645-653 w/Markov "
-            f"formulation threshold), got {ctl!r}; a smaller value would silently "
-            "rewrite the Markov chain and force ifine=1"
+            f"{case_id}: oracle override ctl={ctl!r} contradicts "
+            f"turbulence_formulation={formulation!r}: CTL < 0 selects the "
+            "fixed-timestep dispersion mode (method=0, mintime=lsynctime, "
+            "readoptions_mod.f90:786-795), a valid FLEXPART mode that is "
+            "deliberately unsupported by this validation contract; it freezes "
+            "the adaptive w/sigw formulation (CTL > 0, method=1)"
+        )
+    if ctl_f < CTL_FORMULATION_THRESHOLD:
+        raise SystemExit(
+            f"{case_id}: oracle override ctl={ctl!r} contradicts "
+            f"turbulence_formulation={formulation!r}: CTL >= "
+            f"{CTL_FORMULATION_THRESHOLD} is required for the w/sigw Markov "
+            "formulation (turbswitch=.true.); below it the oracle silently "
+            "reformulates the Markov chain for w and forces ifine=1 "
+            "(readoptions_mod.f90:645-650)"
         )
     ifine = normalized["ifine"]
     if isinstance(ifine, bool) or not isinstance(ifine, int):

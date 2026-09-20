@@ -119,6 +119,15 @@ class OracleOverrideTest(unittest.TestCase):
         self.assertIn("dry_deposition", str(ctx.exception))
         self.assertIn("conflicts", str(ctx.exception))
 
+    def test_ctl_five_point_zero_is_accepted(self):
+        case = load_case("WIND-UNI-002")
+        self.assertEqual(
+            case["oracle_command_overrides"]["turbulence_formulation"],
+            "adaptive_w_sigw",
+        )
+        text = GEN.command_text("WIND-UNI-002", case)
+        self.assertAlmostEqual(float(GEN.namelist_value(text, "CTL")), 5.0, places=6)
+
     def test_zero_ctl_rejected_for_nonzero_timestep_division(self):
         case = load_case("ADV-ANA-001")
         case = copy.deepcopy(case)
@@ -126,25 +135,60 @@ class OracleOverrideTest(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             GEN.command_text("ADV-ANA-001", case)
         self.assertIn("non-zero", str(ctx.exception))
+        self.assertIn("readoptions_mod.f90:653", str(ctx.exception))
+
+    def test_negative_ctl_rejected_as_deliberately_unsupported_fixed_mode(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        # CTL=-5.0 is the pinned oracle's own default; in FLEXPART it selects
+        # the fixed-timestep mode (method=0, mintime=lsynctime,
+        # readoptions_mod.f90:786-795), which the contract deliberately freezes
+        # out in favour of the adaptive w/sigw mode.
+        case["oracle_command_overrides"]["ctl"] = -5.0
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        rendered = str(ctx.exception)
+        self.assertIn("deliberately", rendered)
+        self.assertIn("unsupported", rendered)
+        self.assertIn("fixed", rendered)
 
     def test_small_positive_ctl_rejected_for_turbulence_formulation(self):
         case = load_case("WIND-UNI-002")
         case = copy.deepcopy(case)
-        # readoptions_mod.f90:645-653: ctl < 0.1 silently rewrites the Markov
-        # chain and forces ifine=1, so the generator refuses it.
+        # readoptions_mod.f90:645-650: ctl < 0.1 silently rewrites the Markov
+        # chain to the w formulation and forces ifine=1, so the generator
+        # refuses it as inconsistent with the declared formulation.
         case["oracle_command_overrides"]["ctl"] = 0.05
         with self.assertRaises(SystemExit) as ctx:
             GEN.command_text("WIND-UNI-002", case)
         self.assertIn("readoptions_mod.f90", str(ctx.exception))
 
-    def test_small_positive_ctl_allowed_when_turbulence_disabled(self):
+    def test_small_positive_ctl_rejected_even_with_turbulence_disabled(self):
         case = load_case("ADV-ANA-001")
         case = copy.deepcopy(case)
-        # With LTURBULENCE=0 the oracle never consumes CTL for time stepping;
-        # only the non-zero division guard applies.
+        # The declared `adaptive_w_sigw` formulation pins the w/sigw semantics,
+        # so a sub-threshold CTL is inconsistent regardless of the LTURBULENCE
+        # flag (the oracle still interprets CTL < 0.1 as the w formulation).
         case["oracle_command_overrides"]["ctl"] = 0.05
-        text = GEN.command_text("ADV-ANA-001", case)
-        self.assertAlmostEqual(float(GEN.namelist_value(text, "CTL")), 0.05, places=6)
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("ADV-ANA-001", case)
+        self.assertIn("turbulence_formulation", str(ctx.exception))
+
+    def test_unknown_turbulence_formulation_rejected(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        case["oracle_command_overrides"]["turbulence_formulation"] = "fixed_sync"
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("adaptive_w_sigw", str(ctx.exception))
+
+    def test_missing_turbulence_formulation_rejected(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        del case["oracle_command_overrides"]["turbulence_formulation"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("turbulence_formulation", str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -73,6 +73,7 @@
     "manifest_path": "reference/flexpart-11.1.json"
   },
   "oracle_command_overrides": {
+    "turbulence_formulation": "adaptive_w_sigw",
     "lturbulence": 0,
     "lconvection": 0,
     "ctl": 5.0,

@@ -523,10 +523,55 @@ pub struct ExpectedArtifacts {
     pub run_manifest: String,
 }
 
+/// Oracle turbulence/integration formulation selection (Issue #67).
+///
+/// FLEXPART derives two coupled behaviours from the COMMAND `ctl` value
+/// (pinned oracle, reference/flexpart-11.1.json at commit c70586c):
+///
+/// - the dispersion method (`readoptions_mod.f90:786-795`): `ctl > 0` selects
+///   the adaptive particle-timestep method (`method=1`, `mintime=minstep`);
+///   `ctl <= 0` selects the fixed-timestep method (`method=0`,
+///   `mintime=lsynctime`);
+/// - the Markov-chain formulation (`readoptions_mod.f90:626,645-650`):
+///   `ctl >= 0.1` selects the w/sigw formulation (`turbswitch=.true.`);
+///   `ctl < 0.1` silently selects the w formulation and forces `ifine=1`.
+///
+/// This validation contract deliberately freezes exactly one mode — the
+/// adaptive Lagrangian-time-scale integration with the w/sigw Markov
+/// formulation — and makes that choice machine-readable instead of inferring
+/// it from a numeric `ctl` threshold alone. Other valid FLEXPART modes are
+/// rejected with an explicit "unsupported mode" error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OracleTurbulenceFormulation {
+    /// Adaptive integration (`method=1`, readoptions_mod.f90:786-795) with the
+    /// w/sigw Markov formulation (`turbswitch=.true.`, readoptions_mod.f90:645-650).
+    #[default]
+    #[serde(rename = "adaptive_w_sigw")]
+    AdaptiveWSigmaW,
+}
+
+impl std::fmt::Display for OracleTurbulenceFormulation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            OracleTurbulenceFormulation::AdaptiveWSigmaW => "adaptive_w_sigw",
+        })
+    }
+}
+
+/// `ctl` threshold of the pinned oracle's w/sigw Markov formulation
+/// (`turbswitch=.true.`, readoptions_mod.f90:645-650) and lower bound of the
+/// adaptive dispersion method's valid `ctl` range. Single documented constant
+/// shared with the Python generator contract (step 6 of Issue #67).
+pub const CTL_W_SIGW_FORMULATION_THRESHOLD: f32 = 0.1;
+
 /// Oracle command overrides (namelist values).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct OracleCommandOverrides {
+    /// Declared turbulence/integration formulation (required, never defaulted
+    /// in a document; see `OracleTurbulenceFormulation`).
+    pub turbulence_formulation: OracleTurbulenceFormulation,
     /// Turbulence flag (0/1).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lturbulence: Option<u8>,
@@ -1480,37 +1525,17 @@ impl ValidationCaseManifest {
         let ctl = overrides.ctl.ok_or(ValidationCaseError::MissingField {
             field: "oracle_command_overrides.ctl",
         })?;
-        if !ctl.is_finite() {
-            return Err(ValidationCaseError::InvalidPhysicsSwitches {
-                message: format!("oracle_command_overrides.ctl must be finite, got {ctl}"),
-            });
-        }
-        if ctl == 0.0 {
-            return Err(ValidationCaseError::InvalidPhysicsSwitches {
-                message: format!(
-                    "oracle_command_overrides.ctl must be non-zero (the oracle sizes \
-                     time steps by min(tscale)/ctl, readoptions_mod.f90:653), got {ctl}"
-                ),
-            });
-        }
-        // readoptions_mod.f90:645-653: CTL >= 0.1 selects the w/Markov
-        // formulation (turbswitch); smaller positive values silently switch to
-        // the position formulation and force ifine=1, a physics-altering
-        // fallback that must not be reproduced silently.
-        if lturbulence == 1 && ctl < 0.1 {
-            return Err(ValidationCaseError::InvalidPhysicsSwitches {
-                message: format!(
-                    "oracle_command_overrides.ctl must be >= 0.1 when lturbulence=1 \
-                     (readoptions_mod.f90:645-653 w/Markov formulation threshold), got {ctl}"
-                ),
-            });
-        }
+        Self::validate_oracle_ctl_formulation(ctl, overrides.turbulence_formulation)?;
         let ifine = overrides.ifine.ok_or(ValidationCaseError::MissingField {
             field: "oracle_command_overrides.ifine",
         })?;
         if !(1..=10).contains(&ifine) {
             return Err(ValidationCaseError::InvalidPhysicsSwitches {
-                message: format!("oracle_command_overrides.ifine must be in 1..=10, got {ifine}"),
+                message: format!(
+                    "oracle_command_overrides.ifine must be in 1..=10 (the oracle silently \
+                     clamps IFINE to >= 1 via max(ifine,1), readoptions_mod.f90:624; the \
+                     corpus contract caps the vertical sub-stepping at 10), got {ifine}"
+                ),
             });
         }
         for (name, value) in [
@@ -1527,6 +1552,67 @@ impl ValidationCaseManifest {
             }
         }
         self.validate_oracle_physics_agreement(lturbulence, lconvection)?;
+        Ok(())
+    }
+
+    /// Enforces the Issue #67 `ctl` contract for the pinned oracle
+    /// (reference/flexpart-11.1.json):
+    ///
+    /// - `ctl` must be finite;
+    /// - `ctl = 0` is a division by zero: the oracle computes `ctl = 1./ctl`
+    ///   unconditionally (`readoptions_mod.f90:653`) and sizes particle steps
+    ///   from it (`advance_mod.f90:557-568`);
+    /// - `ctl < 0` selects the fixed-timestep dispersion mode (`method=0`,
+    ///   `mintime=lsynctime`, `readoptions_mod.f90:786-795`): a valid FLEXPART
+    ///   mode the validation contract deliberately does not support (it
+    ///   freezes the adaptive w/sigw mode);
+    /// - `0 < ctl < CTL_W_SIGW_FORMULATION_THRESHOLD` silently switches the
+    ///   Markov chain from w/sigw to w and forces `ifine=1`
+    ///   (`readoptions_mod.f90:645-650`) and is inconsistent with the declared
+    ///   formulation.
+    fn validate_oracle_ctl_formulation(
+        ctl: f32,
+        formulation: OracleTurbulenceFormulation,
+    ) -> Result<(), ValidationCaseError> {
+        if !ctl.is_finite() {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!("oracle_command_overrides.ctl must be finite, got {ctl}"),
+            });
+        }
+        if ctl == 0.0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "oracle_command_overrides.ctl must be non-zero: the oracle computes \
+                     ctl = 1./ctl unconditionally (readoptions_mod.f90:653) and sizes \
+                     particle time steps from it (advance_mod.f90:557-568); CTL=0 is a \
+                     division by zero producing a divergent step, got {ctl}"
+                ),
+            });
+        }
+        if ctl < 0.0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "oracle_command_overrides.ctl={ctl} contradicts \
+                     turbulence_formulation={formulation}: CTL < 0 selects the \
+                     fixed-timestep dispersion mode (method=0, mintime=lsynctime, \
+                     readoptions_mod.f90:786-795), a valid FLEXPART mode that is \
+                     deliberately unsupported by this validation contract; it \
+                     freezes the adaptive w/sigw formulation (CTL > 0, method=1)"
+                ),
+            });
+        }
+        if ctl < CTL_W_SIGW_FORMULATION_THRESHOLD {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "oracle_command_overrides.ctl={ctl} contradicts \
+                     turbulence_formulation={formulation}: CTL >= \
+                     {CTL_W_SIGW_FORMULATION_THRESHOLD} is required for the w/sigw \
+                     Markov formulation (turbswitch=.true.); below it the oracle silently \
+                     reformulates the Markov chain for w and forces ifine=1 \
+                     (readoptions_mod.f90:645-650)"
+                ),
+            });
+        }
         Ok(())
     }
 
@@ -2142,6 +2228,10 @@ mod tests {
         assert_eq!(manifest.oracle_command_overrides.lconvection, Some(0));
         assert_eq!(manifest.oracle_command_overrides.ctl, Some(5.0));
         assert_eq!(manifest.oracle_command_overrides.ifine, Some(4));
+        assert_eq!(
+            manifest.oracle_command_overrides.turbulence_formulation,
+            OracleTurbulenceFormulation::AdaptiveWSigmaW
+        );
         manifest.validate().expect("WIND-UNI-002 overrides stay valid");
     }
 
@@ -2193,6 +2283,17 @@ mod tests {
     }
 
     #[test]
+    fn oracle_ctl_five_point_zero_is_accepted() {
+        let manifest = make_minimal_manifest();
+        assert_eq!(manifest.oracle_command_overrides.ctl, Some(5.0));
+        assert_eq!(
+            manifest.oracle_command_overrides.turbulence_formulation,
+            OracleTurbulenceFormulation::AdaptiveWSigmaW
+        );
+        manifest.validate().expect("CTL=5.0 corpus config stays valid");
+    }
+
+    #[test]
     fn zero_ctl_is_rejected_for_nonzero_timestep_division() {
         let mut manifest = make_minimal_manifest();
         manifest.oracle_command_overrides.ctl = Some(0.0);
@@ -2202,6 +2303,27 @@ mod tests {
             ValidationCaseError::InvalidPhysicsSwitches { .. }
         ));
         assert!(err.to_string().contains("non-zero"));
+        assert!(err.to_string().contains("readoptions_mod.f90:653"));
+    }
+
+    #[test]
+    fn negative_ctl_is_rejected_as_deliberately_unsupported_fixed_mode() {
+        let mut manifest = make_minimal_manifest();
+        manifest.oracle_command_overrides.ctl = Some(-5.0);
+        let err = manifest.validate().expect_err("ctl=-5 must fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::InvalidPhysicsSwitches { .. }
+        ));
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("deliberately") && rendered.contains("unsupported"),
+            "error must state the mode is deliberately unsupported: {rendered}"
+        );
+        assert!(
+            rendered.contains("fixed") && rendered.contains("readoptions_mod.f90:786-795"),
+            "error must name the unsupported FLEXPART mode: {rendered}"
+        );
     }
 
     #[test]
@@ -2209,21 +2331,76 @@ mod tests {
         let mut manifest = make_minimal_manifest();
         assert_eq!(manifest.oracle_command_overrides.lturbulence, Some(1));
         manifest.oracle_command_overrides.ctl = Some(0.05);
-        let err = manifest.validate().expect_err("ctl below w-formulation threshold");
+        let err = manifest.validate().expect_err("ctl below w-sigw threshold");
         assert!(matches!(
             err,
             ValidationCaseError::InvalidPhysicsSwitches { .. }
         ));
-        assert!(err.to_string().contains("readoptions_mod.f90"));
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("readoptions_mod.f90:645-650"),
+            "error must cite the silent reformulation: {rendered}"
+        );
     }
 
     #[test]
-    fn small_positive_ctl_is_allowed_when_turbulence_disabled() {
+    fn small_positive_ctl_is_rejected_even_with_turbulence_disabled() {
         let mut manifest = make_minimal_manifest();
         manifest.physics_switches.turbulence = false;
         manifest.oracle_command_overrides.lturbulence = Some(0);
         manifest.oracle_command_overrides.ctl = Some(0.05);
-        manifest.validate().expect("ctl unused without turbulence must pass");
+        // The declared turbulence_formulation pins the w/sigw formulation, so a
+        // sub-threshold CTL is inconsistent regardless of the LTURBULENCE flag.
+        let err = manifest.validate().expect_err("formulation inconsistency must fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::InvalidPhysicsSwitches { .. }
+        ));
+    }
+
+    #[test]
+    fn ifine_zero_is_rejected_for_silent_clamp() {
+        let mut manifest = make_minimal_manifest();
+        manifest.oracle_command_overrides.ifine = Some(0);
+        let err = manifest.validate().expect_err("ifine=0 must fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::InvalidPhysicsSwitches { .. }
+        ));
+        assert!(err.to_string().contains("readoptions_mod.f90:624"));
+    }
+
+    #[test]
+    fn unknown_turbulence_formulation_variant_is_rejected() {
+        let mut raw: serde_json::Value = serde_json::to_value(make_minimal_manifest())
+            .expect("serialize minimal");
+        raw["oracle_command_overrides"]
+            .as_object_mut()
+            .expect("overrides object")
+            .insert("turbulence_formulation".to_string(), serde_json::json!("fixed_sync"));
+        let text = serde_json::to_string(&raw).expect("re-serialize");
+        let err = ValidationCaseManifest::parse(&text, Path::new("badform.json")).expect_err("fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("adaptive_w_sigw"),
+            "error must enumerate the supported variant: {rendered}"
+        );
+    }
+
+    #[test]
+    fn missing_turbulence_formulation_is_rejected() {
+        let mut raw: serde_json::Value = serde_json::to_value(make_minimal_manifest())
+            .expect("serialize minimal");
+        raw["oracle_command_overrides"]
+            .as_object_mut()
+            .expect("overrides object")
+            .remove("turbulence_formulation");
+        let text = serde_json::to_string(&raw).expect("re-serialize");
+        let err = ValidationCaseManifest::parse(&text, Path::new("noform.json")).expect_err("fails");
+        assert!(
+            err.to_string().contains("turbulence_formulation"),
+            "error must name the missing field: {err}"
+        );
     }
 
     #[test]

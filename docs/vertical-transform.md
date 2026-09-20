@@ -40,6 +40,13 @@ interface pressures. The implementation keeps the canonical Snapshot ordering
 but derives physical traversal direction from `VerticalOrdering`; no fixed
 137-level count or hard-coded pressure-index direction is allowed.
 
+Because FLEXPART anchors the lowest W/interface coordinate at the physical
+surface (`0 m AGL`), the surface-side hybrid interface must reconstruct to the
+**actual local** `surface_pressure` for every column. A coefficient set that
+matches only `reference_surface_pressure_pa` but yields a different pressure
+at a local column is rejected fail-closed rather than pairing a non-surface
+pressure with the 0 m AGL W surface.
+
 FLEXPART 11.1 constructs ECMWF vertical coordinates differently in memory:
 `windfields_mod` reverses the native half-level coefficient order into its
 bottom-to-top arrays, inserts an artificial ground model level with
@@ -101,19 +108,60 @@ the retained interface-staggered vertical velocity.
 ## Oracle validation
 
 The per-PR technical gate produces machine-readable #30 evidence below
-`target/ci-gate/vertical-column/`.
+`target/ci-gate/vertical-column/`. Validation intentionally has two independent
+Fortran paths with different roles.
+
+### Normative pinned-routine oracle
+
+The normative #30 comparison executes the **actual FLEXPART 11.1
+`verttransform_ecmwf_heights` routine source**, not a locally rewritten copy of
+its equations.
+
+At CI runtime, `scripts/vertical/extract_flexpart_vertical_routine.py`:
+
+1. verifies the oracle checkout is clean and exactly at the commit pinned by
+   `reference/flexpart-11.1.json`;
+2. reads `src/verttransform_mod.f90` from that pristine checkout;
+3. extracts the exact contiguous source slice from
+   `subroutine verttransform_ecmwf_heights` through its matching
+   `end subroutine`;
+4. hashes both the original source and extracted routine and writes
+   `routine-oracle-provenance.json`;
+5. wraps that unchanged routine text only with the imports/state required to
+   compile it as a focused column oracle.
+
+The generated routine module is compiled with the pinned FLEXPART
+`par_mod.f90` and `qvsat_mod.f90`. A small driver supplies the same
+bottom-to-top `akz/bkz/aknew/bknew` state that FLEXPART constructs from the
+canonical half-level A/B coefficients, including its artificial surface model
+level. The FLEXPART checkout itself is never modified.
+
+This isolates #30 from GRIB/ecCodes/NetCDF and the full model executable while
+still executing the pinned FLEXPART implementation of pressure, hypsometric
+height, `wzlev`, and `pinmconv`.
+
+### Secondary source-conformance harness
+
+`scripts/vertical/oracle_column.f90` remains as an independent, small scalar
+replay of the relevant equations. It is useful for diagnostics and catches
+unexpected disagreement between the Rust implementation, the extracted real
+routine, and our interpretation of the source. It is **not** the normative
+oracle and its output is explicitly labelled
+`FLEXPART_VERTICAL_CONFORMANCE_HARNESS_V1`.
 
 ### Controlled synthetic column
 
 `fixtures/vertical/synthetic-column-v1.json` is a 1x1x3 hybrid column with
-non-zero A and B coefficients. The Rust candidate report is compared level by
-level with a Fortran harness. The harness links `par_mod` and
-`qvsat_mod` directly from the pristine FLEXPART 11.1 checkout pinned by
-`reference/flexpart-11.1.json`; the comparator also verifies that the pinned
-`verttransform_mod.f90` and `windfields_mod.f90` still contain the exact
-height and hybrid-level source contracts represented by the harness.
+non-zero A and B coefficients. The Rust candidate is compared field-by-field
+against the extracted pinned routine. Interface omega is multiplied by the
+`pinmconv` produced by that real FLEXPART routine, preserving the exact
+FLEXPART pressure-to-height derivative in the comparison.
 
-Output: `comparison-report.json`.
+Outputs include:
+
+- `comparison-report.json` — normative candidate vs pinned-routine result;
+- `conformance-comparison-report.json` — secondary scalar-harness check;
+- `routine-oracle-provenance.json` — pinned commit and source/routine hashes.
 
 ### Real ERA5/ETEX column
 
@@ -123,19 +171,22 @@ The gate also derives a 1x1x137 validation-only Snapshot from the checked-in
 (T2m, Td2m, surface geopotential converted to metres ASL) without modifying
 the completed #29 fixture.
 
-Outputs:
+Outputs include:
 
 - `real-column-snapshot.json`;
 - `real-column-fixture-provenance.json`;
-- `real-comparison-report.json`.
+- `real-comparison-report.json` — normative candidate vs pinned routine;
+- `real-conformance-comparison-report.json` — secondary harness comparison.
 
-Both comparisons use predeclared tolerances:
+Both normative comparisons use predeclared tolerances:
 
 - pressure: max(0.05 Pa absolute, 1e-6 relative);
-- height: max(0.02 m absolute, 1e-5 relative).
+- height: max(0.02 m absolute, 1e-5 relative);
+- geometric vertical velocity: max(2e-5 m/s absolute, 1e-5 relative).
 
-A missing artifact, dirty/wrong oracle checkout, changed source contract, level
-count mismatch, or field outside tolerance fails the technical gate.
+A missing artifact, dirty/wrong oracle checkout, extraction/provenance mismatch,
+changed source contract, level-count mismatch, wrong execution-mode header, or
+field outside tolerance fails the technical gate.
 
 ## Vertical motion normalization
 
@@ -176,9 +227,10 @@ artificial surface model level:
 The normalized values retain their vertical staggering. #30 does not interpolate
 them onto another vertical grid; #31 owns interpolation/sampling.
 
-The synthetic column oracle supplies explicit interface omega values to both the
-Rust candidate and the pinned FLEXPART-source-linked Fortran harness and compares
-the resulting geometric `m/s` values interface by interface.
+The synthetic column oracle supplies explicit interface omega values to the
+Rust candidate and the pinned-routine driver. The oracle-side geometric values
+use the `pinmconv` produced by the actual extracted FLEXPART
+`verttransform_ecmwf_heights` routine and are compared interface by interface.
 
 ### Raw eta-dot
 

@@ -168,6 +168,34 @@ manifest; `oracle_dir` omitted for REPEAT-009, which has no oracle run),
 (synthetic cases) are new in v2 and identical in kind to the previously
 migrated ADV-ANA-001/WIND-UNI-002/ETEX-MINI-013.
 
+## Simulation direction and output semantics
+
+The FLEXPART COMMAND keys `LDIRECT` / `LOUTSTEP` / `LOUTAVER` /
+`LOUTSAMPLE` were previously written by the corpus tooling from hard-coded
+constants. They are now required, explicitly declared manifest fields
+(Issue #51 / #57). The raw numeric namelist keys stay on the generated
+Fortran; the manifest carries the canonical semantic values and the
+generator/audit derive the namelist from them. No generator-side default
+substitutes for a missing block.
+
+| v1 | v2 | Note |
+|----|----|------|
+| (implicit forward) | `simulation_direction` | Required typed enum: `forward` (`LDIRECT=1`) / `backward` (`LDIRECT=-1`), mapping per `readoptions_mod.f90`. All checked-in cases are `forward` (ETEX COMMAND `LDIRECT=1`). |
+| (generator constant `1800`) | `output.interval_s` | Output interval [s], FLEXPART `LOUTSTEP`. Synthetic cases `1800`; ETEX-MINI-013 `10800` (its real COMMAND). |
+| (generator constant `1800`) | `output.averaging_window_s` | Averaging window [s], FLEXPART `LOUTAVER`. Synthetic cases `1800`; ETEX-MINI-013 `10800`. |
+| (generator constant `300`) | `output.sampling_interval_s` | Sampling interval [s], FLEXPART `LOUTSAMPLE`. Synthetic cases `300`; ETEX-MINI-013 `900`. |
+| (none) | `output.quantity` | Scientific quantity of each output field; this schema revision supports exactly `time_averaged_mass_concentration_kg_m3`. |
+
+Validated fail-closed in both the Rust validator and the Python generator:
+every timing value is whole positive seconds; `sampling_interval_s <=
+averaging_window_s <= interval_s` (the FLEXPART binary header writes the
+triplet verbatim, `binary_output_mod.f90`); a missing `simulation_direction`
+or `output` block (or any sub-field) is rejected with a field-specific error.
+The generated COMMAND column layout for the historical values
+(`LDIRECT=1`, `LOUTSTEP=1800`, `LOUTAVER=1800`, `LOUTSAMPLE=300`) is
+byte-identical to the previously checked-in fixtures; no scientific value
+changed in migration.
+
 ## v1 support statement
 
 V1 is not supported and has no sunset period: all checked-in documents are

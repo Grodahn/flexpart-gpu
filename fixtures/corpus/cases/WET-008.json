@@ -70,6 +70,13 @@
     "wet_deposition": true,
     "decay": false
   },
+  "simulation_direction": "forward",
+  "output": {
+    "interval_s": 1800,
+    "averaging_window_s": 1800,
+    "sampling_interval_s": 300,
+    "quantity": "time_averaged_mass_concentration_kg_m3"
+  },
   "deposition": {
     "dry_deposition_velocity_m_s": 0.0,
     "wet_scavenging_coefficient_s_inv": 0.005,

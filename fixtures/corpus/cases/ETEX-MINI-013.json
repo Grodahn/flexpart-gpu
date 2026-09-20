@@ -112,6 +112,13 @@
     "wet_deposition": true,
     "decay": false
   },
+  "simulation_direction": "forward",
+  "output": {
+    "interval_s": 10800,
+    "averaging_window_s": 10800,
+    "sampling_interval_s": 900,
+    "quantity": "time_averaged_mass_concentration_kg_m3"
+  },
   "units": {
     "wind": "m/s",
     "pressure": "Pa",

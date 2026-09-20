@@ -11,7 +11,11 @@ from demonstrably equal inputs:
 - RELEASES MASS is the case total mass converted from kilograms (candidate
   unit) to grams (FLEXPART unit): ``MASS_g = mass_kg * 1000``.
 - COMMAND dates follow the case ``integration`` window; turbulence,
-  convection and timestepping switches follow ``oracle_command_overrides``.
+  convection and timestepping switches follow ``oracle_command_overrides``;
+  direction (LDIRECT) and output timing (LOUTSTEP/LOUTAVER/LOUTSAMPLE)
+  follow the required ``simulation_direction`` and ``output`` blocks. The
+  raw Python path fails closed when any of these blocks is missing: the
+  generator never supplies a hidden direction or output default.
 - METEO_ARGS.txt records the exact synthetic-GRIB generator flags derived
   from the case wind/surface entries (single reference path:
   scripts/generate_synthetic_grib.py).
@@ -291,6 +295,21 @@ SUPPORTED_TURBULENCE_FORMULATIONS = frozenset({"adaptive_w_sigw"})
 # constant shared with the Rust validator (CTL_W_SIGW_FORMULATION_THRESHOLD).
 CTL_FORMULATION_THRESHOLD = 0.1
 
+# Simulation direction contract (Issue #51 / #57): the manifest carries the
+# typed semantic value; the generator maps it to the FLEXPART numeric key
+# (readoptions_mod.f90: `ldirect contains direction of time forward (1) or
+# backward(-1)`). The raw LDIRECT value is a derived namelist artifact, never
+# a manifest input, so no numeric default exists on the manifest side.
+SIMULATION_DIRECTIONS = frozenset({"forward", "backward"})
+LDIRECT_FORWARD = 1
+LDIRECT_BACKWARD = -1
+
+# Output timing contract (Issue #51 / #57): every COMMAND output key is
+# derived from the manifest `output` block (Interval_s -> LOUTSTEP,
+# Averaging_window_s -> LOUTAVER, Sampling_interval_s -> LOUTSAMPLE). The
+# generator must never substitute a hard-coded value, so no such constant
+# exists here; `_required_output` is the single reading path.
+
 
 # Physics switches are mandatory in the canonical contract (the Rust
 # `PhysicsSwitches` struct is a required member, not an `Option`). The raw
@@ -379,6 +398,89 @@ def _required_integration(case_id: str, case: dict) -> dict:
             f"{case_id}: integration.total_s must be positive, got {total_s!r}"
         )
     return {"start": start, "total_s": int(total_s)}
+
+
+def _required_simulation_direction(case_id: str, case: dict) -> str:
+    """Fail-closed simulation direction reader (Issue #51 / #57).
+
+    The manifest carries the typed semantic value (`forward`/`backward`);
+    the FLEXPART numeric `LDIRECT` is derived from it (readoptions_mod.f90).
+    A missing or unknown direction is rejected: no direction may be
+    substituted in the generator.
+    """
+    direction = case.get("simulation_direction")
+    if direction not in SIMULATION_DIRECTIONS:
+        raise SystemExit(
+            f"{case_id}: simulation_direction must be one of "
+            f"{', '.join(sorted(SIMULATION_DIRECTIONS))}, got {direction!r} "
+            "(the FLEXPART LDIRECT numeric key is derived, never defaulted)"
+        )
+    return direction
+
+
+def _required_output(case_id: str, case: dict) -> dict:
+    """Fail-closed output-timing reader (LOUTSTEP/LOUTAVER/LOUTSAMPLE).
+
+    Mirrors the canonical `OutputSpec` contract: every timing value must be
+    whole positive seconds and, where the document declares them, the windows
+    must be internally consistent (sampling <= averaging <= interval, matching
+    the Rust validator). The dict returned is the only source of the COMMAND
+    output keys.
+    """
+    output = case.get("output")
+    if not isinstance(output, dict):
+        raise SystemExit(
+            f"{case_id}: output must be an object, got {output!r} "
+            "(no hidden output default substituted)"
+        )
+
+    def seconds(name: str) -> int:
+        value = output.get(name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise SystemExit(
+                f"{case_id}: output.{name} must be a whole positive number of "
+                f"seconds, got {value!r}"
+            )
+        number = float(value)
+        if not math.isfinite(number):
+            raise SystemExit(
+                f"{case_id}: output.{name} must be finite, got {value!r}"
+            )
+        if number != int(number) or number <= 0:
+            raise SystemExit(
+                f"{case_id}: output.{name} must be a whole positive number of "
+                f"seconds, got {value!r}"
+            )
+        return int(number)
+
+    interval_s = seconds("interval_s")
+    averaging_window_s = seconds("averaging_window_s")
+    sampling_interval_s = seconds("sampling_interval_s")
+
+    if sampling_interval_s > averaging_window_s:
+        raise SystemExit(
+            f"{case_id}: output.sampling_interval_s ({sampling_interval_s}s) "
+            f"must not exceed output.averaging_window_s ({averaging_window_s}s); "
+            "FLEXPART LOUTSAMPLE <= LOUTAVER"
+        )
+    if averaging_window_s > interval_s:
+        raise SystemExit(
+            f"{case_id}: output.averaging_window_s ({averaging_window_s}s) "
+            f"must not exceed output.interval_s ({interval_s}s); "
+            "FLEXPART LOUTAVER <= LOUTSTEP"
+        )
+    quantity = output.get("quantity")
+    if not isinstance(quantity, str) or not quantity:
+        raise SystemExit(
+            f"{case_id}: output.quantity must be a non-empty string naming the "
+            f"scientific quantity, got {quantity!r}"
+        )
+    return {
+        "interval_s": interval_s,
+        "averaging_window_s": averaging_window_s,
+        "sampling_interval_s": sampling_interval_s,
+        "quantity": quantity,
+    }
 
 
 def mandatory_physics_switches(case_id: str, case: dict) -> dict:
@@ -645,7 +747,12 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
 
 
 def command_text(case_id: str, case: dict) -> str:
-    """COMMAND namelist derived from case integration and switch overrides."""
+    """COMMAND namelist derived from case integration and switch overrides.
+
+    Direction and output timing are the only values taken from the
+    ``simulation_direction`` and ``output`` manifest blocks; every field is
+    required, so a document missing one fails closed here.
+    """
     integration = _required_integration(case_id, case)
     overrides = normalize_oracle_overrides(case_id, case)
     iedate, ietime = sim_end_date(integration["start"], integration["total_s"])
@@ -653,16 +760,19 @@ def command_text(case_id: str, case: dict) -> str:
     ifine = int(overrides["ifine"])
     lturbulence = int(overrides["lturbulence"])
     lconvection = int(overrides["lconvection"])
+    direction = _required_simulation_direction(case_id, case)
+    ldirect = LDIRECT_FORWARD if direction == "forward" else LDIRECT_BACKWARD
+    output = _required_output(case_id, case)
     return (
         "&COMMAND\n"
-        " LDIRECT=               1,\n"
+        f" LDIRECT= {ldirect:>15},\n"
         " IBDATE=         20240101,\n"
         " IBTIME=           000000,\n"
         f" IEDATE=         {iedate},\n"
         f" IETIME=           {ietime:06d},\n"
-        " LOUTSTEP=           1800,\n"
-        " LOUTAVER=           1800,\n"
-        " LOUTSAMPLE=           300,\n"
+        f" LOUTSTEP={output['interval_s']:>15},\n"
+        f" LOUTAVER={output['averaging_window_s']:>15},\n"
+        f" LOUTSAMPLE={output['sampling_interval_s']:>14},\n"
         " ITSPLIT=        99999999,\n"
         " LSYNCTIME=            300,\n"
         f" CTL=            {ctl:.7f},\n"
@@ -958,6 +1068,13 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
     check("COMMAND LCONVECTION", int(namelist_value(command, "LCONVECTION")), int(overrides["lconvection"]))
     check("COMMAND CTL", float(namelist_value(command, "CTL")), float(overrides["ctl"]), 1e-6)
     check("COMMAND IFINE", int(namelist_value(command, "IFINE")), int(overrides["ifine"]))
+    direction = _required_simulation_direction(case_id, case)
+    expected_ldirect = LDIRECT_FORWARD if direction == "forward" else LDIRECT_BACKWARD
+    check("COMMAND LDIRECT", int(namelist_value(command, "LDIRECT")), expected_ldirect)
+    output = _required_output(case_id, case)
+    check("COMMAND LOUTSTEP", int(namelist_value(command, "LOUTSTEP")), output["interval_s"])
+    check("COMMAND LOUTAVER", int(namelist_value(command, "LOUTAVER")), output["averaging_window_s"])
+    check("COMMAND LOUTSAMPLE", int(namelist_value(command, "LOUTSAMPLE")), output["sampling_interval_s"])
 
     species_text = (outdir / "SPECIES" / f"SPECIES_{specnum:03d}").read_text(encoding="utf-8")
     code = re.sub(r"!.*", "", species_text)
@@ -1016,8 +1133,9 @@ def validate_and_normalize_case_for_generation(
     Oracle/physics agreement; integration; release (geometry, timing,
     particle count, species id, total mass); wind profile; physics switches;
     surface semantics; domain (OUTGRID fields); species identity and upstream
-    source availability; deposition/species selection for SPECIES_040; and
-    the real-weather meteorology metadata. The returned normalized dict is
+    source availability; deposition/species selection for SPECIES_040;
+    simulation direction; output timing semantics; and the real-weather
+    meteorology metadata. The returned normalized dict is
     the only input the write phase consumes.
     """
     if case.get("schema_version") != 2 or "version" in case:
@@ -1030,6 +1148,8 @@ def validate_and_normalize_case_for_generation(
     oracle = normalize_oracle_overrides(case_id, case)
 
     integration = _required_integration(case_id, case)
+    direction = _required_simulation_direction(case_id, case)
+    output = _required_output(case_id, case)
 
     release = _required_release(case_id, case)
     mass_kg = case_total_mass_kg(case_id, case)
@@ -1116,6 +1236,8 @@ def validate_and_normalize_case_for_generation(
         "schema_version": 2,
         "specnum": specnum,
         "integration": integration,
+        "simulation_direction": direction,
+        "output": output,
         "oracle": oracle,
         "physics": physics,
         "wind_profile": profile,

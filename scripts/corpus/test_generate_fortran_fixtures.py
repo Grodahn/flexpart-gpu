@@ -9,6 +9,7 @@ integration blocks must not decay to defaults on malformed input.
 import copy
 import importlib.util
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -591,6 +592,178 @@ class PreflightFailClosedTest(unittest.TestCase):
             restart_provenance["case_file"],
             "fixtures/corpus/cases/RESTART-010.json",
         )
+
+
+class DirectionOutputSemanticsTest(unittest.TestCase):
+    """COMMAND direction/output timing must come from the manifest only.
+
+    The FLEXPART namelist keys LDIRECT/LOUTSTEP/LOUTAVER/LOUTSAMPLE are
+    derived artifacts of the required `simulation_direction` and `output`
+    manifest blocks (Issue #51 / #57): no hard-coded value may substitute for
+    a missing or inconsistent declaration.
+    """
+
+    def _case(self, case_id="WIND-UNI-002"):
+        return copy.deepcopy(load_case(case_id))
+
+    def test_missing_simulation_direction_is_rejected(self):
+        case = self._case()
+        del case["simulation_direction"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("simulation_direction", str(ctx.exception))
+
+    def test_unknown_simulation_direction_is_rejected(self):
+        case = self._case()
+        case["simulation_direction"] = "sideways"
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("simulation_direction", str(ctx.exception))
+
+    def test_missing_output_spec_is_rejected(self):
+        case = self._case()
+        del case["output"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("output", str(ctx.exception))
+
+    def test_missing_individual_output_timing_field_is_rejected(self):
+        case = self._case()
+        del case["output"]["interval_s"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("interval_s", str(ctx.exception))
+
+    def test_missing_output_quantity_is_rejected(self):
+        case = self._case()
+        del case["output"]["quantity"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("quantity", str(ctx.exception))
+
+    def test_zero_negative_and_fractional_timing_values_are_rejected(self):
+        for field in ("interval_s", "averaging_window_s", "sampling_interval_s"):
+            for value in (0, -1, 1500.5):
+                case = self._case()
+                case["output"][field] = value
+                with self.assertRaises(SystemExit) as ctx:
+                    GEN.command_text("WIND-UNI-002", case)
+                self.assertIn(field, str(ctx.exception))
+
+    def test_sampling_interval_exceeding_averaging_window_is_rejected(self):
+        case = self._case()
+        case["output"]["sampling_interval_s"] = 3600
+        case["output"]["averaging_window_s"] = 1800
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("sampling_interval_s", str(ctx.exception))
+
+    def test_averaging_window_exceeding_output_interval_is_rejected(self):
+        case = self._case()
+        case["output"]["averaging_window_s"] = 3600
+        case["output"]["interval_s"] = 1800
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("averaging_window_s", str(ctx.exception))
+
+    def test_command_output_uses_manifest_values_not_constants(self):
+        for case_id in (
+            "ADV-ANA-001",
+            "WIND-UNI-002",
+            "WIND-SHEAR-003",
+            "PBL-STABLE-004",
+            "PBL-NEUTRAL-005",
+            "PBL-UNSTABLE-006",
+            "DRY-007",
+            "WET-008",
+            "REPEAT-009",
+        ):
+            text = GEN.command_text(case_id, load_case(case_id))
+            self.assertEqual(int(GEN.namelist_value(text, "LDIRECT")), 1, case_id)
+            self.assertEqual(int(GEN.namelist_value(text, "LOUTSTEP")), 1800, case_id)
+            self.assertEqual(int(GEN.namelist_value(text, "LOUTAVER")), 1800, case_id)
+            self.assertEqual(int(GEN.namelist_value(text, "LOUTSAMPLE")), 300, case_id)
+
+    def test_changing_output_interval_changes_generated_command(self):
+        case = self._case()
+        case["output"]["interval_s"] = 3600
+        case["output"]["averaging_window_s"] = 3600
+        text = GEN.command_text("WIND-UNI-002", case)
+        self.assertEqual(int(GEN.namelist_value(text, "LOUTSTEP")), 3600)
+        self.assertEqual(int(GEN.namelist_value(text, "LOUTAVER")), 3600)
+        self.assertEqual(int(GEN.namelist_value(text, "LOUTSAMPLE")), 300)
+        self.assertIn("LOUTSTEP=           3600,\n", text)
+        self.assertNotEqual(text, GEN.command_text("WIND-UNI-002", self._case()))
+
+    def test_changing_direction_changes_generated_direction(self):
+        case = self._case()
+        case["simulation_direction"] = "backward"
+        text = GEN.command_text("WIND-UNI-002", case)
+        self.assertEqual(int(GEN.namelist_value(text, "LDIRECT")), -1)
+        forward = GEN.command_text("WIND-UNI-002", self._case())
+        self.assertNotEqual(text, forward)
+        self.assertIn("LDIRECT", text)
+        self.assertIn("LDIRECT", forward)
+
+    def test_checked_in_fixtures_preserve_effective_configuration(self):
+        for case_id in (
+            "ADV-ANA-001",
+            "WIND-UNI-002",
+            "WIND-SHEAR-003",
+            "PBL-STABLE-004",
+            "PBL-NEUTRAL-005",
+            "PBL-UNSTABLE-006",
+            "DRY-007",
+            "WET-008",
+            "RESTART-010",
+        ):
+            case = load_case("PBL-NEUTRAL-005" if case_id == "RESTART-010" else case_id)
+            text = GEN.command_text(case_id, case)
+            expected = (
+                REPO / "fixtures" / "corpus" / "fortran" / case_id / "COMMAND"
+            ).read_text(encoding="utf-8")
+            self.assertEqual(
+                text, expected, f"{case_id} COMMAND drifted after migration"
+            )
+
+    def test_no_hard_coded_direction_or_output_defaults_remain_in_generator(self):
+        source = (REPO / "scripts" / "corpus" / "generate_fortran_fixtures.py").read_text(
+            encoding="utf-8"
+        )
+        code = [
+            line for line in source.splitlines() if not line.lstrip().startswith("#")
+        ]
+        for key in ("LDIRECT", "LOUTSTEP", "LOUTAVER", "LOUTSAMPLE"):
+            self.assertIsNone(
+                re.search(rf"{key}\s*=\s*[+-]?\d", "\n".join(code)),
+                f"hard-coded {key} default remains in the generator path",
+            )
+
+    def test_verify_case_detects_direction_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            flex = tmp / "flexpart"
+            flex.mkdir()
+            tracer, aerosol = make_upstream_species(flex)
+            case = load_case("WIND-UNI-002")
+            out_root = tmp / "fortran"
+            out_root.mkdir()
+            prepared = GEN.validate_and_normalize_case_for_generation(
+                "WIND-UNI-002",
+                case,
+                case_file=str(REAL_CASES / "WIND-UNI-002.json"),
+                tracer=tracer,
+                aerosol=aerosol,
+            )
+            GEN.write_case_fixtures(prepared, out_root)
+            command_path = out_root / "WIND-UNI-002" / "COMMAND"
+            text = command_path.read_text(encoding="utf-8")
+            tampered = text.replace(" LDIRECT=               1,", " LDIRECT=              -1,")
+            self.assertNotEqual(text, tampered)
+            command_path.write_text(tampered, encoding="utf-8")
+            with self.assertRaises(SystemExit) as ctx:
+                GEN.verify_case("WIND-UNI-002", case, out_root / "WIND-UNI-002", 24)
+            self.assertIn("LDIRECT", str(ctx.exception))
 
 
 if __name__ == "__main__":

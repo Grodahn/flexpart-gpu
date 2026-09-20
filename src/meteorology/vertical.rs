@@ -83,6 +83,13 @@ pub struct NormalizedVerticalMotionProvenance {
     pub source_kind: NativeVerticalMotionKind,
     pub source_unit: NativeVerticalMotionUnit,
     pub source_sign: NativeVerticalMotionSign,
+    pub source_vertical_staggering: VerticalStaggering,
+    pub output_vertical_staggering: VerticalStaggering,
+    /// Stable machine-readable conversion identity. Numeric inputs such as
+    /// hybrid A/B and reference surface pressure remain in the canonical
+    /// Snapshot and are therefore reconstructible from the run inputs.
+    pub algorithm_id: String,
+    /// Human-readable summary; not the machine identity of the transform.
     pub conversion: String,
 }
 
@@ -567,16 +574,18 @@ pub fn normalize_vertical_motion(
         }
     }
 
-    let (vertical_staggering, values_ms, conversion) = match native_motion.kind {
+    let (vertical_staggering, values_ms, algorithm_id, conversion) = match native_motion.kind {
         NativeVerticalMotionKind::GeometricVelocity => (
             native_motion.vertical_staggering,
             native_motion.values.clone(),
+            "geometric_identity_v1".to_string(),
             "identity: already geometric m/s positive upward".to_string(),
         ),
         NativeVerticalMotionKind::PressureVelocityOmega => match native_motion.vertical_staggering {
             VerticalStaggering::LevelCenter => (
                 VerticalStaggering::LevelCenter,
                 pressure_velocity_centers_to_geometric(snapshot, geometry, &native_motion.values)?,
+                "omega_center_dzdp_v1".to_string(),
                 "omega[Pa/s] * dz/dp on model centers -> geometric m/s positive upward"
                     .to_string(),
             ),
@@ -587,6 +596,7 @@ pub fn normalize_vertical_motion(
                     geometry,
                     &native_motion.values,
                 )?,
+                "omega_interface_flexpart11_pinmconv_v1".to_string(),
                 "omega[Pa/s] * FLEXPART-style pinmconv dz/dp on W/interfaces -> geometric m/s positive upward"
                     .to_string(),
             ),
@@ -605,6 +615,7 @@ pub fn normalize_vertical_motion(
             (
                 VerticalStaggering::LevelInterface,
                 values_ms,
+                "etadot_hybrid_to_omega_then_flexpart11_pinmconv_v1".to_string(),
                 "eta-dot[1/s] -> centered FLEXPART-ready pressure velocity on interfaces; omega[Pa/s] * FLEXPART-style pinmconv dz/dp -> geometric m/s positive upward"
                     .to_string(),
             )
@@ -619,6 +630,9 @@ pub fn normalize_vertical_motion(
             source_kind: native_motion.kind,
             source_unit: native_motion.unit,
             source_sign: native_motion.sign,
+            source_vertical_staggering: native_motion.vertical_staggering,
+            output_vertical_staggering: vertical_staggering,
+            algorithm_id,
             conversion,
         },
     })

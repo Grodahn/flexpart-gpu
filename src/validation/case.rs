@@ -1120,14 +1120,14 @@ impl ValidationCaseManifest {
             });
         }
 
-        // Validate normalized release (geometry, timing, species, inventory)
-        self.validate_release()?;
-        self.validate_species_physics_contract()?;
-
-        // Validate integration
-        if self.integration.dt_s <= 0.0 {
+        // Validate integration before comparing release/met chronology.
+        Self::validate_timestamp(&self.integration.start, "integration.start")?;
+        if !self.integration.dt_s.is_finite() || self.integration.dt_s <= 0.0 {
             return Err(ValidationCaseError::InvalidPhysicsSwitches {
-                message: "integration.dt_s must be > 0".to_string(),
+                message: format!(
+                    "integration.dt_s must be finite and > 0, got {}",
+                    self.integration.dt_s
+                ),
             });
         }
         if self.integration.steps == 0 {
@@ -1135,8 +1135,18 @@ impl ValidationCaseManifest {
                 message: "integration.steps must be > 0".to_string(),
             });
         }
+        if !self.integration.total_s.is_finite() || self.integration.total_s <= 0.0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "integration.total_s must be finite and > 0, got {}",
+                    self.integration.total_s
+                ),
+            });
+        }
         let expected_total = self.integration.dt_s * self.integration.steps as f32;
-        if (self.integration.total_s - expected_total).abs() > 1e-6 {
+        if !expected_total.is_finite()
+            || (self.integration.total_s - expected_total).abs() > 1e-6
+        {
             return Err(ValidationCaseError::AmbiguousField {
                 field: "integration.total_s",
                 message: format!(
@@ -1145,6 +1155,11 @@ impl ValidationCaseManifest {
                 ),
             });
         }
+
+        // Validate normalized release and its chronology against the simulation.
+        self.validate_release()?;
+        self.validate_species_physics_contract()?;
+        self.validate_chronology()?;
 
         // Validate physics switches consistency with other fields
         self.validate_physics_consistency()?;
@@ -1411,12 +1426,140 @@ impl ValidationCaseManifest {
         Ok(())
     }
 
-    fn validate_timestamp(value: &str, field: &'static str) -> Result<(), ValidationCaseError> {
+    fn parse_timestamp_seconds(
+        value: &str,
+        field: &'static str,
+    ) -> Result<i64, ValidationCaseError> {
         if value.len() != 14 || !value.bytes().all(|b| b.is_ascii_digit()) {
             return Err(ValidationCaseError::AmbiguousField {
                 field,
                 message: format!("{value} must be YYYYMMDDHHMMSS (14 digits)"),
             });
+        }
+
+        let part = |start: usize, end: usize| -> u32 {
+            value[start..end]
+                .parse::<u32>()
+                .expect("timestamp digits were validated")
+        };
+        let year = part(0, 4);
+        let month = part(4, 6);
+        let day = part(6, 8);
+        let hour = part(8, 10);
+        let minute = part(10, 12);
+        let second = part(12, 14);
+
+        let leap = |y: u32| -> bool { y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) };
+        if year == 0 || !(1..=12).contains(&month) || hour > 23 || minute > 59 || second > 59 {
+            return Err(ValidationCaseError::AmbiguousField {
+                field,
+                message: format!("{value} is not a valid Gregorian YYYYMMDDHHMMSS timestamp"),
+            });
+        }
+        let month_days = [
+            31_u32,
+            if leap(year) { 29 } else { 28 },
+            31,
+            30,
+            31,
+            30,
+            31,
+            31,
+            30,
+            31,
+            30,
+            31,
+        ];
+        let max_day = month_days[(month - 1) as usize];
+        if day == 0 || day > max_day {
+            return Err(ValidationCaseError::AmbiguousField {
+                field,
+                message: format!(
+                    "{value} is not a valid Gregorian timestamp: day {day} is invalid for {year:04}-{month:02}"
+                ),
+            });
+        }
+
+        let y = i64::from(year) - 1;
+        let mut days = 365 * y + y / 4 - y / 100 + y / 400;
+        days += month_days[..(month - 1) as usize]
+            .iter()
+            .map(|d| i64::from(*d))
+            .sum::<i64>();
+        days += i64::from(day - 1);
+
+        Ok(days * 86_400
+            + i64::from(hour) * 3_600
+            + i64::from(minute) * 60
+            + i64::from(second))
+    }
+
+    fn validate_timestamp(value: &str, field: &'static str) -> Result<(), ValidationCaseError> {
+        Self::parse_timestamp_seconds(value, field).map(|_| ())
+    }
+
+    fn simulation_bounds_seconds(&self) -> Result<(f64, f64), ValidationCaseError> {
+        let start = Self::parse_timestamp_seconds(&self.integration.start, "integration.start")?
+            as f64;
+        let total = f64::from(self.integration.total_s);
+        if !total.is_finite() || total <= 0.0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "integration.total_s must be finite and > 0, got {}",
+                    self.integration.total_s
+                ),
+            });
+        }
+        let end = start + total;
+        let max = Self::parse_timestamp_seconds(
+            "99991231235959",
+            "integration.start",
+        )? as f64;
+        if end > max {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "integration.total_s",
+                message: format!(
+                    "simulation end exceeds the representable Gregorian timestamp range: start={} total_s={}",
+                    self.integration.start, self.integration.total_s
+                ),
+            });
+        }
+        Ok((start, end))
+    }
+
+    fn validate_chronology(&self) -> Result<(), ValidationCaseError> {
+        let (sim_start, sim_end) = self.simulation_bounds_seconds()?;
+        let check_inside = |
+            value: &str,
+            field: &'static str,
+        | -> Result<f64, ValidationCaseError> {
+            let instant = Self::parse_timestamp_seconds(value, field)? as f64;
+            if instant < sim_start || instant > sim_end {
+                return Err(ValidationCaseError::AmbiguousField {
+                    field,
+                    message: format!(
+                        "{value} lies outside simulation window starting {} with total_s={}",
+                        self.integration.start, self.integration.total_s
+                    ),
+                });
+            }
+            Ok(instant)
+        };
+
+        match &self.release.timing {
+            ReleaseTiming::Instant { at } => {
+                check_inside(at, "release.timing.at")?;
+            }
+            ReleaseTiming::Window { start, end } => {
+                let release_start = check_inside(start, "release.timing.start")?;
+                let release_end = check_inside(end, "release.timing.end")?;
+                if release_end < release_start {
+                    return Err(ValidationCaseError::AmbiguousField {
+                        field: "release.timing.end",
+                        message: format!("window end {end} must be >= start {start}"),
+                    });
+                }
+            }
         }
         Ok(())
     }
@@ -1481,15 +1624,6 @@ impl ValidationCaseManifest {
         match &release.timing {
             ReleaseTiming::Instant { at } => {
                 Self::validate_timestamp(at, "release.timing.at")?;
-                if at != &self.integration.start {
-                    return Err(ValidationCaseError::AmbiguousField {
-                        field: "release.timing.at",
-                        message: format!(
-                            "instant release {at} must equal integration start {}",
-                            self.integration.start
-                        ),
-                    });
-                }
             }
             ReleaseTiming::Window { start, end } => {
                 Self::validate_timestamp(start, "release.timing.start")?;
@@ -1725,20 +1859,31 @@ impl ValidationCaseManifest {
             });
         }
 
-        // Validate temporal coverage format (YYYYMMDDHHMMSS)
-        for (i, tc) in met.temporal_coverage.iter().enumerate() {
-            if tc.len() != 14 || !tc.bytes().all(|b| b.is_ascii_digit()) {
-                return Err(ValidationCaseError::AmbiguousField {
-                    field: "meteorology.temporal_coverage",
-                    message: format!("temporal_coverage[{}] must be YYYYMMDDHHMMSS", i),
-                });
-            }
-        }
-        // Start <= end
-        if met.temporal_coverage[0] > met.temporal_coverage[1] {
+        let coverage_start = Self::parse_timestamp_seconds(
+            &met.temporal_coverage[0],
+            "meteorology.temporal_coverage",
+        )? as f64;
+        let coverage_end = Self::parse_timestamp_seconds(
+            &met.temporal_coverage[1],
+            "meteorology.temporal_coverage",
+        )? as f64;
+        if coverage_end < coverage_start {
             return Err(ValidationCaseError::AmbiguousField {
                 field: "meteorology.temporal_coverage",
                 message: "temporal_coverage end must be >= start".to_string(),
+            });
+        }
+        let (sim_start, sim_end) = self.simulation_bounds_seconds()?;
+        if coverage_start > sim_start || coverage_end < sim_end {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "meteorology.temporal_coverage",
+                message: format!(
+                    "meteorology coverage {}..{} must cover the full simulation starting {} for {} s",
+                    met.temporal_coverage[0],
+                    met.temporal_coverage[1],
+                    self.integration.start,
+                    self.integration.total_s
+                ),
             });
         }
 
@@ -2453,6 +2598,20 @@ mod tests {
                     return Err(format!("{path}: string longer than {max_length}"));
                 }
             }
+            if let Some(pattern) = node.get("pattern").and_then(serde_json::Value::as_str) {
+                match pattern {
+                    "^[0-9]{14}$" => {
+                        if text.len() != 14 || !text.bytes().all(|b| b.is_ascii_digit()) {
+                            return Err(format!("{path}: string does not match {pattern}"));
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "{path}: schema test evaluator does not support pattern {other}"
+                        ));
+                    }
+                }
+            }
         }
 
         if let Some(number) = value.as_f64() {
@@ -3025,6 +3184,74 @@ mod tests {
             ),
             "unexpected: {err}"
         );
+    }
+
+    #[test]
+    fn gregorian_timestamp_validation_rejects_impossible_dates_and_accepts_leap_day() {
+        assert!(ValidationCaseManifest::validate_timestamp(
+            "20240229010203",
+            "integration.start"
+        )
+        .is_ok());
+        for bad in [
+            "20230229010203",
+            "20241301000000",
+            "20240431000000",
+            "20240101240000",
+            "20240101006000",
+            "00000101000000",
+        ] {
+            assert!(
+                ValidationCaseManifest::validate_timestamp(bad, "integration.start").is_err(),
+                "{bad} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn release_window_must_stay_inside_simulation_window() {
+        let mut manifest = make_minimal_manifest();
+        manifest.release.timing = ReleaseTiming::Window {
+            start: "20231231235959".to_string(),
+            end: "20240101000000".to_string(),
+        };
+        let err = manifest.validate().expect_err("release before simulation must fail");
+        assert!(err.to_string().contains("outside simulation window"));
+
+        let mut manifest = make_minimal_manifest();
+        manifest.release.timing = ReleaseTiming::Window {
+            start: "20240101003000".to_string(),
+            end: "20240101010001".to_string(),
+        };
+        let err = manifest.validate().expect_err("release after simulation must fail");
+        assert!(err.to_string().contains("outside simulation window"));
+    }
+
+    #[test]
+    fn real_weather_meteorology_must_cover_full_simulation_window() {
+        let mut raw = minimal_manifest_json();
+        raw["wind"] = serde_json::json!({
+            "profile": "real_weather",
+            "meteorology": {
+                "dataset_id": "test",
+                "version": "1",
+                "source_path": "path",
+                "digest": "manifest:path",
+                "temporal_coverage": ["20240101000001", "20240101020000"],
+                "horizontal_coord": "test",
+                "vertical_coord": "test",
+                "required_fields": ["u"],
+                "candidate_transformation": {"description": "d", "script": "s", "version": "v"},
+                "oracle_transformation": {"description": "d", "script": "s", "version": "v"}
+            }
+        });
+        let err = parse_json_value(&raw).expect_err("coverage starting late must fail");
+        assert!(err.to_string().contains("full simulation"));
+
+        raw["wind"]["meteorology"]["temporal_coverage"] =
+            serde_json::json!(["20231231230000", "20240101005959"]);
+        let err = parse_json_value(&raw).expect_err("coverage ending early must fail");
+        assert!(err.to_string().contains("full simulation"));
     }
 
     #[test]

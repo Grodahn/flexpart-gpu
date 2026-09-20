@@ -22,7 +22,7 @@ Start from `fixtures/corpus/corpus.json` (versioned index) and
   references under `reference/species-physics/`). Their checked-in machine-readable
   structural contract is `schemas/validation-case-v2.schema.json` (JSON Schema
   Draft 2020-12); cross-field scientific invariants remain enforced by
-  `src/validation/case.rs`. Units are documented per field. No candidate output
+  `src/validation/case.rs`. Timestamp chronology (Gregorian validity, release-window containment, and full meteorology coverage of the simulation interval) is enforced fail-closed by the Rust contract and mirrored by the raw-Python generator. Units are documented per field. No candidate output
   is used as a reference. The legacy v1 shape is frozen and rejected; see
   `cases/MIGRATION_NOTES.md` for the field-by-field v1 -> v2 mapping.
 - `fortran/<CASE>/`: versioned Fortran oracle inputs (`COMMAND`, `RELEASES`,

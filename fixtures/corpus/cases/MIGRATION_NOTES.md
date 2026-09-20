@@ -34,6 +34,23 @@ string. `wrapping_add_key0_v1` derives seed `i` as
 every repetition. The former `identical_repeats` side flag is forbidden.
 Rust deserialization, the raw-Python generator, the candidate-output audit,
 and the JSON Schema all reject unknown derivation values fail-closed.
+## Chronology and meteorology coverage
+
+Schema v2 timestamps use `YYYYMMDDHHMMSS`, but format alone is not treated as
+valid time. Rust and the raw-Python generation path now parse real Gregorian
+calendar dates (including leap-year/day validation) and fail closed on invalid
+months, days, hours, minutes, or seconds.
+
+`integration.start`, `dt_s`, `steps`, and `total_s` are validated together.
+`total_s` must equal `dt_s * steps`; the simulation end is derived from the
+validated start plus `total_s` rather than inferred from string ordering or a
+hard-coded calendar date. The raw-Python COMMAND generator now derives both
+`IBDATE`/`IBTIME` and `IEDATE`/`IETIME` from that integration block.
+
+Release instants/windows must lie completely inside the simulation interval.
+For real-weather cases, `meteorology.temporal_coverage` must be ordered, contain
+valid Gregorian timestamps, and cover the entire simulation interval. Coverage
+that starts even one second late or ends one second early is rejected.
 ## Species-dependent physics contracts
 
 `release.species.id` is no longer sufficient by itself. Every schema-v2 case

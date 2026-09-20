@@ -246,7 +246,8 @@
         "at": {
           "type": "string",
           "minLength": 14,
-          "maxLength": 14
+          "maxLength": 14,
+          "pattern": "^[0-9]{14}$"
         }
       },
       "required": [
@@ -264,12 +265,14 @@
         "start": {
           "type": "string",
           "minLength": 14,
-          "maxLength": 14
+          "maxLength": 14,
+          "pattern": "^[0-9]{14}$"
         },
         "end": {
           "type": "string",
           "minLength": 14,
-          "maxLength": 14
+          "maxLength": 14,
+          "pattern": "^[0-9]{14}$"
         }
       },
       "required": [
@@ -412,7 +415,8 @@
           "items": {
             "type": "string",
             "minLength": 14,
-            "maxLength": 14
+            "maxLength": 14,
+            "pattern": "^[0-9]{14}$"
           }
         },
         "horizontal_coord": {
@@ -605,7 +609,8 @@
         "start": {
           "type": "string",
           "minLength": 14,
-          "maxLength": 14
+          "maxLength": 14,
+          "pattern": "^[0-9]{14}$"
         },
         "dt_s": {
           "type": "number",

@@ -237,6 +237,76 @@ class OracleOverrideTest(unittest.TestCase):
         self.assertIn("turbulence_formulation", str(ctx.exception))
 
 
+class ChronologyFailClosedTest(unittest.TestCase):
+    def test_invalid_calendar_timestamp_rejected_and_leap_day_accepted(self):
+        self.assertEqual(
+            GEN._timestamp14("20240229010203", "TEST", "integration.start"),
+            "20240229010203",
+        )
+        for bad in (
+            "20230229010203",
+            "20241301000000",
+            "20240431000000",
+            "20240101240000",
+            "20240101006000",
+            "00000101000000",
+        ):
+            with self.subTest(value=bad):
+                with self.assertRaises(SystemExit):
+                    GEN._timestamp14(bad, "TEST", "integration.start")
+
+    def test_integration_dt_steps_total_must_agree(self):
+        case = copy.deepcopy(load_case("WIND-UNI-002"))
+        case["integration"]["steps"] -= 1
+        with self.assertRaises(SystemExit) as ctx:
+            GEN._required_integration("WIND-UNI-002", case)
+        self.assertIn("dt_s * steps", str(ctx.exception))
+
+    def test_release_must_stay_inside_simulation_window(self):
+        case = copy.deepcopy(load_case("WIND-UNI-002"))
+        case["release"]["timing"] = {
+            "kind": "window",
+            "start": "20231231235959",
+            "end": "20240101000000",
+        }
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.release_window_datetimes("WIND-UNI-002", case)
+        self.assertIn("outside simulation window", str(ctx.exception))
+
+        case = copy.deepcopy(load_case("WIND-UNI-002"))
+        case["release"]["timing"] = {
+            "kind": "window",
+            "start": "20240101003000",
+            "end": "20240101010001",
+        }
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.release_window_datetimes("WIND-UNI-002", case)
+        self.assertIn("outside simulation window", str(ctx.exception))
+
+    def test_real_weather_coverage_must_cover_full_simulation(self):
+        case = copy.deepcopy(load_case("ETEX-MINI-013"))
+        integration = GEN._required_integration("ETEX-MINI-013", case)
+        case["wind"]["meteorology"]["temporal_coverage"][0] = "19941023160001"
+        with self.assertRaises(SystemExit) as ctx:
+            GEN._required_meteorology("ETEX-MINI-013", case["wind"], integration)
+        self.assertIn("cover the full simulation", str(ctx.exception))
+
+        case = copy.deepcopy(load_case("ETEX-MINI-013"))
+        integration = GEN._required_integration("ETEX-MINI-013", case)
+        case["wind"]["meteorology"]["temporal_coverage"][1] = "19941024035959"
+        with self.assertRaises(SystemExit) as ctx:
+            GEN._required_meteorology("ETEX-MINI-013", case["wind"], integration)
+        self.assertIn("cover the full simulation", str(ctx.exception))
+
+    def test_command_dates_are_derived_from_integration_start(self):
+        case = copy.deepcopy(load_case("WIND-UNI-002"))
+        case["integration"]["start"] = "20240229010203"
+        text = GEN.command_text("WIND-UNI-002", case)
+        self.assertEqual(int(GEN.namelist_value(text, "IBDATE")), 20240229)
+        self.assertEqual(int(GEN.namelist_value(text, "IBTIME")), 10203)
+        self.assertEqual(int(GEN.namelist_value(text, "IEDATE")), 20240229)
+        self.assertEqual(int(GEN.namelist_value(text, "IETIME")), 20203)
+
 class MeteoPhysicsFailClosedTest(unittest.TestCase):
     """Fail-closed meteo generation: malformed input never decays to defaults.
 

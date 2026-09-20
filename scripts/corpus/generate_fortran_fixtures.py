@@ -39,6 +39,7 @@ import json
 import math
 import re
 import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -137,6 +138,13 @@ def _timestamp14(value, case_id: str, field: str) -> str:
         raise SystemExit(
             f"{case_id}: {field} must be YYYYMMDDHHMMSS (14 digits), got {value!r}"
         )
+    try:
+        datetime.strptime(value, "%Y%m%d%H%M%S")
+    except ValueError as exc:
+        raise SystemExit(
+            f"{case_id}: {field} is not a valid Gregorian YYYYMMDDHHMMSS timestamp: "
+            f"{value!r} ({exc})"
+        ) from exc
     return value
 
 
@@ -272,25 +280,34 @@ def release_window_datetimes(case_id: str, case: dict) -> tuple:
     timing = release.get("timing")
     if not isinstance(timing, dict):
         raise SystemExit(f"{case_id}: release.timing must be an object, got {timing!r}")
+
+    integration = _required_integration(case_id, case)
+    sim_start = datetime.strptime(integration["start"], "%Y%m%d%H%M%S")
+    sim_end = sim_start + timedelta(seconds=integration["total_s"])
+
     kind = timing.get("kind")
     if kind == "instant":
         stamp = _timestamp14(timing.get("at"), case_id, "release.timing.at")
-        integration = _required_integration(case_id, case)
-        if stamp != integration["start"]:
-            raise SystemExit(
-                f"{case_id}: release.timing.at {stamp} must equal integration.start "
-                f"{integration['start']}"
-            )
-        return stamp, stamp
-    if kind == "window":
+        release_start = release_end = datetime.strptime(stamp, "%Y%m%d%H%M%S")
+        start = end = stamp
+    elif kind == "window":
         start = _timestamp14(timing.get("start"), case_id, "release.timing.start")
         end = _timestamp14(timing.get("end"), case_id, "release.timing.end")
-        if end < start:
+        release_start = datetime.strptime(start, "%Y%m%d%H%M%S")
+        release_end = datetime.strptime(end, "%Y%m%d%H%M%S")
+        if release_end < release_start:
             raise SystemExit(
                 f"{case_id}: release.timing.end {end} must be >= start {start}"
             )
-        return start, end
-    raise SystemExit(f"{case_id}: unknown release.timing.kind {kind!r}")
+    else:
+        raise SystemExit(f"{case_id}: unknown release.timing.kind {kind!r}")
+
+    if release_start < sim_start or release_end > sim_end:
+        raise SystemExit(
+            f"{case_id}: release timing lies outside simulation window "
+            f"{integration['start']} + {integration['total_s']}s"
+        )
+    return start, end
 
 
 def flexpart_datetime(stamp: str) -> tuple:
@@ -428,24 +445,10 @@ def _validate_release_contract(case_id: str, case: dict, domain: dict) -> dict:
 
 
 def sim_end_date(start: str, total_s: int) -> tuple:
-    """Derive (IEDATE, IETIME) from the YYYYMMDDHHMMSS start plus seconds.
-
-    All corpus cases start at 2024-01-01 00:00:00 and run whole hours;
-    COMMAND IBDATE/IBTIME are fixed to 20240101 000000, so any other start
-    fails closed instead of writing a mismatched header.
-    """
-    if start != "20240101000000":
-        raise SystemExit(
-            f"unsupported integration.start {start!r}: COMMAND IBDATE/IBTIME are "
-            "fixed to 20240101 000000; only 20240101000000 is established"
-        )
-    hours, rem = divmod(total_s, 3600)
-    minutes, seconds = divmod(rem, 60)
-    if hours >= 100:
-        raise SystemExit(
-            f"corpus run exceeds COMMAND date arithmetic: {total_s}s"
-        )
-    return 20240101, hours * 10000 + minutes * 100 + seconds
+    """Derive (IEDATE, IETIME) from a validated Gregorian start plus seconds."""
+    start_dt = datetime.strptime(start, "%Y%m%d%H%M%S")
+    end_dt = start_dt + timedelta(seconds=total_s)
+    return int(end_dt.strftime("%Y%m%d")), int(end_dt.strftime("%H%M%S"))
 
 
 def outgrid_text(case: dict) -> str:
@@ -628,20 +631,22 @@ def _required_wind(case_id: str, case: dict) -> dict:
 
 
 def _required_integration(case_id: str, case: dict) -> dict:
-    """Fail-closed integration reader shared by COMMAND and AGECLASSES.
-
-    Both namelists derive durations from the same block; validating it once
-    here guarantees they cannot drift apart, and that ``sim_end_date`` never
-    receives a missing or implicit start stamp.
-    """
+    """Fail-closed integration reader shared by COMMAND, RELEASES and met coverage."""
     integration = case.get("integration")
     if not isinstance(integration, dict):
         raise SystemExit(f"{case_id}: integration must be an object, got {integration!r}")
-    start = integration.get("start")
-    if not isinstance(start, str):
+
+    start = _timestamp14(integration.get("start"), case_id, "integration.start")
+    dt_s = _finite_number(integration.get("dt_s"), case_id, "integration.dt_s")
+    if dt_s <= 0:
+        raise SystemExit(f"{case_id}: integration.dt_s must be > 0, got {dt_s!r}")
+
+    steps = integration.get("steps")
+    if isinstance(steps, bool) or not isinstance(steps, int) or steps <= 0:
         raise SystemExit(
-            f"{case_id}: integration.start must be a YYYYMMDDHHMMSS string, got {start!r}"
+            f"{case_id}: integration.steps must be a positive integer, got {steps!r}"
         )
+
     total_s = _finite_number(integration.get("total_s"), case_id, "integration.total_s")
     if total_s != int(total_s):
         raise SystemExit(
@@ -651,7 +656,25 @@ def _required_integration(case_id: str, case: dict) -> dict:
         raise SystemExit(
             f"{case_id}: integration.total_s must be positive, got {total_s!r}"
         )
-    return {"start": start, "total_s": int(total_s)}
+    expected_total = dt_s * steps
+    if not math.isfinite(expected_total) or abs(total_s - expected_total) > 1e-6:
+        raise SystemExit(
+            f"{case_id}: integration.total_s {total_s} must equal "
+            f"dt_s * steps ({dt_s} * {steps} = {expected_total})"
+        )
+    try:
+        datetime.strptime(start, "%Y%m%d%H%M%S") + timedelta(seconds=int(total_s))
+    except OverflowError as exc:
+        raise SystemExit(
+            f"{case_id}: simulation end exceeds Gregorian datetime range for "
+            f"start={start!r} total_s={total_s!r}"
+        ) from exc
+    return {
+        "start": start,
+        "dt_s": dt_s,
+        "steps": steps,
+        "total_s": int(total_s),
+    }
 
 
 def _required_simulation_direction(case_id: str, case: dict) -> str:
@@ -961,7 +984,7 @@ def _required_domain(case_id: str, case: dict) -> dict:
     return domain
 
 
-def _required_meteorology(case_id: str, wind: dict) -> dict:
+def _required_meteorology(case_id: str, wind: dict, integration: dict) -> dict:
     """Fail-closed reader for the real-weather meteorology METEO.txt metadata.
 
     The real-weather write path consumes ``dataset_id``, ``source_path``,
@@ -990,6 +1013,31 @@ def _required_meteorology(case_id: str, wind: dict) -> dict:
             raise SystemExit(
                 f"{case_id}: wind.meteorology.{field}.script must be a non-empty string, got {script!r}"
             )
+    coverage = meteorology.get("temporal_coverage")
+    if not isinstance(coverage, list) or len(coverage) != 2:
+        raise SystemExit(
+            f"{case_id}: wind.meteorology.temporal_coverage must contain exactly two timestamps"
+        )
+    coverage_start_s = _timestamp14(
+        coverage[0], case_id, "wind.meteorology.temporal_coverage[0]"
+    )
+    coverage_end_s = _timestamp14(
+        coverage[1], case_id, "wind.meteorology.temporal_coverage[1]"
+    )
+    coverage_start = datetime.strptime(coverage_start_s, "%Y%m%d%H%M%S")
+    coverage_end = datetime.strptime(coverage_end_s, "%Y%m%d%H%M%S")
+    if coverage_end < coverage_start:
+        raise SystemExit(
+            f"{case_id}: wind.meteorology.temporal_coverage end must be >= start"
+        )
+    sim_start = datetime.strptime(integration["start"], "%Y%m%d%H%M%S")
+    sim_end = sim_start + timedelta(seconds=integration["total_s"])
+    if coverage_start > sim_start or coverage_end < sim_end:
+        raise SystemExit(
+            f"{case_id}: wind.meteorology.temporal_coverage "
+            f"{coverage_start_s}..{coverage_end_s} must cover the full simulation "
+            f"{integration['start']} + {integration['total_s']}s"
+        )
     return meteorology
 
 
@@ -1168,6 +1216,7 @@ def command_text(case_id: str, case: dict) -> str:
     """
     integration = _required_integration(case_id, case)
     overrides = normalize_oracle_overrides(case_id, case)
+    ibdate, ibtime = flexpart_datetime(integration["start"])
     iedate, ietime = sim_end_date(integration["start"], integration["total_s"])
     ctl = float(overrides["ctl"])
     ifine = int(overrides["ifine"])
@@ -1179,8 +1228,8 @@ def command_text(case_id: str, case: dict) -> str:
     return (
         "&COMMAND\n"
         f" LDIRECT= {ldirect:>15},\n"
-        " IBDATE=         20240101,\n"
-        " IBTIME=           000000,\n"
+        f" IBDATE=         {ibdate},\n"
+        f" IBTIME=           {ibtime:06d},\n"
         f" IEDATE=         {iedate},\n"
         f" IETIME=           {ietime:06d},\n"
         f" LOUTSTEP={output['interval_s']:>15},\n"
@@ -1604,7 +1653,11 @@ def validate_and_normalize_case_for_generation(
 
     wind = _required_wind(case_id, case)
     profile = wind["profile"]
-    meteorology = _required_meteorology(case_id, wind) if profile == "real_weather" else None
+    meteorology = (
+        _required_meteorology(case_id, wind, integration)
+        if profile == "real_weather"
+        else None
+    )
 
     physics = mandatory_physics_switches(case_id, case)
     species_profile = _validate_species_physics_contract(case_id, case, physics)

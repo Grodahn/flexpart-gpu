@@ -67,8 +67,50 @@ trace points, not provider identifiers required by the canonical schema. Provide
 or NetCDF names remain #32 adapter concerns.
 
 The matrix distinguishes **normalized/source forcing** from **FLEXPART-derived diagnostics**.
-`Requirements::p0_complete()` describes the complete physics-ready P0 snapshot; capability
-requirement sets describe the subsets needed by the individual P0 paths.
+`Requirements::p0_complete()` describes the complete physics-ready P0 snapshot. The named
+physics requirement sets are derived directly from `FIELD_SPECS`; `advection` is deliberately
+wind-only (`wind_u`, `wind_v`, `vertical_velocity`), while thermodynamic fields belong to the
+PBL/convection/deposition/transform paths that actually consume them.
+
+The compact contract table below is mechanically tied to `FIELD_SPECS` in
+`src/meteorology/mod.rs`. Unit tests fail when a field, unit, sign, temporal policy or
+physics requirement-set membership drifts from this table. The detailed oracle trace tables
+that follow add scientific provenance and interpolation notes on top of this machine-checked core.
+
+<!-- BEGIN GENERATED FIELD SPEC MATRIX -->
+| Canonical id | Unit | Sign | Temporal policy | Machine requirement sets |
+| --- | --- | --- | --- | --- |
+| `wind_u` | `meter_per_second` | `positive_eastward` | `instantaneous` | `advection` |
+| `wind_v` | `meter_per_second` | `positive_northward` | `instantaneous` | `advection` |
+| `vertical_velocity` | `meter_per_second` | `positive_upward` | `instantaneous` | `advection` |
+| `temperature` | `kelvin` | `signed_scalar` | `instantaneous` | `convection`, `wet_deposition`, `settling` |
+| `specific_humidity` | `kilogram_per_kilogram` | `non_negative` | `instantaneous` | `convection`, `wet_deposition` |
+| `pressure` | `pascal` | `non_negative` | `instantaneous` | `convection` |
+| `air_density` | `kilogram_per_cubic_meter` | `non_negative` | `instantaneous` | `wet_deposition`, `settling` |
+| `density_gradient` | `kilogram_per_quartic_meter` | `signed_scalar` | `instantaneous` | — |
+| `surface_pressure` | `pascal` | `non_negative` | `instantaneous` | `convection`, `dry_deposition` |
+| `orography` | `meter` | `signed_scalar` | `static` | — |
+| `land_sea_mask` | `fraction` | `non_negative` | `static` | — |
+| `snow_depth` | `meter` | `non_negative` | `instantaneous` | `dry_deposition` |
+| `wind_u10m` | `meter_per_second` | `positive_eastward` | `instantaneous` | — |
+| `wind_v10m` | `meter_per_second` | `positive_northward` | `instantaneous` | — |
+| `temperature2m` | `kelvin` | `signed_scalar` | `instantaneous` | `convection`, `dry_deposition` |
+| `dewpoint2m` | `kelvin` | `signed_scalar` | `instantaneous` | `convection`, `dry_deposition` |
+| `large_scale_precipitation` | `kilogram_per_square_meter` | `non_negative` | `precipitation_amount` | `wet_deposition`, `dry_deposition` |
+| `convective_precipitation` | `kilogram_per_square_meter` | `non_negative` | `precipitation_amount` | `wet_deposition`, `dry_deposition` |
+| `total_cloud_cover` | `fraction` | `non_negative` | `instantaneous` | `wet_deposition` |
+| `cloud_total_water` | `kilogram_per_kilogram` | `non_negative` | `instantaneous` | `wet_deposition` |
+| `sensible_heat_flux` | `watt_per_square_meter` | `positive_upward_flux` | `surface_flux_rate` | — |
+| `surface_solar_radiation` | `watt_per_square_meter` | `non_negative` | `surface_flux_rate` | `dry_deposition` |
+| `surface_stress_eastward` | `newton_per_square_meter` | `positive_eastward` | `surface_flux_rate` | — |
+| `surface_stress_northward` | `newton_per_square_meter` | `positive_northward` | `surface_flux_rate` | — |
+| `friction_velocity` | `meter_per_second` | `non_negative` | `instantaneous` | `dry_deposition` |
+| `convective_velocity_scale` | `meter_per_second` | `non_negative` | `instantaneous` | — |
+| `mixing_height` | `meter` | `non_negative` | `instantaneous` | — |
+| `tropopause_height` | `meter` | `non_negative` | `instantaneous` | — |
+| `inverse_obukhov_length` | `per_meter` | `signed_scalar` | `instantaneous` | `dry_deposition` |
+| `land_use_fractions` | `fraction` | `non_negative` | `static` | `dry_deposition` |
+<!-- END GENERATED FIELD SPEC MATRIX -->
 
 ### Normalized/source forcing
 

@@ -1,5 +1,5 @@
 use flexpart_gpu::meteorology::{
-    ContractError, FieldId, Requirements, Snapshot, SCHEMA_ID, SCHEMA_VERSION,
+    ContractError, FieldId, Requirements, Snapshot, StorageOrder, SCHEMA_ID, SCHEMA_VERSION,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 /// digest from the embedded bytes so a stale pinned value (rather than a
 /// changed file) fails loudly.
 const REAL_DATA_FIXTURE_SHA256: &str =
-    "215801bd6a2465cbecf6c15541d304ad8b4ae6efad3922f37a14d0f6462c7166";
+    "a88723556201302298e17ab01eba2bedd830bc29f99548f50f52d27805f28b13";
 
 /// SHA-256 of the source native model-level GRIB, as documented in the
 /// provenance file and the original ETEX manifests.
@@ -68,22 +68,57 @@ fn checked_in_real_data_fixture_validates_and_roundtrips() {
         ))
     );
 
-    // All fields must share one valid time, matching the documented slice.
+    // All fields must share one valid time and one explicit linearization.
     for field in &snapshot.fields {
         assert_eq!(
             field.time.valid_time_epoch_seconds, REAL_DATA_EPOCH_SECONDS,
             "field {:?} must be valid at the documented slice time",
             field.id
         );
+        assert_eq!(
+            field.storage_order,
+            StorageOrder::XFastest,
+            "field {:?} must use the canonical x-fastest layout",
+            field.id
+        );
     }
 
-    // The half-level averaging convention documented in the provenance must
-    // hold for every full level: P_full(k) = 0.5 * (P_half(k) + P_half(k+1)).
+    // Native hybrid coefficients must remain at the 138 interfaces so #30 can
+    // reconstruct interface pressure for the actual local surface pressure.
     let vertical = &snapshot.vertical_coordinate;
     let interfaces = vertical
         .interface_values
         .as_deref()
         .expect("interfaces present");
+    let a = vertical
+        .hybrid_a_interface_pa
+        .as_deref()
+        .expect("native interface A coefficients present");
+    let b = vertical
+        .hybrid_b_interface
+        .as_deref()
+        .expect("native interface B coefficients present");
+    let reference_surface_pressure_pa = vertical
+        .reference_surface_pressure_pa
+        .expect("explicit hybrid reference surface pressure present");
+    assert_eq!(a.len(), 138);
+    assert_eq!(b.len(), 138);
+    assert_eq!(interfaces.len(), 138);
+    assert_eq!(a[0], 0.0);
+    assert_eq!(b[0], 0.0);
+    assert!(a[137].abs() <= 1.0e-3);
+    assert!((b[137] - 1.0).abs() <= 1.0e-6);
+    for index in 0..interfaces.len() {
+        let reconstructed =
+            a[index] as f64 + b[index] as f64 * reference_surface_pressure_pa as f64;
+        assert!(
+            (interfaces[index] as f64 - reconstructed).abs() <= 0.11,
+            "interface {index} reference pressure must satisfy a+b*ps"
+        );
+    }
+
+    // The half-level averaging convention documented in the provenance must
+    // hold for every full level: P_full(k) = 0.5 * (P_half(k) + P_half(k+1)).
     assert_eq!(interfaces.len(), vertical.level_values.len() + 1);
     assert_eq!(interfaces[0], 0.0);
     assert_eq!(*interfaces.last().expect("non-empty interfaces"), 101_325.0);

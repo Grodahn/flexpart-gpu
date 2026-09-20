@@ -55,9 +55,11 @@ pub struct VerticalCoordinate {
     #[serde(default)]
     pub interface_values: Option<Vec<f32>>,
     #[serde(default)]
-    pub hybrid_a_pa: Option<Vec<f32>>,
+    pub hybrid_a_interface_pa: Option<Vec<f32>>,
     #[serde(default)]
-    pub hybrid_b: Option<Vec<f32>>,
+    pub hybrid_b_interface: Option<Vec<f32>>,
+    #[serde(default)]
+    pub reference_surface_pressure_pa: Option<f32>,
     #[serde(default)]
     pub surface_pressure_dependency: Option<FieldId>,
 }
@@ -228,6 +230,17 @@ pub enum Axis {
     Z,
 }
 
+/// Linearization of the multidimensional canonical field values.
+///
+/// Schema v1 supports only X-fastest storage. For shape [nx, ny, nz],
+/// offset(x,y,z) = x + nx * (y + ny * z); for [nx, ny],
+/// offset(x,y) = x + nx * y.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StorageOrder {
+    XFastest,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum HorizontalStaggering {
@@ -283,6 +296,7 @@ pub struct Field {
     pub id: FieldId,
     pub shape: Vec<usize>,
     pub axis_order: Vec<Axis>,
+    pub storage_order: StorageOrder,
     pub unit: Unit,
     pub sign: SignConvention,
     pub horizontal_staggering: HorizontalStaggering,
@@ -332,7 +346,7 @@ impl Requirements {
     /// fixture (`fixtures/meteorology/era5-etex-native-v1.json`).
     ///
     /// The native ERA5 snapshot carries provider-agnostic wind, temperature,
-    /// humidity and surface pressure together with the full hybrid A/B
+    /// humidity and surface pressure together with the native hybrid interface A/B
     /// metadata. It intentionally does not satisfy [`Self::advection`]:
     /// reconstructed 3-D pressure and canonical upward-positive vertical
     /// velocity are hybrid transforms owned by #30 and are not part of this
@@ -531,8 +545,9 @@ fn validate_vertical(vertical: &VerticalCoordinate) -> Result<(), ContractError>
     match vertical.kind {
         VerticalCoordinateKind::GeometricHeight => {
             if vertical.reference == VerticalReference::ModelNative
-                || vertical.hybrid_a_pa.is_some()
-                || vertical.hybrid_b.is_some()
+                || vertical.hybrid_a_interface_pa.is_some()
+                || vertical.hybrid_b_interface.is_some()
+                || vertical.reference_surface_pressure_pa.is_some()
                 || vertical.surface_pressure_dependency.is_some()
             {
                 return Err(ContractError::InvalidVerticalCoordinate);
@@ -541,33 +556,66 @@ fn validate_vertical(vertical: &VerticalCoordinate) -> Result<(), ContractError>
         VerticalCoordinateKind::Pressure => {
             if vertical.reference != VerticalReference::ModelNative
                 || vertical.level_values.iter().any(|value| *value <= 0.0)
-                || vertical.hybrid_a_pa.is_some()
-                || vertical.hybrid_b.is_some()
+                || vertical.hybrid_a_interface_pa.is_some()
+                || vertical.hybrid_b_interface.is_some()
+                || vertical.reference_surface_pressure_pa.is_some()
                 || vertical.surface_pressure_dependency.is_some()
             {
                 return Err(ContractError::InvalidVerticalCoordinate);
             }
         }
         VerticalCoordinateKind::HybridSigmaPressure => {
+            let interfaces = vertical
+                .interface_values
+                .as_ref()
+                .ok_or(ContractError::InvalidVerticalCoordinate)?;
             let a = vertical
-                .hybrid_a_pa
+                .hybrid_a_interface_pa
                 .as_ref()
                 .ok_or(ContractError::InvalidVerticalCoordinate)?;
             let b = vertical
-                .hybrid_b
+                .hybrid_b_interface
                 .as_ref()
                 .ok_or(ContractError::InvalidVerticalCoordinate)?;
+            let reference_surface_pressure_pa = vertical
+                .reference_surface_pressure_pa
+                .ok_or(ContractError::InvalidVerticalCoordinate)?;
             if vertical.reference != VerticalReference::ModelNative
-                || a.len() != vertical.level_values.len()
-                || b.len() != vertical.level_values.len()
+                || a.len() != vertical.level_values.len() + 1
+                || b.len() != vertical.level_values.len() + 1
+                || interfaces.len() != vertical.level_values.len() + 1
                 || a.iter().chain(b.iter()).any(|value| !value.is_finite())
+                || !reference_surface_pressure_pa.is_finite()
+                || reference_surface_pressure_pa <= 0.0
                 || vertical.surface_pressure_dependency != Some(FieldId::SurfacePressure)
             {
                 return Err(ContractError::InvalidVerticalCoordinate);
             }
+
+            for ((interface_pressure, a_pa), b_fraction) in
+                interfaces.iter().zip(a.iter()).zip(b.iter())
+            {
+                let reconstructed = *a_pa + *b_fraction * reference_surface_pressure_pa;
+                if !vertical_close(*interface_pressure, reconstructed) {
+                    return Err(ContractError::InvalidVerticalCoordinate);
+                }
+            }
+            for (level_pressure, half_levels) in
+                vertical.level_values.iter().zip(interfaces.windows(2))
+            {
+                let reconstructed = 0.5 * (half_levels[0] + half_levels[1]);
+                if !vertical_close(*level_pressure, reconstructed) {
+                    return Err(ContractError::InvalidVerticalCoordinate);
+                }
+            }
         }
     }
     Ok(())
+}
+
+fn vertical_close(actual: f32, expected: f32) -> bool {
+    let tolerance = 0.05_f32.max(expected.abs() * 1.0e-6);
+    (actual - expected).abs() <= tolerance
 }
 
 fn monotonic(values: &[f32], ordering: VerticalOrdering) -> bool {
@@ -674,6 +722,7 @@ mod tests {
             axis_order: vec![Axis::X, Axis::Y, Axis::Z],
             unit: id.unit(),
             sign: id.sign(),
+            storage_order: StorageOrder::XFastest,
             horizontal_staggering: HorizontalStaggering::CellCenter,
             vertical_staggering: VerticalStaggering::LevelCenter,
             time: instant(),
@@ -699,8 +748,9 @@ mod tests {
                 ordering: VerticalOrdering::Decreasing,
                 level_values: vec![90_000.0, 80_000.0],
                 interface_values: None,
-                hybrid_a_pa: None,
-                hybrid_b: None,
+                hybrid_a_interface_pa: None,
+                hybrid_b_interface: None,
+                reference_surface_pressure_pa: None,
                 surface_pressure_dependency: None,
             },
             fields: vec![

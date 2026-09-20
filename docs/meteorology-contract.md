@@ -21,7 +21,8 @@ The Rust implementation lives in src/meteorology/mod.rs.
 ## Canonical invariants
 
 - Canonical axes are explicit. Schema v1 serializes volume fields as X,Y,Z and surface
-  fields as X,Y.
+  fields as X,Y. Every field also declares `storage_order`; schema v1 supports `x_fastest`,
+  with 3-D offset `x + nx * (y + ny * z)` and 2-D offset `x + nx * y`.
 - Units and sign conventions are part of the field contract and are validated.
 - Surface sensible heat flux is positive upward at the canonical boundary. This matches
   the PBL API in src/io/pbl_params.rs; ECMWF/provider conventions must be converted by
@@ -31,8 +32,11 @@ The Rust implementation lives in src/meteorology/mod.rs.
 - Precipitation is represented as water-equivalent interval total in kg/m2, or as an
   explicit accumulation with reset metadata. A scalar with unknown accumulation window
   is invalid.
-- Hybrid coordinates carry A/B coefficients and an explicit dependency on canonical
-  surface_pressure. #30 owns the actual transformation.
+- Hybrid coordinates carry the native **interface/half-level** A/B coefficients, an explicit
+  reference surface pressure used only to make serialized reference pressures checkable, and an
+  explicit dependency on canonical surface_pressure. #30 owns reconstruction at the actual local
+  surface pressure. Full-level coefficients are derived from adjacent interfaces rather than stored
+  as a lossy substitute.
 - Missing/non-finite values are rejected by schema-v1 validation rather than silently
   substituted.
 - Unknown calendars or enum values fail deserialization. Supported calendars in v1 are
@@ -117,8 +121,9 @@ Implemented:
   independently sourced ERA5/ETEX corpus
   (fixtures/meteorology/era5-etex-native-v1.json + .provenance.json): 2x2 cells,
   137 native levels, 1994-10-23 15:00 UTC, fields wind_u/wind_v/temperature/
-  specific_humidity/surface_pressure, with full hybrid A/B metadata normalized per the
-  FLEXPART 11.1 half-level averaging convention;
+  specific_humidity/surface_pressure, with all 138 native hybrid interface A/B coefficients
+  preserved and reference full-level pressures checked against the FLEXPART 11.1 half-level
+  averaging convention;
 - Requirements::real_data_native_levels() covering exactly the represented fields;
   the real-data fixture intentionally does not satisfy Requirements::advection() because
   reconstructed 3-D pressure and upward-positive vertical velocity are #30 transforms;

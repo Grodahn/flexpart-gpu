@@ -283,8 +283,9 @@ def main():
         "ordering": "increasing",
         "level_values": [float(value) for value in level_values],
         "interface_values": [float(value) for value in interface_values],
-        "hybrid_a_pa": [float(value) for value in a_full],
-        "hybrid_b": [float(value) for value in b_full],
+        "hybrid_a_interface_pa": [float(value) for value in a_half],
+        "hybrid_b_interface": [float(value) for value in b_half],
+        "reference_surface_pressure_pa": REFERENCE_SURFACE_PRESSURE_PA,
         "surface_pressure_dependency": "surface_pressure",
     }
 
@@ -322,6 +323,7 @@ def main():
             "id": name,
             "shape": shape,
             "axis_order": axes,
+            "storage_order": "x_fastest",
             "unit": unit,
             "sign": sign,
             "horizontal_staggering": "cell_center",
@@ -399,7 +401,7 @@ def main():
             "vertical": {
                 "native_levels": NATIVE_LEVELS,
                 "selected_levels": "1..137 (all native levels)",
-                "coordinate": "native ERA5 hybrid sigma-pressure, half-level a (Pa)/b plus full-level a/b as 0.5*(half(k)+half(k+1)) following windfields_mod.f90:845-846",
+                "coordinate": "native ERA5 hybrid sigma-pressure with 138 native half-level/interface a (Pa)/b coefficients; reference full-level pressures are 0.5*(p_half(k)+p_half(k+1)) following windfields_mod.f90:845-846",
                 "reference_surface_pressure_pa": REFERENCE_SURFACE_PRESSURE_PA,
             },
         },
@@ -415,7 +417,8 @@ def main():
             "native north-to-south latitude order reordered to canonical south-to-north; Y index 0 is ylat0=48.0",
             "provider paramId (130/131/132/133) mapped to canonical temperature/wind_u/wind_v/specific_humidity; surface pressure read from the checked-in surface archive",
             "no numeric unit conversion: ERA5 model-level temperature is K, u/v are m/s, specific humidity is kg/kg, surface pressure from the ARCO-ERA5 archive is Pa",
-            "vertical metadata taken verbatim from the native PV records (a in Pa, b dimensionless); full-level coefficients derived by half-level averaging; level_values/interface_values are the explicit reference pressures a+b*101325 Pa",
+            "native 138 half-level/interface A/B coefficients are preserved explicitly from the PV records (a in Pa, b dimensionless); interface_values are a+b*101325 Pa and level_values are adjacent-interface means at the same explicit reference surface pressure",
+            "field values are serialized with canonical storage_order=x_fastest: x + nx*(y + ny*z) for 3-D and x + nx*y for 2-D",
             "time expressed as UTC epoch seconds; calendar gregorian; temporal kind instantaneous",
         ],
         "oracle_reference": {

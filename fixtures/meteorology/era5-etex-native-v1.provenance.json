@@ -5,8 +5,8 @@
   },
   "artifact": {
     "path": "fixtures/meteorology/era5-etex-native-v1.json",
-    "sha256": "215801bd6a2465cbecf6c15541d304ad8b4ae6efad3922f37a14d0f6462c7166",
-    "bytes": 37286,
+    "sha256": "a88723556201302298e17ab01eba2bedd830bc29f99548f50f52d27805f28b13",
+    "bytes": 37544,
     "generated_by": "scripts/fixtures/extract_era5_etex_native_v1.py",
     "generated_at_git_revision": "637217da2ad3",
     "generator_environment": {
@@ -61,14 +61,14 @@
     "horizontal": {
       "nx": 2,
       "ny": 2,
-      "xlon0_deg": -2.0,
-      "ylat0_deg": 48.0,
+      "xlon0_deg": -2,
+      "ylat0_deg": 48,
       "longitudes_deg": [
-        -2.0,
+        -2,
         -1.75
       ],
       "latitudes_deg": [
-        48.0,
+        48,
         48.25
       ],
       "source_lon_indices": [
@@ -88,8 +88,8 @@
     "vertical": {
       "native_levels": 137,
       "selected_levels": "1..137 (all native levels)",
-      "coordinate": "native ERA5 hybrid sigma-pressure, half-level a (Pa)/b plus full-level a/b as 0.5*(half(k)+half(k+1)) following windfields_mod.f90:845-846",
-      "reference_surface_pressure_pa": 101325.0
+      "coordinate": "native ERA5 hybrid sigma-pressure with 138 native half-level/interface a (Pa)/b coefficients; reference full-level pressures are adjacent half-level pressure means following windfields_mod.f90:845-846",
+      "reference_surface_pressure_pa": 101325
     }
   },
   "represented_fields": [
@@ -109,7 +109,8 @@
     "native north-to-south latitude order reordered to canonical south-to-north; Y index 0 is ylat0=48.0",
     "provider paramId (130/131/132/133) mapped to canonical temperature/wind_u/wind_v/specific_humidity; surface pressure read from the checked-in surface archive",
     "no numeric unit conversion: ERA5 model-level temperature is K, u/v are m/s, specific humidity is kg/kg, surface pressure from the ARCO-ERA5 archive is Pa",
-    "vertical metadata taken verbatim from the native PV records (a in Pa, b dimensionless); full-level coefficients derived by half-level averaging; level_values/interface_values are the explicit reference pressures a+b*101325 Pa",
+    "native 138 half-level/interface A/B coefficients are preserved explicitly from the PV records (a in Pa, b dimensionless); interface_values are a+b*101325 Pa and level_values are adjacent-interface means at the same explicit reference surface pressure",
+    "field values use canonical storage_order=x_fastest: x + nx*(y + ny*z) for 3-D and x + nx*y for 2-D",
     "time expressed as UTC epoch seconds; calendar gregorian; temporal kind instantaneous"
   ],
   "oracle_reference": {

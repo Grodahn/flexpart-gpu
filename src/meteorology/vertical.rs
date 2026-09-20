@@ -24,9 +24,14 @@ pub enum NativeVerticalMotionKind {
     GeometricVelocityUpward,
     /// Pressure velocity omega = dp/dt in Pa/s.
     PressureVelocityOmega,
-    /// Native eta-coordinate tendency d(eta)/dt in 1/s, positive toward
-    /// increasing eta.
-    EtaCoordinateVelocity,
+    /// Native eta-coordinate tendency d(eta)/dt in 1/s, explicitly positive
+    /// toward increasing eta. Conversion support is enabled only after the
+    /// pinned FLEXPART 11.1 oracle path confirms this convention.
+    EtaCoordinateVelocityPositiveIncreasing,
+    /// Native eta-coordinate tendency d(eta)/dt in 1/s, explicitly positive
+    /// toward decreasing eta. Conversion support is enabled only after the
+    /// pinned FLEXPART 11.1 oracle path confirms this convention.
+    EtaCoordinateVelocityPositiveDecreasing,
 }
 
 /// Native vertical-motion values plus the semantics needed to normalize them.

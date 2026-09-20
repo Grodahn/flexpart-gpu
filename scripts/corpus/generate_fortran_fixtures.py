@@ -29,6 +29,7 @@ Usage:
 """
 
 import argparse
+import copy
 import hashlib
 import json
 import math
@@ -59,6 +60,12 @@ RECEPTORS_ZERO = """************************************************************
 *******************************************************************************
                 0
 """
+
+RESTART_NOTE = (
+    "Oracle-only restart illustration: rerun with IPIN=1 and LOUTRESTART set "
+    "after a first run that wrote restart_* files (restart_mod.f90). "
+    "No paired candidate restart exists (candidate has no restart API).\n"
+)
 
 
 def case_total_mass_kg(case_id: str, case: dict) -> float:
@@ -407,6 +414,109 @@ def mandatory_physics_switches(case_id: str, case: dict) -> dict:
     return physics
 
 
+def _required_particle_count(case_id: str, release: dict) -> int:
+    """Fail-closed release.particle_count reader: a positive strict integer."""
+    value = release.get("particle_count")
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise SystemExit(
+            f"{case_id}: release.particle_count must be a positive integer, got {value!r}"
+        )
+    return value
+
+
+def _required_domain(case_id: str, case: dict) -> dict:
+    """Fail-closed domain reader for the OUTGRID/INPUT_DERIVATION fields.
+
+    OUTGRID consumes ``xlon0_deg``, ``ylat0_deg``, ``nx``, ``ny``,
+    ``dx_deg``, ``dy_deg`` via format specifiers; validating them here (once,
+    in the preflight) keeps a missing or mistyped field from surfacing as a
+    crash mid-write.
+    """
+    domain = case.get("domain")
+    if not isinstance(domain, dict):
+        raise SystemExit(f"{case_id}: domain must be an object, got {domain!r}")
+    for field in ("xlon0_deg", "ylat0_deg", "dx_deg", "dy_deg"):
+        _finite_number(domain.get(field), case_id, f"domain.{field}")
+    for field in ("nx", "ny"):
+        value = domain.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise SystemExit(
+                f"{case_id}: domain.{field} must be a positive integer, got {value!r}"
+            )
+    return domain
+
+
+def _required_meteorology(case_id: str, wind: dict) -> dict:
+    """Fail-closed reader for the real-weather meteorology METEO.txt metadata.
+
+    The real-weather write path consumes ``dataset_id``, ``source_path``,
+    ``version`` and both transformation ``script`` entries; if any is missing
+    or mistyped the case must fail in preflight, not while writing fixtures.
+    """
+    meteorology = wind.get("meteorology")
+    if not isinstance(meteorology, dict):
+        raise SystemExit(
+            f"{case_id}: wind.meteorology must be an object for real_weather, got {meteorology!r}"
+        )
+    for field in ("dataset_id", "source_path", "version"):
+        value = meteorology.get(field)
+        if not isinstance(value, str) or not value:
+            raise SystemExit(
+                f"{case_id}: wind.meteorology.{field} must be a non-empty string, got {value!r}"
+            )
+    for field in ("candidate_transformation", "oracle_transformation"):
+        transformation = meteorology.get(field)
+        if not isinstance(transformation, dict):
+            raise SystemExit(
+                f"{case_id}: wind.meteorology.{field} must be an object, got {transformation!r}"
+            )
+        script = transformation.get("script")
+        if not isinstance(script, str) or not script:
+            raise SystemExit(
+                f"{case_id}: wind.meteorology.{field}.script must be a non-empty string, got {script!r}"
+            )
+    return meteorology
+
+
+def _required_surface(case_id: str, case: dict, physics: dict):
+    """Validate surface semantics and return the surface block (dict or None).
+
+    Single source for the surface contract shared by the preflight and the
+    synthetic-GRIB flag builder:
+
+    - surface must be ``null`` or an object; a non-null falsey value
+      (``false``, ``0``, ``[]``, ``""``) is rejected, never normalized to ``{}``.
+    - ``surface: null`` is accepted only when the declared physics do not
+      require surface data (turbulence and deposition off), mirroring the
+      Rust ``validate_physics_consistency`` contract.
+    """
+    surface_required = (
+        physics["turbulence"] or physics["dry_deposition"] or physics["wet_deposition"]
+    )
+    surface = case.get("surface")
+    if surface is not None and not isinstance(surface, dict):
+        raise SystemExit(
+            f"{case_id}: surface must be null or an object, got {surface!r}"
+        )
+    if surface is None and surface_required:
+        raise SystemExit(
+            f"{case_id}: surface is null but the declared physics "
+            "(physics_switches.turbulence/dry_deposition/wet_deposition) "
+            "require surface data; refusing to substitute analytic defaults"
+        )
+    return surface
+
+
+def real_weather_meteo_txt(meteorology: dict) -> str:
+    """METEO.txt provenance header for a validated real-weather case."""
+    return (
+        f"# Real-weather case: meteorology from native ERA5 fixture at {meteorology['source_path']}\n"
+        f"# Dataset: {meteorology['dataset_id']} version {meteorology['version']}\n"
+        f"# Candidate transformation: {meteorology['candidate_transformation']['script']}\n"
+        f"# Oracle transformation: {meteorology['oracle_transformation']['script']}\n"
+    )
+
+
 def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
     """Canonical v2 Oracle override reader (no hidden defaults, no v1).
 
@@ -593,11 +703,7 @@ def releases_text(case_id: str, case: dict, specnum: int) -> str:
     idate2, itime2 = flexpart_datetime(end_stamp)
     lon1, lon2, lat1, lat2 = release_lonlat(case_id, case)
     z1, z2, zkind = release_vertical(case_id, case)
-    particles = release.get("particle_count")
-    if isinstance(particles, bool) or not isinstance(particles, int) or particles <= 0:
-        raise SystemExit(
-            f"{case_id}: release.particle_count must be a positive integer, got {particles!r}"
-        )
+    particles = _required_particle_count(case_id, release)
     return (
         "&RELEASES_CTRL\n"
         " NSPEC      =           1,\n"
@@ -670,23 +776,8 @@ def meteo_args(case_id: str, case: dict) -> str:
         )
 
     physics = mandatory_physics_switches(case_id, case)
-    surface_required = (
-        physics["turbulence"]
-        or physics["dry_deposition"]
-        or physics["wet_deposition"]
-    )
-    surface = case.get("surface")
-    if surface is not None and not isinstance(surface, dict):
-        raise SystemExit(
-            f"{case_id}: surface must be null or an object, got {surface!r}"
-        )
+    surface = _required_surface(case_id, case, physics)
     if surface is None:
-        if surface_required:
-            raise SystemExit(
-                f"{case_id}: surface is null but the declared physics "
-                "(physics_switches.turbulence/dry_deposition/wet_deposition) "
-                "require surface data; refusing to substitute analytic defaults"
-            )
         sshf = ANALYTIC_DEFAULT_SENSIBLE_HEAT_FLUX_W_M2
         blh = ANALYTIC_DEFAULT_MIXING_HEIGHT_M
         lsp = ANALYTIC_DEFAULT_PRECIP_LARGE_SCALE_MM_H
@@ -895,6 +986,222 @@ def is_real_weather(case_id: str, case: dict) -> bool:
     return _required_wind(case_id, case)["profile"] == "real_weather"
 
 
+def _load_case(case_id: str) -> tuple:
+    """Load the schema-v2 case document and the source file name for it.
+
+    RESTART-010 has no dedicated document: it reuses the neutral release/grid
+    shape from PBL-NEUTRAL-005 (oracle-only restart illustration) while the
+    recorded ``case_file`` name stays RESTART-010.json.
+    """
+    case_path = CASES / f"{case_id}.json"
+    if case_path.is_file():
+        return json.loads(case_path.read_text(encoding="utf-8")), case_path
+    case = json.loads((CASES / "PBL-NEUTRAL-005.json").read_text(encoding="utf-8"))
+    return case, case_path
+
+
+def validate_and_normalize_case_for_generation(
+    case_id: str, case: dict, case_file, tracer, aerosol
+) -> dict:
+    """Complete fail-closed preflight of one schema-v2 case.
+
+    Runs every validation the generation path depends on and computes all
+    output content *before* any filesystem write, so a malformed input can
+    never leave a partially updated fixture directory:
+
+        validate once -> write many
+
+    Fields validated here (each raising SystemExit naming the case and the
+    offending field): schema version; Oracle command overrides including the
+    Oracle/physics agreement; integration; release (geometry, timing,
+    particle count, species id, total mass); wind profile; physics switches;
+    surface semantics; domain (OUTGRID fields); species identity and upstream
+    source availability; deposition/species selection for SPECIES_040; and
+    the real-weather meteorology metadata. The returned normalized dict is
+    the only input the write phase consumes.
+    """
+    if case.get("schema_version") != 2 or "version" in case:
+        raise SystemExit(
+            f"{case_id}: unsupported schema: expected only schema_version 2, "
+            f"got schema_version={case.get('schema_version')!r} "
+            f"version={case.get('version')!r} (v1 frozen, see MIGRATION_NOTES.md)"
+        )
+
+    oracle = normalize_oracle_overrides(case_id, case)
+
+    integration = _required_integration(case_id, case)
+
+    release = _required_release(case_id, case)
+    mass_kg = case_total_mass_kg(case_id, case)
+    release_window_datetimes(case_id, case)
+    lon1, lon2, lat1, lat2 = release_lonlat(case_id, case)
+    z1, z2, _zkind = release_vertical(case_id, case)
+    _required_particle_count(case_id, release)
+    specnum = species_number_for_case(case_id, case)
+
+    wind = _required_wind(case_id, case)
+    profile = wind["profile"]
+    meteorology = _required_meteorology(case_id, wind) if profile == "real_weather" else None
+
+    physics = mandatory_physics_switches(case_id, case)
+    _required_surface(case_id, case, physics)
+
+    domain = _required_domain(case_id, case)
+
+    if specnum == 40:
+        if aerosol is None or not aerosol.is_file():
+            raise SystemExit(f"{case_id}: upstream aerosol species not found: {aerosol}")
+        if case_id not in ("DRY-007", "WET-008"):
+            raise SystemExit(
+                f"{case_id}: SPECIES_040 derivation is only established for DRY-007/WET-008"
+            )
+        if case_id == "DRY-007" and (
+            not physics["dry_deposition"] or physics["wet_deposition"]
+        ):
+            raise SystemExit(
+                f"{case_id}: SPECIES_040 dry derivation requires "
+                "physics_switches.dry_deposition=True and wet_deposition=False "
+                "(the derived species carries PDRYVEL and no wet scavenging)"
+            )
+        if case_id == "WET-008" and not physics["wet_deposition"]:
+            raise SystemExit(
+                f"{case_id}: SPECIES_040 wet derivation requires "
+                "physics_switches.wet_deposition=True (the derived species "
+                "scavenges wetly)"
+            )
+        species_text, species_provenance = species_for_case(case_id, tracer, aerosol)
+        species_source = None
+    elif specnum == 24:
+        if tracer is None or not tracer.is_file():
+            raise SystemExit(f"{case_id}: upstream tracer species not found: {tracer}")
+        species_text, species_provenance = None, None
+        species_source = str(tracer)
+    else:
+        raise SystemExit(
+            f"{case_id}: no established SPECIES derivation for SPECIES_{specnum:03d} "
+            "(corpus uses SPECIES_024 and SPECIES_040)"
+        )
+
+    meteo_args_line = meteo_args(case_id, case)
+    if profile == "real_weather":
+        meteo_args_txt = "\n"
+        meteo_txt = real_weather_meteo_txt(meteorology)
+    else:
+        meteo_args_txt = meteo_args_line + "\n"
+        meteo_txt = (
+            "python3 scripts/generate_synthetic_grib.py "
+            f"--output-dir target/corpus/meteo/{case_id} {meteo_args_line}\n"
+        )
+
+    derivation = {
+        "case_file": f"fixtures/corpus/cases/{Path(case_file).name}",
+        "release_lon_deg": lon1,
+        "release_lat_deg": lat1,
+        "release_z_m": z1,
+        "particle_count": release["particle_count"],
+        "candidate_mass_kg": mass_kg,
+        "mass_conversion": "MASS_g = mass_kg * 1000 (FLEXPART MASS is in grams)",
+        "oracle_mass_g": mass_kg * KG_TO_G,
+        "outgrid_from_domain": {
+            key: domain[key]
+            for key in ("xlon0_deg", "ylat0_deg", "nx", "ny", "dx_deg", "dy_deg")
+        },
+        "outheights_m": STANDARD_OUTHEIGHTS,
+        "outheights_note": "Standard concentration output levels shared by all "
+        "synthetic cases; independent of wind-field levels.",
+    }
+    return {
+        "case_id": case_id,
+        "case": copy.deepcopy(case),
+        "schema_version": 2,
+        "specnum": specnum,
+        "integration": integration,
+        "oracle": oracle,
+        "physics": physics,
+        "wind_profile": profile,
+        "meteorology": meteorology,
+        "files": {
+            "COMMAND": command_text(case_id, case),
+            "RELEASES": releases_text(case_id, case, specnum),
+            "OUTGRID": outgrid_text(case),
+            "AGECLASSES": ageclass_text(case_id, case),
+            "RECEPTORS": RECEPTORS_ZERO,
+            "SPECIES": species_text,
+            "SPECIES_PROVENANCE": species_provenance,
+            "SPECIES_SOURCE": species_source,
+            "METEO_ARGS.txt": meteo_args_txt,
+            "METEO.txt": meteo_txt,
+            "INPUT_DERIVATION.json": json.dumps(derivation, indent=2) + "\n",
+            "RESTART-NOTE.txt": RESTART_NOTE if case_id == "RESTART-010" else None,
+        },
+    }
+
+
+def prepare_cases(desired, tracer, aerosol) -> list:
+    """Preflight the whole generation set before any filesystem write.
+
+    Loads and fully validates every case (schema, oracle overrides,
+    integration, release, wind, physics, surface, domain, species, and
+    real-weather meteorology where applicable). Returns one normalized dict
+    per case, ready for write_case_fixtures(). A single malformed case aborts
+    here with every fixture directory untouched, because nothing has been
+    written yet.
+    """
+    prepared = []
+    for case_id in desired:
+        case, case_path = _load_case(case_id)
+        prepared.append(
+            validate_and_normalize_case_for_generation(
+                case_id,
+                case,
+                case_file=str(case_path),
+                tracer=tracer,
+                aerosol=aerosol,
+            )
+        )
+    return prepared
+
+
+def write_case_fixtures(normalized: dict, out_root: Path = None) -> None:
+    """Write one fully preflighted case's fixture files, then re-verify.
+
+    Consumes only the precomputed, validated content from the preflight step;
+    a malformed input can never reach this phase. ``out_root`` defaults to
+    FORTRAN_OUT evaluated at call time (so tests can redirect it).
+    """
+    if out_root is None:
+        out_root = FORTRAN_OUT
+    case_id = normalized["case_id"]
+    specnum = normalized["specnum"]
+    files = normalized["files"]
+    outdir = out_root / case_id
+    (outdir / "SPECIES").mkdir(parents=True, exist_ok=True)
+    if files["SPECIES_SOURCE"] is not None:
+        shutil.copyfile(files["SPECIES_SOURCE"], outdir / "SPECIES" / f"SPECIES_{specnum:03d}")
+    else:
+        (outdir / "SPECIES" / f"SPECIES_{specnum:03d}").write_text(
+            files["SPECIES"], encoding="utf-8"
+        )
+        (outdir / "SPECIES" / f"SPECIES_{specnum:03d}.PROVENANCE.txt").write_text(
+            files["SPECIES_PROVENANCE"], encoding="utf-8"
+        )
+    for name in (
+        "COMMAND",
+        "RELEASES",
+        "OUTGRID",
+        "AGECLASSES",
+        "RECEPTORS",
+        "METEO_ARGS.txt",
+        "METEO.txt",
+        "INPUT_DERIVATION.json",
+    ):
+        (outdir / name).write_text(files[name], encoding="utf-8")
+    if files["RESTART-NOTE.txt"] is not None:
+        (outdir / "RESTART-NOTE.txt").write_text(files["RESTART-NOTE.txt"], encoding="utf-8")
+    verify_case(case_id, normalized["case"], outdir, specnum)
+    print(f"wrote and verified {outdir}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--flexpart-dir", default=str(REPO.parent / "flexpart"))
@@ -916,96 +1223,12 @@ def main() -> None:
         "WET-008",
         "RESTART-010",
     ]
-    for case_id in desired:
-        case_path = CASES / f"{case_id}.json"
-        if case_path.is_file():
-            case = json.loads(case_path.read_text(encoding="utf-8"))
-        else:
-            # RESTART-010 documents the oracle-only restart path and reuses
-            # the neutral release/grid shape.
-            case = json.loads((CASES / "PBL-NEUTRAL-005.json").read_text(encoding="utf-8"))
-        if case.get("schema_version") != 2 or "version" in case:
-            raise SystemExit(
-                f"{case_id}: unsupported schema: expected only schema_version 2, "
-                f"got schema_version={case.get('schema_version')!r} "
-                f"version={case.get('version')!r} (v1 frozen, see MIGRATION_NOTES.md)"
-            )
-        outdir = FORTRAN_OUT / case_id
-        (outdir / "SPECIES").mkdir(parents=True, exist_ok=True)
-        specnum = species_number_for_case(case_id, case)
-        (outdir / "COMMAND").write_text(command_text(case_id, case), encoding="utf-8")
-        (outdir / "RELEASES").write_text(
-            releases_text(case_id, case, specnum), encoding="utf-8"
-        )
-        (outdir / "OUTGRID").write_text(outgrid_text(case), encoding="utf-8")
-        (outdir / "AGECLASSES").write_text(ageclass_text(case_id, case), encoding="utf-8")
-        (outdir / "RECEPTORS").write_text(RECEPTORS_ZERO, encoding="utf-8")
-        if specnum == 40:
-            if not aerosol.is_file():
-                raise SystemExit(f"upstream aerosol species not found: {aerosol}")
-            text, provenance = species_for_case(case_id, tracer, aerosol)
-            (outdir / "SPECIES" / "SPECIES_040").write_text(text, encoding="utf-8")
-            (outdir / "SPECIES" / "SPECIES_040.PROVENANCE.txt").write_text(
-                provenance, encoding="utf-8"
-            )
-        else:
-            shutil.copyfile(tracer, outdir / "SPECIES" / "SPECIES_024")
-        
-        # Handle meteorology: synthetic cases generate GRIB, real-weather uses native fixture data
-        if is_real_weather(case_id, case):
-            # Real-weather case (e.g., ETEX-MINI-013): meteorology comes from native ERA5 fixture
-            # No synthetic GRIB generation; METEO_ARGS.txt is empty
-            (outdir / "METEO_ARGS.txt").write_text("\n", encoding="utf-8")
-            (outdir / "METEO.txt").write_text(
-                f"# Real-weather case: meteorology from native ERA5 fixture at {case['wind']['meteorology']['source_path']}\n"
-                f"# Dataset: {case['wind']['meteorology']['dataset_id']} version {case['wind']['meteorology']['version']}\n"
-                f"# Candidate transformation: {case['wind']['meteorology']['candidate_transformation']['script']}\n"
-                f"# Oracle transformation: {case['wind']['meteorology']['oracle_transformation']['script']}\n",
-                encoding="utf-8",
-            )
-        else:
-            # Synthetic case: generate GRIB from synthetic parameters
-            args_line = meteo_args(case_id, case)
-            (outdir / "METEO_ARGS.txt").write_text(args_line + "\n", encoding="utf-8")
-            (outdir / "METEO.txt").write_text(
-                "python3 scripts/generate_synthetic_grib.py "
-                f"--output-dir target/corpus/meteo/{case_id} {args_line}\n",
-                encoding="utf-8",
-            )
-        # Provenance shape is frozen byte-identical to the checked-in
-        # INPUT_DERIVATION.json files; values come from the normalized
-        # release (point geometries in all checked-in cases).
-        lon1, lon2, lat1, lat2 = release_lonlat(case_id, case)
-        z1, z2, _zkind = release_vertical(case_id, case)
-        derivation = {
-            "case_file": f"fixtures/corpus/cases/{case_path.name}",
-            "release_lon_deg": lon1,
-            "release_lat_deg": lat1,
-            "release_z_m": z1,
-            "particle_count": case["release"]["particle_count"],
-            "candidate_mass_kg": case_total_mass_kg(case_id, case),
-            "mass_conversion": "MASS_g = mass_kg * 1000 (FLEXPART MASS is in grams)",
-            "oracle_mass_g": case_total_mass_kg(case_id, case) * KG_TO_G,
-            "outgrid_from_domain": {
-                key: case["domain"][key]
-                for key in ("xlon0_deg", "ylat0_deg", "nx", "ny", "dx_deg", "dy_deg")
-            },
-            "outheights_m": STANDARD_OUTHEIGHTS,
-            "outheights_note": "Standard concentration output levels shared by all "
-            "synthetic cases; independent of wind-field levels.",
-        }
-        (outdir / "INPUT_DERIVATION.json").write_text(
-            json.dumps(derivation, indent=2) + "\n", encoding="utf-8"
-        )
-        if case_id == "RESTART-010":
-            (outdir / "RESTART-NOTE.txt").write_text(
-                "Oracle-only restart illustration: rerun with IPIN=1 and LOUTRESTART set "
-                "after a first run that wrote restart_* files (restart_mod.f90). "
-                "No paired candidate restart exists (candidate has no restart API).\n",
-                encoding="utf-8",
-            )
-        verify_case(case_id, case, outdir, specnum)
-        print(f"wrote and verified {outdir}")
+
+    # Preflight every case before the first write: one malformed schema-v2
+    # case aborts the whole run with all fixture directories untouched.
+    prepared = prepare_cases(desired, tracer, aerosol)
+    for normalized in prepared:
+        write_case_fixtures(normalized)
     print("Fortran corpus fixtures generated and input-equal to case JSON.")
 
 

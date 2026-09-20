@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare #30 Rust vertical-column output with a pinned FLEXPART 11.1 harness."""
+"""Compare #30 Rust vertical-column output with pinned FLEXPART evidence."""
 
 import argparse
 import hashlib
@@ -13,6 +13,12 @@ HEIGHT_ABS_TOL_M = 0.02
 HEIGHT_REL_TOL = 1.0e-5
 VERTICAL_VELOCITY_ABS_TOL_MS = 2.0e-5
 VERTICAL_VELOCITY_REL_TOL = 1.0e-5
+
+ORACLE_HEADERS = {
+    "FLEXPART_VERTICAL_ROUTINE_ORACLE_V1": "pinned_routine",
+    "FLEXPART_VERTICAL_CONFORMANCE_HARNESS_V1": "conformance_harness",
+}
+
 
 REQUIRED_VERTTRANSFORM_SNIPPETS = (
     "tvold=tt2_tmp(ix,jy)*(1.+0.378*ew(td2_tmp(ix,jy),ps_tmp(ix,jy))/",
@@ -60,8 +66,9 @@ def close(actual, expected, abs_tol, rel_tol):
 
 def read_oracle(path):
     lines = path.read_text(encoding="utf-8").splitlines()
-    if len(lines) < 4 or lines[0] != "FLEXPART_VERTICAL_COLUMN_ORACLE_V1":
+    if len(lines) < 4 or lines[0] not in ORACLE_HEADERS:
         raise ValueError("invalid oracle output header")
+    execution_mode = ORACLE_HEADERS[lines[0]]
     nz = int(lines[1])
     position = 2
     levels = []
@@ -136,7 +143,12 @@ def read_oracle(path):
 
     if position != len(lines):
         raise ValueError("unexpected trailing oracle output")
-    return {"levels": levels, "interfaces": interfaces, "motion": motion}
+    return {
+        "execution_mode": execution_mode,
+        "levels": levels,
+        "interfaces": interfaces,
+        "motion": motion,
+    }
 
 
 def compare_scalar(actual, expected, abs_tol, rel_tol):
@@ -158,6 +170,12 @@ def main():
     parser.add_argument("--reference-manifest", type=Path, required=True)
     parser.add_argument("--source-snapshot", type=Path, required=True)
     parser.add_argument("--source-motion", type=Path)
+    parser.add_argument(
+        "--expect-execution-mode",
+        choices=sorted(set(ORACLE_HEADERS.values())),
+        required=True,
+    )
+    parser.add_argument("--oracle-provenance", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -198,6 +216,11 @@ def main():
     if (nx, ny) != (1, 1):
         raise ValueError("candidate report is not a 1x1 column")
     oracle = read_oracle(args.oracle)
+    if oracle["execution_mode"] != args.expect_execution_mode:
+        raise ValueError(
+            f"oracle execution mode {oracle['execution_mode']} != "
+            f"expected {args.expect_execution_mode}"
+        )
     if len(oracle["levels"]) != nz:
         raise ValueError("candidate/oracle vertical level count mismatch")
 
@@ -291,6 +314,24 @@ def main():
     elif candidate_motion is not None:
         raise ValueError("candidate contains motion but --source-motion provenance is missing")
 
+    oracle_provenance = None
+    if args.oracle_provenance is not None:
+        parsed_provenance = json.loads(
+            args.oracle_provenance.read_text(encoding="utf-8")
+        )
+        oracle_provenance = {
+            "path": str(args.oracle_provenance),
+            "sha256": sha256(args.oracle_provenance),
+            "content": parsed_provenance,
+        }
+        if oracle["execution_mode"] == "pinned_routine":
+            if parsed_provenance.get("pinned_commit") != pinned_commit:
+                raise ValueError("routine provenance pinned commit mismatch")
+            if parsed_provenance.get("routine") != "verttransform_ecmwf_heights":
+                raise ValueError("routine provenance names the wrong FLEXPART routine")
+    elif oracle["execution_mode"] == "pinned_routine":
+        raise ValueError("pinned-routine oracle requires --oracle-provenance")
+
     scientific_scope = (
         "hybrid pressure, FLEXPART-11.1 hypsometric model-level heights"
         + (
@@ -316,20 +357,27 @@ def main():
             "version": manifest["version"],
             "pinned_commit": pinned_commit,
             "checkout_clean": True,
+            "execution_mode": oracle["execution_mode"],
             "verttransform_mod_sha256": sha256(verttransform),
             "windfields_mod_sha256": sha256(windfields),
             "qvsat_mod_sha256": sha256(qvsat),
-            "harness_output_path": str(args.oracle),
-            "harness_output_sha256": sha256(args.oracle),
+            "output_path": str(args.oracle),
+            "output_sha256": sha256(args.oracle),
+            "routine_provenance": oracle_provenance,
             "source_contract_snippets_verified": True,
             "hybrid_level_construction_verified": True,
             "pinmconv_contract_verified": True,
             "wzlev_contract_verified": True,
             "note": (
-                "The harness links the pinned oracle par_mod/qvsat_mod directly and "
-                "replays scalar column equations from verttransform_ecmwf_heights, "
-                "including FLEXPART pinmconv for omega->geometric-W conversion; "
-                "the pristine oracle checkout is not modified."
+                "Normative: executes the exact verttransform_ecmwf_heights source "
+                "slice extracted at CI time from the pinned pristine FLEXPART 11.1 "
+                "checkout; only the routine's required module state is supplied by "
+                "the focused driver."
+                if oracle["execution_mode"] == "pinned_routine"
+                else
+                "Secondary conformance harness: independently replays the scalar "
+                "column equations while linking pinned par_mod/qvsat_mod. It is not "
+                "the normative FLEXPART oracle."
             ),
         },
         "tolerances": {

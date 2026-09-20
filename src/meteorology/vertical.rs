@@ -22,18 +22,29 @@ use super::{
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum NativeVerticalMotionKind {
-    /// Geometric vertical velocity in m/s, positive upward.
-    GeometricVelocityUpward,
-    /// Pressure velocity omega = dp/dt in Pa/s.
+    /// Already-geometric dz/dt.
+    GeometricVelocity,
+    /// Pressure velocity omega = dp/dt.
     PressureVelocityOmega,
-    /// Native eta-coordinate tendency d(eta)/dt in 1/s, explicitly positive
-    /// toward increasing eta. Conversion support is enabled only after the
-    /// pinned FLEXPART 11.1 oracle path confirms this convention.
-    EtaCoordinateVelocityPositiveIncreasing,
-    /// Native eta-coordinate tendency d(eta)/dt in 1/s, explicitly positive
-    /// toward decreasing eta. Conversion support is enabled only after the
-    /// pinned FLEXPART 11.1 oracle path confirms this convention.
-    EtaCoordinateVelocityPositiveDecreasing,
+    /// Native hybrid-coordinate tendency d(eta)/dt.
+    EtaCoordinateVelocity,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeVerticalMotionUnit {
+    MeterPerSecond,
+    PascalPerSecond,
+    PerSecond,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeVerticalMotionSign {
+    PositiveUpward,
+    PositivePressureIncreasing,
+    PositiveEtaIncreasing,
+    PositiveEtaDecreasing,
 }
 
 /// Native vertical-motion values plus the semantics needed to normalize them.
@@ -43,6 +54,8 @@ pub enum NativeVerticalMotionKind {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NativeVerticalMotion {
     pub kind: NativeVerticalMotionKind,
+    pub unit: NativeVerticalMotionUnit,
+    pub sign: NativeVerticalMotionSign,
     pub vertical_staggering: VerticalStaggering,
     pub values: Vec<f32>,
     pub provenance: NativeVerticalMotionProvenance,
@@ -53,6 +66,24 @@ pub struct NativeVerticalMotion {
 pub struct NativeVerticalMotionProvenance {
     /// Stable identifier supplied by the upstream normalization stage.
     pub source_id: String,
+}
+
+/// Physics-ready vertical air motion. Values are always geometric m/s with
+/// positive-upward sign. Staggering is retained so #31 owns interpolation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NormalizedVerticalMotion {
+    pub vertical_staggering: VerticalStaggering,
+    pub values_ms: Vec<f32>,
+    pub provenance: NormalizedVerticalMotionProvenance,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NormalizedVerticalMotionProvenance {
+    pub source_id: String,
+    pub source_kind: NativeVerticalMotionKind,
+    pub source_unit: NativeVerticalMotionUnit,
+    pub source_sign: NativeVerticalMotionSign,
+    pub conversion: String,
 }
 
 /// Pressure reconstructed independently for every horizontal column.
@@ -81,7 +112,7 @@ pub struct VerticalTransformResult {
     pub terrain_asl_m: Vec<f32>,
     pub height_asl_m: Vec<f32>,
     pub height_agl_m: Vec<f32>,
-    pub vertical_velocity_ms: Option<Vec<f32>>,
+    pub vertical_velocity: Option<NormalizedVerticalMotion>,
     pub provenance: VerticalTransformProvenance,
 }
 
@@ -159,6 +190,14 @@ pub enum VerticalTransformError {
         expected: usize,
         actual: usize,
     },
+    #[error("unsupported or ambiguous native vertical-motion semantics: {reason}")]
+    InvalidNativeVerticalMotion { reason: &'static str },
+    #[error("invalid native vertical-motion value at index {index}: {value}")]
+    InvalidNativeVerticalMotionValue { index: usize, value: f32 },
+    #[error("vertical-motion conversion requires at least two model levels")]
+    InsufficientVerticalLevels,
+    #[error("invalid dz/dp conversion at (x={x}, y={y}, z={z})")]
+    InvalidPressureToHeightDerivative { x: usize, y: usize, z: usize },
     #[error("height at (x={x}, y={y}, z={z}) lies below terrain: ASL={height_asl_m} m, terrain={terrain_asl_m} m")]
     HeightBelowTerrain {
         x: usize,
@@ -462,7 +501,7 @@ pub fn reconstruct_vertical_geometry(
         terrain_asl_m: terrain.to_vec(),
         height_asl_m,
         height_agl_m,
-        vertical_velocity_ms: None,
+        vertical_velocity: None,
         provenance: VerticalTransformProvenance::default(),
     })
 }

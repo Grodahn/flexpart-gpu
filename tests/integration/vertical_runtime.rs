@@ -1,7 +1,8 @@
 use flexpart_gpu::meteorology::{
     vertical::{
-        reconstruct_vertical_geometry, resolve_release_height_at_column,
-        resolve_release_height_range_at_column, VerticalTransformError,
+        reconstruct_vertical_geometry, reconstruct_vertical_geometry_with_motion,
+        resolve_release_height_at_column,
+        resolve_release_height_range_at_column, NativeVerticalMotion, VerticalTransformError,
     },
     Snapshot, VerticalReference,
 };
@@ -140,6 +141,33 @@ fn runtime_view_exposes_column_local_geometry_without_interpolation() {
 
     assert!(runtime.interface_pressure_pa(0, 0, 0).expect("top interface")
         < runtime.interface_pressure_pa(0, 0, 3).expect("surface interface"));
+}
+
+#[test]
+fn runtime_view_preserves_normalized_motion_staggering_for_interpolation() {
+    let snapshot = snapshot();
+    let motion: NativeVerticalMotion = serde_json::from_str(include_str!(
+        "../../fixtures/vertical/synthetic-omega-interface-v1.json"
+    ))
+    .expect("synthetic omega fixture must parse");
+
+    let geometry = reconstruct_vertical_geometry_with_motion(&snapshot, &motion)
+        .expect("geometry plus normalized motion");
+    let runtime = geometry.runtime_view().expect("valid runtime view");
+    let normalized = runtime
+        .vertical_velocity()
+        .expect("normalized vertical motion");
+
+    assert_eq!(
+        normalized.vertical_staggering,
+        flexpart_gpu::meteorology::VerticalStaggering::LevelInterface
+    );
+    assert_eq!(normalized.values_ms.len(), 4);
+    assert_eq!(
+        normalized.provenance.algorithm_id,
+        "omega_interface_flexpart11_pinmconv_v1"
+    );
+    assert!(normalized.values_ms.iter().all(|value| value.is_finite()));
 }
 
 #[test]

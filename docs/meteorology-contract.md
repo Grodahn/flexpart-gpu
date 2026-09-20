@@ -23,6 +23,10 @@ The Rust implementation lives in src/meteorology/mod.rs.
 - Canonical axes are explicit. Schema v1 serializes volume fields as X,Y,Z and surface
   fields as X,Y. Every field also declares `storage_order`; schema v1 supports `x_fastest`,
   with 3-D offset `x + nx * (y + ny * z)` and 2-D offset `x + nx * y`.
+- Horizontal and vertical staggering are validated per field rather than by dimensions alone.
+  Schema v1 permits cell-centered fields generally, plus `wind_u` on X faces, `wind_v` on Y
+  faces, and `vertical_velocity` on level interfaces. Scalar face staggering, cross-axis wind
+  staggering, surface-field vertical staggering, and scalar interface staggering fail closed.
 - Units and sign conventions are part of the field contract and are validated.
 - Surface sensible heat flux is positive upward at the canonical boundary. This matches
   the PBL API in src/io/pbl_params.rs; ECMWF/provider conventions must be converted by

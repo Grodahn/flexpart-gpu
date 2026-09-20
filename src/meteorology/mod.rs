@@ -152,6 +152,33 @@ impl FieldId {
         )
     }
 
+    fn supports_horizontal_staggering(self, staggering: HorizontalStaggering) -> bool {
+        match self {
+            Self::WindU => matches!(
+                staggering,
+                HorizontalStaggering::CellCenter | HorizontalStaggering::XFace
+            ),
+            Self::WindV => matches!(
+                staggering,
+                HorizontalStaggering::CellCenter | HorizontalStaggering::YFace
+            ),
+            _ => staggering == HorizontalStaggering::CellCenter,
+        }
+    }
+
+    fn supports_vertical_staggering(self, staggering: VerticalStaggering) -> bool {
+        if !self.is_3d() {
+            return staggering == VerticalStaggering::NotApplicable;
+        }
+        match self {
+            Self::VerticalVelocity => matches!(
+                staggering,
+                VerticalStaggering::LevelCenter | VerticalStaggering::LevelInterface
+            ),
+            _ => staggering == VerticalStaggering::LevelCenter,
+        }
+    }
+
     fn unit(self) -> Unit {
         match self {
             Self::WindU | Self::WindV | Self::VerticalVelocity | Self::WindU10m
@@ -414,6 +441,15 @@ impl Snapshot {
         }
         if field.sign != field.id.sign() {
             return Err(ContractError::SignMismatch(field.id));
+        }
+        if !field
+            .id
+            .supports_horizontal_staggering(field.horizontal_staggering)
+            || !field
+                .id
+                .supports_vertical_staggering(field.vertical_staggering)
+        {
+            return Err(ContractError::InvalidStaggering(field.id));
         }
 
         let grid = &self.horizontal_grid;
@@ -789,6 +825,96 @@ mod tests {
     }
 
     #[test]
+    fn wind_u_x_face_staggering_is_supported() {
+        let mut value = snapshot();
+        let wind_u = value
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::WindU)
+            .expect("wind_u field");
+        wind_u.horizontal_staggering = HorizontalStaggering::XFace;
+        wind_u.shape = vec![3, 1, 2];
+        wind_u.values = vec![1.0; 6];
+
+        value
+            .validate(&Requirements::advection())
+            .expect("wind_u x-face staggering is explicitly supported");
+    }
+
+    #[test]
+    fn wind_u_y_face_staggering_fails_closed() {
+        let mut value = snapshot();
+        let wind_u = value
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::WindU)
+            .expect("wind_u field");
+        wind_u.horizontal_staggering = HorizontalStaggering::YFace;
+        wind_u.shape = vec![2, 2, 2];
+        wind_u.values = vec![1.0; 8];
+
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InvalidStaggering(FieldId::WindU))
+        );
+    }
+
+    #[test]
+    fn scalar_face_staggering_fails_closed() {
+        let mut value = snapshot();
+        let temperature = value
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::Temperature)
+            .expect("temperature field");
+        temperature.horizontal_staggering = HorizontalStaggering::XFace;
+        temperature.shape = vec![3, 1, 2];
+        temperature.values = vec![280.0; 6];
+
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InvalidStaggering(FieldId::Temperature))
+        );
+    }
+
+    #[test]
+    fn vertical_velocity_interface_staggering_is_supported() {
+        let mut value = snapshot();
+        value.vertical_coordinate.interface_values = Some(vec![95_000.0, 85_000.0, 75_000.0]);
+        let vertical_velocity = value
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::VerticalVelocity)
+            .expect("vertical velocity field");
+        vertical_velocity.vertical_staggering = VerticalStaggering::LevelInterface;
+        vertical_velocity.shape = vec![2, 1, 3];
+        vertical_velocity.values = vec![0.0; 6];
+
+        value
+            .validate(&Requirements::advection())
+            .expect("vertical velocity interface staggering is explicitly supported");
+    }
+
+    #[test]
+    fn scalar_interface_staggering_fails_closed() {
+        let mut value = snapshot();
+        value.vertical_coordinate.interface_values = Some(vec![95_000.0, 85_000.0, 75_000.0]);
+        let temperature = value
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::Temperature)
+            .expect("temperature field");
+        temperature.vertical_staggering = VerticalStaggering::LevelInterface;
+        temperature.shape = vec![2, 1, 3];
+        temperature.values = vec![280.0; 6];
+
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InvalidStaggering(FieldId::Temperature))
+        );
+    }
+
+    #[test]
     fn ambiguous_accumulation_fails_closed() {
         let mut value = snapshot();
         value.fields.push(Field {
@@ -797,6 +923,7 @@ mod tests {
             axis_order: vec![Axis::X, Axis::Y],
             unit: Unit::KilogramPerSquareMeter,
             sign: SignConvention::NonNegative,
+            storage_order: StorageOrder::XFastest,
             horizontal_staggering: HorizontalStaggering::CellCenter,
             vertical_staggering: VerticalStaggering::NotApplicable,
             time: FieldTime {

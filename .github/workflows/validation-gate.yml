@@ -28,6 +28,13 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Run canonical meteorology contract tests
+        run: |
+          set -euo pipefail
+          cd flexpart-gpu
+          cargo test --lib meteorology::tests
+          cargo test --test meteorology_contract
+
       - name: Install Lavapipe (software Vulkan)
         run: |
           sudo apt-get update

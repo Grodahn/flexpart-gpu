@@ -11,7 +11,7 @@ program vertical_column_oracle
   real :: dz, dp
   real, allocatable :: a(:), b(:), temperature(:), humidity(:)
   real, allocatable :: pressure(:), height_agl(:)
-  real, allocatable :: omega(:), w_ms(:), pinmconv(:)
+  real, allocatable :: omega(:), w_ms(:), pinmconv(:), w_height(:)
   real, allocatable :: center_height(:), center_pressure(:)
 
   call get_command_argument(1, input_path)
@@ -26,11 +26,12 @@ program vertical_column_oracle
 
   allocate(a(nz+1), b(nz+1), temperature(nz), humidity(nz))
   allocate(pressure(nz), height_agl(nz))
-  allocate(omega(nz+1), w_ms(nz+1), pinmconv(nz+1))
+  allocate(omega(nz+1), w_ms(nz+1), pinmconv(nz+1), w_height(nz+1))
   allocate(center_height(nz+1), center_pressure(nz+1))
   omega=0.0
   w_ms=0.0
   pinmconv=0.0
+  w_height=0.0
 
   read(input_unit, *) ps, t2, td2, terrain
   if (ps <= 0.0 .or. t2 <= 0.0 .or. td2 <= 0.0) then
@@ -83,17 +84,28 @@ program vertical_column_oracle
     pold=pint
   enddo
 
+  ! FLEXPART verttransform_ecmwf_heights W-level geometry.
+  center_height(1)=0.0
+  center_pressure(1)=ps
+  do k=2,nz+1
+    level=nz-k+2
+    center_height(k)=height_agl(level)
+    center_pressure(k)=pressure(level)
+  enddo
+
+  w_height(1)=0.0
+  if (nz == 1) then
+    w_height(2)=center_height(2)
+  else
+    do k=2,nz
+      w_height(k)=0.5*(center_height(k+1)+center_height(k))
+    enddo
+    w_height(nz+1)=w_height(nz)+center_height(nz+1)-center_height(nz)
+  endif
+
   if (has_motion == 1) then
     ! FLEXPART's pinmconv is dz/dp on the W grid. Reconstruct its physical
     ! bottom->top center coordinate including the artificial surface level.
-    center_height(1)=0.0
-    center_pressure(1)=ps
-    do k=2,nz+1
-      level=nz-k+2
-      center_height(k)=height_agl(level)
-      center_pressure(k)=pressure(level)
-    enddo
-
     if (nz == 1) then
       dz=center_height(2)-center_height(1)
       dp=center_pressure(2)-center_pressure(1)
@@ -133,6 +145,13 @@ program vertical_column_oracle
   do k=1,nz
     write(output_unit,'(I0,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') &
       k-1, pressure(k), height_agl(k), height_agl(k)+terrain
+  enddo
+
+  write(output_unit,'(A,1X,I0)') "INTERFACES", nz+1
+  do j=1,nz+1
+    physical_k=nz+2-j
+    write(output_unit,'(I0,1X,ES24.16E3,1X,ES24.16E3)') &
+      j-1, w_height(physical_k), w_height(physical_k)+terrain
   enddo
 
   write(output_unit,'(A,1X,I0)') "MOTION", has_motion

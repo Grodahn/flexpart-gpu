@@ -38,28 +38,27 @@ def _namespaced(**overrides):
 def _demo_case(path, case_id="DEMO-001", base_key=(1, 2), count=2,
                derivation="wrapping_add_key0_v1", candidate_philox=True):
     path = Path(path)
-    philox = None
-    if candidate_philox:
-        philox = {
+    template = (
+        Path(__file__).resolve().parents[2]
+        / "fixtures" / "corpus" / "cases" / "WIND-UNI-002.json"
+    )
+    case = json.loads(template.read_text(encoding="utf-8"))
+    case["case_id"] = case_id
+    case["release"]["particle_count"] = 4
+    case["release"]["mass_kg_per_particle"] = 0.25
+    case["physics_switches"]["turbulence"] = bool(candidate_philox)
+    case["stochastic"]["oracle_seed"] = None
+    case["stochastic"]["candidate_philox"] = (
+        {
             "base_key": list(base_key),
             "base_counter": [0, 0, 0, 0],
             "count": count,
             "derivation": derivation,
         }
-    path.write_text(json.dumps({
-        "schema_version": 2,
-        "case_id": case_id,
-        "release": {"inventory": {"quantity_kg": 1.0, "unit": "kg"}},
-        "physics_switches": {"turbulence": bool(candidate_philox),
-                             "convection": False,
-                             "dry_deposition": False, "wet_deposition": False,
-                             "decay": False},
-        "stochastic": {"candidate_philox": philox, "oracle_seed": None},
-        "domain": {"nx": 32, "ny": 32, "nz": 8, "dx_deg": 0.1, "dy_deg": 0.1,
-                   "xlon0_deg": 9.5, "ylat0_deg": 8.5},
-        "integration": {"start": "20240101000000", "dt_s": 300, "steps": 12,
-                        "total_s": 3600},
-    }), encoding="utf-8")
+        if candidate_philox
+        else None
+    )
+    path.write_text(json.dumps(case), encoding="utf-8")
 
 
 def _demo_seed(path, seed_index, offset):
@@ -116,10 +115,7 @@ class CorpusReaderTest(unittest.TestCase):
             self.assertEqual(len(lons), 4)
             self.assertAlmostEqual(sum(masses), 1.0)
             case_path = Path(directory) / "case.json"
-            case_path.write_text(
-                '{"schema_version": 2, "case_id": "OTHER", "release": {},'
-                ' "physics_switches": {}, "stochastic": {"candidate_philox": null, "oracle_seed": null}, "domain": {}}',
-                encoding="utf-8")
+            _demo_case(case_path, case_id="OTHER")
             case = io_corpus.read_case_definition(str(case_path))
             self.assertNotEqual(case["case_id"], data["case_id"])
 
@@ -128,21 +124,28 @@ class CorpusReaderTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             for missing in ("candidate_philox", "oracle_seed"):
                 path = Path(directory) / f"missing-{missing}.json"
-                stochastic = {
-                    "candidate_philox": None,
-                    "oracle_seed": None,
-                }
-                del stochastic[missing]
-                path.write_text(json.dumps({
-                    "schema_version": 2,
-                    "case_id": "DEMO-001",
-                    "release": {},
-                    "physics_switches": {},
-                    "stochastic": stochastic,
-                    "domain": {},
-                }), encoding="utf-8")
+                _demo_case(path)
+                case = json.loads(path.read_text(encoding="utf-8"))
+                del case["stochastic"][missing]
+                path.write_text(json.dumps(case), encoding="utf-8")
                 with self.subTest(missing=missing):
                     with self.assertRaisesRegex(ValueError, missing):
+                        io_corpus.read_case_definition(str(path))
+
+    def test_case_reader_enforces_complete_v2_schema(self):
+        import io_corpus
+        with tempfile.TemporaryDirectory() as directory:
+            for mutation, expected in (
+                (lambda case: case.pop("expected_artifacts"), "expected_artifacts"),
+                (lambda case: case.__setitem__("hidden_default", True), "hidden_default"),
+            ):
+                path = Path(directory) / f"bad-{expected}.json"
+                _demo_case(path)
+                case = json.loads(path.read_text(encoding="utf-8"))
+                mutation(case)
+                path.write_text(json.dumps(case), encoding="utf-8")
+                with self.subTest(expected=expected):
+                    with self.assertRaisesRegex(ValueError, expected):
                         io_corpus.read_case_definition(str(path))
 
     def test_missing_particle_keys_rejected(self):

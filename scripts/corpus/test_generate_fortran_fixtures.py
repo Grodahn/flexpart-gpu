@@ -65,20 +65,20 @@ class OracleOverrideTest(unittest.TestCase):
         self.assertEqual(int(GEN.namelist_value(text, "IFINE")), 4)
 
     def test_unknown_candidate_philox_derivation_is_rejected(self):
-        case = load_case("WIND-UNI-002")
-        case = copy.deepcopy(case)
+        case = copy.deepcopy(load_case("WIND-UNI-002"))
+        physics = GEN.mandatory_physics_switches("WIND-UNI-002", case)
         case["stochastic"]["candidate_philox"]["derivation"] = "typo_or_future_mode"
         with self.assertRaises(SystemExit) as ctx:
-            GEN.command_text("WIND-UNI-002", case)
+            GEN._validate_stochastic_contract("WIND-UNI-002", case, physics)
         self.assertIn("unsupported", str(ctx.exception))
         self.assertIn("derivation", str(ctx.exception))
 
     def test_legacy_identical_repeats_flag_is_rejected(self):
-        case = load_case("REPEAT-009")
-        case = copy.deepcopy(case)
+        case = copy.deepcopy(load_case("REPEAT-009"))
+        physics = GEN.mandatory_physics_switches("REPEAT-009", case)
         case["stochastic"]["candidate_philox"]["identical_repeats"] = True
         with self.assertRaises(SystemExit) as ctx:
-            GEN.command_text("REPEAT-009", case)
+            GEN._validate_stochastic_contract("REPEAT-009", case, physics)
         self.assertIn("identical_repeats", str(ctx.exception))
     def test_oracle_seed_cannot_substitute_for_candidate_philox(self):
         case = copy.deepcopy(load_case("WIND-UNI-002"))
@@ -857,6 +857,21 @@ class PreflightFailClosedTest(unittest.TestCase):
             case["physics_switches"] = {"turbulence": True}
 
         self._assert_aborts_before_writes(mutate, "physics_switches")
+
+    def test_unknown_top_level_field_aborts_before_any_write(self):
+        def mutate(case):
+            case["hidden_default"] = True
+        self._assert_aborts_before_writes(mutate, "hidden_default")
+
+    def test_missing_expected_artifacts_aborts_before_any_write(self):
+        def mutate(case):
+            case.pop("expected_artifacts", None)
+        self._assert_aborts_before_writes(mutate, "expected_artifacts")
+
+    def test_missing_candidate_physics_profile_aborts_before_any_write(self):
+        def mutate(case):
+            case.pop("candidate_physics_profile", None)
+        self._assert_aborts_before_writes(mutate, "candidate_physics_profile")
 
     def test_missing_source_containment_policy_aborts_before_any_write(self):
         def mutate(case):

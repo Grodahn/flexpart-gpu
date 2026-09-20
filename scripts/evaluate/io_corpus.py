@@ -17,6 +17,14 @@ raise instead of being interpolated.
 """
 
 import json
+import sys
+from pathlib import Path
+
+CORPUS_SCRIPTS = Path(__file__).resolve().parents[1] / "corpus"
+if str(CORPUS_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(CORPUS_SCRIPTS))
+
+from validation_case_schema import ValidationCaseSchemaError, validate_case_document
 
 M2_PER_KM2 = 1e6
 
@@ -59,19 +67,8 @@ def read_case_definition(path):
     """
     with open(path, encoding="utf-8") as stream:
         data = json.load(stream)
-    if data.get("schema_version") != 2 or "version" in data:
-        raise ValueError(
-            f"corpus case {path} is not a canonical v2 document "
-            "(schema_version 2 required; v1 is frozen)"
-        )
-    _require_keys(data, ("case_id", "release", "physics_switches", "stochastic", "domain"),
-                  f"corpus case {path}")
-    stochastic = data["stochastic"]
-    if not isinstance(stochastic, dict):
-        raise ValueError(f"corpus case {path} stochastic must be an object")
-    _require_keys(
-        stochastic,
-        ("candidate_philox", "oracle_seed"),
-        f"corpus case {path} stochastic",
-    )
+    try:
+        validate_case_document(data, source=str(path))
+    except ValidationCaseSchemaError as exc:
+        raise ValueError(f"corpus case violates validation-case-v2 schema: {exc}") from None
     return data

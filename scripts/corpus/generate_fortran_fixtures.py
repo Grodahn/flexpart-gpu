@@ -42,6 +42,8 @@ import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from validation_case_schema import ValidationCaseSchemaError, validate_case_document
+
 REPO = Path(__file__).resolve().parents[2]
 CORPUS = REPO / "fixtures" / "corpus"
 CASES = CORPUS / "cases"
@@ -1818,6 +1820,11 @@ def validate_and_normalize_case_for_generation(
     meteorology metadata. The returned normalized dict is
     the only input the write phase consumes.
     """
+    try:
+        validate_case_document(case, source=str(case_file))
+    except ValidationCaseSchemaError as exc:
+        raise SystemExit(f"{case_id}: validation-case-v2 schema violation: {exc}") from None
+
     if case.get("schema_version") != 2 or "version" in case:
         raise SystemExit(
             f"{case_id}: unsupported schema: expected only schema_version 2, "

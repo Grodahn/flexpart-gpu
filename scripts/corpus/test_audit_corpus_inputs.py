@@ -273,6 +273,49 @@ class PhiloxIdentityTest(unittest.TestCase):
             f"expected a Philox counter failure, got: {failures}",
         )
 
+    def test_empty_seed_directory_reports_failure_without_exception(self):
+        case = load_case("WIND-UNI-002")
+        with tempfile.TemporaryDirectory() as tmp:
+            AUDIT.FAILURES.clear()
+            AUDIT.audit_candidate_case("WIND-UNI-002", case, Path(tmp))
+            failures = list(AUDIT.FAILURES)
+            AUDIT.FAILURES.clear()
+        self.assertTrue(
+            any("artifact count matches manifest" in failure for failure in failures),
+            failures,
+        )
+
+    def test_adapter_is_checked_for_every_seed(self):
+        case = load_case("REPEAT-009")
+        base_key = list(case["stochastic"]["candidate_philox"]["base_key"])
+        base_counter = list(case["stochastic"]["candidate_philox"]["base_counter"])
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            for index in range(2):
+                seed = {
+                    "particle_count": int(case["release"]["particle_count"]),
+                    "metrics": {
+                        "initial_mass_kg": float(
+                            case["release"]["inventory"]["quantity_kg"]
+                        )
+                    },
+                    "seed_index": index,
+                    "philox_key": base_key,
+                    "philox_counter": base_counter,
+                    "adapter": "test-adapter" if index == 1 else "",
+                }
+                (case_dir / f"seed_{index:03d}.json").write_text(
+                    json.dumps(seed), encoding="utf-8"
+                )
+            AUDIT.FAILURES.clear()
+            AUDIT.audit_candidate_case("REPEAT-009", case, case_dir)
+            failures = list(AUDIT.FAILURES)
+            AUDIT.FAILURES.clear()
+        self.assertTrue(
+            any("seed_000.json adapter recorded" in failure for failure in failures),
+            failures,
+        )
+
     def test_audit_rejects_missing_identity(self):
         case = load_case("WIND-UNI-002")
         case["stochastic"] = {"candidate_philox": None, "oracle_seed": None}

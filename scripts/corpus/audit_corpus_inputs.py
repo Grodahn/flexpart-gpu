@@ -50,6 +50,8 @@ def load_generator():
 
 GEN = load_generator()
 
+from validation_case_schema import ValidationCaseSchemaError, validate_case_document
+
 FAILURES: list = []
 
 PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1 = "wrapping_add_key0_v1"
@@ -66,7 +68,19 @@ def check(name: str, ok: bool, detail: str = "") -> None:
         FAILURES.append(name + (f": {detail}" if detail else ""))
 
 
+def _case_schema_valid(case_id: str, case: dict) -> bool:
+    try:
+        validate_case_document(case, source=f"{case_id}.json")
+    except ValidationCaseSchemaError as exc:
+        check(f"{case_id} validation-case-v2 schema", False, str(exc))
+        return False
+    check(f"{case_id} validation-case-v2 schema", True)
+    return True
+
+
 def audit_fixture_case(case_id: str, case: dict, fort_dir: Path) -> None:
+    if not _case_schema_valid(case_id, case):
+        return
     outdir = fort_dir / case_id
     if not outdir.is_dir():
         check(f"{case_id} fortran fixture present", False, f"missing {outdir}")
@@ -197,6 +211,8 @@ def expected_philox_for_seed(case_id: str, base_key, base_counter, seed_index: i
 
 
 def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
+    if not _case_schema_valid(case_id, case):
+        return
     seeds = sorted(case_dir.glob("seed_*.json"))
     release = case["release"]
     expected_count = int(release["particle_count"])

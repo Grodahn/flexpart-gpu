@@ -666,12 +666,11 @@ pub struct ExpectedArtifacts {
 /// checked-in validation corpus. The synthetic corpus uses adaptive w/sigw;
 /// ETEX-MINI-013 preserves its historical fixed-timestep / w formulation.
 /// The typed value is authoritative and must agree with `ctl`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OracleTurbulenceFormulation {
     /// Adaptive integration (`method=1`, readoptions_mod.f90:786-795) with the
     /// w/sigw Markov formulation (`turbswitch=.true.`, readoptions_mod.f90:645-650).
-    #[default]
     #[serde(rename = "adaptive_w_sigw")]
     AdaptiveWSigmaW,
     /// Fixed particle timestep (`method=0`, `mintime=lsynctime`) with the
@@ -698,7 +697,7 @@ impl std::fmt::Display for OracleTurbulenceFormulation {
 pub const CTL_W_SIGW_FORMULATION_THRESHOLD: f32 = 0.1;
 
 /// Oracle command overrides (namelist values).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OracleCommandOverrides {
     /// Declared turbulence/integration formulation (required, never defaulted
@@ -870,8 +869,7 @@ pub struct ValidationCaseManifest {
     pub stochastic: StochasticIdentitySpec,
     /// Execution profile reference (frozen #49).
     pub execution_profile: ExecutionProfileRef,
-    /// Oracle COMMAND namelist overrides.
-    #[serde(default)]
+    /// Oracle COMMAND namelist overrides. Required; no default block exists.
     pub oracle_command_overrides: OracleCommandOverrides,
     /// Expected output artifacts.
     pub expected_artifacts: ExpectedArtifacts,
@@ -1016,11 +1014,12 @@ impl ValidationCaseManifest {
             .get("oracle_command_overrides")
             .and_then(serde_json::Value::as_object)
         {
-            const LEGACY_TO_CANONICAL: [(&str, &str); 7] = [
+            const LEGACY_TO_CANONICAL: [(&str, &str); 8] = [
                 ("LTURBULENCE", "lturbulence"),
                 ("LCONVECTION", "lconvection"),
                 ("CTL", "ctl"),
                 ("IFINE", "ifine"),
+                ("LSYNCTIME", "lsynctime_s"),
                 ("LDRYDEP", "ldrydep"),
                 ("LWETDEP", "lwetdep"),
                 ("LDECAY", "ldecay"),
@@ -2661,6 +2660,16 @@ mod tests {
                     return Err(format!("{path}: {number} exceeds maximum {maximum}"));
                 }
             }
+            if let Some(maximum) = node
+                .get("exclusiveMaximum")
+                .and_then(serde_json::Value::as_f64)
+            {
+                if number >= maximum {
+                    return Err(format!(
+                        "{path}: {number} is not less than exclusiveMaximum {maximum}"
+                    ));
+                }
+            }
         }
 
         Ok(())
@@ -2818,7 +2827,9 @@ mod tests {
                 ifine: Some(4),
                 lsynctime_s: Some(300),
                 lconvection: Some(0),
-                ..Default::default()
+                ldrydep: None,
+                lwetdep: None,
+                ldecay: None,
             },
             expected_artifacts: ExpectedArtifacts {
                 required: vec![
@@ -4248,6 +4259,105 @@ mod tests {
     fn parse_json_value(value: &serde_json::Value) -> Result<ValidationCaseManifest, ValidationCaseError> {
         let text = serde_json::to_string(value).expect("re-serialize");
         ValidationCaseManifest::parse(&text, Path::new("test.json"))
+    }
+
+    #[test]
+    fn oracle_override_schema_and_rust_required_fields_are_in_parity() {
+        let schema = load_validation_case_schema();
+        for field in [
+            "turbulence_formulation",
+            "lturbulence",
+            "lconvection",
+            "ctl",
+            "ifine",
+            "lsynctime_s",
+        ] {
+            let mut raw = minimal_manifest_json();
+            raw["oracle_command_overrides"]
+                .as_object_mut()
+                .expect("oracle overrides object")
+                .remove(field);
+
+            let schema_error =
+                validate_json_schema_subset(&schema, &schema, &raw, "$")
+                    .expect_err("JSON Schema must reject missing oracle field");
+            assert!(
+                schema_error.contains(field),
+                "schema error must name missing {field}: {schema_error}"
+            );
+
+            let rust_error = parse_json_value(&raw)
+                .expect_err("Rust contract must reject the same missing oracle field");
+            assert!(
+                rust_error.to_string().contains(field),
+                "Rust error must name missing {field}: {rust_error}"
+            );
+        }
+
+        let mut missing_block = minimal_manifest_json();
+        missing_block
+            .as_object_mut()
+            .expect("manifest object")
+            .remove("oracle_command_overrides");
+        assert!(
+            validate_json_schema_subset(&schema, &schema, &missing_block, "$").is_err(),
+            "JSON Schema must reject a missing oracle override block"
+        );
+        let err = parse_json_value(&missing_block)
+            .expect_err("Rust deserialization must reject a missing oracle override block");
+        assert!(
+            err.to_string().contains("oracle_command_overrides"),
+            "Rust error must name missing oracle block: {err}"
+        );
+    }
+
+    #[test]
+    fn oracle_override_schema_and_rust_numeric_semantics_are_in_parity() {
+        let schema = load_validation_case_schema();
+
+        let mut too_large_ifine = minimal_manifest_json();
+        too_large_ifine["oracle_command_overrides"]["ifine"] = serde_json::json!(11);
+        assert!(
+            validate_json_schema_subset(&schema, &schema, &too_large_ifine, "$").is_err(),
+            "JSON Schema must enforce IFINE <= 10"
+        );
+        assert!(
+            parse_json_value(&too_large_ifine).is_err(),
+            "Rust contract must enforce IFINE <= 10"
+        );
+
+        let mut adaptive_negative = minimal_manifest_json();
+        adaptive_negative["oracle_command_overrides"]["ctl"] = serde_json::json!(-5.0);
+        assert!(
+            validate_json_schema_subset(&schema, &schema, &adaptive_negative, "$").is_err(),
+            "adaptive_w_sigw with negative CTL must fail JSON Schema"
+        );
+        assert!(
+            parse_json_value(&adaptive_negative).is_err(),
+            "adaptive_w_sigw with negative CTL must fail Rust"
+        );
+
+        let mut fixed_positive = minimal_manifest_json();
+        fixed_positive["oracle_command_overrides"]["turbulence_formulation"] =
+            serde_json::json!("fixed_sync_w");
+        fixed_positive["oracle_command_overrides"]["ctl"] = serde_json::json!(5.0);
+        assert!(
+            validate_json_schema_subset(&schema, &schema, &fixed_positive, "$").is_err(),
+            "fixed_sync_w with positive CTL must fail JSON Schema"
+        );
+        assert!(
+            parse_json_value(&fixed_positive).is_err(),
+            "fixed_sync_w with positive CTL must fail Rust"
+        );
+
+        let mut fixed_valid = minimal_manifest_json();
+        fixed_valid["oracle_command_overrides"]["turbulence_formulation"] =
+            serde_json::json!("fixed_sync_w");
+        fixed_valid["oracle_command_overrides"]["ctl"] = serde_json::json!(-5.0);
+        validate_json_schema_subset(&schema, &schema, &fixed_valid, "$")
+            .expect("JSON Schema accepts explicit fixed_sync_w semantics");
+        parse_json_value(&fixed_valid)
+            .expect("Rust accepts the same explicit fixed_sync_w semantics");
     }
 
     #[test]

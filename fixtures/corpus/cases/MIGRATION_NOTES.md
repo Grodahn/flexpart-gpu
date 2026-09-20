@@ -260,13 +260,19 @@ contract for external tooling: required fields, closed objects, enums, tagged
 unions, artifact classes, stochastic namespaces, and schema version are
 machine-readable without compiling Rust.
 
-Rust remains authoritative for cross-field scientific invariants that JSON
-Schema does not encode here (for example timestep arithmetic, coupled physics
-switches, FLEXPART execution semantics, and stochastic-strategy consistency).
-Regression tests validate every checked-in case against both the JSON Schema
-and `ValidationCaseManifest::parse`, and include fail-closed negative checks
-for unsupported versions, missing required output semantics, and unknown
-top-level fields.
+The Oracle COMMAND core is intentionally duplicated as a parity boundary rather
+than left to Rust-only validation: JSON Schema and Rust both require
+`turbulence_formulation`, `lturbulence`, `lconvection`, `ctl`, `ifine`
+and `lsynctime_s`; both enforce `IFINE <= 10`; and the schema encodes the
+same closed CTL/formulation relationship (`adaptive_w_sigw` requires
+`CTL >= 0.1`, `fixed_sync_w` requires `CTL < 0`). The Rust manifest has
+no default Oracle override block.
+
+Rust remains authoritative for cross-field scientific invariants not encoded
+in JSON Schema (for example timestep arithmetic, coupled physics switches and
+stochastic-strategy consistency). Regression tests validate every checked-in
+case against both contracts and mutate the Oracle core fields/CTL combinations
+to assert schema/Rust parity fail-closed.
 ## Input-equivalence ownership and error semantics
 
 Schema v2 deliberately carries **no input-equivalence verdict**. A case may declare structured representation differences and `known_input_equivalence_limitations`, but only #52 may emit the authoritative `DEMONSTRATED` / `NOT_DEMONSTRATED` gate result. Legacy/ad-hoc `input_equivalence` fields are rejected by the closed contract. ETEX-MINI-013 preserves its existing `INPUT_EQUIVALENCE_NOT_DEMONSTRATED` limitation as declarative context without turning schema validation into an equivalence decision.

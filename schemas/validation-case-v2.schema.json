@@ -974,7 +974,8 @@
         },
         "ifine": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 10
         },
         "ldrydep": {
           "type": "integer",
@@ -998,7 +999,43 @@
       },
       "required": [
         "turbulence_formulation",
+        "lturbulence",
+        "lconvection",
+        "ctl",
+        "ifine",
         "lsynctime_s"
+      ],
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "turbulence_formulation": {
+              "const": "adaptive_w_sigw"
+            },
+            "ctl": {
+              "minimum": 0.1
+            }
+          },
+          "required": [
+            "turbulence_formulation",
+            "ctl"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "turbulence_formulation": {
+              "const": "fixed_sync_w"
+            },
+            "ctl": {
+              "exclusiveMaximum": 0
+            }
+          },
+          "required": [
+            "turbulence_formulation",
+            "ctl"
+          ]
+        }
       ]
     },
     "expected_artifact": {

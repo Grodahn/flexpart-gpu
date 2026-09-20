@@ -743,6 +743,8 @@ const fn volume_offset(x: usize, y: usize, z: usize, nx: usize, ny: usize) -> us
 
 #[cfg(test)]
 mod tests {
+    use approx::assert_relative_eq;
+
     use super::*;
     use crate::meteorology::{
         Axis, Calendar, Field, FieldTime, HorizontalGrid, HorizontalStaggering, LongitudeDomain,
@@ -828,6 +830,74 @@ mod tests {
         }
     }
 
+    fn geometry_snapshot(ordering: VerticalOrdering) -> Snapshot {
+        let mut snapshot = hybrid_snapshot(ordering);
+        let (temperature, specific_humidity) = match ordering {
+            // X-fastest storage: both X cells for the upper level, then both
+            // X cells for the surface-most level.
+            VerticalOrdering::Increasing => (
+                vec![280.0, 281.0, 290.0, 291.0],
+                vec![0.005, 0.006, 0.010, 0.011],
+            ),
+            VerticalOrdering::Decreasing => (
+                vec![290.0, 291.0, 280.0, 281.0],
+                vec![0.010, 0.011, 0.005, 0.006],
+            ),
+        };
+
+        snapshot.fields.extend([
+            Field {
+                id: FieldId::Temperature,
+                shape: vec![2, 1, 2],
+                axis_order: vec![Axis::X, Axis::Y, Axis::Z],
+                storage_order: StorageOrder::XFastest,
+                unit: Unit::Kelvin,
+                sign: SignConvention::SignedScalar,
+                horizontal_staggering: HorizontalStaggering::CellCenter,
+                vertical_staggering: VerticalStaggering::LevelCenter,
+                time: field_time(TemporalKind::Instantaneous),
+                values: temperature,
+            },
+            Field {
+                id: FieldId::SpecificHumidity,
+                shape: vec![2, 1, 2],
+                axis_order: vec![Axis::X, Axis::Y, Axis::Z],
+                storage_order: StorageOrder::XFastest,
+                unit: Unit::KilogramPerKilogram,
+                sign: SignConvention::NonNegative,
+                horizontal_staggering: HorizontalStaggering::CellCenter,
+                vertical_staggering: VerticalStaggering::LevelCenter,
+                time: field_time(TemporalKind::Instantaneous),
+                values: specific_humidity,
+            },
+            Field {
+                id: FieldId::Temperature2m,
+                shape: vec![2, 1],
+                axis_order: vec![Axis::X, Axis::Y],
+                storage_order: StorageOrder::XFastest,
+                unit: Unit::Kelvin,
+                sign: SignConvention::SignedScalar,
+                horizontal_staggering: HorizontalStaggering::CellCenter,
+                vertical_staggering: VerticalStaggering::NotApplicable,
+                time: field_time(TemporalKind::Instantaneous),
+                values: vec![292.0, 294.0],
+            },
+            Field {
+                id: FieldId::Dewpoint2m,
+                shape: vec![2, 1],
+                axis_order: vec![Axis::X, Axis::Y],
+                storage_order: StorageOrder::XFastest,
+                unit: Unit::Kelvin,
+                sign: SignConvention::SignedScalar,
+                horizontal_staggering: HorizontalStaggering::CellCenter,
+                vertical_staggering: VerticalStaggering::NotApplicable,
+                time: field_time(TemporalKind::Instantaneous),
+                values: vec![285.0, 286.0],
+            },
+        ]);
+        snapshot
+    }
+
     #[test]
     fn hybrid_pressure_uses_local_surface_pressure_and_declared_ordering() {
         let increasing = reconstruct_hybrid_pressure(&hybrid_snapshot(VerticalOrdering::Increasing))
@@ -846,6 +916,65 @@ mod tests {
         assert_eq!(
             decreasing.interface_pressure_pa,
             vec![100_000.0, 90_000.0, 75_000.0, 67_500.0, 50_000.0, 45_000.0]
+        );
+    }
+
+    #[test]
+    fn flexpart_hypsometric_near_isothermal_branch_matches_analytic_solution() {
+        let actual =
+            flexpart_hypsometric_layer_thickness_m(100_000.0, 90_000.0, 300.0, 300.0);
+        let expected = (R_AIR / GA) * (100_000.0_f32 / 90_000.0).ln() * 300.0;
+        assert_relative_eq!(actual, expected, max_relative = 1.0e-6);
+    }
+
+    #[test]
+    fn height_reconstruction_is_independent_of_storage_direction() {
+        let increasing =
+            reconstruct_vertical_geometry(&geometry_snapshot(VerticalOrdering::Increasing))
+                .expect("top-to-bottom storage must reconstruct");
+        let decreasing =
+            reconstruct_vertical_geometry(&geometry_snapshot(VerticalOrdering::Decreasing))
+                .expect("bottom-to-top storage must reconstruct");
+
+        for x in 0..2 {
+            let inc_top = increasing.height_agl_m[volume_offset(x, 0, 0, 2, 1)];
+            let inc_bottom = increasing.height_agl_m[volume_offset(x, 0, 1, 2, 1)];
+            let dec_bottom = decreasing.height_agl_m[volume_offset(x, 0, 0, 2, 1)];
+            let dec_top = decreasing.height_agl_m[volume_offset(x, 0, 1, 2, 1)];
+
+            assert!(inc_top > inc_bottom);
+            assert!(dec_top > dec_bottom);
+            assert!(inc_bottom > 0.0);
+            assert_relative_eq!(inc_bottom, dec_bottom, max_relative = 1.0e-6);
+            assert_relative_eq!(inc_top, dec_top, max_relative = 1.0e-6);
+
+            let terrain = increasing.terrain_asl_m[x];
+            assert_relative_eq!(
+                increasing.height_asl_m[volume_offset(x, 0, 0, 2, 1)],
+                inc_top + terrain,
+                epsilon = 1.0e-4
+            );
+            assert_relative_eq!(
+                increasing.height_asl_m[volume_offset(x, 0, 1, 2, 1)],
+                inc_bottom + terrain,
+                epsilon = 1.0e-4
+            );
+        }
+    }
+
+    #[test]
+    fn exact_height_reconstruction_requires_flexpart_surface_thermodynamics() {
+        let mut snapshot = geometry_snapshot(VerticalOrdering::Increasing);
+        snapshot
+            .fields
+            .retain(|field| field.id != FieldId::Dewpoint2m);
+        let error = reconstruct_vertical_geometry(&snapshot)
+            .expect_err("missing 2-m dewpoint must fail instead of using a fallback");
+        assert_eq!(
+            error,
+            VerticalTransformError::Contract(ContractError::MissingRequiredField(
+                FieldId::Dewpoint2m
+            ))
         );
     }
 

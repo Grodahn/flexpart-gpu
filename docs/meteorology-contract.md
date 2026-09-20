@@ -80,38 +80,39 @@ that follow add scientific provenance and interpolation notes on top of this mac
 <!-- BEGIN GENERATED FIELD SPEC MATRIX -->
 | Canonical id | Unit | Sign | Temporal policy | Machine requirement sets |
 | --- | --- | --- | --- | --- |
-| `wind_u` | `meter_per_second` | `positive_eastward` | `instantaneous` | `advection` |
-| `wind_v` | `meter_per_second` | `positive_northward` | `instantaneous` | `advection` |
+| `wind_u` | `meter_per_second` | `positive_eastward` | `instantaneous` | `advection`, `pbl_turbulence` |
+| `wind_v` | `meter_per_second` | `positive_northward` | `instantaneous` | `advection`, `pbl_turbulence` |
 | `vertical_velocity` | `meter_per_second` | `positive_upward` | `instantaneous` | `advection` |
-| `temperature` | `kelvin` | `signed_scalar` | `instantaneous` | `convection`, `wet_deposition`, `settling` |
-| `specific_humidity` | `kilogram_per_kilogram` | `non_negative` | `instantaneous` | `convection`, `wet_deposition` |
+| `temperature` | `kelvin` | `signed_scalar` | `instantaneous` | `pbl_turbulence`, `convection`, `wet_deposition`, `settling` |
+| `specific_humidity` | `kilogram_per_kilogram` | `non_negative` | `instantaneous` | `pbl_turbulence`, `convection`, `wet_deposition` |
 | `pressure` | `pascal` | `non_negative` | `instantaneous` | `convection` |
-| `air_density` | `kilogram_per_cubic_meter` | `non_negative` | `instantaneous` | `wet_deposition`, `settling` |
-| `density_gradient` | `kilogram_per_quartic_meter` | `signed_scalar` | `instantaneous` | — |
-| `surface_pressure` | `pascal` | `non_negative` | `instantaneous` | `convection`, `dry_deposition` |
+| `air_density` | `kilogram_per_cubic_meter` | `non_negative` | `instantaneous` | `pbl_turbulence`, `wet_deposition`, `settling` |
+| `density_gradient` | `kilogram_per_quartic_meter` | `signed_scalar` | `instantaneous` | `pbl_turbulence` |
+| `surface_pressure` | `pascal` | `non_negative` | `instantaneous` | `pbl_turbulence`, `convection`, `dry_deposition` |
 | `orography` | `meter` | `signed_scalar` | `static` | — |
 | `land_sea_mask` | `fraction` | `non_negative` | `static` | — |
 | `snow_depth` | `meter` | `non_negative` | `instantaneous` | `dry_deposition` |
-| `wind_u10m` | `meter_per_second` | `positive_eastward` | `instantaneous` | — |
-| `wind_v10m` | `meter_per_second` | `positive_northward` | `instantaneous` | — |
-| `temperature2m` | `kelvin` | `signed_scalar` | `instantaneous` | `convection`, `dry_deposition` |
-| `dewpoint2m` | `kelvin` | `signed_scalar` | `instantaneous` | `convection`, `dry_deposition` |
+| `wind_u10m` | `meter_per_second` | `positive_eastward` | `instantaneous` | `pbl_turbulence` |
+| `wind_v10m` | `meter_per_second` | `positive_northward` | `instantaneous` | `pbl_turbulence` |
+| `temperature2m` | `kelvin` | `signed_scalar` | `instantaneous` | `pbl_turbulence`, `convection`, `dry_deposition` |
+| `dewpoint2m` | `kelvin` | `signed_scalar` | `instantaneous` | `pbl_turbulence`, `convection`, `dry_deposition` |
 | `large_scale_precipitation` | `kilogram_per_square_meter` | `non_negative` | `precipitation_amount` | `wet_deposition`, `dry_deposition` |
 | `convective_precipitation` | `kilogram_per_square_meter` | `non_negative` | `precipitation_amount` | `wet_deposition`, `dry_deposition` |
 | `total_cloud_cover` | `fraction` | `non_negative` | `instantaneous` | `wet_deposition` |
 | `cloud_total_water` | `kilogram_per_kilogram` | `non_negative` | `instantaneous` | `wet_deposition` |
-| `sensible_heat_flux` | `watt_per_square_meter` | `positive_upward_flux` | `surface_flux_rate` | — |
+| `sensible_heat_flux` | `watt_per_square_meter` | `positive_upward_flux` | `surface_flux_rate` | `pbl_turbulence` |
 | `surface_solar_radiation` | `watt_per_square_meter` | `non_negative` | `surface_flux_rate` | `dry_deposition` |
-| `surface_stress_eastward` | `newton_per_square_meter` | `positive_eastward` | `surface_flux_rate` | — |
-| `surface_stress_northward` | `newton_per_square_meter` | `positive_northward` | `surface_flux_rate` | — |
-| `friction_velocity` | `meter_per_second` | `non_negative` | `instantaneous` | `dry_deposition` |
-| `convective_velocity_scale` | `meter_per_second` | `non_negative` | `instantaneous` | — |
-| `mixing_height` | `meter` | `non_negative` | `instantaneous` | — |
-| `tropopause_height` | `meter` | `non_negative` | `instantaneous` | — |
-| `inverse_obukhov_length` | `per_meter` | `signed_scalar` | `instantaneous` | `dry_deposition` |
+| `surface_stress_eastward` | `newton_per_square_meter` | `positive_eastward` | `surface_flux_rate` | `pbl_turbulence` |
+| `surface_stress_northward` | `newton_per_square_meter` | `positive_northward` | `surface_flux_rate` | `pbl_turbulence` |
+| `friction_velocity` | `meter_per_second` | `non_negative` | `instantaneous` | `pbl_turbulence`, `dry_deposition` |
+| `convective_velocity_scale` | `meter_per_second` | `non_negative` | `instantaneous` | `pbl_turbulence` |
+| `mixing_height` | `meter` | `non_negative` | `instantaneous` | `pbl_turbulence` |
+| `tropopause_height` | `meter` | `non_negative` | `instantaneous` | `pbl_turbulence` |
+| `inverse_obukhov_length` | `per_meter` | `signed_scalar` | `instantaneous` | `pbl_turbulence`, `dry_deposition` |
 | `land_use_fractions` | `fraction` | `non_negative` | `static` | `dry_deposition` |
 <!-- END GENERATED FIELD SPEC MATRIX -->
 
+<!-- BEGIN DETAILED FIELD TRACE MATRIX -->
 ### Normalized/source forcing
 
 | Canonical id | Physical meaning | Pinned FLEXPART 11.1 trace | Layout / canonical unit and sign | Time semantics | #31 interpolation / handoff | Consumers |
@@ -163,6 +164,8 @@ provider requirements.
 | `tropopause_height` | thermal tropopause `tropopause`, diagnosed in `calcpar` from thermodynamic profile | X,Y; m | instantaneous derived | vertical-regime logic |
 | `inverse_obukhov_length` | `oli=1/L`; `calcpar -> obukhov` from surface/thermodynamic forcing | X,Y; 1/m, signed | instantaneous derived | PBL; dry deposition |
 
+<!-- END DETAILED FIELD TRACE MATRIX -->
+
 ### Required derived wet-deposition state (not provider fields)
 
 FLEXPART does **not** preserve provider liquid/ice separation as a scavenging input.
@@ -205,14 +208,17 @@ no longer an undocumented meteorological input between #29 and #33.
 - **Gravitational settling / #14/#35:** `settling_mod::get_settling` consumes local air
   temperature and air density in addition to species/carrier properties.
 
-The corresponding machine-readable subsets are
+The corresponding machine-readable subsets are `Requirements::pbl_turbulence()`,
 `Requirements::convection()`, `Requirements::wet_deposition()`,
-`Requirements::dry_deposition()`, and `Requirements::settling()`.
+`Requirements::dry_deposition()`, and `Requirements::settling()`. The detailed source/derived
+field tables are also coverage-checked against every canonical `FieldId`, so adding a new
+canonical field without an oracle/consumer trace entry fails the contract tests.
 
 ### Missing-value and temporal policy
 
 - Schema-v1 has no provider sentinel values: required missing fields, NaN/Inf and impossible domains
-  fail at the canonical boundary.
+  fail at the canonical boundary. Specific humidity is additionally constrained to the physical
+  mass-fraction range `[0,1]`.
 - Normal dynamic state variables use `instantaneous` snapshot semantics and must share one
   validity time/calendar per Snapshot. Orography, land/sea mask and land-use fractions use
   explicit `static` semantics; their timestamp is provenance-only.
@@ -220,7 +226,9 @@ The corresponding machine-readable subsets are
   may be instantaneous or explicit interval means; accumulated energy/momentum must be normalized
   before crossing the boundary.
 - Precipitation remains an interval amount (`kg/m2`, numerically equivalent to mm water amount)
-  with explicit start/end and reset metadata. #31 performs the only amount-to-rate conversion.
+  with explicit start/end and reset metadata. For `accumulated_since_reset`, schema v1 requires
+  `reset_epoch_seconds == interval_start_epoch_seconds`; a different reset origin is ambiguous and
+  fails normalization. #31 performs the only amount-to-rate conversion.
 - Land-use fractions are bounded [0,1] and must sum to 1 within `1e-5` independently for each cell.
 - Provider-specific missing-value handling, accumulated-field decoding and unit conversion belong to
   #32 and must fail rather than silently default when source semantics are ambiguous.
@@ -248,7 +256,9 @@ Implemented:
 - fail-closed validation of schema identity, dimensions, required fields, units/signs,
   vertical metadata, accumulation windows/resets and basic physical domains;
 - machine-readable Snapshot provenance plus repository-wide run-manifest provenance containing
-  canonical meteorology schema id/version and a SHA-256 of the checked-in identity source;
+  canonical meteorology schema id/version and a SHA-256 of the checked-in identity source; the
+  manifest writer can additionally bind and hash the actual canonical meteorology snapshot(s) used
+  by a run, while runs that do not consume canonical meteorology record that no runtime input was bound;
 - checked-in synthetic 3-D fixture and round-trip test;
 - checked-in real-data native-level fixture derived from the repository's
   independently sourced ERA5/ETEX corpus
@@ -265,11 +275,13 @@ Implemented:
   the represented/omitted field lists, the baseline FLEXPART 11.1 oracle reference and
   the half-level averaging consistency of level_values/interface_values;
 - representative fail-closed tests for missing fields, unit mismatch, dimensions,
-  unsupported calendar values, field-specific staggering, invalid hybrid metadata,
-  ambiguous/invalid accumulation reset semantics, whole-grid longitude/latitude extent,
-  regional seam crossing, canonical global periodicity, static ancillary semantics and
-  mixed dynamic validity times/calendars.
+  unsupported calendar values, field-specific staggering, invalid hybrid metadata and missing
+  hybrid `surface_pressure`, ambiguous/invalid accumulation reset semantics, specific-humidity
+  bounds, whole-grid longitude/latitude extent, regional seam crossing, canonical global
+  periodicity, static ancillary semantics and mixed dynamic validity times/calendars;
 
-The P0 meteorology crosswalk is now frozen for #29. Process-specific formula/rate parity remains
+The P0 meteorology crosswalk is now frozen for #29. The compact semantic matrix is generated from
+`FIELD_SPECS`, and tests require the detailed oracle/consumer trace section to cover every canonical
+field. Process-specific formula/rate parity remains
 owned by #23/#33/#36, and provider-adapter normalization remains #32 non-scope; neither requires an
 additional meteorological input to be invented outside this contract.

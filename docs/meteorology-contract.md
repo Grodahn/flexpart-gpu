@@ -112,12 +112,23 @@ Implemented:
 - fail-closed validation of schema identity, dimensions, required fields, units/signs,
   vertical metadata, accumulation windows/resets and basic physical domains;
 - machine-readable Provenance value containing schema id/version;
-- checked-in synthetic 3-D fixture and round-trip test.
+- checked-in synthetic 3-D fixture and round-trip test;
+- checked-in real-data native-level fixture derived from the repository's
+  independently sourced ERA5/ETEX corpus
+  (fixtures/meteorology/era5-etex-native-v1.json + .provenance.json): 2x2 cells,
+  137 native levels, 1994-10-23 15:00 UTC, fields wind_u/wind_v/temperature/
+  specific_humidity/surface_pressure, with full hybrid A/B metadata normalized per the
+  FLEXPART 11.1 half-level averaging convention;
+- Requirements::real_data_native_levels() covering exactly the represented fields;
+  the real-data fixture intentionally does not satisfy Requirements::advection() because
+  reconstructed 3-D pressure and upward-positive vertical velocity are #30 transforms;
+- provenance integrity test that recomputes the artifact digest, checks the pinned
+  source checksums, the documented retrieval identity, the selected slice indices,
+  the represented/omitted field lists, the baseline FLEXPART 11.1 oracle reference and
+  the half-level averaging consistency of level_values/interface_values.
 
 Still required before #29 can close:
 
-- extract and check in a small normalized snapshot from the existing independently sourced
-  real ERA5/ETEX corpus, with source checksum/provenance rather than invented values;
 - wire schema id/version into the repository-wide run-manifest path that owns candidate
   provenance;
 - finish the pinned FLEXPART 11.1 source crosswalk for cloud phase/water and land-use/season

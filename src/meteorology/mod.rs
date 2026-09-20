@@ -327,6 +327,30 @@ impl Requirements {
             .collect(),
         }
     }
+
+    /// Fields genuinely represented by the checked-in real-data native-level
+    /// fixture (`fixtures/meteorology/era5-etex-native-v1.json`).
+    ///
+    /// The native ERA5 snapshot carries provider-agnostic wind, temperature,
+    /// humidity and surface pressure together with the full hybrid A/B
+    /// metadata. It intentionally does not satisfy [`Self::advection`]:
+    /// reconstructed 3-D pressure and canonical upward-positive vertical
+    /// velocity are hybrid transforms owned by #30 and are not part of this
+    /// fixture.
+    #[must_use]
+    pub fn real_data_native_levels() -> Self {
+        Self {
+            required_fields: [
+                FieldId::WindU,
+                FieldId::WindV,
+                FieldId::Temperature,
+                FieldId::SpecificHumidity,
+                FieldId::SurfacePressure,
+            ]
+            .into_iter()
+            .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

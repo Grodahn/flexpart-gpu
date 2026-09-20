@@ -1,0 +1,125 @@
+{
+  "schema": {
+    "id": "flexpart-gpu.canonical-meteorology",
+    "version": 1
+  },
+  "artifact": {
+    "path": "fixtures/meteorology/era5-etex-native-v1.json",
+    "sha256": "215801bd6a2465cbecf6c15541d304ad8b4ae6efad3922f37a14d0f6462c7166",
+    "bytes": 37286,
+    "generated_by": "scripts/fixtures/extract_era5_etex_native_v1.py",
+    "generated_at_git_revision": "637217da2ad3",
+    "generator_environment": {
+      "python": "3.12.10",
+      "eccodes": "2.48.0",
+      "numpy": "2.5.3"
+    }
+  },
+  "source": {
+    "path": "fixtures/etex/native-mini",
+    "request_identity": {
+      "date": "1994-10-23",
+      "time": "15/18/21",
+      "levelist": "1/to/137",
+      "levtype": "ml",
+      "param": "130/131/132/133/135",
+      "stream": "oper",
+      "type": "an",
+      "area": "53/-8/43/8",
+      "grid": "0.25/0.25",
+      "format": "grib"
+    },
+    "surface_request": {
+      "source": "https://console.cloud.google.com/storage/browser/gcp-public-data-arco-era5",
+      "dataset": "ARCO-ERA5 hourly surface fields",
+      "retrieved_utc": "2026-09-16",
+      "extraction": "scripts/etex/build_native_surface_fixture.py"
+    },
+    "surface_manifest_times": [
+      "1994-10-23T15:00:00",
+      "1994-10-23T18:00:00",
+      "1994-10-23T21:00:00",
+      "1994-10-24T00:00:00",
+      "1994-10-24T03:00:00",
+      "1994-10-24T06:00:00"
+    ],
+    "native_grib": {
+      "path": "fixtures/etex/native-mini/era5-19941023-151821-ml.grib",
+      "bytes": 13624650,
+      "sha256": "0e059410504dc3d1b2ba13628372a0be81054ff30a75017cf5b06cf9144b5023"
+    },
+    "surface_archive": {
+      "path": "fixtures/etex/native-mini/era5-surface-19941023-24.npz",
+      "bytes": 531362,
+      "sha256": "88cd4dcb5e8ff89aeae6c065e3f2c2f75ad09c125f5d15290bfe7a56b059668d"
+    },
+    "source_archive_sha256": "bc7670d3995a07c241e19ade71cd662f489b7f565218952aa92df23d8efdd5fe"
+  },
+  "slice": {
+    "timestamp": "1994-10-23T15:00:00Z",
+    "epoch_seconds": 782924400,
+    "horizontal": {
+      "nx": 2,
+      "ny": 2,
+      "xlon0_deg": -2.0,
+      "ylat0_deg": 48.0,
+      "longitudes_deg": [
+        -2.0,
+        -1.75
+      ],
+      "latitudes_deg": [
+        48.0,
+        48.25
+      ],
+      "source_lon_indices": [
+        24,
+        25
+      ],
+      "source_lat_desc_indices": [
+        20,
+        19
+      ],
+      "source_lat_asc_indices": [
+        20,
+        21
+      ],
+      "longitude_domain": "minus180_to180"
+    },
+    "vertical": {
+      "native_levels": 137,
+      "selected_levels": "1..137 (all native levels)",
+      "coordinate": "native ERA5 hybrid sigma-pressure, half-level a (Pa)/b plus full-level a/b as 0.5*(half(k)+half(k+1)) following windfields_mod.f90:845-846",
+      "reference_surface_pressure_pa": 101325.0
+    }
+  },
+  "represented_fields": [
+    "wind_u",
+    "wind_v",
+    "temperature",
+    "specific_humidity",
+    "surface_pressure"
+  ],
+  "omitted_provider_fields": {
+    "omega_param_135": "pressure velocity; conversion to canonical upward-positive m/s is eigen to #30 and is not represented",
+    "eta_velocity_param_77": "eta-coordinate velocity; conversion to canonical upward-positive m/s is eigen to #30 and is not represented",
+    "pressure_3d": "full-level pressure reconstruction a+b*p_s is the #30 hybrid transform and is not represented"
+  },
+  "normalization": [
+    "native ERA5 longitude encoding 352..8 degrees normalized to the [-180,180) canonical domain (-8..8 convention of the ETEX mini fixture); snapshot xlon0=-2.0",
+    "native north-to-south latitude order reordered to canonical south-to-north; Y index 0 is ylat0=48.0",
+    "provider paramId (130/131/132/133) mapped to canonical temperature/wind_u/wind_v/specific_humidity; surface pressure read from the checked-in surface archive",
+    "no numeric unit conversion: ERA5 model-level temperature is K, u/v are m/s, specific humidity is kg/kg, surface pressure from the ARCO-ERA5 archive is Pa",
+    "vertical metadata taken verbatim from the native PV records (a in Pa, b dimensionless); full-level coefficients derived by half-level averaging; level_values/interface_values are the explicit reference pressures a+b*101325 Pa",
+    "time expressed as UTC epoch seconds; calendar gregorian; temporal kind instantaneous"
+  ],
+  "oracle_reference": {
+    "name": "FLEXPART",
+    "version": "11.1",
+    "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+    "manifest": "reference/flexpart-11.1.json"
+  },
+  "notes": [
+    "This artifact demonstrates canonical normalization and reproducibility only; it makes no scientific parity claim.",
+    "The fixture is validated against flexpart-gpu::meteorology::Requirements::real_data_native_levels (wind_u, wind_v, temperature, specific_humidity, surface_pressure); it intentionally does not satisfy Requirements::advection()."
+  ]
+}

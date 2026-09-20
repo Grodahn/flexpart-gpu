@@ -359,6 +359,13 @@ pub enum VerticalTransformError {
         y: usize,
         pressure_pa: f32,
     },
+    #[error("hybrid surface interface at (x={x}, y={y}) is {interface_pressure_pa} Pa but local surface pressure is {surface_pressure_pa} Pa")]
+    SurfaceInterfacePressureMismatch {
+        x: usize,
+        y: usize,
+        interface_pressure_pa: f32,
+        surface_pressure_pa: f32,
+    },
     #[error(
         "reconstructed pressure is invalid/non-monotonic at (x={x}, y={y}, index={index})"
     )]
@@ -540,6 +547,25 @@ pub fn reconstruct_hybrid_pressure(
                     });
                 }
                 interfaces[volume_offset(x, y, k, nx, ny)] = pressure;
+            }
+
+            // The FLEXPART W/interface geometry is anchored at the physical
+            // surface (0 m AGL). The corresponding hybrid interface must
+            // therefore be the actual local surface pressure, not merely a
+            // coefficient set that happens to match the reference pressure.
+            let surface_interface = match vertical.ordering {
+                VerticalOrdering::Increasing => nz,
+                VerticalOrdering::Decreasing => 0,
+            };
+            let surface_interface_pressure =
+                interfaces[volume_offset(x, y, surface_interface, nx, ny)];
+            if !pressure_close(surface_interface_pressure, ps) {
+                return Err(VerticalTransformError::SurfaceInterfacePressureMismatch {
+                    x,
+                    y,
+                    interface_pressure_pa: surface_interface_pressure,
+                    surface_pressure_pa: ps,
+                });
             }
 
             validate_column_ordering(
@@ -1324,6 +1350,11 @@ const fn model_level_index_from_surface(
     }
 }
 
+fn pressure_close(actual: f32, expected: f32) -> bool {
+    let tolerance = 0.05_f32.max(expected.abs() * 1.0e-6);
+    (actual - expected).abs() <= tolerance
+}
+
 fn validate_column_ordering(
     values: &[f32],
     x: usize,
@@ -2105,4 +2136,39 @@ mod tests {
             VerticalTransformError::HeightBelowTerrain { .. }
         ));
     }
+    #[test]
+    fn hybrid_surface_interface_must_match_actual_local_surface_pressure() {
+        let mut snapshot = hybrid_snapshot(VerticalOrdering::Increasing);
+        let a = snapshot
+            .vertical_coordinate
+            .hybrid_a_interface_pa
+            .as_mut()
+            .expect("hybrid A");
+        let b = snapshot
+            .vertical_coordinate
+            .hybrid_b_interface
+            .as_mut()
+            .expect("hybrid B");
+
+        // This still matches the schema's 100 kPa reference interface:
+        // 10 kPa + 0.9 * 100 kPa = 100 kPa. At the second column's actual
+        // 90 kPa surface pressure it becomes 91 kPa and must fail closed
+        // rather than pairing 91 kPa with the 0 m AGL W surface.
+        a[2] = 10_000.0;
+        b[2] = 0.9;
+
+        let error = reconstruct_hybrid_pressure(&snapshot)
+            .expect_err("surface hybrid interface must track each column's local ps");
+        assert!(matches!(
+            error,
+            VerticalTransformError::SurfaceInterfacePressureMismatch {
+                x: 1,
+                y: 0,
+                interface_pressure_pa,
+                surface_pressure_pa,
+            } if (interface_pressure_pa - 91_000.0).abs() < 0.1
+                && (surface_pressure_pa - 90_000.0).abs() < 0.1
+        ));
+    }
+
 }

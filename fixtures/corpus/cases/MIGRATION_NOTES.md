@@ -22,7 +22,7 @@ No scientific value changed in migration; only representation.
 | `seeds.derivation` | `stochastic.candidate_philox.derivation` | Free-form prose is replaced by the closed versioned enum `wrapping_add_key0_v1` or `reuse_base_identity_v1`. The runner and audit execute this field directly; unknown values fail closed. |
 | `seeds.requirement` (REPEAT-009) | `notes` | Moved to notes ("bit-identical particle states across repeats"). |
 | `seeds` as a string (ADV-ANA-001 `"deterministic (no RNG consumed)"`) | `stochastic: {candidate_philox: null, oracle_seed: null}` | Removed free-form marker; deterministic cases declare no identity and validate without one. |
-| - | `stochastic.oracle_seed` | Typed oracle stochastic namespace. `pristine-oracle` is seedless and carries no seedable strategy. `seedable-validation-oracle` references the completed #50 contract by stable strategy id/version/path and may carry a requested identity or seed=null for the #50 default-equivalent mode. Candidate Philox values are never interpreted as oracle identities. |
+| - | `stochastic.oracle_seed` | Typed oracle stochastic namespace. Every non-null oracle identity explicitly carries `strategy`, `mode`, `seed`, and `repetitions`. `pristine-oracle` is exactly `strategy:null, mode:default, seed:null`; `seedable-validation-oracle` references #50 and uses either `mode:default, seed:null` or `mode:requested_identity` with a numeric seed. Candidate Philox values are never interpreted as oracle identities. |
 | implicit/missing stochastic subfields | explicit `stochastic.candidate_philox` + `stochastic.oracle_seed` | Both namespace keys are required in canonical v2 JSON and are nullable. `null` means deliberately no identity for that model; a missing key is invalid. Candidate turbulence requires a candidate Philox identity even when an oracle identity exists. |
 | implicit oracle repeat default (5) | `stochastic.oracle_seed.repetitions` | Required explicitly whenever `oracle_seed` is non-null; Rust and Python no longer inject a default repetition count. |
 | `fortran_repeatability_note` (REPEAT-009) | `notes` | Moved verbatim. |
@@ -31,10 +31,14 @@ No scientific value changed in migration; only representation.
 
 Candidate and oracle identities are independent namespaces. Canonical schema v2 always
 serializes both keys inside `stochastic`; deterministic/no-oracle cases use explicit
-`null` rather than omission. In particular, `physics_switches.turbulence=true`
-requires a non-null `candidate_philox`; a non-null `oracle_seed` cannot satisfy that
-candidate requirement. Candidate Philox keys/counters are strict u32 arrays (2 key
-words, 4 counter words), and oracle `repetitions` has no hidden default.
+`null` rather than omission. A non-null `oracle_seed` also has no omission semantics:
+`strategy`, `mode`, `seed`, and `repetitions` are all required keys. Default mode is
+represented by `mode: "default"` plus explicit `seed: null`; requested identities use
+`mode: "requested_identity"` plus an integer seed. In particular,
+`physics_switches.turbulence=true` requires a non-null `candidate_philox`; an oracle
+identity cannot satisfy that candidate requirement. Candidate Philox keys/counters are
+strict u32 arrays (2 key words, 4 counter words), and oracle `repetitions` has no hidden
+default.
 
 ### Candidate Philox derivation semantics
 

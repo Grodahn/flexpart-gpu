@@ -185,7 +185,10 @@
     },
     "oracle_seed": {
       "kind": "pristine-oracle",
-      "repetitions": 1
+      "repetitions": 1,
+      "strategy": null,
+      "mode": "default",
+      "seed": null
     }
   },
   "execution_profile": {

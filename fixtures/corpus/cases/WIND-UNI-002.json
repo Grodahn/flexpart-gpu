@@ -150,7 +150,8 @@
         "contract_path": "reference/oracle-stochastic-identity.json"
       },
       "seed": 1,
-      "repetitions": 5
+      "repetitions": 5,
+      "mode": "requested_identity"
     }
   },
   "execution_profile": {

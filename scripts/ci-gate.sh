@@ -243,6 +243,63 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 2b. Vertical-coordinate oracle column (#30).
+# ---------------------------------------------------------------------------
+if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
+  log_info "Step 2b/6: FLEXPART-11.1 vertical-column oracle comparison..."
+  VERTICAL_DIR="${OUTPUT_DIR}/vertical-column"
+  VERTICAL_BUILD_DIR="${VERTICAL_DIR}/oracle-build"
+  mkdir -p "${VERTICAL_DIR}" "${VERTICAL_BUILD_DIR}"
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/prepare_oracle_column.py" \
+    --snapshot "${PROJECT_ROOT}/fixtures/vertical/synthetic-column-v1.json" \
+    --output "${VERTICAL_DIR}/oracle-input.txt"; then
+    fail "Preparing the #30 vertical oracle input failed"
+  fi
+
+  if ! cargo run --quiet --bin vertical-column-report -- \
+    "${PROJECT_ROOT}/fixtures/vertical/synthetic-column-v1.json" \
+    "${VERTICAL_DIR}/candidate.json"; then
+    fail "Candidate #30 vertical-column transform failed"
+  fi
+
+  # Compile only into target/: the pristine oracle source tree remains untouched.
+  # par_mod provides the exact FLEXPART constants and qvsat_mod provides the
+  # exact ew() implementation used by verttransform_ecmwf_heights.
+  if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
+    ${DOCKER_USER_ARGS} \
+    flexpart-fortran bash -c "
+      set -euo pipefail
+      build=/workspace/target/ci-gate/vertical-column/oracle-build
+      mkdir -p \"\$build\"
+      cd \"\$build\"
+      gfortran -O0 -J\"\$build\" -I\"\$build\" \
+        /workspace/flexpart/src/par_mod.f90 \
+        /workspace/flexpart/src/qvsat_mod.f90 \
+        /workspace/flexpart-gpu/scripts/vertical/oracle_column.f90 \
+        -o \"\$build/vertical-column-oracle\"
+      \"\$build/vertical-column-oracle\" \
+        /workspace/target/ci-gate/vertical-column/oracle-input.txt \
+        /workspace/target/ci-gate/vertical-column/oracle-output.txt
+    " 2>&1 | tee "${VERTICAL_DIR}/oracle-build-run.log"; then
+    fail "Pinned FLEXPART #30 vertical-column oracle harness failed"
+  fi
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/compare_oracle_column.py" \
+    --candidate "${VERTICAL_DIR}/candidate.json" \
+    --oracle "${VERTICAL_DIR}/oracle-output.txt" \
+    --oracle-checkout "${ORACLE_CHECKOUT}" \
+    --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+    --source-snapshot "${PROJECT_ROOT}/fixtures/vertical/synthetic-column-v1.json" \
+    --output "${VERTICAL_DIR}/comparison-report.json"; then
+    fail "FLEXPART-11.1 vertical-column comparison failed"
+  fi
+
+  test -s "${VERTICAL_DIR}/comparison-report.json" \
+    || fail "Vertical-column comparison report is missing"
+  log_info "FLEXPART-11.1 vertical-column comparison passed."
+fi
+# ---------------------------------------------------------------------------
 # 3. Prove a real software-WGPU adapter (fail-closed, no skip allowed).
 # ---------------------------------------------------------------------------
 log_info "Step 3/6: gpu-preflight on the software adapter..."
@@ -365,7 +422,8 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${CANDIDATE_OUTPUT}" \
     --artifact "${CANDIDATE_LOG}" \
     --artifact "${OUTPUT_DIR}/sw-wgpu-advection.log" \
-    --artifact "${OUTPUT_DIR}/gpu-preflight.log" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
+    --artifact "${OUTPUT_DIR}/gpu-preflight.log" \
+    --artifact "${OUTPUT_DIR}/vertical-column/comparison-report.json" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
     fail "Provenance manifest generation failed (missing artifact or unpinned oracle)"
   fi
   test -s "${OUTPUT_DIR}/run-manifest.json" || fail "Provenance manifest missing: ${OUTPUT_DIR}/run-manifest.json"

@@ -546,9 +546,6 @@ CANONICAL_ORACLE_FIELDS = (
     "ctl",
     "ifine",
     "lsynctime_s",
-    "ldrydep",
-    "lwetdep",
-    "ldecay",
 )
 LEGACY_ORACLE_FIELDS = {
     "LTURBULENCE": "lturbulence",
@@ -556,9 +553,6 @@ LEGACY_ORACLE_FIELDS = {
     "CTL": "ctl",
     "IFINE": "ifine",
     "LSYNCTIME": "lsynctime_s",
-    "LDRYDEP": "ldrydep",
-    "LWETDEP": "lwetdep",
-    "LDECAY": "ldecay",
 }
 REQUIRED_ORACLE_FIELDS = (
     "turbulence_formulation",
@@ -568,17 +562,13 @@ REQUIRED_ORACLE_FIELDS = (
     "ifine",
     "lsynctime_s",
 )
-FLAG_ORACLE_FIELDS = ("lturbulence", "lconvection", "ldrydep", "lwetdep", "ldecay")
+FLAG_ORACLE_FIELDS = ("lturbulence", "lconvection")
 
-# Oracle flag -> physics_switches agreement required by the fail-closed
-# validator. ldrydep/lwetdep/ldecay are optional: they must agree when
-# declared, but their absence is not a physics-altering default.
+# Only real FLEXPART COMMAND switches are cross-checked here. Dry/wet
+# deposition and decay are species/release physics, not COMMAND namelist keys.
 PHYSICS_AGREEMENT = (
     ("lturbulence", "turbulence"),
     ("lconvection", "convection"),
-    ("ldrydep", "dry_deposition"),
-    ("lwetdep", "wet_deposition"),
-    ("ldecay", "decay"),
 )
 
 # Turbulence/integration formulation contract (Issue #67), pinned to

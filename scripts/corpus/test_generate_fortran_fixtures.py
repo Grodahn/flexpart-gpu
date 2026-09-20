@@ -205,15 +205,15 @@ class OracleOverrideTest(unittest.TestCase):
             GEN.command_text("WIND-UNI-002", case)
         self.assertIn("conflicts", str(ctx.exception))
 
-    def test_optional_flag_conflicting_physics_switch_rejected(self):
-        case = load_case("WIND-UNI-002")
-        case = copy.deepcopy(case)
-        # physics says no dry deposition, oracle declares dry deposition on.
-        case["oracle_command_overrides"]["ldrydep"] = 1
-        with self.assertRaises(SystemExit) as ctx:
-            GEN.command_text("WIND-UNI-002", case)
-        self.assertIn("dry_deposition", str(ctx.exception))
-        self.assertIn("conflicts", str(ctx.exception))
+    def test_nonexistent_deposition_decay_command_pseudo_flags_rejected(self):
+        for field in ("ldrydep", "lwetdep", "ldecay"):
+            with self.subTest(field=field):
+                case = copy.deepcopy(load_case("WIND-UNI-002"))
+                case["oracle_command_overrides"][field] = 1
+                with self.assertRaises(SystemExit) as ctx:
+                    GEN.command_text("WIND-UNI-002", case)
+                self.assertIn("unknown oracle override", str(ctx.exception))
+                self.assertIn(field, str(ctx.exception))
 
     def test_ctl_five_point_zero_is_accepted(self):
         case = load_case("WIND-UNI-002")

@@ -775,15 +775,6 @@ pub struct OracleCommandOverrides {
     /// FLEXPART synchronisation interval (COMMAND LSYNCTIME) [s].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lsynctime_s: Option<u32>,
-    /// Dry deposition flag.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ldrydep: Option<u8>,
-    /// Wet deposition flag.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lwetdep: Option<u8>,
-    /// Decay flag.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ldecay: Option<u8>,
 }
 
 /// A known limitation that #52 must consider when proving input equivalence.
@@ -1073,15 +1064,12 @@ impl ValidationCaseManifest {
             .get("oracle_command_overrides")
             .and_then(serde_json::Value::as_object)
         {
-            const LEGACY_TO_CANONICAL: [(&str, &str); 8] = [
+            const LEGACY_TO_CANONICAL: [(&str, &str); 5] = [
                 ("LTURBULENCE", "lturbulence"),
                 ("LCONVECTION", "lconvection"),
                 ("CTL", "ctl"),
                 ("IFINE", "ifine"),
                 ("LSYNCTIME", "lsynctime_s"),
-                ("LDRYDEP", "ldrydep"),
-                ("LWETDEP", "lwetdep"),
-                ("LDECAY", "ldecay"),
             ];
             for (legacy, canonical) in LEGACY_TO_CANONICAL {
                 if overrides.contains_key(legacy) && overrides.contains_key(canonical) {
@@ -2430,19 +2418,6 @@ impl ValidationCaseManifest {
                 ),
             });
         }
-        for (name, value) in [
-            ("oracle_command_overrides.ldrydep", overrides.ldrydep),
-            ("oracle_command_overrides.lwetdep", overrides.lwetdep),
-            ("oracle_command_overrides.ldecay", overrides.ldecay),
-        ] {
-            if let Some(value) = value {
-                if value != 0 && value != 1 {
-                    return Err(ValidationCaseError::InvalidPhysicsSwitches {
-                        message: format!("{name} must be exactly 0 or 1, got {value}"),
-                    });
-                }
-            }
-        }
         self.validate_oracle_physics_agreement(lturbulence, lconvection)?;
         Ok(())
     }
@@ -2536,34 +2511,6 @@ impl ValidationCaseManifest {
                     self.physics_switches.convection
                 ),
             });
-        }
-        for (name, value, physics_key, physics_value) in [
-            (
-                "oracle_command_overrides.ldrydep",
-                self.oracle_command_overrides.ldrydep,
-                "physics_switches.dry_deposition",
-                self.physics_switches.dry_deposition,
-            ),
-            (
-                "oracle_command_overrides.lwetdep",
-                self.oracle_command_overrides.lwetdep,
-                "physics_switches.wet_deposition",
-                self.physics_switches.wet_deposition,
-            ),
-            (
-                "oracle_command_overrides.ldecay",
-                self.oracle_command_overrides.ldecay,
-                "physics_switches.decay",
-                self.physics_switches.decay,
-            ),
-        ] {
-            if let Some(value) = value {
-                if value != u8::from(physics_value) {
-                    return Err(ValidationCaseError::InvalidPhysicsSwitches {
-                        message: format!("{physics_key}={physics_value} conflicts with oracle {name}={value}"),
-                    });
-                }
-            }
         }
         Ok(())
     }
@@ -3049,9 +2996,6 @@ mod tests {
                 ifine: Some(4),
                 lsynctime_s: Some(300),
                 lconvection: Some(0),
-                ldrydep: None,
-                lwetdep: None,
-                ldecay: None,
             },
             expected_artifacts: ExpectedArtifacts {
                 required: vec![
@@ -4090,16 +4034,22 @@ mod tests {
     }
 
     #[test]
-    fn optional_oracle_flag_conflicting_with_physics_is_rejected() {
-        let mut manifest = make_minimal_manifest();
-        assert!(!manifest.physics_switches.dry_deposition);
-        manifest.oracle_command_overrides.ldrydep = Some(1);
-        let err = manifest.validate().expect_err("conflict must fail");
-        assert!(matches!(
-            err,
-            ValidationCaseError::InvalidPhysicsSwitches { .. }
-        ));
-        assert!(err.to_string().contains("dry_deposition"));
+    fn oracle_command_rejects_nonexistent_deposition_decay_pseudo_flags() {
+        let schema = load_validation_case_schema();
+        for field in ["ldrydep", "lwetdep", "ldecay"] {
+            let mut raw = minimal_manifest_json();
+            raw["oracle_command_overrides"][field] = serde_json::json!(1);
+            assert!(
+                validate_json_schema_subset(&schema, &schema, &raw, "$").is_err(),
+                "JSON Schema must reject nonexistent COMMAND pseudo-field {field}"
+            );
+            let err = parse_json_value(&raw)
+                .expect_err("Rust contract must reject nonexistent COMMAND pseudo-field");
+            assert!(
+                err.to_string().contains(field) || err.to_string().contains("unknown field"),
+                "unexpected error for {field}: {err}"
+            );
+        }
     }
 
     #[test]
@@ -4977,7 +4927,6 @@ mod tests {
             path: SPECIES_040_DRY_CONTRACT_PATH.to_string(),
             git_blob_sha: SPECIES_040_DRY_CONTRACT_BLOB.to_string(),
         };
-        manifest.oracle_command_overrides.ldrydep = Some(1);
         manifest.deposition = None;
         let err = manifest.validate().expect_err("active dry deposition needs forcing");
         assert!(matches!(
@@ -4995,7 +4944,6 @@ mod tests {
 
         let mut manifest = make_minimal_manifest();
         manifest.physics_switches.decay = true;
-        manifest.oracle_command_overrides.ldecay = Some(1);
         let err = manifest
             .validate()
             .expect_err("decay requires a dedicated species physics profile");

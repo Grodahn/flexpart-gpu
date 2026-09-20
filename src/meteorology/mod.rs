@@ -34,11 +34,30 @@ impl Default for SchemaIdentity {
 pub struct HorizontalGrid {
     pub nx: usize,
     pub ny: usize,
+    /// Longitude of the X=0 scalar/cell-center sample.
+    ///
+    /// Schema v1 fixes the horizontal origin at a cell center. An X-face is
+    /// therefore located half a grid step west of the corresponding cell
+    /// center, while a Y-face is half a grid step south of it.
     pub xlon0_deg: f64,
+    /// Latitude of the Y=0 scalar/cell-center sample.
     pub ylat0_deg: f64,
     pub dx_deg: f64,
     pub dy_deg: f64,
     pub longitude_domain: LongitudeDomain,
+}
+
+impl HorizontalGrid {
+    /// Whether schema-v1 X coordinates wrap periodically.
+    ///
+    /// Periodicity is canonical rather than provider metadata: an X grid is
+    /// periodic iff its cell coverage nx * dx is exactly 360 degrees within
+    /// the schema tolerance. All other grids are non-periodic and must fit
+    /// wholly inside the declared longitude domain.
+    #[must_use]
+    pub fn is_periodic_x(&self) -> bool {
+        grid_close(self.dx_deg * self.nx as f64, 360.0)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -157,6 +176,13 @@ impl FieldId {
             Self::LandUseFractions => Some(FLEXPART_LAND_USE_CLASS_COUNT),
             _ => None,
         }
+    }
+
+    fn is_static_ancillary(self) -> bool {
+        matches!(
+            self,
+            Self::Orography | Self::LandSeaMask | Self::LandUseFractions
+        )
     }
 
     fn supports_horizontal_staggering(self, staggering: HorizontalStaggering) -> bool {
@@ -299,6 +325,9 @@ pub enum Calendar {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TemporalKind {
+    /// Time-invariant ancillary data. The timestamp remains a provenance stamp
+    /// only and must not cause temporal interpolation.
+    Static,
     Instantaneous,
     IntervalMean,
     IntervalTotal,
@@ -484,11 +513,23 @@ impl Snapshot {
         validate_vertical(&self.vertical_coordinate)?;
 
         let mut seen = BTreeSet::new();
+        let mut dynamic_time_anchor: Option<(Calendar, i64)> = None;
         for field in &self.fields {
             if !seen.insert(field.id) {
                 return Err(ContractError::DuplicateField(field.id));
             }
             self.validate_field(field)?;
+
+            if field.time.kind != TemporalKind::Static {
+                let field_time = (field.time.calendar, field.time.valid_time_epoch_seconds);
+                match dynamic_time_anchor {
+                    Some(anchor) if anchor != field_time => {
+                        return Err(ContractError::InconsistentSnapshotTime(field.id));
+                    }
+                    None => dynamic_time_anchor = Some(field_time),
+                    _ => {}
+                }
+            }
         }
         for id in &requirements.required_fields {
             if !seen.contains(id) {
@@ -614,6 +655,8 @@ pub enum ContractError {
     NonFiniteValue(FieldId),
     #[error("invalid temporal metadata for {0:?}")]
     InvalidTemporalMetadata(FieldId),
+    #[error("dynamic field {0:?} does not share the snapshot validity time/calendar")]
+    InconsistentSnapshotTime(FieldId),
     #[error("invalid value domain for {0:?}")]
     InvalidValueDomain(FieldId),
 }
@@ -631,14 +674,58 @@ fn validate_grid(grid: &HorizontalGrid) -> Result<(), ContractError> {
     {
         return Err(ContractError::InvalidHorizontalGrid);
     }
-    let lon_valid = match grid.longitude_domain {
-        LongitudeDomain::Minus180To180 => (-180.0..=180.0).contains(&grid.xlon0_deg),
-        LongitudeDomain::ZeroTo360 => (0.0..360.0).contains(&grid.xlon0_deg),
-    };
-    if !lon_valid {
+
+    // Schema v1 anchors xlon0/ylat0 at scalar cell centers. Validate the
+    // complete Y cell coverage rather than only the origin so #31 never has to
+    // guess how an apparently valid grid behaves beyond a pole.
+    let south_edge = grid.ylat0_deg - 0.5 * grid.dy_deg;
+    let north_edge =
+        grid.ylat0_deg + (grid.ny.saturating_sub(1) as f64 + 0.5) * grid.dy_deg;
+    if south_edge < -90.0 - GRID_TOLERANCE_DEG || north_edge > 90.0 + GRID_TOLERANCE_DEG {
         return Err(ContractError::InvalidHorizontalGrid);
     }
+
+    let (lon_min, lon_max, origin_valid) = match grid.longitude_domain {
+        LongitudeDomain::Minus180To180 => (
+            -180.0,
+            180.0,
+            (-180.0..=180.0).contains(&grid.xlon0_deg),
+        ),
+        LongitudeDomain::ZeroTo360 => (
+            0.0,
+            360.0,
+            (0.0..360.0).contains(&grid.xlon0_deg),
+        ),
+    };
+    if !origin_valid {
+        return Err(ContractError::InvalidHorizontalGrid);
+    }
+
+    let x_coverage = grid.dx_deg * grid.nx as f64;
+    if x_coverage > 360.0 + GRID_TOLERANCE_DEG {
+        return Err(ContractError::InvalidHorizontalGrid);
+    }
+
+    // Exactly-global cell coverage is the one supported periodic topology.
+    // Regional grids are explicitly non-periodic and may not cross the
+    // longitude-domain seam.
+    if !grid.is_periodic_x() {
+        let west_edge = grid.xlon0_deg - 0.5 * grid.dx_deg;
+        let east_edge =
+            grid.xlon0_deg + (grid.nx.saturating_sub(1) as f64 + 0.5) * grid.dx_deg;
+        if west_edge < lon_min - GRID_TOLERANCE_DEG
+            || east_edge > lon_max + GRID_TOLERANCE_DEG
+        {
+            return Err(ContractError::InvalidHorizontalGrid);
+        }
+    }
     Ok(())
+}
+
+const GRID_TOLERANCE_DEG: f64 = 1.0e-9;
+
+fn grid_close(actual: f64, expected: f64) -> bool {
+    (actual - expected).abs() <= GRID_TOLERANCE_DEG
 }
 
 fn validate_vertical(vertical: &VerticalCoordinate) -> Result<(), ContractError> {
@@ -741,7 +828,22 @@ fn monotonic(values: &[f32], ordering: VerticalOrdering) -> bool {
 }
 
 fn validate_time(id: FieldId, time: &FieldTime) -> Result<(), ContractError> {
+    if id.is_static_ancillary() {
+        if time.kind != TemporalKind::Static
+            || time.interval_start_epoch_seconds.is_some()
+            || time.interval_end_epoch_seconds.is_some()
+            || time.accumulation.is_some()
+        {
+            return Err(ContractError::InvalidTemporalMetadata(id));
+        }
+        return Ok(());
+    }
+    if time.kind == TemporalKind::Static {
+        return Err(ContractError::InvalidTemporalMetadata(id));
+    }
+
     match time.kind {
+        TemporalKind::Static => unreachable!("static time kind handled above"),
         TemporalKind::Instantaneous => {
             if time.interval_start_epoch_seconds.is_some()
                 || time.interval_end_epoch_seconds.is_some()

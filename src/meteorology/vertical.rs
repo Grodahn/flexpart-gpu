@@ -115,6 +115,8 @@ pub struct VerticalTransformResult {
     pub ny: usize,
     pub nz: usize,
     pub interface_pressure_pa: Vec<f32>,
+    pub interface_height_asl_m: Vec<f32>,
+    pub interface_height_agl_m: Vec<f32>,
     pub level_pressure_pa: Vec<f32>,
     pub terrain_asl_m: Vec<f32>,
     pub height_asl_m: Vec<f32>,
@@ -144,6 +146,14 @@ pub struct ResolvedReleaseHeightRange {
 /// One model-level point exposed through the immutable #30 runtime boundary.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VerticalLevelPoint {
+    pub pressure_pa: f32,
+    pub height_agl_m: f32,
+    pub height_asl_m: f32,
+}
+
+/// One W/interface point exposed through the immutable #30 runtime boundary.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VerticalInterfacePoint {
     pub pressure_pa: f32,
     pub height_agl_m: f32,
     pub height_asl_m: f32,
@@ -192,6 +202,16 @@ impl VerticalTransformResult {
             (
                 "interface_pressure_pa",
                 self.interface_pressure_pa.len(),
+                interface_count,
+            ),
+            (
+                "interface_height_asl_m",
+                self.interface_height_asl_m.len(),
+                interface_count,
+            ),
+            (
+                "interface_height_agl_m",
+                self.interface_height_agl_m.len(),
                 interface_count,
             ),
         ] {
@@ -253,12 +273,12 @@ impl VerticalRuntimeView<'_> {
         })
     }
 
-    pub fn interface_pressure_pa(
+    pub fn interface(
         &self,
         x: usize,
         y: usize,
         interface: usize,
-    ) -> Result<f32, VerticalTransformError> {
+    ) -> Result<VerticalInterfacePoint, VerticalTransformError> {
         validate_xyz(
             x,
             y,
@@ -267,13 +287,21 @@ impl VerticalRuntimeView<'_> {
             self.result.ny,
             self.result.nz + 1,
         )?;
-        Ok(self.result.interface_pressure_pa[interface_offset(
-            x,
-            y,
-            interface,
-            self.result.nx,
-            self.result.ny,
-        )])
+        let index = interface_offset(x, y, interface, self.result.nx, self.result.ny);
+        Ok(VerticalInterfacePoint {
+            pressure_pa: self.result.interface_pressure_pa[index],
+            height_agl_m: self.result.interface_height_agl_m[index],
+            height_asl_m: self.result.interface_height_asl_m[index],
+        })
+    }
+
+    pub fn interface_pressure_pa(
+        &self,
+        x: usize,
+        y: usize,
+        interface: usize,
+    ) -> Result<f32, VerticalTransformError> {
+        Ok(self.interface(x, y, interface)?.pressure_pa)
     }
 
     #[must_use]
@@ -291,6 +319,7 @@ pub struct VerticalTransformProvenance {
     pub source_level_count: usize,
     pub pressure_algorithm_id: String,
     pub height_algorithm_id: String,
+    pub w_height_algorithm_id: String,
     pub terrain_reference: VerticalReference,
     pub pressure_reconstruction: String,
     pub height_reconstruction: String,
@@ -306,6 +335,7 @@ impl VerticalTransformProvenance {
             source_level_count: snapshot.vertical_coordinate.level_values.len(),
             pressure_algorithm_id: "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1".to_string(),
             height_algorithm_id: "flexpart11_verttransform_ecmwf_heights_v1".to_string(),
+            w_height_algorithm_id: "flexpart11_wzlev_from_uvzlev_v1".to_string(),
             terrain_reference: VerticalReference::AboveMeanSeaLevel,
             pressure_reconstruction: "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)".to_string(),
             height_reconstruction: "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q".to_string(),
@@ -697,11 +727,23 @@ pub fn reconstruct_vertical_geometry(
         }
     }
 
+    let (interface_height_agl_m, interface_height_asl_m) =
+        reconstruct_flexpart_w_heights(
+            snapshot.vertical_coordinate.ordering,
+            nx,
+            ny,
+            nz,
+            &height_agl_m,
+            terrain,
+        )?;
+
     Ok(VerticalTransformResult {
         nx,
         ny,
         nz,
         interface_pressure_pa: pressure.interface_pressure_pa,
+        interface_height_asl_m,
+        interface_height_agl_m,
         level_pressure_pa: pressure.level_pressure_pa,
         terrain_asl_m: terrain.to_vec(),
         height_asl_m,
@@ -1099,6 +1141,68 @@ const fn top_down_layer_indices(
             (level, level + 1, level)
         }
     }
+}
+
+fn reconstruct_flexpart_w_heights(
+    ordering: VerticalOrdering,
+    nx: usize,
+    ny: usize,
+    nz: usize,
+    level_height_agl_m: &[f32],
+    terrain_asl_m: &[f32],
+) -> Result<(Vec<f32>, Vec<f32>), VerticalTransformError> {
+    if nz == 0 {
+        return Err(VerticalTransformError::InsufficientVerticalLevels);
+    }
+
+    let mut interface_agl = vec![0.0_f32; nx * ny * (nz + 1)];
+    let mut interface_asl = vec![0.0_f32; nx * ny * (nz + 1)];
+
+    for y in 0..ny {
+        for x in 0..nx {
+            let terrain = terrain_asl_m[surface_offset(x, y, nx)];
+            let mut uv_bottom_up = Vec::with_capacity(nz + 1);
+            uv_bottom_up.push(0.0_f32);
+            for step in 0..nz {
+                let z = model_level_index_from_surface(ordering, nz, step);
+                uv_bottom_up.push(level_height_agl_m[volume_offset(x, y, z, nx, ny)]);
+            }
+
+            let mut w_bottom_up = vec![0.0_f32; nz + 1];
+            if nz == 1 {
+                w_bottom_up[1] = uv_bottom_up[1];
+            } else {
+                for k in 1..nz {
+                    w_bottom_up[k] = 0.5 * (uv_bottom_up[k] + uv_bottom_up[k + 1]);
+                }
+                w_bottom_up[nz] =
+                    w_bottom_up[nz - 1] + uv_bottom_up[nz] - uv_bottom_up[nz - 1];
+            }
+
+            for k in 1..=nz {
+                if !w_bottom_up[k].is_finite() || w_bottom_up[k] <= w_bottom_up[k - 1] {
+                    return Err(VerticalTransformError::InvalidHeightColumn {
+                        x,
+                        y,
+                        z: k,
+                        height_agl_m: w_bottom_up[k],
+                    });
+                }
+            }
+
+            for interface in 0..=nz {
+                let physical_index = match ordering {
+                    VerticalOrdering::Increasing => nz - interface,
+                    VerticalOrdering::Decreasing => interface,
+                };
+                let index = interface_offset(x, y, interface, nx, ny);
+                interface_agl[index] = w_bottom_up[physical_index];
+                interface_asl[index] = w_bottom_up[physical_index] + terrain;
+            }
+        }
+    }
+
+    Ok((interface_agl, interface_asl))
 }
 
 fn field_values(

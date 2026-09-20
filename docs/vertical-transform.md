@@ -13,7 +13,8 @@ the Snapshot and does not collapse the column-dependent geometry to the legacy
 
 The derived runtime state contains, per horizontal column:
 
-- pressure on hybrid interfaces `[x,y,z+1]`;
+- pressure on hybrid/W interfaces `[x,y,z+1]`;
+- FLEXPART-compatible W/interface height AGL and ASL `[x,y,z+1]`;
 - pressure on model levels `[x,y,z]`;
 - model-level height AGL `[x,y,z]`;
 - model-level height ASL `[x,y,z]`;
@@ -82,6 +83,20 @@ height_agl = height_asl - terrain_asl
 
 Below-sea-level terrain is valid. Impossible/non-finite pressure,
 thermodynamic state, or geometry fails closed.
+
+### W/interface geometric heights
+
+FLEXPART uses a distinct geometric coordinate for W (`wzlev`). It is not
+represented by the T/q/UV model-level heights alone. In physical bottom-to-top
+order FLEXPART sets the surface W height to 0 m AGL, computes interior W
+heights from adjacent UV/T/q level heights, and extrapolates the uppermost W
+height. #30 reconstructs this coordinate explicitly and stores both AGL and ASL
+forms in `VerticalTransformResult`.
+
+The canonical top-to-bottom/bottom-to-top storage direction is preserved by
+`VerticalOrdering`; no nearest-level or vertical interpolation occurs here.
+#31 receives each interface pressure together with its W geometric height and
+the retained interface-staggered vertical velocity.
 
 ## Oracle validation
 
@@ -239,7 +254,7 @@ The borrowed `VerticalRuntimeView` provides:
 - runtime dimensions;
 - local terrain ASL by horizontal cell;
 - pressure, AGL height and ASL height at model-level indices;
-- interface pressure;
+- interface pressure plus FLEXPART `wzlev`-compatible AGL/ASL height;
 - the normalized vertical-motion field with its retained staggering.
 
 The view performs no clamping or interpolation. Out-of-bounds access fails.

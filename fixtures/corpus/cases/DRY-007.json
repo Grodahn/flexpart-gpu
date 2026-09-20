@@ -36,7 +36,14 @@
       "at": "20240101000000"
     },
     "species": {
-      "id": "SPECIES_040"
+      "id": "SPECIES_040",
+      "physics_contract": {
+        "profile": "species_040_dry_constant_v1",
+        "id": "species-040-dry-constant-v1",
+        "version": 1,
+        "path": "reference/species-physics/species-040-dry-constant-v1.json",
+        "git_blob_sha": "c050d6351244beaf2b1a57f661f2321101bda6f1"
+      }
     },
     "inventory": {
       "quantity_kg": 1,

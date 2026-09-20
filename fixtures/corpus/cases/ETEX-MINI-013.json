@@ -44,7 +44,14 @@
       "at": "19941023160000"
     },
     "species": {
-      "id": "SPECIES_024"
+      "id": "SPECIES_024",
+      "physics_contract": {
+        "profile": "species_024_inert_v1",
+        "id": "species-024-inert-v1",
+        "version": 1,
+        "path": "reference/species-physics/species-024-inert-v1.json",
+        "git_blob_sha": "21dd5ccd2b616642be9e3989e9b7444774d97fd9"
+      }
     },
     "inventory": {
       "quantity_kg": 340,
@@ -128,8 +135,8 @@
   "physics_switches": {
     "turbulence": true,
     "convection": false,
-    "dry_deposition": true,
-    "wet_deposition": true,
+    "dry_deposition": false,
+    "wet_deposition": false,
     "decay": false
   },
   "simulation_direction": "forward",
@@ -148,8 +155,6 @@
     "mass": "kg",
     "time": "s",
     "concentration": "kg/m3",
-    "deposition_velocity": "m/s",
-    "scavenging_coefficient": "1/s",
     "inv_obukhov": "1/m"
   },
   "validation_definition_refs": {
@@ -210,8 +215,8 @@
     "ctl": 5,
     "ifine": 4,
     "lconvection": 0,
-    "ldrydep": 1,
-    "lwetdep": 1
+    "ldrydep": 0,
+    "lwetdep": 0
   },
   "expected_artifacts": {
     "required": [
@@ -256,7 +261,8 @@
     "notes": [
       "INPUT_EQUIVALENCE_NOT_DEMONSTRATED per fixtures/etex/mini/README.md.",
       "These are structural representation differences, not errors.",
-      "Input equivalence audit in target/etex/mini/input_equivalence_report.json."
+      "Input equivalence audit in target/etex/mini/input_equivalence_report.json.",
+      "ETEX uses the pinned inert SPECIES_024 contract; dry/wet removal is disabled on candidate and oracle paths."
     ],
     "known_input_equivalence_limitations": [
       {

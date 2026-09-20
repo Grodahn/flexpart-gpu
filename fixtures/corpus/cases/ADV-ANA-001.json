@@ -36,7 +36,14 @@
       "at": "20240101000000"
     },
     "species": {
-      "id": "SPECIES_024"
+      "id": "SPECIES_024",
+      "physics_contract": {
+        "profile": "species_024_inert_v1",
+        "id": "species-024-inert-v1",
+        "version": 1,
+        "path": "reference/species-physics/species-024-inert-v1.json",
+        "git_blob_sha": "21dd5ccd2b616642be9e3989e9b7444774d97fd9"
+      }
     },
     "inventory": {
       "quantity_kg": 1024,

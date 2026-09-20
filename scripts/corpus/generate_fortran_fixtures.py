@@ -60,6 +60,39 @@ SUPPORTED_PHILOX_DERIVATIONS = {
     PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1,
 }
 
+SPECIES_PHYSICS_CONTRACTS = {
+    "species_024_inert_v1": {
+        "species_id": "SPECIES_024",
+        "id": "species-024-inert-v1",
+        "version": 1,
+        "path": "reference/species-physics/species-024-inert-v1.json",
+        "git_blob_sha": "21dd5ccd2b616642be9e3989e9b7444774d97fd9",
+        "dry_deposition": False,
+        "wet_deposition": False,
+        "decay": False,
+    },
+    "species_040_dry_constant_v1": {
+        "species_id": "SPECIES_040",
+        "id": "species-040-dry-constant-v1",
+        "version": 1,
+        "path": "reference/species-physics/species-040-dry-constant-v1.json",
+        "git_blob_sha": "c050d6351244beaf2b1a57f661f2321101bda6f1",
+        "dry_deposition": True,
+        "wet_deposition": False,
+        "decay": False,
+    },
+    "species_040_wet_aerosol_v1": {
+        "species_id": "SPECIES_040",
+        "id": "species-040-wet-aerosol-v1",
+        "version": 1,
+        "path": "reference/species-physics/species-040-wet-aerosol-v1.json",
+        "git_blob_sha": "4f55d23294f320f0050581cfad14800b22bf141d",
+        "dry_deposition": False,
+        "wet_deposition": True,
+        "decay": False,
+    },
+}
+
 CANONICAL_UNIT_VALUES = {
     "wind": "m/s",
     "displacement": "m",
@@ -142,6 +175,96 @@ def species_number_for_case(case_id: str, case: dict) -> int:
             f"{case_id}: release.species.id {species_id!r} must match SPECIES_<NNN>"
         )
     return int(digits)
+
+
+def _validate_species_physics_contract(case_id: str, case: dict, physics: dict) -> str:
+    release = _required_release(case_id, case)
+    species = release.get("species")
+    if not isinstance(species, dict):
+        raise SystemExit(f"{case_id}: release.species must be an object")
+    contract = species.get("physics_contract")
+    if not isinstance(contract, dict):
+        raise SystemExit(
+            f"{case_id}: release.species.physics_contract must be an object"
+        )
+    profile = contract.get("profile")
+    expected = SPECIES_PHYSICS_CONTRACTS.get(profile)
+    if expected is None:
+        raise SystemExit(
+            f"{case_id}: unsupported release.species.physics_contract.profile {profile!r}"
+        )
+    for field in ("id", "version", "path", "git_blob_sha"):
+        if contract.get(field) != expected[field]:
+            raise SystemExit(
+                f"{case_id}: release.species.physics_contract.{field} "
+                f"{contract.get(field)!r} does not match canonical {profile} "
+                f"value {expected[field]!r}"
+            )
+    if species.get("id") != expected["species_id"]:
+        raise SystemExit(
+            f"{case_id}: release.species.id {species.get('id')!r} conflicts with "
+            f"{profile}, expected {expected['species_id']!r}"
+        )
+    for field in ("dry_deposition", "wet_deposition", "decay"):
+        if physics[field] != expected[field]:
+            raise SystemExit(
+                f"{case_id}: physics_switches.{field}={physics[field]!r} conflicts "
+                f"with species physics profile {profile} ({expected[field]!r})"
+            )
+    return profile
+
+
+def _validate_deposition_contract(case_id: str, case: dict, physics: dict) -> None:
+    active = physics["dry_deposition"] or physics["wet_deposition"]
+    deposition = case.get("deposition")
+    if not active:
+        if deposition is not None:
+            raise SystemExit(
+                f"{case_id}: deposition block must be absent when dry/wet deposition are off"
+            )
+        return
+    if not isinstance(deposition, dict):
+        raise SystemExit(
+            f"{case_id}: deposition block is required when dry/wet deposition is active"
+        )
+    dry_velocity = _finite_number(
+        deposition.get("dry_deposition_velocity_m_s"),
+        case_id,
+        "deposition.dry_deposition_velocity_m_s",
+    )
+    wet_coeff = _finite_number(
+        deposition.get("wet_scavenging_coefficient_s_inv"),
+        case_id,
+        "deposition.wet_scavenging_coefficient_s_inv",
+    )
+    wet_fraction = _finite_number(
+        deposition.get("wet_precipitating_fraction"),
+        case_id,
+        "deposition.wet_precipitating_fraction",
+    )
+    if physics["dry_deposition"]:
+        href = _finite_number(
+            deposition.get("dry_reference_height_m"),
+            case_id,
+            "deposition.dry_reference_height_m",
+        )
+        if dry_velocity <= 0 or href <= 0:
+            raise SystemExit(
+                f"{case_id}: active dry deposition requires positive velocity and reference height"
+            )
+    elif dry_velocity != 0:
+        raise SystemExit(
+            f"{case_id}: dry_deposition_velocity_m_s must be 0 when dry deposition is disabled"
+        )
+    if physics["wet_deposition"]:
+        if wet_coeff <= 0 or not (0 < wet_fraction <= 1):
+            raise SystemExit(
+                f"{case_id}: active wet deposition requires positive coefficient and precipitating fraction"
+            )
+    elif wet_coeff != 0 or wet_fraction != 0:
+        raise SystemExit(
+            f"{case_id}: wet deposition forcing must be zero when wet deposition is disabled"
+        )
 
 
 def release_window_datetimes(case_id: str, case: dict) -> tuple:
@@ -1227,7 +1350,7 @@ def set_namelist_key(text: str, key: str, value: str) -> tuple:
     )
 
 
-def species_for_case(case_id: str, tracer: Path, aerosol: Path) -> tuple:
+def species_for_case(case_id: str, profile: str, tracer: Path, aerosol: Path) -> tuple:
     """Derive the oracle SPECIES file for a deposition case.
 
     - DRY-007 starts from the inert tracer example (no wet removal, no
@@ -1251,7 +1374,7 @@ def species_for_case(case_id: str, tracer: Path, aerosol: Path) -> tuple:
 
     Returns (file_text, provenance_text).
     """
-    if case_id == "DRY-007":
+    if profile == "species_040_dry_constant_v1":
         base = tracer.read_text(encoding="utf-8")
         text, old = set_namelist_key(base, "PDRYVEL", "2.0")
         provenance = (
@@ -1267,6 +1390,8 @@ def species_for_case(case_id: str, tracer: Path, aerosol: Path) -> tuple:
             "! See SPECIES_040.PROVENANCE.txt for the exact upstream source and edit.\n"
         )
         return header + text, provenance
+    if profile != "species_040_wet_aerosol_v1":
+        raise SystemExit(f"{case_id}: profile {profile!r} has no depositing species derivation")
     raw_lines = aerosol.read_text(encoding="utf-8").splitlines(keepends=True)
     kept, removed = [], []
     for line in raw_lines:
@@ -1482,35 +1607,23 @@ def validate_and_normalize_case_for_generation(
     meteorology = _required_meteorology(case_id, wind) if profile == "real_weather" else None
 
     physics = mandatory_physics_switches(case_id, case)
+    species_profile = _validate_species_physics_contract(case_id, case, physics)
+    _validate_deposition_contract(case_id, case, physics)
     surface = _required_surface(case_id, case, physics)
     _validate_stochastic_contract(case_id, case, physics)
     _required_units(case_id, case, wind, surface, physics)
     _required_validation_definition_refs(case_id, case)
 
-    if specnum == 40:
-        if aerosol is None or not aerosol.is_file():
-            raise SystemExit(f"{case_id}: upstream aerosol species not found: {aerosol}")
-        if case_id not in ("DRY-007", "WET-008"):
-            raise SystemExit(
-                f"{case_id}: SPECIES_040 derivation is only established for DRY-007/WET-008"
-            )
-        if case_id == "DRY-007" and (
-            not physics["dry_deposition"] or physics["wet_deposition"]
+    if species_profile in ("species_040_dry_constant_v1", "species_040_wet_aerosol_v1"):
+        if species_profile == "species_040_wet_aerosol_v1" and (
+            aerosol is None or not aerosol.is_file()
         ):
-            raise SystemExit(
-                f"{case_id}: SPECIES_040 dry derivation requires "
-                "physics_switches.dry_deposition=True and wet_deposition=False "
-                "(the derived species carries PDRYVEL and no wet scavenging)"
-            )
-        if case_id == "WET-008" and not physics["wet_deposition"]:
-            raise SystemExit(
-                f"{case_id}: SPECIES_040 wet derivation requires "
-                "physics_switches.wet_deposition=True (the derived species "
-                "scavenges wetly)"
-            )
-        species_text, species_provenance = species_for_case(case_id, tracer, aerosol)
+            raise SystemExit(f"{case_id}: upstream aerosol species not found: {aerosol}")
+        species_text, species_provenance = species_for_case(
+            case_id, species_profile, tracer, aerosol
+        )
         species_source = None
-    elif specnum == 24:
+    elif species_profile == "species_024_inert_v1" and specnum == 24:
         if tracer is None or not tracer.is_file():
             raise SystemExit(f"{case_id}: upstream tracer species not found: {tracer}")
         species_text = tracer.read_text(encoding="utf-8")

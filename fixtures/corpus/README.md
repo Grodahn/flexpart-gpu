@@ -18,7 +18,8 @@ Start from `fixtures/corpus/corpus.json` (versioned index) and
 - `cases/*.json`: canonical `schema_version` 2 validation-case manifests
   (Issue #51: domain, release, wind, surface, integration, physics switches,
   deposition forcing, stochastic Philox identity, execution profile,
-  oracle overrides, expected artifacts). Their checked-in machine-readable
+  oracle overrides, expected artifacts, and content-addressed species-physics
+  references under `reference/species-physics/`). Their checked-in machine-readable
   structural contract is `schemas/validation-case-v2.schema.json` (JSON Schema
   Draft 2020-12); cross-field scientific invariants remain enforced by
   `src/validation/case.rs`. Units are documented per field. No candidate output

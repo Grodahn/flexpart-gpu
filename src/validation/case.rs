@@ -30,6 +30,22 @@ pub const ORACLE_STOCHASTIC_STRATEGY_ID: &str = "flexpart-oracle-validation-seed
 pub const ORACLE_STOCHASTIC_STRATEGY_VERSION: u32 = 1;
 pub const ORACLE_STOCHASTIC_CONTRACT_PATH: &str = "reference/oracle-stochastic-identity.json";
 
+pub const SPECIES_024_INERT_CONTRACT_ID: &str = "species-024-inert-v1";
+pub const SPECIES_024_INERT_CONTRACT_PATH: &str =
+    "reference/species-physics/species-024-inert-v1.json";
+pub const SPECIES_024_INERT_CONTRACT_BLOB: &str =
+    "21dd5ccd2b616642be9e3989e9b7444774d97fd9";
+pub const SPECIES_040_DRY_CONTRACT_ID: &str = "species-040-dry-constant-v1";
+pub const SPECIES_040_DRY_CONTRACT_PATH: &str =
+    "reference/species-physics/species-040-dry-constant-v1.json";
+pub const SPECIES_040_DRY_CONTRACT_BLOB: &str =
+    "c050d6351244beaf2b1a57f661f2321101bda6f1";
+pub const SPECIES_040_WET_CONTRACT_ID: &str = "species-040-wet-aerosol-v1";
+pub const SPECIES_040_WET_CONTRACT_PATH: &str =
+    "reference/species-physics/species-040-wet-aerosol-v1.json";
+pub const SPECIES_040_WET_CONTRACT_BLOB: &str =
+    "4f55d23294f320f0050581cfad14800b22bf141d";
+
 /// Oracle kind as defined in issue #50 stochastic identity contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -336,11 +352,36 @@ pub enum ReleaseTiming {
 /// the inert tracer, `SPECIES_040` for the depositing aerosol). The trailing
 /// number maps to `SPECNUM_REL` and the `SPECIES/SPECIES_<NNN>` oracle file;
 /// see the mapping notes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SpeciesPhysicsProfile {
+    #[serde(rename = "species_024_inert_v1")]
+    Species024InertV1,
+    #[serde(rename = "species_040_dry_constant_v1")]
+    Species040DryConstantV1,
+    #[serde(rename = "species_040_wet_aerosol_v1")]
+    Species040WetAerosolV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpeciesPhysicsContractRef {
+    pub profile: SpeciesPhysicsProfile,
+    pub id: String,
+    pub version: u32,
+    pub path: String,
+    /// Content-addressed Git blob identity of the referenced contract file.
+    pub git_blob_sha: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SpeciesRef {
     /// Species identifier (`SPECIES_<NNN>`).
     pub id: String,
+    /// Versioned, content-addressed physics contract. Species-dependent
+    /// deposition/decay semantics may never come from an unreferenced file.
+    pub physics_contract: SpeciesPhysicsContractRef,
 }
 
 /// Released inventory (physical mass, distinct from particle sampling).
@@ -1081,6 +1122,7 @@ impl ValidationCaseManifest {
 
         // Validate normalized release (geometry, timing, species, inventory)
         self.validate_release()?;
+        self.validate_species_physics_contract()?;
 
         // Validate integration
         if self.integration.dt_s <= 0.0 {
@@ -1826,6 +1868,84 @@ impl ValidationCaseManifest {
         Ok(())
     }
 
+    fn validate_species_physics_contract(&self) -> Result<(), ValidationCaseError> {
+        let species = &self.release.species;
+        let contract = &species.physics_contract;
+        let (
+            expected_species,
+            expected_id,
+            expected_path,
+            expected_blob,
+            expected_dry,
+            expected_wet,
+            expected_decay,
+        ) = match contract.profile {
+            SpeciesPhysicsProfile::Species024InertV1 => (
+                "SPECIES_024",
+                SPECIES_024_INERT_CONTRACT_ID,
+                SPECIES_024_INERT_CONTRACT_PATH,
+                SPECIES_024_INERT_CONTRACT_BLOB,
+                false,
+                false,
+                false,
+            ),
+            SpeciesPhysicsProfile::Species040DryConstantV1 => (
+                "SPECIES_040",
+                SPECIES_040_DRY_CONTRACT_ID,
+                SPECIES_040_DRY_CONTRACT_PATH,
+                SPECIES_040_DRY_CONTRACT_BLOB,
+                true,
+                false,
+                false,
+            ),
+            SpeciesPhysicsProfile::Species040WetAerosolV1 => (
+                "SPECIES_040",
+                SPECIES_040_WET_CONTRACT_ID,
+                SPECIES_040_WET_CONTRACT_PATH,
+                SPECIES_040_WET_CONTRACT_BLOB,
+                false,
+                true,
+                false,
+            ),
+        };
+
+        if species.id != expected_species {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "release.species.id={} conflicts with physics profile {:?}, expected {expected_species}",
+                    species.id, contract.profile
+                ),
+            });
+        }
+        if contract.id != expected_id
+            || contract.version != 1
+            || contract.path != expected_path
+            || contract.git_blob_sha != expected_blob
+        {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "release.species.physics_contract does not match canonical {:?} reference                      (expected id={expected_id}, version=1, path={expected_path}, git_blob_sha={expected_blob})",
+                    contract.profile
+                ),
+            });
+        }
+        if self.physics_switches.dry_deposition != expected_dry
+            || self.physics_switches.wet_deposition != expected_wet
+            || self.physics_switches.decay != expected_decay
+        {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "physics switches dry/wet/decay={}/{}/{} conflict with species physics profile {:?}, expected {expected_dry}/{expected_wet}/{expected_decay}",
+                    self.physics_switches.dry_deposition,
+                    self.physics_switches.wet_deposition,
+                    self.physics_switches.decay,
+                    contract.profile
+                ),
+            });
+        }
+        Ok(())
+    }
+
     fn validate_stochastic(&self) -> Result<(), ValidationCaseError> {
         if let Some(candidate) = &self.stochastic.candidate_philox {
             if candidate.count == 0 {
@@ -2074,8 +2194,11 @@ impl ValidationCaseManifest {
         let dry = self.physics_switches.dry_deposition;
         let wet = self.physics_switches.wet_deposition;
         let Some(spec) = &self.deposition else {
-            // Absent block means forcing is defined by the execution pipeline
-            // (e.g. ETEX-MINI-013); present blocks are strictly validated.
+            if dry || wet {
+                return Err(ValidationCaseError::MissingField {
+                    field: "deposition",
+                });
+            }
             return Ok(());
         };
         if !dry && !wet {
@@ -2395,6 +2518,13 @@ mod tests {
                 },
                 species: SpeciesRef {
                     id: "SPECIES_024".to_string(),
+                    physics_contract: SpeciesPhysicsContractRef {
+                        profile: SpeciesPhysicsProfile::Species024InertV1,
+                        id: SPECIES_024_INERT_CONTRACT_ID.to_string(),
+                        version: 1,
+                        path: SPECIES_024_INERT_CONTRACT_PATH.to_string(),
+                        git_blob_sha: SPECIES_024_INERT_CONTRACT_BLOB.to_string(),
+                    },
                 },
                 inventory: ReleaseInventory {
                     quantity_kg: 1.0,
@@ -3989,6 +4119,43 @@ mod tests {
         assert_eq!(wind.release.species.id, "SPECIES_024");
         assert_eq!(wind.release.inventory.quantity_kg, 1.0);
         assert_eq!(wind.release.particle_count, 1000);
+    }
+
+    #[test]
+    fn active_deposition_requires_explicit_forcing_block() {
+        let mut manifest = make_minimal_manifest();
+        manifest.physics_switches.dry_deposition = true;
+        manifest.release.species.id = "SPECIES_040".to_string();
+        manifest.release.species.physics_contract = SpeciesPhysicsContractRef {
+            profile: SpeciesPhysicsProfile::Species040DryConstantV1,
+            id: SPECIES_040_DRY_CONTRACT_ID.to_string(),
+            version: 1,
+            path: SPECIES_040_DRY_CONTRACT_PATH.to_string(),
+            git_blob_sha: SPECIES_040_DRY_CONTRACT_BLOB.to_string(),
+        };
+        manifest.oracle_command_overrides.ldrydep = Some(1);
+        manifest.deposition = None;
+        let err = manifest.validate().expect_err("active dry deposition needs forcing");
+        assert!(matches!(
+            err,
+            ValidationCaseError::MissingField { field: "deposition" }
+        ));
+    }
+
+    #[test]
+    fn species_physics_contract_is_exact_and_controls_switches() {
+        let mut manifest = make_minimal_manifest();
+        manifest.release.species.physics_contract.git_blob_sha = "deadbeef".to_string();
+        let err = manifest.validate().expect_err("wrong contract hash must fail");
+        assert!(err.to_string().contains("canonical"));
+
+        let mut manifest = make_minimal_manifest();
+        manifest.physics_switches.decay = true;
+        manifest.oracle_command_overrides.ldecay = Some(1);
+        let err = manifest
+            .validate()
+            .expect_err("decay requires a dedicated species physics profile");
+        assert!(err.to_string().contains("species physics profile"));
     }
 
     #[test]

@@ -72,7 +72,10 @@ def audit_fixture_case(case_id: str, case: dict, fort_dir: Path) -> None:
         check(f"{case_id} fortran fixture present", False, f"missing {outdir}")
         return
     try:
-        specnum = 40 if case_id in ("DRY-007", "WET-008") else 24
+        physics = GEN.mandatory_physics_switches(case_id, case)
+        GEN._validate_species_physics_contract(case_id, case, physics)
+        GEN._validate_deposition_contract(case_id, case, physics)
+        specnum = GEN.species_number_for_case(case_id, case)
         GEN.verify_case(case_id, case, outdir, specnum)
         check(f"{case_id} fixture equals case JSON", True)
     except SystemExit as exc:

@@ -1,0 +1,33 @@
+{
+  "contract_version": 1,
+  "contract_id": "species-040-dry-constant-v1",
+  "species_id": "SPECIES_040",
+  "candidate_physics": {
+    "dry_deposition": true,
+    "wet_deposition": false,
+    "decay": false
+  },
+  "oracle_physics": {
+    "dry_deposition": true,
+    "wet_deposition": false,
+    "decay": false
+  },
+  "oracle_species_source": {
+    "oracle_reference": "reference/flexpart-11.1.json",
+    "path": "examples/Tracer/SPECIES/SPECIES_024",
+    "sha256": "aabf59fdd1f51192a4843272b1b5b5d67a9d15cef05663d5fb4fca94a904f723"
+  },
+  "checked_in_fixture": {
+    "path": "fixtures/corpus/fortran/DRY-007/SPECIES/SPECIES_040",
+    "git_blob_sha": "f45e3aa92dda92a5d2040831d9c6cc7bccd11c94"
+  },
+  "derivation": {
+    "kind": "single_namelist_assignment",
+    "assignment": "PDRYVEL",
+    "from": "-9.99",
+    "to": "2.0",
+    "oracle_unit": "cm/s",
+    "candidate_equivalent_m_s": 0.02,
+    "dry_reference_height_m": 15
+  }
+}

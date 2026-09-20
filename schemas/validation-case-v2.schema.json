@@ -295,10 +295,14 @@
         "id": {
           "type": "string",
           "minLength": 1
+        },
+        "physics_contract": {
+          "$ref": "#/$defs/species_physics_contract"
         }
       },
       "required": [
-        "id"
+        "id",
+        "physics_contract"
       ]
     },
     "inventory": {
@@ -1080,6 +1084,43 @@
           }
         }
       }
+    },
+    "species_physics_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "enum": [
+            "species_024_inert_v1",
+            "species_040_dry_constant_v1",
+            "species_040_wet_aerosol_v1"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "git_blob_sha": {
+          "type": "string",
+          "minLength": 40,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "profile",
+        "id",
+        "version",
+        "path",
+        "git_blob_sha"
+      ]
     }
   }
 }

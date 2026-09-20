@@ -80,6 +80,31 @@ class OracleOverrideTest(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             GEN.command_text("REPEAT-009", case)
         self.assertIn("identical_repeats", str(ctx.exception))
+    def test_species_physics_contract_hash_mismatch_is_rejected(self):
+        case = copy.deepcopy(load_case("DRY-007"))
+        physics = GEN.mandatory_physics_switches("DRY-007", case)
+        case["release"]["species"]["physics_contract"]["git_blob_sha"] = "deadbeef"
+        with self.assertRaises(SystemExit) as ctx:
+            GEN._validate_species_physics_contract("DRY-007", case, physics)
+        self.assertIn("git_blob_sha", str(ctx.exception))
+        self.assertIn("canonical", str(ctx.exception))
+
+    def test_active_deposition_without_forcing_block_is_rejected(self):
+        case = copy.deepcopy(load_case("DRY-007"))
+        physics = GEN.mandatory_physics_switches("DRY-007", case)
+        del case["deposition"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN._validate_deposition_contract("DRY-007", case, physics)
+        self.assertIn("deposition block is required", str(ctx.exception))
+
+    def test_etex_manifest_declares_inert_no_removal_species(self):
+        case = load_case("ETEX-MINI-013")
+        physics = GEN.mandatory_physics_switches("ETEX-MINI-013", case)
+        profile = GEN._validate_species_physics_contract("ETEX-MINI-013", case, physics)
+        GEN._validate_deposition_contract("ETEX-MINI-013", case, physics)
+        self.assertEqual(profile, "species_024_inert_v1")
+        self.assertFalse(physics["dry_deposition"])
+        self.assertFalse(physics["wet_deposition"])
     def test_legacy_uppercase_document_is_rejected(self):
         legacy = {
             "integration": {"start": "20240101000000", "total_s": 3600},

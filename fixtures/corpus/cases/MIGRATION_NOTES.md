@@ -34,6 +34,35 @@ string. `wrapping_add_key0_v1` derives seed `i` as
 every repetition. The former `identical_repeats` side flag is forbidden.
 Rust deserialization, the raw-Python generator, the candidate-output audit,
 and the JSON Schema all reject unknown derivation values fail-closed.
+## Species-dependent physics contracts
+
+`release.species.id` is no longer sufficient by itself. Every schema-v2 case
+pins a `release.species.physics_contract` containing a closed profile, contract
+id/version/path, and the content-addressed Git blob SHA of the referenced
+contract under `reference/species-physics/`.
+
+The current closed profiles are:
+
+- `species_024_inert_v1`: pinned upstream tracer; dry deposition, wet
+  deposition, and decay are all disabled.
+- `species_040_dry_constant_v1`: DRY-007; derived from the pinned tracer by
+  setting `PDRYVEL=2.0` cm/s, matching the candidate 0.02 m/s dry forcing.
+- `species_040_wet_aerosol_v1`: WET-008; derived from the pinned aerosol by
+  removing the FLEXPART-11.1-incompatible `PNDIA` key. The oracle aerosol also
+  carries dry-deposition parameters; that candidate/oracle asymmetry is
+  explicit in the contract and case representation notes.
+
+Each contract records the pinned upstream SPECIES path and SHA-256 plus the
+checked-in derived fixture path/blob identity. Rust and raw-Python validation
+require the canonical reference exactly and require the case physics switches
+to match the selected candidate profile. Unknown profiles, mismatched hashes,
+or decay without a dedicated profile fail closed.
+
+Active dry/wet deposition now also requires an explicit `deposition` block;
+there is no longer an escape hatch where forcing can be supplied implicitly by
+the execution pipeline. ETEX-MINI-013 was corrected to the physics actually
+used by `scripts/run-etex.sh`: pinned inert `SPECIES_024`, with dry/wet removal
+disabled on both paths.
 ## Oracle command overrides (generated namelist stays uppercase)
 
 | v1 | v2 | Note |

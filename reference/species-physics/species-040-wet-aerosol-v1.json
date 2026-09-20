@@ -1,0 +1,30 @@
+{
+  "contract_version": 1,
+  "contract_id": "species-040-wet-aerosol-v1",
+  "species_id": "SPECIES_040",
+  "candidate_physics": {
+    "dry_deposition": false,
+    "wet_deposition": true,
+    "decay": false
+  },
+  "oracle_physics": {
+    "dry_deposition": true,
+    "wet_deposition": true,
+    "decay": false
+  },
+  "oracle_species_source": {
+    "oracle_reference": "reference/flexpart-11.1.json",
+    "path": "examples/Aerosol/SPECIES/SPECIES_040",
+    "sha256": "b242a896429a1e1768e250d03e52e50d4dc235b328e452976aa6f9b41c3b6985"
+  },
+  "checked_in_fixture": {
+    "path": "fixtures/corpus/fortran/WET-008/SPECIES/SPECIES_040",
+    "git_blob_sha": "768d652f454efb01b8fbf0c6e9c79dc69d4c0fb8"
+  },
+  "derivation": {
+    "kind": "remove_unsupported_namelist_key",
+    "key": "PNDIA",
+    "reason": "PNDIA is not declared by FLEXPART 11.1 species_params and aborts namelist parsing"
+  },
+  "representation_note": "Candidate dry deposition is disabled; the oracle aerosol species also carries dry-deposition parameters. Wet comparison remains diagnostic and reservoir budgets are reported separately."
+}

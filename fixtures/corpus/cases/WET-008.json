@@ -36,7 +36,14 @@
       "at": "20240101000000"
     },
     "species": {
-      "id": "SPECIES_040"
+      "id": "SPECIES_040",
+      "physics_contract": {
+        "profile": "species_040_wet_aerosol_v1",
+        "id": "species-040-wet-aerosol-v1",
+        "version": 1,
+        "path": "reference/species-physics/species-040-wet-aerosol-v1.json",
+        "git_blob_sha": "4f55d23294f320f0050581cfad14800b22bf141d"
+      }
     },
     "inventory": {
       "quantity_kg": 1,
@@ -198,7 +205,8 @@
   },
   "representation_differences": {
     "notes": [
-      "Scavenging aerosol SPECIES with precipitating GRIB; dry path disabled by zero dry-deposition velocity in the candidate."
+      "Scavenging aerosol SPECIES with precipitating GRIB; dry path disabled by zero dry-deposition velocity in the candidate.",
+      "The pinned oracle wet-aerosol species also carries dry-deposition parameters; candidate dry deposition remains disabled. This asymmetry is explicit in the referenced species-physics contract."
     ]
   },
   "notes": [

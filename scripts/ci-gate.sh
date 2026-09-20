@@ -363,7 +363,6 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --candidate-log "${CANDIDATE_LOG}" \
     --input "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
     --input "${PROJECT_ROOT}/src/bin/fortran-validation.rs" \
-    --input "${PROJECT_ROOT}/fixtures/meteorology/synthetic-v1.json" \
     --artifact "${CANDIDATE_OUTPUT}" \
     --artifact "${CANDIDATE_LOG}" \
     --artifact "${OUTPUT_DIR}/sw-wgpu-advection.log" \
@@ -378,7 +377,10 @@ contract = data["meteorology_contract"]
 assert contract["schema_id"] == "flexpart-gpu.canonical-meteorology"
 assert contract["schema_version"] == 1
 assert len(contract["identity_source_sha256"]) == 64
-print("meteorology contract provenance: OK")
+binding = data["meteorology_input"]
+assert binding["status"] == "NOT_BOUND_TO_RUN"
+assert binding["inputs"] == {}
+print("meteorology contract provenance: OK (no canonical runtime input for this smoke)")
 ' "${OUTPUT_DIR}/run-manifest.json" 2>&1 | tee "${OUTPUT_DIR}/meteorology-provenance-check.log"; then
     fail "Run manifest lacks valid canonical meteorology schema provenance"
   fi

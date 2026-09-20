@@ -793,10 +793,39 @@ def _validate_stochastic_contract(case_id: str, case: dict, physics: dict) -> No
     stochastic = case.get("stochastic")
     if not isinstance(stochastic, dict):
         raise SystemExit(f"{case_id}: stochastic must be an object")
-    candidate = stochastic.get("candidate_philox")
+    for field in ("candidate_philox", "oracle_seed"):
+        if field not in stochastic:
+            raise SystemExit(
+                f"{case_id}: stochastic.{field} is required explicitly; use null "
+                "when that model has no stochastic identity"
+            )
+
+    candidate = stochastic["candidate_philox"]
     if candidate is not None:
         if not isinstance(candidate, dict):
             raise SystemExit(f"{case_id}: stochastic.candidate_philox must be an object or null")
+
+        def require_u32_array(field, length):
+            value = candidate.get(field)
+            if (
+                not isinstance(value, list)
+                or len(value) != length
+                or any(
+                    isinstance(item, bool)
+                    or not isinstance(item, int)
+                    or item < 0
+                    or item >= 2**32
+                    for item in value
+                )
+            ):
+                raise SystemExit(
+                    f"{case_id}: stochastic.candidate_philox.{field} must contain "
+                    f"exactly {length} unsigned 32-bit integers"
+                )
+            return value
+
+        require_u32_array("base_key", 2)
+        require_u32_array("base_counter", 4)
         count = candidate.get("count")
         if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
             raise SystemExit(f"{case_id}: stochastic.candidate_philox.count must be > 0")
@@ -812,11 +841,15 @@ def _validate_stochastic_contract(case_id: str, case: dict, physics: dict) -> No
                 "is forbidden; encode semantics in derivation"
             )
 
-    oracle = stochastic.get("oracle_seed")
+    oracle = stochastic["oracle_seed"]
     if oracle is not None:
         if not isinstance(oracle, dict):
             raise SystemExit(f"{case_id}: stochastic.oracle_seed must be an object or null")
-        repetitions = oracle.get("repetitions", 5)
+        if "repetitions" not in oracle:
+            raise SystemExit(
+                f"{case_id}: stochastic.oracle_seed.repetitions is required explicitly"
+            )
+        repetitions = oracle["repetitions"]
         if isinstance(repetitions, bool) or not isinstance(repetitions, int) or repetitions <= 0:
             raise SystemExit(f"{case_id}: stochastic.oracle_seed.repetitions must be > 0")
         kind = oracle.get("kind")
@@ -847,8 +880,12 @@ def _validate_stochastic_contract(case_id: str, case: dict, physics: dict) -> No
         else:
             raise SystemExit(f"{case_id}: unsupported stochastic.oracle_seed.kind {kind!r}")
 
-    if physics["turbulence"] and candidate is None and oracle is None:
-        raise SystemExit(f"{case_id}: stochastic identity required when turbulence is enabled")
+    if physics["turbulence"] and candidate is None:
+        raise SystemExit(
+            f"{case_id}: physics_switches.turbulence=true requires "
+            "stochastic.candidate_philox; oracle_seed is a separate RNG namespace "
+            "and cannot satisfy the candidate requirement"
+        )
 
 
 def _required_units(case_id: str, case: dict, wind: dict, surface, physics: dict) -> dict:

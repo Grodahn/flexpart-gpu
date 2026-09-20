@@ -131,8 +131,18 @@ def candidate_philox_identity(case_id: str, case: dict):
             f"case {case_id}: unsupported schema version; only schema_version 2 "
             "is accepted (v1 is frozen, see MIGRATION_NOTES.md)"
         )
-    stochastic = case.get("stochastic", {})
-    cand = stochastic.get("candidate_philox")
+    stochastic = case.get("stochastic")
+    if not isinstance(stochastic, dict):
+        return None, None, None, False, None, (
+            f"case {case_id}: stochastic must be an object"
+        )
+    for field in ("candidate_philox", "oracle_seed"):
+        if field not in stochastic:
+            return None, None, None, False, None, (
+                f"case {case_id}: stochastic.{field} is required explicitly; "
+                "use null when that model has no stochastic identity"
+            )
+    cand = stochastic["candidate_philox"]
     if cand is None:
         if case_id == "ADV-ANA-001":
             return None, None, 1, True, None, None

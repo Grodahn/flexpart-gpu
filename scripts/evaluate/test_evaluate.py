@@ -54,7 +54,7 @@ def _demo_case(path, case_id="DEMO-001", base_key=(1, 2), count=2,
                              "convection": False,
                              "dry_deposition": False, "wet_deposition": False,
                              "decay": False},
-        "stochastic": {"candidate_philox": philox},
+        "stochastic": {"candidate_philox": philox, "oracle_seed": None},
         "domain": {"nx": 32, "ny": 32, "nz": 8, "dx_deg": 0.1, "dy_deg": 0.1,
                    "xlon0_deg": 9.5, "ylat0_deg": 8.5},
         "integration": {"start": "20240101000000", "dt_s": 300, "steps": 12,
@@ -118,10 +118,32 @@ class CorpusReaderTest(unittest.TestCase):
             case_path = Path(directory) / "case.json"
             case_path.write_text(
                 '{"schema_version": 2, "case_id": "OTHER", "release": {},'
-                ' "physics_switches": {}, "stochastic": {}, "domain": {}}',
+                ' "physics_switches": {}, "stochastic": {"candidate_philox": null, "oracle_seed": null}, "domain": {}}',
                 encoding="utf-8")
             case = io_corpus.read_case_definition(str(case_path))
             self.assertNotEqual(case["case_id"], data["case_id"])
+
+    def test_case_reader_requires_explicit_stochastic_namespace_fields(self):
+        import io_corpus
+        with tempfile.TemporaryDirectory() as directory:
+            for missing in ("candidate_philox", "oracle_seed"):
+                path = Path(directory) / f"missing-{missing}.json"
+                stochastic = {
+                    "candidate_philox": None,
+                    "oracle_seed": None,
+                }
+                del stochastic[missing]
+                path.write_text(json.dumps({
+                    "schema_version": 2,
+                    "case_id": "DEMO-001",
+                    "release": {},
+                    "physics_switches": {},
+                    "stochastic": stochastic,
+                    "domain": {},
+                }), encoding="utf-8")
+                with self.subTest(missing=missing):
+                    with self.assertRaisesRegex(ValueError, missing):
+                        io_corpus.read_case_definition(str(path))
 
     def test_missing_particle_keys_rejected(self):
         import io_corpus

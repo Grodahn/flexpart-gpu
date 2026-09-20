@@ -66,4 +66,12 @@ def read_case_definition(path):
         )
     _require_keys(data, ("case_id", "release", "physics_switches", "stochastic", "domain"),
                   f"corpus case {path}")
+    stochastic = data["stochastic"]
+    if not isinstance(stochastic, dict):
+        raise ValueError(f"corpus case {path} stochastic must be an object")
+    _require_keys(
+        stochastic,
+        ("candidate_philox", "oracle_seed"),
+        f"corpus case {path} stochastic",
+    )
     return data

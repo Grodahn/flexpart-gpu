@@ -76,10 +76,10 @@ impl FromStr for OracleKind {
 #[serde(deny_unknown_fields)]
 pub struct StochasticIdentitySpec {
     /// Candidate RNG namespace: Philox key/counter for the GPU candidate.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Canonical JSON must carry this field explicitly; deterministic cases use null.
     pub candidate_philox: Option<CandidatePhiloxIdentity>,
     /// Oracle RNG namespace: validation seed identity for FLEXPART oracle.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Canonical JSON must carry this field explicitly; cases with no oracle RNG use null.
     pub oracle_seed: Option<OracleSeedIdentity>,
 }
 
@@ -192,12 +192,8 @@ pub struct OracleSeedIdentity {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<u32>,
     /// Number of repetitions for repeatability characterization.
-    #[serde(default = "default_repetitions")]
+    /// Required explicitly; no workflow/default repetition count is implied.
     pub repetitions: u32,
-}
-
-fn default_repetitions() -> u32 {
-    5
 }
 
 /// Stable reference to a metric/threshold definition owned outside #51.
@@ -1035,6 +1031,24 @@ impl ValidationCaseManifest {
                         ),
                     });
                 }
+            }
+        }
+
+        // Both RNG namespaces are explicit contract fields. Missing is not
+        // equivalent to null: null means deliberately no identity for that model.
+        let stochastic = raw
+            .get("stochastic")
+            .and_then(serde_json::Value::as_object)
+            .ok_or(ValidationCaseError::MissingField { field: "stochastic" })?;
+        for field in ["candidate_philox", "oracle_seed"] {
+            if !stochastic.contains_key(field) {
+                return Err(ValidationCaseError::MissingField {
+                    field: if field == "candidate_philox" {
+                        "stochastic.candidate_philox"
+                    } else {
+                        "stochastic.oracle_seed"
+                    },
+                });
             }
         }
         let manifest: Self =
@@ -2167,13 +2181,9 @@ impl ValidationCaseManifest {
             }
         }
 
-        if self.physics_switches.turbulence
-            && self.stochastic.candidate_philox.is_none()
-            && self.stochastic.oracle_seed.is_none()
-        {
-            return Err(ValidationCaseError::AmbiguousField {
-                field: "stochastic",
-                message: "stochastic identity required when turbulence is enabled".to_string(),
+        if self.physics_switches.turbulence && self.stochastic.candidate_philox.is_none() {
+            return Err(ValidationCaseError::InvalidStochasticIdentity {
+                message: "physics_switches.turbulence=true requires an explicit candidate Philox identity in stochastic.candidate_philox; an oracle_seed belongs to a separate RNG namespace and cannot satisfy the candidate requirement".to_string(),
             });
         }
         Ok(())
@@ -3587,6 +3597,101 @@ mod tests {
         assert!(manifest.validate().is_err());
         // Seed resolution also fails closed instead of substituting a key.
         assert!(manifest.candidate_seed_identity(0).is_err());
+    }
+
+    #[test]
+    fn candidate_turbulence_requires_candidate_namespace_even_with_oracle_seed() {
+        let mut manifest = make_minimal_manifest();
+        assert!(manifest.physics_switches.turbulence);
+        assert!(manifest.stochastic.oracle_seed.is_some());
+        manifest.stochastic.candidate_philox = None;
+        let err = manifest
+            .validate()
+            .expect_err("oracle namespace must not satisfy candidate RNG requirement");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("candidate Philox") && rendered.contains("separate RNG namespace"),
+            "unexpected: {rendered}"
+        );
+    }
+
+    #[test]
+    fn canonical_json_requires_both_nullable_stochastic_namespace_fields() {
+        let schema = load_validation_case_schema();
+        for field in ["candidate_philox", "oracle_seed"] {
+            let mut raw = minimal_manifest_json();
+            raw["stochastic"]
+                .as_object_mut()
+                .expect("stochastic object")
+                .remove(field);
+            assert!(
+                validate_json_schema_subset(&schema, &schema, &raw, "$").is_err(),
+                "JSON Schema must reject missing stochastic.{field}"
+            );
+            let err = parse_json_value(&raw)
+                .expect_err("Rust parser must reject missing namespace field");
+            assert!(
+                err.to_string().contains(field),
+                "Rust error must name missing stochastic.{field}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn oracle_repetitions_are_required_without_default() {
+        let schema = load_validation_case_schema();
+        let mut raw = minimal_manifest_json();
+        raw["stochastic"]["oracle_seed"]
+            .as_object_mut()
+            .expect("oracle_seed object")
+            .remove("repetitions");
+        assert!(
+            validate_json_schema_subset(&schema, &schema, &raw, "$").is_err(),
+            "JSON Schema must reject missing oracle repetitions"
+        );
+        let err = parse_json_value(&raw)
+            .expect_err("Rust deserialization must reject missing repetitions");
+        assert!(
+            err.to_string().contains("repetitions"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn candidate_philox_words_are_u32_in_schema_and_rust() {
+        let schema = load_validation_case_schema();
+        for (field, value) in [
+            ("base_key", serde_json::json!([4_294_967_296_u64, 0])),
+            ("base_counter", serde_json::json!([0, 0, 0, 4_294_967_296_u64])),
+        ] {
+            let mut raw = minimal_manifest_json();
+            raw["stochastic"]["candidate_philox"][field] = value;
+            assert!(
+                validate_json_schema_subset(&schema, &schema, &raw, "$").is_err(),
+                "JSON Schema must reject {field} words above u32::MAX"
+            );
+            let err = parse_json_value(&raw)
+                .expect_err("Rust must reject Philox words above u32::MAX");
+            assert!(
+                err.to_string().contains(field) || err.to_string().contains("u32"),
+                "unexpected error for {field}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn deterministic_round_trip_serializes_explicit_null_namespaces() {
+        let mut manifest = make_minimal_manifest();
+        manifest.physics_switches.turbulence = false;
+        manifest.oracle_command_overrides.lturbulence = Some(0);
+        manifest.stochastic = StochasticIdentitySpec::default();
+        manifest.surface = None;
+        manifest.validate().expect("deterministic manifest");
+        let raw = serde_json::to_value(&manifest).expect("serialize manifest");
+        assert!(raw["stochastic"].get("candidate_philox").is_some());
+        assert!(raw["stochastic"]["candidate_philox"].is_null());
+        assert!(raw["stochastic"].get("oracle_seed").is_some());
+        assert!(raw["stochastic"]["oracle_seed"].is_null());
     }
 
     #[test]

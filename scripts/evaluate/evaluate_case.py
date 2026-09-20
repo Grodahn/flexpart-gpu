@@ -1000,7 +1000,13 @@ def _candidate_philox_block(case_def, case_id):
     stochastic = case_def.get("stochastic")
     if not isinstance(stochastic, dict):
         raise ValueError(f"case {case_id} has malformed stochastic block")
-    block = stochastic.get("candidate_philox")
+    for field in ("candidate_philox", "oracle_seed"):
+        if field not in stochastic:
+            raise ValueError(
+                f"case {case_id} stochastic.{field} is required explicitly; "
+                "use null when that model has no stochastic identity"
+            )
+    block = stochastic["candidate_philox"]
     if block is None:
         turbulence = (case_def.get("physics_switches") or {}).get("turbulence")
         if turbulence is True:

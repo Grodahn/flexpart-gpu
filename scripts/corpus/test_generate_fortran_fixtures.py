@@ -80,6 +80,56 @@ class OracleOverrideTest(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             GEN.command_text("REPEAT-009", case)
         self.assertIn("identical_repeats", str(ctx.exception))
+    def test_oracle_seed_cannot_substitute_for_candidate_philox(self):
+        case = copy.deepcopy(load_case("WIND-UNI-002"))
+        physics = GEN.mandatory_physics_switches("WIND-UNI-002", case)
+        case["stochastic"]["candidate_philox"] = None
+        self.assertIsNotNone(case["stochastic"]["oracle_seed"])
+        with self.assertRaises(SystemExit) as ctx:
+            GEN._validate_stochastic_contract("WIND-UNI-002", case, physics)
+        rendered = str(ctx.exception)
+        self.assertIn("candidate_philox", rendered)
+        self.assertIn("separate RNG namespace", rendered)
+
+    def test_stochastic_namespace_fields_are_required_explicitly(self):
+        for field in ("candidate_philox", "oracle_seed"):
+            case = copy.deepcopy(load_case("WIND-UNI-002"))
+            physics = GEN.mandatory_physics_switches("WIND-UNI-002", case)
+            del case["stochastic"][field]
+            with self.subTest(field=field):
+                with self.assertRaises(SystemExit) as ctx:
+                    GEN._validate_stochastic_contract("WIND-UNI-002", case, physics)
+                self.assertIn(f"stochastic.{field}", str(ctx.exception))
+                self.assertIn("required explicitly", str(ctx.exception))
+
+    def test_oracle_repetitions_have_no_default(self):
+        case = copy.deepcopy(load_case("WIND-UNI-002"))
+        physics = GEN.mandatory_physics_switches("WIND-UNI-002", case)
+        del case["stochastic"]["oracle_seed"]["repetitions"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN._validate_stochastic_contract("WIND-UNI-002", case, physics)
+        self.assertIn("repetitions", str(ctx.exception))
+        self.assertIn("required explicitly", str(ctx.exception))
+
+    def test_candidate_philox_key_and_counter_are_strict_u32_arrays(self):
+        mutations = (
+            ("base_key", [1], "exactly 2"),
+            ("base_key", [0, 2**32], "unsigned 32-bit"),
+            ("base_key", [0, True], "unsigned 32-bit"),
+            ("base_counter", [0, 0, 0], "exactly 4"),
+            ("base_counter", [0, 0, 0, -1], "unsigned 32-bit"),
+        )
+        for field, value, expected in mutations:
+            case = copy.deepcopy(load_case("WIND-UNI-002"))
+            physics = GEN.mandatory_physics_switches("WIND-UNI-002", case)
+            case["stochastic"]["candidate_philox"][field] = value
+            with self.subTest(field=field, value=value):
+                with self.assertRaises(SystemExit) as ctx:
+                    GEN._validate_stochastic_contract("WIND-UNI-002", case, physics)
+                rendered = str(ctx.exception)
+                self.assertIn(field, rendered)
+                self.assertIn(expected, rendered)
+
     def test_species_physics_contract_hash_mismatch_is_rejected(self):
         case = copy.deepcopy(load_case("DRY-007"))
         physics = GEN.mandatory_physics_switches("DRY-007", case)

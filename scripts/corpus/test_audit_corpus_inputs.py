@@ -91,6 +91,18 @@ class PhiloxIdentityTest(unittest.TestCase):
         _, _, _, _, _, error = AUDIT.candidate_philox_identity("REPEAT-009", case)
         self.assertIsNotNone(error)
         self.assertIn("identical_repeats", error)
+    def test_missing_stochastic_namespace_field_fails(self):
+        for field in ("candidate_philox", "oracle_seed"):
+            case = load_case("WIND-UNI-002")
+            del case["stochastic"][field]
+            with self.subTest(field=field):
+                _, _, _, _, _, error = AUDIT.candidate_philox_identity(
+                    "WIND-UNI-002", case
+                )
+                self.assertIsNotNone(error)
+                self.assertIn(f"stochastic.{field}", error)
+                self.assertIn("required explicitly", error)
+
     def test_stochastic_case_without_identity_fails(self):
         case = load_case("WIND-UNI-002")
         case["stochastic"] = {"candidate_philox": None, "oracle_seed": None}

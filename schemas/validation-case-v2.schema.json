@@ -820,7 +820,8 @@
           "maxItems": 2,
           "items": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 4294967295
           }
         },
         "base_counter": {
@@ -829,7 +830,8 @@
           "maxItems": 4,
           "items": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 4294967295
           }
         },
         "count": {
@@ -897,7 +899,8 @@
         }
       },
       "required": [
-        "kind"
+        "kind",
+        "repetitions"
       ]
     },
     "stochastic": {
@@ -924,7 +927,11 @@
             }
           ]
         }
-      }
+      },
+      "required": [
+        "candidate_philox",
+        "oracle_seed"
+      ]
     },
     "execution_profile": {
       "type": "object",

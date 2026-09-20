@@ -178,26 +178,54 @@ CANONICAL_ORACLE_FIELDS = (
     "lwetdep",
     "ldecay",
 )
-LEGACY_ORACLE_KEYS = frozenset({
-    "LTURBULENCE",
-    "LCONVECTION",
-    "CTL",
-    "IFINE",
-    "LDRYDEP",
-    "LWETDEP",
-    "LDECAY",
-})
+LEGACY_ORACLE_FIELDS = {
+    "LTURBULENCE": "lturbulence",
+    "LCONVECTION": "lconvection",
+    "CTL": "ctl",
+    "IFINE": "ifine",
+    "LDRYDEP": "ldrydep",
+    "LWETDEP": "lwetdep",
+    "LDECAY": "ldecay",
+}
 REQUIRED_ORACLE_FIELDS = ("lturbulence", "lconvection", "ctl", "ifine")
 FLAG_ORACLE_FIELDS = ("lturbulence", "lconvection", "ldrydep", "lwetdep", "ldecay")
+
+# Oracle flag -> physics_switches agreement required by the fail-closed
+# validator. ldrydep/lwetdep/ldecay are optional: they must agree when
+# declared, but their absence is not a physics-altering default.
+PHYSICS_AGREEMENT = (
+    ("lturbulence", "turbulence"),
+    ("lconvection", "convection"),
+    ("ldrydep", "dry_deposition"),
+    ("lwetdep", "wet_deposition"),
+    ("ldecay", "decay"),
+)
+
+# readoptions_mod.f90:645-653: CTL >= 0.1 selects the w/Markov formulation
+# (turbswitch); smaller positive values silently switch to the
+# position formulation and rewrite ifine=1, a physics-altering fallback we
+# refuse to reproduce. CTL must also be non-zero: the oracle always computes
+# `ctl = 1./ctl` (readoptions_mod.f90:653) and divides by it when sizing
+# particle time steps.
+CTL_FORMULATION_THRESHOLD = 0.1
+
+
+def _declared_physics_switch(physics: object, key: str):
+    """Return the declared physics_switches boolean for ``key`` or None."""
+    if not isinstance(physics, dict):
+        return None
+    value = physics.get(key)
+    return value if isinstance(value, bool) else None
 
 
 def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
     """Canonical v2 Oracle override reader (no hidden defaults, no v1).
 
-    Reads the canonical lowercase fields. Legacy uppercase spellings are
-    rejected (frozen v1, see MIGRATION_NOTES.md), as are unknown keys,
-    missing required overrides, out-of-range values, and Oracle switches
-    conflicting with ``physics_switches``. Never substitutes
+    Reads the canonical lowercase fields. A document declaring both a legacy
+    uppercase key and the canonical lowercase form is ambiguous and rejected;
+    a legacy-only spelling is frozen and rejected (see MIGRATION_NOTES.md), as
+    are unknown keys, missing required overrides, out-of-range values, and
+    Oracle flags conflicting with ``physics_switches``. Never substitutes
     physics-altering defaults.
     """
     raw = case.get("oracle_command_overrides")
@@ -208,12 +236,18 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
         )
     if not isinstance(raw, dict):
         raise SystemExit(f"{case_id}: oracle_command_overrides must be an object")
+    for legacy, canonical in LEGACY_ORACLE_FIELDS.items():
+        if legacy in raw and canonical in raw:
+            raise SystemExit(
+                f"{case_id}: ambiguous oracle override: both {legacy} and "
+                f"{canonical} present; keep only the canonical lowercase form"
+            )
     for key in raw:
-        if key in LEGACY_ORACLE_KEYS:
+        if key in LEGACY_ORACLE_FIELDS:
             raise SystemExit(
                 f"{case_id}: legacy uppercase oracle override {key!r} is frozen "
-                "and unsupported; use the canonical lowercase form "
-                "(see MIGRATION_NOTES.md)"
+                f"and unsupported; use the canonical lowercase form "
+                f"{LEGACY_ORACLE_FIELDS[key]!r} (see MIGRATION_NOTES.md)"
             )
     normalized: dict = {}
     for field in CANONICAL_ORACLE_FIELDS:
@@ -231,7 +265,7 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
     for field in FLAG_ORACLE_FIELDS:
         if field in normalized:
             value = normalized[field]
-            if not isinstance(value, int) or isinstance(value, bool):
+            if isinstance(value, bool) or not isinstance(value, int):
                 raise SystemExit(
                     f"{case_id}: oracle override {field} must be exactly 0 or 1, "
                     f"got {value!r}"
@@ -242,7 +276,7 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
                     f"got {value!r}"
                 )
     ctl = normalized["ctl"]
-    if not isinstance(ctl, (int, float)) or isinstance(ctl, bool):
+    if isinstance(ctl, bool) or not isinstance(ctl, (int, float)):
         raise SystemExit(
             f"{case_id}: oracle override ctl must be a finite number, got {ctl!r}"
         )
@@ -250,8 +284,20 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
         raise SystemExit(
             f"{case_id}: oracle override ctl must be finite, got {ctl!r}"
         )
+    if float(ctl) == 0.0:
+        raise SystemExit(
+            f"{case_id}: oracle override ctl must be non-zero (the oracle sizes "
+            f"time steps by dt = min(tscale)/ctl), got {ctl!r}"
+        )
+    if normalized["lturbulence"] == 1 and float(ctl) < CTL_FORMULATION_THRESHOLD:
+        raise SystemExit(
+            f"{case_id}: oracle override ctl must be >= {CTL_FORMULATION_THRESHOLD} "
+            f"when lturbulence=1 (readoptions_mod.f90:645-653 w/Markov "
+            f"formulation threshold), got {ctl!r}; a smaller value would silently "
+            "rewrite the Markov chain and force ifine=1"
+        )
     ifine = normalized["ifine"]
-    if not isinstance(ifine, int) or isinstance(ifine, bool):
+    if isinstance(ifine, bool) or not isinstance(ifine, int):
         raise SystemExit(
             f"{case_id}: oracle override ifine must be an integer in 1..=10, "
             f"got {ifine!r}"
@@ -260,22 +306,18 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
         raise SystemExit(
             f"{case_id}: oracle override ifine must be in 1..=10, got {ifine!r}"
         )
-    physics = case.get("physics_switches", {})
-    if isinstance(physics, dict):
-        if "turbulence" in physics and isinstance(physics["turbulence"], bool):
-            if physics["turbulence"] != (normalized["lturbulence"] == 1):
-                raise SystemExit(
-                    f"{case_id}: physics_switches.turbulence={physics['turbulence']} "
-                    f"conflicts with oracle lturbulence={normalized['lturbulence']}; "
-                    "refusing to generate"
-                )
-        if "convection" in physics and isinstance(physics["convection"], bool):
-            if physics["convection"] != (normalized["lconvection"] == 1):
-                raise SystemExit(
-                    f"{case_id}: physics_switches.convection={physics['convection']} "
-                    f"conflicts with oracle lconvection={normalized['lconvection']}; "
-                    "refusing to generate"
-                )
+    physics = case.get("physics_switches")
+    for field, physics_key in PHYSICS_AGREEMENT:
+        if field not in normalized:
+            continue
+        declared = _declared_physics_switch(physics, physics_key)
+        if declared is None:
+            continue
+        if declared != (normalized[field] == 1):
+            raise SystemExit(
+                f"{case_id}: physics_switches.{physics_key}={declared} conflicts "
+                f"with oracle {field}={normalized[field]}; refusing to generate"
+            )
     return normalized
 
 
@@ -385,7 +427,9 @@ def meteo_args(case_id: str, case: dict) -> str:
         # (fixtures/etex/native-mini/), not synthetic GRIB generation.
         return ""
     
-    surface = case.get("surface", {})
+    # Analytic cases declare `surface: null`; treat it like an absent block and
+    # fall back to the per-field defaults used for the synthetic GRIB flags.
+    surface = case.get("surface") or {}
     u = wind.get("u_m_s", wind.get("u0_m_s", 5.0))
     v = wind.get("v_m_s", 0.0)
     shear = float(wind.get("u_shear_per_s", 0.0))

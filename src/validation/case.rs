@@ -761,6 +761,37 @@ impl ValidationCaseManifest {
                 });
             }
         }
+        // Oracle command overrides: reject ambiguous mixed-spelling documents
+        // (legacy uppercase + canonical lowercase) before typed
+        // deserialization. Legacy-only uppercase spellings are rejected by
+        // `deny_unknown_fields` on `OracleCommandOverrides`, which names the
+        // canonical alternative; v1 is frozen, see MIGRATION_NOTES.md.
+        if let Some(overrides) = raw
+            .get("oracle_command_overrides")
+            .and_then(serde_json::Value::as_object)
+        {
+            const LEGACY_TO_CANONICAL: [(&str, &str); 7] = [
+                ("LTURBULENCE", "lturbulence"),
+                ("LCONVECTION", "lconvection"),
+                ("CTL", "ctl"),
+                ("IFINE", "ifine"),
+                ("LDRYDEP", "ldrydep"),
+                ("LWETDEP", "lwetdep"),
+                ("LDECAY", "ldecay"),
+            ];
+            for (legacy, canonical) in LEGACY_TO_CANONICAL {
+                if overrides.contains_key(legacy) && overrides.contains_key(canonical) {
+                    return Err(ValidationCaseError::AmbiguousField {
+                        field: "oracle_command_overrides",
+                        message: format!(
+                            "document declares both `{legacy}` and `{canonical}`; \
+                             ambiguous mixed-spelling oracle override rejected; \
+                             keep only the canonical lowercase form"
+                        ),
+                    });
+                }
+            }
+        }
         let manifest: Self =
             serde_json::from_value(raw).map_err(|source| ValidationCaseError::ParseJson {
                 path: path.to_path_buf(),
@@ -1454,6 +1485,26 @@ impl ValidationCaseManifest {
                 message: format!("oracle_command_overrides.ctl must be finite, got {ctl}"),
             });
         }
+        if ctl == 0.0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "oracle_command_overrides.ctl must be non-zero (the oracle sizes \
+                     time steps by min(tscale)/ctl, readoptions_mod.f90:653), got {ctl}"
+                ),
+            });
+        }
+        // readoptions_mod.f90:645-653: CTL >= 0.1 selects the w/Markov
+        // formulation (turbswitch); smaller positive values silently switch to
+        // the position formulation and force ifine=1, a physics-altering
+        // fallback that must not be reproduced silently.
+        if lturbulence == 1 && ctl < 0.1 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "oracle_command_overrides.ctl must be >= 0.1 when lturbulence=1 \
+                     (readoptions_mod.f90:645-653 w/Markov formulation threshold), got {ctl}"
+                ),
+            });
+        }
         let ifine = overrides.ifine.ok_or(ValidationCaseError::MissingField {
             field: "oracle_command_overrides.ifine",
         })?;
@@ -1475,6 +1526,19 @@ impl ValidationCaseManifest {
                 }
             }
         }
+        self.validate_oracle_physics_agreement(lturbulence, lconvection)?;
+        Ok(())
+    }
+
+    /// Cross-checks that oracle COMMAND switches agree with the declared
+    /// `physics_switches`, so a case cannot silently run different physics than
+    /// it claims. Departures from Fortran module state are rejected as
+    /// `InvalidPhysicsSwitches`.
+    fn validate_oracle_physics_agreement(
+        &self,
+        lturbulence: u8,
+        lconvection: u8,
+    ) -> Result<(), ValidationCaseError> {
         if self.physics_switches.turbulence != (lturbulence == 1) {
             return Err(ValidationCaseError::InvalidPhysicsSwitches {
                 message: format!(
@@ -1490,6 +1554,34 @@ impl ValidationCaseManifest {
                     self.physics_switches.convection
                 ),
             });
+        }
+        for (name, value, physics_key, physics_value) in [
+            (
+                "oracle_command_overrides.ldrydep",
+                self.oracle_command_overrides.ldrydep,
+                "physics_switches.dry_deposition",
+                self.physics_switches.dry_deposition,
+            ),
+            (
+                "oracle_command_overrides.lwetdep",
+                self.oracle_command_overrides.lwetdep,
+                "physics_switches.wet_deposition",
+                self.physics_switches.wet_deposition,
+            ),
+            (
+                "oracle_command_overrides.ldecay",
+                self.oracle_command_overrides.ldecay,
+                "physics_switches.decay",
+                self.physics_switches.decay,
+            ),
+        ] {
+            if let Some(value) = value {
+                if value != u8::from(physics_value) {
+                    return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                        message: format!("{physics_key}={physics_value} conflicts with oracle {name}={value}"),
+                    });
+                }
+            }
         }
         Ok(())
     }
@@ -2085,6 +2177,100 @@ mod tests {
             err,
             ValidationCaseError::InvalidPhysicsSwitches { .. }
         ));
+    }
+
+    #[test]
+    fn optional_oracle_flag_conflicting_with_physics_is_rejected() {
+        let mut manifest = make_minimal_manifest();
+        assert!(!manifest.physics_switches.dry_deposition);
+        manifest.oracle_command_overrides.ldrydep = Some(1);
+        let err = manifest.validate().expect_err("conflict must fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::InvalidPhysicsSwitches { .. }
+        ));
+        assert!(err.to_string().contains("dry_deposition"));
+    }
+
+    #[test]
+    fn zero_ctl_is_rejected_for_nonzero_timestep_division() {
+        let mut manifest = make_minimal_manifest();
+        manifest.oracle_command_overrides.ctl = Some(0.0);
+        let err = manifest.validate().expect_err("ctl=0 must fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::InvalidPhysicsSwitches { .. }
+        ));
+        assert!(err.to_string().contains("non-zero"));
+    }
+
+    #[test]
+    fn small_positive_ctl_is_rejected_for_turbulence_formulation() {
+        let mut manifest = make_minimal_manifest();
+        assert_eq!(manifest.oracle_command_overrides.lturbulence, Some(1));
+        manifest.oracle_command_overrides.ctl = Some(0.05);
+        let err = manifest.validate().expect_err("ctl below w-formulation threshold");
+        assert!(matches!(
+            err,
+            ValidationCaseError::InvalidPhysicsSwitches { .. }
+        ));
+        assert!(err.to_string().contains("readoptions_mod.f90"));
+    }
+
+    #[test]
+    fn small_positive_ctl_is_allowed_when_turbulence_disabled() {
+        let mut manifest = make_minimal_manifest();
+        manifest.physics_switches.turbulence = false;
+        manifest.oracle_command_overrides.lturbulence = Some(0);
+        manifest.oracle_command_overrides.ctl = Some(0.05);
+        manifest.validate().expect("ctl unused without turbulence must pass");
+    }
+
+    #[test]
+    fn both_spellings_of_oracle_override_rejected_as_ambiguous() {
+        let mut raw: serde_json::Value = serde_json::to_value(make_minimal_manifest())
+            .expect("serialize minimal");
+        raw["oracle_command_overrides"]
+            .as_object_mut()
+            .expect("overrides object")
+            .insert("LTURBULENCE".to_string(), serde_json::json!(1));
+        let text = serde_json::to_string(&raw).expect("re-serialize");
+        let err =
+            ValidationCaseManifest::parse(&text, Path::new("both.json")).expect_err("fails");
+        assert!(matches!(
+            err,
+            ValidationCaseError::AmbiguousField {
+                field: "oracle_command_overrides",
+                ..
+            }
+        ));
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("LTURBULENCE") && rendered.contains("lturbulence"),
+            "error must name both spellings: {rendered}"
+        );
+    }
+
+    #[test]
+    fn legacy_only_uppercase_oracle_override_is_rejected() {
+        let mut raw: serde_json::Value = serde_json::to_value(make_minimal_manifest())
+            .expect("serialize minimal");
+        raw["oracle_command_overrides"]
+            .as_object_mut()
+            .expect("overrides object")
+            .remove("lturbulence");
+        raw["oracle_command_overrides"]
+            .as_object_mut()
+            .expect("overrides object")
+            .insert("LTURBULENCE".to_string(), serde_json::json!(1));
+        let text = serde_json::to_string(&raw).expect("re-serialize");
+        let err =
+            ValidationCaseManifest::parse(&text, Path::new("legacy.json")).expect_err("fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("LTURBULENCE"),
+            "legacy spelling must fail naming the key: {rendered}"
+        );
     }
 
     const ALL_CHECKED_IN_CASES: &[&str] = &[

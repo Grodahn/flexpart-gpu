@@ -82,13 +82,15 @@ class OracleOverrideTest(unittest.TestCase):
             GEN.command_text("WIND-UNI-002", case)
         self.assertIn("lturbulence", str(ctx.exception))
 
-    def test_both_forms_rejected_as_legacy(self):
+    def test_both_forms_rejected_as_ambiguous(self):
         case = load_case("WIND-UNI-002")
         case = copy.deepcopy(case)
         case["oracle_command_overrides"]["LTURBULENCE"] = 1
         with self.assertRaises(SystemExit) as ctx:
             GEN.command_text("WIND-UNI-002", case)
-        self.assertIn("legacy", str(ctx.exception))
+        self.assertIn("ambiguous", str(ctx.exception))
+        self.assertIn("LTURBULENCE", str(ctx.exception))
+        self.assertIn("lturbulence", str(ctx.exception))
 
     def test_flag_other_than_zero_or_one_rejected(self):
         case = load_case("WIND-UNI-002")
@@ -106,6 +108,43 @@ class OracleOverrideTest(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             GEN.command_text("WIND-UNI-002", case)
         self.assertIn("conflicts", str(ctx.exception))
+
+    def test_optional_flag_conflicting_physics_switch_rejected(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        # physics says no dry deposition, oracle declares dry deposition on.
+        case["oracle_command_overrides"]["ldrydep"] = 1
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("dry_deposition", str(ctx.exception))
+        self.assertIn("conflicts", str(ctx.exception))
+
+    def test_zero_ctl_rejected_for_nonzero_timestep_division(self):
+        case = load_case("ADV-ANA-001")
+        case = copy.deepcopy(case)
+        case["oracle_command_overrides"]["ctl"] = 0
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("ADV-ANA-001", case)
+        self.assertIn("non-zero", str(ctx.exception))
+
+    def test_small_positive_ctl_rejected_for_turbulence_formulation(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        # readoptions_mod.f90:645-653: ctl < 0.1 silently rewrites the Markov
+        # chain and forces ifine=1, so the generator refuses it.
+        case["oracle_command_overrides"]["ctl"] = 0.05
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("readoptions_mod.f90", str(ctx.exception))
+
+    def test_small_positive_ctl_allowed_when_turbulence_disabled(self):
+        case = load_case("ADV-ANA-001")
+        case = copy.deepcopy(case)
+        # With LTURBULENCE=0 the oracle never consumes CTL for time stepping;
+        # only the non-zero division guard applies.
+        case["oracle_command_overrides"]["ctl"] = 0.05
+        text = GEN.command_text("ADV-ANA-001", case)
+        self.assertAlmostEqual(float(GEN.namelist_value(text, "CTL")), 0.05, places=6)
 
 
 if __name__ == "__main__":

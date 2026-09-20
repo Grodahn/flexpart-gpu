@@ -806,70 +806,78 @@ fn monotonic(values: &[f32], ordering: VerticalOrdering) -> bool {
 }
 
 fn validate_time(id: FieldId, time: &FieldTime) -> Result<(), ContractError> {
-    if id.is_static_ancillary() {
-        if time.kind != TemporalKind::Static
-            || time.interval_start_epoch_seconds.is_some()
-            || time.interval_end_epoch_seconds.is_some()
-            || time.accumulation.is_some()
-        {
-            return Err(ContractError::InvalidTemporalMetadata(id));
-        }
-        return Ok(());
-    }
-    if time.kind == TemporalKind::Static {
-        return Err(ContractError::InvalidTemporalMetadata(id));
-    }
+    let policy = id.spec().temporal_policy;
 
-    match time.kind {
-        TemporalKind::Static => unreachable!("static time kind handled above"),
-        TemporalKind::Instantaneous => {
-            if time.interval_start_epoch_seconds.is_some()
+    match policy {
+        TemporalPolicy::Static => {
+            if time.kind != TemporalKind::Static
+                || time.interval_start_epoch_seconds.is_some()
                 || time.interval_end_epoch_seconds.is_some()
                 || time.accumulation.is_some()
             {
                 return Err(ContractError::InvalidTemporalMetadata(id));
             }
         }
-        TemporalKind::IntervalMean | TemporalKind::IntervalTotal => {
-            validate_interval(id, time)?;
-            if time.accumulation.is_some() {
+        TemporalPolicy::Instantaneous => {
+            if time.kind != TemporalKind::Instantaneous
+                || time.interval_start_epoch_seconds.is_some()
+                || time.interval_end_epoch_seconds.is_some()
+                || time.accumulation.is_some()
+            {
                 return Err(ContractError::InvalidTemporalMetadata(id));
             }
         }
-        TemporalKind::AccumulatedSinceReset => {
-            validate_interval(id, time)?;
-            let reset = time
-                .accumulation
-                .as_ref()
-                .ok_or(ContractError::InvalidTemporalMetadata(id))?;
-            let start = time
-                .interval_start_epoch_seconds
-                .ok_or(ContractError::InvalidTemporalMetadata(id))?;
-            if reset.reset_epoch_seconds > start {
+        TemporalPolicy::PrecipitationAmount => {
+            if !matches!(
+                time.kind,
+                TemporalKind::IntervalTotal | TemporalKind::AccumulatedSinceReset
+            ) {
                 return Err(ContractError::InvalidTemporalMetadata(id));
             }
+            validate_interval(id, time)?;
+            match time.kind {
+                TemporalKind::IntervalTotal => {
+                    if time.accumulation.is_some() {
+                        return Err(ContractError::InvalidTemporalMetadata(id));
+                    }
+                }
+                TemporalKind::AccumulatedSinceReset => {
+                    let reset = time
+                        .accumulation
+                        .as_ref()
+                        .ok_or(ContractError::InvalidTemporalMetadata(id))?;
+                    let start = time
+                        .interval_start_epoch_seconds
+                        .ok_or(ContractError::InvalidTemporalMetadata(id))?;
+                    if reset.reset_epoch_seconds > start {
+                        return Err(ContractError::InvalidTemporalMetadata(id));
+                    }
+                }
+                _ => unreachable!("precipitation policy kind checked above"),
+            }
         }
-    }
-
-    if matches!(id, FieldId::LargeScalePrecipitation | FieldId::ConvectivePrecipitation) {
-        if !matches!(
-            time.kind,
-            TemporalKind::IntervalTotal | TemporalKind::AccumulatedSinceReset
-        ) {
-            return Err(ContractError::InvalidTemporalMetadata(id));
+        TemporalPolicy::SurfaceFluxRate => {
+            if !matches!(time.kind, TemporalKind::Instantaneous | TemporalKind::IntervalMean) {
+                return Err(ContractError::InvalidTemporalMetadata(id));
+            }
+            match time.kind {
+                TemporalKind::Instantaneous => {
+                    if time.interval_start_epoch_seconds.is_some()
+                        || time.interval_end_epoch_seconds.is_some()
+                        || time.accumulation.is_some()
+                    {
+                        return Err(ContractError::InvalidTemporalMetadata(id));
+                    }
+                }
+                TemporalKind::IntervalMean => {
+                    validate_interval(id, time)?;
+                    if time.accumulation.is_some() {
+                        return Err(ContractError::InvalidTemporalMetadata(id));
+                    }
+                }
+                _ => unreachable!("surface-flux policy kind checked above"),
+            }
         }
-    } else if matches!(
-        id,
-        FieldId::SensibleHeatFlux
-            | FieldId::SurfaceSolarRadiation
-            | FieldId::SurfaceStressEastward
-            | FieldId::SurfaceStressNorthward
-    ) {
-        if !matches!(time.kind, TemporalKind::Instantaneous | TemporalKind::IntervalMean) {
-            return Err(ContractError::InvalidTemporalMetadata(id));
-        }
-    } else if time.kind != TemporalKind::Instantaneous {
-        return Err(ContractError::InvalidTemporalMetadata(id));
     }
     Ok(())
 }
@@ -985,6 +993,81 @@ mod tests {
                 field(FieldId::Pressure, vec![90_000.0, 80_000.0, 90_000.0, 80_000.0]),
             ],
         }
+    }
+
+    fn doc_token<T: serde::Serialize>(value: T) -> String {
+        match serde_json::to_value(value).expect("serialize contract enum") {
+            serde_json::Value::String(value) => value,
+            _ => panic!("contract enum must serialize as a string"),
+        }
+    }
+
+    fn field_spec_doc_row(spec: &FieldSpec) -> String {
+        let requirement_sets = if spec.requirement_sets.is_empty() {
+            "—".to_string()
+        } else {
+            spec.requirement_sets
+                .iter()
+                .map(|set| format!("\`{}\`", doc_token(*set)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        format!(
+            "| \`{}\` | \`{}\` | \`{}\` | \`{}\` | {} |",
+            doc_token(spec.id),
+            doc_token(spec.unit),
+            doc_token(spec.sign),
+            doc_token(spec.temporal_policy),
+            requirement_sets
+        )
+    }
+
+    #[test]
+    fn field_specs_are_unique_and_define_all_p0_requirements() {
+        let ids: BTreeSet<_> = FIELD_SPECS.iter().map(|spec| spec.id).collect();
+        assert_eq!(ids.len(), FIELD_SPECS.len(), "duplicate FieldSpec id");
+        assert_eq!(Requirements::p0_complete().required_fields, ids);
+    }
+
+    #[test]
+    fn advection_requirement_is_wind_only() {
+        assert_eq!(
+            Requirements::advection().required_fields,
+            [
+                FieldId::WindU,
+                FieldId::WindV,
+                FieldId::VerticalVelocity,
+            ]
+            .into_iter()
+            .collect()
+        );
+    }
+
+    #[test]
+    fn documentation_field_spec_matrix_matches_contract() {
+        let docs = include_str!("../../docs/meteorology-contract.md");
+        let begin = docs
+            .find("<!-- BEGIN GENERATED FIELD SPEC MATRIX -->")
+            .expect("generated field-spec matrix begin marker");
+        let end = docs
+            .find("<!-- END GENERATED FIELD SPEC MATRIX -->")
+            .expect("generated field-spec matrix end marker");
+        assert!(end > begin, "generated field-spec matrix markers out of order");
+        let block = &docs[begin..end];
+
+        for spec in FIELD_SPECS {
+            let row = field_spec_doc_row(spec);
+            assert!(
+                block.contains(&row),
+                "docs field-spec matrix is stale or missing row: {row}"
+            );
+        }
+        let data_rows = block.lines().filter(|line| line.starts_with("| \`")).count();
+        assert_eq!(
+            data_rows,
+            FIELD_SPECS.len(),
+            "docs field-spec matrix has stale or extra data rows"
+        );
     }
 
     #[test]

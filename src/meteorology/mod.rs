@@ -1159,6 +1159,126 @@ mod tests {
     }
 
     #[test]
+    fn non_periodic_grid_crossing_longitude_seam_fails_closed() {
+        let mut value = snapshot();
+        value.horizontal_grid.xlon0_deg = 179.9;
+        value.horizontal_grid.dx_deg = 0.25;
+        assert!(!value.horizontal_grid.is_periodic_x());
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InvalidHorizontalGrid)
+        );
+    }
+
+    #[test]
+    fn grid_extending_beyond_pole_fails_closed() {
+        let mut value = snapshot();
+        value.horizontal_grid.ylat0_deg = 89.9;
+        value.horizontal_grid.dy_deg = 0.25;
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InvalidHorizontalGrid)
+        );
+    }
+
+    #[test]
+    fn exactly_global_x_coverage_is_periodic() {
+        let mut value = snapshot();
+        value.horizontal_grid.nx = 4;
+        value.horizontal_grid.xlon0_deg = -180.0;
+        value.horizontal_grid.dx_deg = 90.0;
+        for field in &mut value.fields {
+            field.shape[0] = 4;
+            field.values = vec![field.values[0]; 4 * value.horizontal_grid.ny * field.shape[2]];
+        }
+        assert!(value.horizontal_grid.is_periodic_x());
+        value
+            .validate(&Requirements::advection())
+            .expect("exactly-global x coverage must use periodic schema-v1 topology");
+    }
+
+    #[test]
+    fn dynamic_fields_must_share_valid_time_and_calendar() {
+        let mut value = snapshot();
+        let temperature = value
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::Temperature)
+            .expect("temperature field");
+        temperature.time.valid_time_epoch_seconds += 1;
+
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InconsistentSnapshotTime(FieldId::Temperature))
+        );
+
+        let mut value = snapshot();
+        let temperature = value
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::Temperature)
+            .expect("temperature field");
+        temperature.time.calendar = Calendar::ProlepticGregorian;
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InconsistentSnapshotTime(FieldId::Temperature))
+        );
+    }
+
+    #[test]
+    fn static_ancillary_requires_static_time_semantics() {
+        let mut value = snapshot();
+        value.fields.push(Field {
+            id: FieldId::Orography,
+            shape: vec![2, 1],
+            axis_order: vec![Axis::X, Axis::Y],
+            unit: Unit::Meter,
+            sign: SignConvention::SignedScalar,
+            storage_order: StorageOrder::XFastest,
+            horizontal_staggering: HorizontalStaggering::CellCenter,
+            vertical_staggering: VerticalStaggering::NotApplicable,
+            time: FieldTime {
+                calendar: Calendar::Gregorian,
+                kind: TemporalKind::Static,
+                valid_time_epoch_seconds: 123,
+                interval_start_epoch_seconds: None,
+                interval_end_epoch_seconds: None,
+                accumulation: None,
+            },
+            values: vec![100.0, 120.0],
+        });
+        value
+            .validate(&Requirements::advection())
+            .expect("static ancillary timestamp is provenance-only and must not join dynamic time alignment");
+
+        let orography = value
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::Orography)
+            .expect("orography");
+        orography.time.kind = TemporalKind::Instantaneous;
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InvalidTemporalMetadata(FieldId::Orography))
+        );
+    }
+
+    #[test]
+    fn dynamic_field_rejects_static_time_semantics() {
+        let mut value = snapshot();
+        let temperature = value
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::Temperature)
+            .expect("temperature field");
+        temperature.time.kind = TemporalKind::Static;
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InvalidTemporalMetadata(FieldId::Temperature))
+        );
+    }
+
+    #[test]
     fn unknown_calendar_fails_deserialization() {
         let mut encoded = serde_json::to_value(snapshot()).expect("serialize snapshot");
         encoded["fields"][0]["time"]["calendar"] = serde_json::Value::String("julian".into());

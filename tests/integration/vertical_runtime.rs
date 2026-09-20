@@ -1,6 +1,7 @@
 use flexpart_gpu::meteorology::{
     vertical::{
-        reconstruct_vertical_geometry, resolve_release_height_at_column, VerticalTransformError,
+        reconstruct_vertical_geometry, resolve_release_height_at_column,
+        resolve_release_height_range_at_column, VerticalTransformError,
     },
     Snapshot, VerticalReference,
 };
@@ -44,6 +45,39 @@ fn release_height_agl_and_asl_share_the_same_nonzero_terrain_transform() {
 
     assert_eq!(from_agl.height_agl_m, from_asl.height_agl_m);
     assert_eq!(from_agl.height_asl_m, from_asl.height_asl_m);
+}
+
+#[test]
+fn release_height_ranges_preserve_declared_reference_and_ordering() {
+    let snapshot = snapshot();
+    let geometry = reconstruct_vertical_geometry(&snapshot).expect("vertical geometry");
+    let runtime = geometry.runtime_view().expect("valid runtime view");
+
+    let range = resolve_release_height_range_at_column(
+        runtime,
+        0,
+        0,
+        50.0,
+        150.0,
+        VerticalReference::AboveGroundLevel,
+    )
+    .expect("ordered AGL range");
+    assert_eq!(range.lower.height_asl_m, 300.0);
+    assert_eq!(range.upper.height_asl_m, 400.0);
+
+    let error = resolve_release_height_range_at_column(
+        runtime,
+        0,
+        0,
+        150.0,
+        50.0,
+        VerticalReference::AboveGroundLevel,
+    )
+    .expect_err("inverted vertical bounds must fail");
+    assert!(matches!(
+        error,
+        VerticalTransformError::InvalidReleaseHeightRange { .. }
+    ));
 }
 
 #[test]

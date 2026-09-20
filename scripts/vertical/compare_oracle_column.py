@@ -21,6 +21,9 @@ REQUIRED_VERTTRANSFORM_SNIPPETS = (
     "if (abs(tv-tvold).gt.0.2) then",
     "log(pold/pint)*(tv-tvold)/log(tv/tvold)",
     "log(pold/pint)*tv",
+    "wzlev(ix,jy,1)=0.",
+    "wzlev(ix,jy,kz)=(uvzlev(ix,jy,kz+1)+uvzlev(ix,jy,kz))*0.5",
+    "wzlev(ix,jy,nwz)=wzlev(ix,jy,nwz-1)+",
     "pinmconv(ix,jy,1)=(uvzlev(ix,jy,2))/",
     "pinmconv(ix,jy,kz)=(uvzlev(ix,jy,kz+1)-uvzlev(ix,jy,kz-1))/",
     "pinmconv(ix,jy,nz)=(uvzlev(ix,jy,nz)-uvzlev(ix,jy,nz-1))/",
@@ -77,6 +80,29 @@ def read_oracle(path):
         })
 
     if position >= len(lines):
+        raise ValueError("oracle output lacks INTERFACES section")
+    interface_header = lines[position].split()
+    position += 1
+    if len(interface_header) != 2 or interface_header[0] != "INTERFACES":
+        raise ValueError("invalid oracle INTERFACES header")
+    interface_count = int(interface_header[1])
+    if interface_count != nz + 1:
+        raise ValueError("oracle interface height count mismatch")
+    interfaces = []
+    for expected_index in range(interface_count):
+        if position >= len(lines):
+            raise ValueError("oracle output ended before all interface rows")
+        parts = lines[position].split()
+        position += 1
+        if len(parts) != 3 or int(parts[0]) != expected_index:
+            raise ValueError(f"invalid oracle interface row {expected_index}")
+        interfaces.append({
+            "interface": expected_index,
+            "height_agl_m": float(parts[1]),
+            "height_asl_m": float(parts[2]),
+        })
+
+    if position >= len(lines):
         raise ValueError("oracle output lacks MOTION section")
     motion_header = lines[position].split()
     position += 1
@@ -110,7 +136,7 @@ def read_oracle(path):
 
     if position != len(lines):
         raise ValueError("unexpected trailing oracle output")
-    return {"levels": levels, "motion": motion}
+    return {"levels": levels, "interfaces": interfaces, "motion": motion}
 
 
 def compare_scalar(actual, expected, abs_tol, rel_tol):
@@ -201,6 +227,32 @@ def main():
         overall = overall and all(item["pass"] for item in comparisons.values())
         rows.append({"level": level, "fields": comparisons})
 
+    candidate_interface_agl = result.get("interface_height_agl_m")
+    candidate_interface_asl = result.get("interface_height_asl_m")
+    if not isinstance(candidate_interface_agl, list) or len(candidate_interface_agl) != nz + 1:
+        raise ValueError("candidate interface AGL height count mismatch")
+    if not isinstance(candidate_interface_asl, list) or len(candidate_interface_asl) != nz + 1:
+        raise ValueError("candidate interface ASL height count mismatch")
+
+    interface_rows = []
+    for interface, expected in enumerate(oracle["interfaces"]):
+        comparisons = {
+            "height_agl_m": compare_scalar(
+                candidate_interface_agl[interface],
+                expected["height_agl_m"],
+                HEIGHT_ABS_TOL_M,
+                HEIGHT_REL_TOL,
+            ),
+            "height_asl_m": compare_scalar(
+                candidate_interface_asl[interface],
+                expected["height_asl_m"],
+                HEIGHT_ABS_TOL_M,
+                HEIGHT_REL_TOL,
+            ),
+        }
+        overall = overall and all(item["pass"] for item in comparisons.values())
+        interface_rows.append({"interface": interface, "fields": comparisons})
+
     candidate_motion = result.get("vertical_velocity")
     oracle_motion = oracle["motion"]
     if (candidate_motion is None) != (oracle_motion is None):
@@ -249,7 +301,7 @@ def main():
     report = {
         "schema": "flexpart-gpu.vertical-column-comparison.v1",
         "status": "PASS" if overall else "FAIL",
-        "scientific_scope": scientific_scope,
+        "scientific_scope": scientific_scope + ", FLEXPART-11.1 W/interface geometric heights",
         "source_snapshot": {
             "path": str(args.source_snapshot),
             "sha256": sha256(args.source_snapshot),
@@ -272,6 +324,7 @@ def main():
             "source_contract_snippets_verified": True,
             "hybrid_level_construction_verified": True,
             "pinmconv_contract_verified": True,
+            "wzlev_contract_verified": True,
             "note": (
                 "The harness links the pinned oracle par_mod/qvsat_mod directly and "
                 "replays scalar column equations from verttransform_ecmwf_heights, "
@@ -288,6 +341,7 @@ def main():
             },
         },
         "levels": rows,
+        "interfaces": interface_rows,
         "motion_interfaces": motion_rows,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

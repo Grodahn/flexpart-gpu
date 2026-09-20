@@ -203,15 +203,15 @@ fn resolve_ensemble_count(
     manifest: &ValidationCaseManifest,
     cli_seeds: Option<usize>,
 ) -> Result<usize, String> {
-    let declared = if case_id == "ADV-ANA-001" {
-        1
-    } else if let Some(candidate) = &manifest.stochastic.candidate_philox {
+    let declared = if let Some(candidate) = &manifest.stochastic.candidate_philox {
         usize::try_from(candidate.count)
             .map_err(|_| format!("case {case_id}: candidate_philox.count out of range"))?
-    } else {
+    } else if manifest.physics_switches.turbulence {
         return Err(format!(
-            "case {case_id}: missing stochastic.candidate_philox; ensemble count unknown"
+            "case {case_id}: physics_switches.turbulence=true requires stochastic.candidate_philox"
         ));
+    } else {
+        1
     };
     if declared == 0 {
         return Err(format!("case {case_id}: declared ensemble count must be > 0"));
@@ -1046,6 +1046,19 @@ mod tests {
         assert!(err.contains("no stochastic"), "unexpected: {err}");
         let err = resolve_ensemble_count("WIND-UNI-002", &hacked, None).expect_err("must fail");
         assert!(err.contains("ensemble count"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn deterministic_ensemble_count_is_not_case_id_specific() {
+        let mut manifest = load_manifest("ADV-ANA-001");
+        manifest.case_id = "ARBITRARY-DETERMINISTIC-123".to_string();
+        assert!(manifest.stochastic.candidate_philox.is_none());
+        assert!(!manifest.physics_switches.turbulence);
+        assert_eq!(
+            resolve_ensemble_count("ARBITRARY-DETERMINISTIC-123", &manifest, None)
+                .expect("deterministic case"),
+            1
+        );
     }
 
     #[test]

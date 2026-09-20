@@ -201,12 +201,48 @@ pub enum OracleSeedMode {
     RequestedIdentity,
 }
 
+/// Deserialization helper for fields that are nullable but may not be omitted.
+///
+/// Serde treats a missing `Option<T>` field as `None`, which would collapse
+/// omission and an explicit JSON null. Wrapping the wire value in a non-Option
+/// field makes omission a deserialization error while still accepting null.
+enum RequiredNullable<T> {
+    Null,
+    Value(T),
+}
+
+impl<T> RequiredNullable<T> {
+    fn into_option(self) -> Option<T> {
+        match self {
+            Self::Null => None,
+            Self::Value(value) => Some(value),
+        }
+    }
+}
+
+impl<'de, T> Deserialize<'de> for RequiredNullable<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(match Option::<T>::deserialize(deserializer)? {
+            Some(value) => Self::Value(value),
+            None => Self::Null,
+        })
+    }
+}
+
 /// Oracle-side stochastic identity per issue #50 contract.
 ///
 /// Every field is serialized explicitly. In particular, `strategy` and `seed`
 /// serialize as null when absent, while `mode` states why the seed is null.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// Custom deserialization keeps explicit null distinct from an omitted key even
+/// for callers that use `serde_json::from_str::<ValidationCaseManifest>()`
+/// directly rather than the canonical `ValidationCaseManifest::parse` helper.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct OracleSeedIdentity {
     /// Oracle kind: pristine-oracle or seedable-validation-oracle.
     pub kind: OracleKind,
@@ -219,6 +255,32 @@ pub struct OracleSeedIdentity {
     /// Number of repetitions for repeatability characterization.
     /// Required explicitly; no workflow/default repetition count is implied.
     pub repetitions: u32,
+}
+
+impl<'de> Deserialize<'de> for OracleSeedIdentity {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            kind: OracleKind,
+            strategy: RequiredNullable<OracleStrategyRef>,
+            mode: OracleSeedMode,
+            seed: RequiredNullable<u32>,
+            repetitions: u32,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        Ok(Self {
+            kind: wire.kind,
+            strategy: wire.strategy.into_option(),
+            mode: wire.mode,
+            seed: wire.seed.into_option(),
+            repetitions: wire.repetitions,
+        })
+    }
 }
 
 /// Stable reference to a metric/threshold definition owned outside #51.
@@ -1351,6 +1413,8 @@ impl ValidationCaseManifest {
         let mut ids = HashSet::new();
         let mut candidate_raw = false;
         let mut candidate_decoded = false;
+        let mut oracle_raw = false;
+        let mut oracle_decoded = false;
         let mut comparison_report = false;
         let mut run_manifest = false;
         for artifact in &self.expected_artifacts.required {
@@ -1359,13 +1423,21 @@ impl ValidationCaseManifest {
             match (artifact.producer, artifact.class) {
                 (ArtifactProducer::Candidate, ArtifactClass::RawModelOutput) => candidate_raw = true,
                 (ArtifactProducer::Candidate, ArtifactClass::DecodedModelOutput) => candidate_decoded = true,
-                (ArtifactProducer::Oracle, ArtifactClass::RawModelOutput) | (ArtifactProducer::Oracle, ArtifactClass::DecodedModelOutput) => {},
+                (ArtifactProducer::Oracle, ArtifactClass::RawModelOutput) => oracle_raw = true,
+                (ArtifactProducer::Oracle, ArtifactClass::DecodedModelOutput) => oracle_decoded = true,
                 (ArtifactProducer::ValidationPipeline, ArtifactClass::ComparisonReport) => comparison_report = true,
                 (ArtifactProducer::ValidationPipeline, ArtifactClass::RunManifest) => run_manifest = true,
                 _ => return Err(ValidationCaseError::AmbiguousField { field: "expected_artifacts.required", message: format!("artifact {} has invalid producer/class pairing {:?}/{:?}", artifact.id, artifact.producer, artifact.class) }),
             }
         }
-        for (present, label) in [(candidate_raw, "candidate/raw_model_output"), (candidate_decoded, "candidate/decoded_model_output"), (comparison_report, "validation_pipeline/comparison_report"), (run_manifest, "validation_pipeline/run_manifest")] {
+        for (present, label) in [
+            (candidate_raw, "candidate/raw_model_output"),
+            (candidate_decoded, "candidate/decoded_model_output"),
+            (oracle_raw, "oracle/raw_model_output"),
+            (oracle_decoded, "oracle/decoded_model_output"),
+            (comparison_report, "validation_pipeline/comparison_report"),
+            (run_manifest, "validation_pipeline/run_manifest"),
+        ] {
             if !present { return Err(ValidationCaseError::AmbiguousField { field: "expected_artifacts.required", message: format!("missing required artifact class {label}") }); }
         }
         Ok(())
@@ -3277,6 +3349,23 @@ mod tests {
     }
 
     #[test]
+    fn direct_serde_deserialization_requires_nullable_oracle_state_fields() {
+        for field in ["strategy", "seed"] {
+            let mut raw = minimal_manifest_json();
+            raw["stochastic"]["oracle_seed"]
+                .as_object_mut()
+                .expect("oracle object")
+                .remove(field);
+            let err = serde_json::from_value::<ValidationCaseManifest>(raw)
+                .expect_err("direct serde must reject omitted nullable oracle fields");
+            assert!(
+                err.to_string().contains(field),
+                "direct serde error must name omitted {field}: {err}"
+            );
+        }
+    }
+
+    #[test]
     fn oracle_seed_state_fields_cannot_be_omitted() {
         let schema = load_validation_case_schema();
         for field in ["strategy", "mode", "seed"] {
@@ -3417,9 +3506,29 @@ mod tests {
     #[test]
     fn expected_artifacts_require_candidate_raw_and_decoded_classes() {
         let mut manifest = make_minimal_manifest();
-        manifest.expected_artifacts.required.retain(|a| a.class != ArtifactClass::DecodedModelOutput);
+        manifest.expected_artifacts.required.retain(|artifact| {
+            !(artifact.producer == ArtifactProducer::Candidate
+                && artifact.class == ArtifactClass::DecodedModelOutput)
+        });
         let err = manifest.validate().expect_err("candidate decoded artifact is required");
         assert!(err.to_string().contains("candidate/decoded_model_output"));
+    }
+
+    #[test]
+    fn expected_artifacts_require_oracle_raw_and_decoded_classes() {
+        for (class, label) in [
+            (ArtifactClass::RawModelOutput, "oracle/raw_model_output"),
+            (ArtifactClass::DecodedModelOutput, "oracle/decoded_model_output"),
+        ] {
+            let mut manifest = make_minimal_manifest();
+            manifest.expected_artifacts.required.retain(|artifact| {
+                !(artifact.producer == ArtifactProducer::Oracle && artifact.class == class)
+            });
+            let err = manifest
+                .validate()
+                .expect_err("oracle raw/decoded artifacts are required");
+            assert!(err.to_string().contains(label), "unexpected error: {err}");
+        }
     }
     #[test]
     fn missing_simulation_direction_is_rejected() {

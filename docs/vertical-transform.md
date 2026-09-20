@@ -215,10 +215,14 @@ The returned `ResolvedReleaseHeight` preserves:
 - resolved ASL height.
 
 AGL must be non-negative. ASL below local terrain fails closed. Terrain below
-mean sea level remains valid. #28 should perform release sampling in the
-reference declared by canonical `ReleaseSpec`, then call this API at the
-resolved horizontal source column before particle injection. #28 must not
-reimplement terrain offsets or infer AGL/ASL from legacy configuration.
+mean sea level remains valid. #28 should perform release sampling in the reference declared by canonical
+`ReleaseSpec`. For a release exactly on a canonical horizontal grid cell,
+`*_at_column` is a direct integration/test convenience. For an arbitrary
+lon/lat release between grid points, #31 must first provide terrain using its
+canonical horizontal sampling semantics; #28 then passes that sampled terrain
+to `resolve_release_height` / `resolve_release_height_range`. #28 must not
+choose a nearest column implicitly, reimplement terrain offsets, or infer
+AGL/ASL from legacy configuration.
 
 #26 still owns the canonical `ReleaseSpec` field that declares AGL vs ASL;
 #27 owns particle creation/injection. #30 intentionally does not modify

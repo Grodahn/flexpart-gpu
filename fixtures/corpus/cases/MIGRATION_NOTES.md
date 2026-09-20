@@ -202,6 +202,21 @@ The generated COMMAND column layout for the historical values
 byte-identical to the previously checked-in fixtures; no scientific value
 changed in migration.
 
+## Machine-readable schema contract
+
+Schema v2 has a checked-in JSON Schema Draft 2020-12 contract at
+`schemas/validation-case-v2.schema.json`. It is the versioned structural
+contract for external tooling: required fields, closed objects, enums, tagged
+unions, artifact classes, stochastic namespaces, and schema version are
+machine-readable without compiling Rust.
+
+Rust remains authoritative for cross-field scientific invariants that JSON
+Schema does not encode here (for example timestep arithmetic, coupled physics
+switches, FLEXPART execution semantics, and stochastic-strategy consistency).
+Regression tests validate every checked-in case against both the JSON Schema
+and `ValidationCaseManifest::parse`, and include fail-closed negative checks
+for unsupported versions, missing required output semantics, and unknown
+top-level fields.
 ## Input-equivalence ownership and error semantics
 
 Schema v2 deliberately carries **no input-equivalence verdict**. A case may declare structured representation differences and `known_input_equivalence_limitations`, but only #52 may emit the authoritative `DEMONSTRATED` / `NOT_DEMONSTRATED` gate result. Legacy/ad-hoc `input_equivalence` fields are rejected by the closed contract. ETEX-MINI-013 preserves its existing `INPUT_EQUIVALENCE_NOT_DEMONSTRATED` limitation as declarative context without turning schema validation into an equivalence decision.

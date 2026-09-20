@@ -20,6 +20,9 @@ use thiserror::Error;
 /// Schema version for the validation case manifest.
 pub const VALIDATION_CASE_SCHEMA_VERSION: u32 = 2;
 
+/// Checked-in machine-readable structural contract for schema v2.
+pub const VALIDATION_CASE_SCHEMA_PATH: &str = "schemas/validation-case-v2.schema.json";
+
 /// Stable identity of the completed #50 oracle stochastic-identity contract.
 /// Case manifests reference this contract and never duplicate its
 /// requested-identity -> FLEXPART RNG-state mapping.
@@ -2190,6 +2193,175 @@ mod tests {
     use std::io::Write;
     use tempfile::NamedTempFile;
 
+    fn json_schema_type_matches(expected: &str, value: &serde_json::Value) -> bool {
+        match expected {
+            "object" => value.is_object(),
+            "array" => value.is_array(),
+            "string" => value.is_string(),
+            "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
+            "number" => value.is_number(),
+            "boolean" => value.is_boolean(),
+            "null" => value.is_null(),
+            _ => false,
+        }
+    }
+
+    /// Minimal Draft 2020-12 evaluator for the keyword subset used by the
+    /// checked-in validation-case schema. This keeps the schema test
+    /// dependency-free while validating the actual schema document, not a
+    /// second hand-written fixture shape.
+    fn validate_json_schema_subset(
+        root: &serde_json::Value,
+        schema: &serde_json::Value,
+        value: &serde_json::Value,
+        path: &str,
+    ) -> Result<(), String> {
+        let node = schema
+            .as_object()
+            .ok_or_else(|| format!("{path}: schema node is not an object"))?;
+
+        if let Some(reference) = node.get("$ref").and_then(serde_json::Value::as_str) {
+            let pointer = reference
+                .strip_prefix('#')
+                .ok_or_else(|| format!("{path}: only local schema refs are supported: {reference}"))?;
+            let target = root
+                .pointer(pointer)
+                .ok_or_else(|| format!("{path}: unresolved schema ref {reference}"))?;
+            return validate_json_schema_subset(root, target, value, path);
+        }
+
+        if let Some(branches) = node.get("oneOf").and_then(serde_json::Value::as_array) {
+            let matches = branches
+                .iter()
+                .filter(|branch| validate_json_schema_subset(root, branch, value, path).is_ok())
+                .count();
+            if matches != 1 {
+                return Err(format!(
+                    "{path}: oneOf expected exactly one matching branch, got {matches}"
+                ));
+            }
+        }
+
+        if let Some(expected) = node.get("const") {
+            if expected != value {
+                return Err(format!("{path}: expected const {expected}, got {value}"));
+            }
+        }
+
+        if let Some(allowed) = node.get("enum").and_then(serde_json::Value::as_array) {
+            if !allowed.iter().any(|candidate| candidate == value) {
+                return Err(format!("{path}: value {value} is not in enum {allowed:?}"));
+            }
+        }
+
+        if let Some(expected_type) = node.get("type").and_then(serde_json::Value::as_str) {
+            if !json_schema_type_matches(expected_type, value) {
+                return Err(format!(
+                    "{path}: expected JSON type {expected_type}, got {value}"
+                ));
+            }
+        }
+
+        if let Some(object) = value.as_object() {
+            if let Some(required) = node.get("required").and_then(serde_json::Value::as_array) {
+                for key in required.iter().filter_map(serde_json::Value::as_str) {
+                    if !object.contains_key(key) {
+                        return Err(format!("{path}: missing required property {key}"));
+                    }
+                }
+            }
+
+            let properties = node
+                .get("properties")
+                .and_then(serde_json::Value::as_object);
+            for (key, child) in object {
+                if let Some(child_schema) = properties.and_then(|props| props.get(key)) {
+                    validate_json_schema_subset(
+                        root,
+                        child_schema,
+                        child,
+                        &format!("{path}.{key}"),
+                    )?;
+                } else if node
+                    .get("additionalProperties")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+                {
+                    return Err(format!("{path}: unknown property {key}"));
+                }
+            }
+        }
+
+        if let Some(array) = value.as_array() {
+            if let Some(min_items) = node.get("minItems").and_then(serde_json::Value::as_u64) {
+                if array.len() < min_items as usize {
+                    return Err(format!("{path}: fewer than {min_items} items"));
+                }
+            }
+            if let Some(max_items) = node.get("maxItems").and_then(serde_json::Value::as_u64) {
+                if array.len() > max_items as usize {
+                    return Err(format!("{path}: more than {max_items} items"));
+                }
+            }
+            if let Some(item_schema) = node.get("items") {
+                for (index, child) in array.iter().enumerate() {
+                    validate_json_schema_subset(
+                        root,
+                        item_schema,
+                        child,
+                        &format!("{path}[{index}]"),
+                    )?;
+                }
+            }
+        }
+
+        if let Some(text) = value.as_str() {
+            if let Some(min_length) = node.get("minLength").and_then(serde_json::Value::as_u64) {
+                if text.chars().count() < min_length as usize {
+                    return Err(format!("{path}: string shorter than {min_length}"));
+                }
+            }
+            if let Some(max_length) = node.get("maxLength").and_then(serde_json::Value::as_u64) {
+                if text.chars().count() > max_length as usize {
+                    return Err(format!("{path}: string longer than {max_length}"));
+                }
+            }
+        }
+
+        if let Some(number) = value.as_f64() {
+            if let Some(minimum) = node.get("minimum").and_then(serde_json::Value::as_f64) {
+                if number < minimum {
+                    return Err(format!("{path}: {number} is below minimum {minimum}"));
+                }
+            }
+            if let Some(minimum) = node
+                .get("exclusiveMinimum")
+                .and_then(serde_json::Value::as_f64)
+            {
+                if number <= minimum {
+                    return Err(format!(
+                        "{path}: {number} is not greater than exclusiveMinimum {minimum}"
+                    ));
+                }
+            }
+            if let Some(maximum) = node.get("maximum").and_then(serde_json::Value::as_f64) {
+                if number > maximum {
+                    return Err(format!("{path}: {number} exceeds maximum {maximum}"));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn load_validation_case_schema() -> serde_json::Value {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(VALIDATION_CASE_SCHEMA_PATH);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        serde_json::from_str(&text)
+            .unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+    }
+
     fn make_minimal_manifest() -> ValidationCaseManifest {
         ValidationCaseManifest {
             schema_version: VALIDATION_CASE_SCHEMA_VERSION,
@@ -2353,6 +2525,86 @@ mod tests {
         let loaded = ValidationCaseManifest::load_from_file(file.path()).expect("load");
         assert_eq!(manifest, loaded);
     }
+
+    #[test]
+    fn checked_in_cases_match_machine_readable_schema_and_rust_contract() {
+        let schema = load_validation_case_schema();
+        assert_eq!(
+            schema.get("$schema").and_then(serde_json::Value::as_str),
+            Some("https://json-schema.org/draft/2020-12/schema")
+        );
+        assert_eq!(
+            schema
+                .pointer("/properties/schema_version/const")
+                .and_then(serde_json::Value::as_u64),
+            Some(u64::from(VALIDATION_CASE_SCHEMA_VERSION))
+        );
+
+        for case_id in [
+            "ADV-ANA-001",
+            "WIND-UNI-002",
+            "WIND-SHEAR-003",
+            "PBL-STABLE-004",
+            "PBL-NEUTRAL-005",
+            "PBL-UNSTABLE-006",
+            "DRY-007",
+            "WET-008",
+            "REPEAT-009",
+            "ETEX-MINI-013",
+        ] {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("fixtures")
+                .join("corpus")
+                .join("cases")
+                .join(format!("{case_id}.json"));
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {case_id}: {e}"));
+            let raw: serde_json::Value = serde_json::from_str(&text)
+                .unwrap_or_else(|e| panic!("parse JSON {case_id}: {e}"));
+
+            validate_json_schema_subset(&schema, &schema, &raw, "$")
+                .unwrap_or_else(|e| panic!("JSON Schema rejected {case_id}: {e}"));
+
+            ValidationCaseManifest::parse(&text, &path)
+                .unwrap_or_else(|e| panic!("Rust contract rejected {case_id}: {e}"));
+        }
+    }
+
+    #[test]
+    fn machine_readable_schema_fails_closed_on_shape_and_version() {
+        let schema = load_validation_case_schema();
+        let raw = minimal_manifest_json();
+        validate_json_schema_subset(&schema, &schema, &raw, "$")
+            .expect("minimal Rust manifest must satisfy JSON Schema");
+
+        let mut wrong_version = raw.clone();
+        wrong_version["schema_version"] = serde_json::json!(999);
+        assert!(
+            validate_json_schema_subset(&schema, &schema, &wrong_version, "$").is_err(),
+            "unsupported schema version must fail JSON Schema"
+        );
+
+        let mut missing_output = raw.clone();
+        missing_output
+            .as_object_mut()
+            .expect("manifest object")
+            .remove("output");
+        assert!(
+            validate_json_schema_subset(&schema, &schema, &missing_output, "$").is_err(),
+            "missing required output semantics must fail JSON Schema"
+        );
+
+        let mut unknown_field = raw;
+        unknown_field
+            .as_object_mut()
+            .expect("manifest object")
+            .insert("hidden_default".to_string(), serde_json::json!(true));
+        assert!(
+            validate_json_schema_subset(&schema, &schema, &unknown_field, "$").is_err(),
+            "unknown top-level fields must fail JSON Schema"
+        );
+    }
+
 
     #[test]
     fn write_failure_uses_write_file_error() {

@@ -18,10 +18,12 @@ Start from `fixtures/corpus/corpus.json` (versioned index) and
 - `cases/*.json`: canonical `schema_version` 2 validation-case manifests
   (Issue #51: domain, release, wind, surface, integration, physics switches,
   deposition forcing, stochastic Philox identity, execution profile,
-  oracle overrides, expected artifacts). Units are documented per field.
-  No candidate output is used as a reference. The legacy v1 shape is
-  frozen and rejected; see `cases/MIGRATION_NOTES.md` for the field-by-field
-  v1 -> v2 mapping.
+  oracle overrides, expected artifacts). Their checked-in machine-readable
+  structural contract is `schemas/validation-case-v2.schema.json` (JSON Schema
+  Draft 2020-12); cross-field scientific invariants remain enforced by
+  `src/validation/case.rs`. Units are documented per field. No candidate output
+  is used as a reference. The legacy v1 shape is frozen and rejected; see
+  `cases/MIGRATION_NOTES.md` for the field-by-field v1 -> v2 mapping.
 - `fortran/<CASE>/`: versioned Fortran oracle inputs (`COMMAND`, `RELEASES`,
   `OUTGRID`, `AGECLASSES`, `RECEPTORS`, `SPECIES/`). They reuse the existing
   synthetic-GRIB workflow (`scripts/generate_synthetic_grib.py`) and the

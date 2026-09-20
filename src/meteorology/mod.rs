@@ -1008,12 +1008,12 @@ mod tests {
         } else {
             spec.requirement_sets
                 .iter()
-                .map(|set| format!("\`{}\`", doc_token(*set)))
+                .map(|set| format!("`{}`", doc_token(*set)))
                 .collect::<Vec<_>>()
                 .join(", ")
         };
         format!(
-            "| \`{}\` | \`{}\` | \`{}\` | \`{}\` | {} |",
+            "| `{}` | `{}` | `{}` | `{}` | {} |",
             doc_token(spec.id),
             doc_token(spec.unit),
             doc_token(spec.sign),
@@ -1062,7 +1062,7 @@ mod tests {
                 "docs field-spec matrix is stale or missing row: {row}"
             );
         }
-        let data_rows = block.lines().filter(|line| line.starts_with("| \`")).count();
+        let data_rows = block.lines().filter(|line| line.starts_with("| `")).count();
         assert_eq!(
             data_rows,
             FIELD_SPECS.len(),

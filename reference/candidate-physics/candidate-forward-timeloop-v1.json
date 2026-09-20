@@ -2,7 +2,7 @@
   "id": "candidate-forward-timeloop-v1",
   "version": 1,
   "description": "Pinned candidate-side validation runner physics/runtime settings. Values preserve the effective pre-contract corpus behavior while removing dependence on Rust Default implementations and runner literals.",
-  "time_bounds_behavior": "strict",
+  "time_bounds_behavior": "clamp",
   "integration": {
     "substeps_per_manifest_step": 1
   },

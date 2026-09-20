@@ -26,7 +26,7 @@ pub struct CandidatePhysicsProfile {
 }
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum CandidateTimeBoundsBehavior { Strict }
+pub enum CandidateTimeBoundsBehavior { Strict, Clamp }
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CandidateIntegrationPolicy { pub substeps_per_manifest_step: u32 }
@@ -134,7 +134,12 @@ impl CandidatePhysicsProfile {
             hmix_min_m:p.hmix_min_m,hmix_max_m:p.hmix_max_m}
     }
     #[must_use]
-    pub fn time_bounds_behavior(&self)->TimeBoundsBehavior { TimeBoundsBehavior::Strict }
+    pub fn time_bounds_behavior(&self)->TimeBoundsBehavior {
+        match self.time_bounds_behavior {
+            CandidateTimeBoundsBehavior::Strict => TimeBoundsBehavior::Strict,
+            CandidateTimeBoundsBehavior::Clamp => TimeBoundsBehavior::Clamp,
+        }
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -150,6 +155,6 @@ mod tests {
         assert_eq!(pbl.hmix_max_m,4500.0);
         assert_eq!(profile.synthetic_meteorology.temperature_k,285.0);
         assert_eq!(profile.inactive_dry_reference_height_m,15.0);
-        assert_eq!(profile.time_bounds_behavior(),TimeBoundsBehavior::Strict);
+        assert_eq!(profile.time_bounds_behavior(),TimeBoundsBehavior::Clamp);
     }
 }

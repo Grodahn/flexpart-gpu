@@ -113,8 +113,7 @@ pub enum FieldId {
     LargeScalePrecipitation,
     ConvectivePrecipitation,
     TotalCloudCover,
-    CloudLiquidWater,
-    CloudIceWater,
+    CloudTotalWater,
     SensibleHeatFlux,
     SurfaceSolarRadiation,
     SurfaceStressEastward,
@@ -136,7 +135,7 @@ impl FieldId {
             Self::SurfacePressure, Self::Orography, Self::LandSeaMask, Self::SnowDepth,
             Self::WindU10m, Self::WindV10m, Self::Temperature2m, Self::Dewpoint2m,
             Self::LargeScalePrecipitation, Self::ConvectivePrecipitation,
-            Self::TotalCloudCover, Self::CloudLiquidWater, Self::CloudIceWater,
+            Self::TotalCloudCover, Self::CloudTotalWater,
             Self::SensibleHeatFlux, Self::SurfaceSolarRadiation,
             Self::SurfaceStressEastward, Self::SurfaceStressNorthward,
             Self::FrictionVelocity, Self::ConvectiveVelocityScale, Self::MixingHeight,
@@ -149,7 +148,7 @@ impl FieldId {
             self,
             Self::WindU | Self::WindV | Self::VerticalVelocity | Self::Temperature
                 | Self::SpecificHumidity | Self::Pressure | Self::AirDensity
-                | Self::DensityGradient | Self::CloudLiquidWater | Self::CloudIceWater
+                | Self::DensityGradient | Self::CloudTotalWater
         )
     }
 
@@ -194,9 +193,7 @@ impl FieldId {
                 Unit::MeterPerSecond
             }
             Self::Temperature | Self::Temperature2m | Self::Dewpoint2m => Unit::Kelvin,
-            Self::SpecificHumidity | Self::CloudLiquidWater | Self::CloudIceWater => {
-                Unit::KilogramPerKilogram
-            }
+            Self::SpecificHumidity | Self::CloudTotalWater => Unit::KilogramPerKilogram
             Self::Pressure | Self::SurfacePressure => Unit::Pascal,
             Self::AirDensity => Unit::KilogramPerCubicMeter,
             Self::DensityGradient => Unit::KilogramPerQuarticMeter,
@@ -220,7 +217,7 @@ impl FieldId {
             Self::WindV | Self::SurfaceStressNorthward => SignConvention::PositiveNorthward,
             Self::VerticalVelocity => SignConvention::PositiveUpward,
             Self::SensibleHeatFlux => SignConvention::PositiveUpwardFlux,
-            Self::Temperature | Self::Temperature2m | Self::Dewpoint2m
+            Self::Temperature | Self::Temperature2m | Self::Dewpoint2m | Self::Orography
             | Self::DensityGradient | Self::InverseObukhovLength => SignConvention::SignedScalar,
             _ => SignConvention::NonNegative,
         }
@@ -405,8 +402,7 @@ impl Requirements {
                 FieldId::Temperature,
                 FieldId::SpecificHumidity,
                 FieldId::AirDensity,
-                FieldId::CloudLiquidWater,
-                FieldId::CloudIceWater,
+                FieldId::CloudTotalWater,
             ]
             .into_iter()
             .collect(),

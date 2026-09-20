@@ -207,10 +207,9 @@ pub fn reconstruct_hybrid_pressure(
             }
 
             for k in 0..interface_count {
-                let pressure = a[k].mul_add(ps, b[k] * 0.0);
-                // Written explicitly below to keep the canonical equation
-                // visually obvious and avoid coupling semantics to an
-                // implementation optimization.
+                // Keep the canonical equation explicit: interface pressure is
+                // reconstructed from native A/B coefficients and local surface
+                // pressure for this column.
                 let pressure = a[k] + b[k] * ps;
                 if !pressure.is_finite() || pressure < 0.0 {
                     return Err(VerticalTransformError::InvalidPressureColumn {

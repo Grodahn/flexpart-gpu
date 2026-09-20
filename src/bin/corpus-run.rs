@@ -1045,7 +1045,7 @@ mod tests {
         let err = resolve_candidate_seed("WIND-UNI-002", &hacked, 0).expect_err("must fail");
         assert!(err.contains("no stochastic"), "unexpected: {err}");
         let err = resolve_ensemble_count("WIND-UNI-002", &hacked, None).expect_err("must fail");
-        assert!(err.contains("ensemble count"), "unexpected: {err}");
+        assert!(err.contains("candidate_philox"), "unexpected: {err}");
     }
 
     #[test]

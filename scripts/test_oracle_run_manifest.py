@@ -13,6 +13,7 @@ from write_oracle_run_manifest import (
     artifacts,
     digest,
     meteorology_contract_identity,
+    meteorology_input_provenance,
     validate_runtime_profile,
 )
 
@@ -100,6 +101,54 @@ class OracleRunManifestTest(unittest.TestCase):
                                encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "id"):
                 meteorology_contract_identity(root)
+
+    def test_meteorology_input_provenance_distinguishes_runtime_binding(self):
+        checkout = Path(__file__).resolve().parents[1]
+        contract = meteorology_contract_identity(checkout)
+
+        unbound = meteorology_input_provenance([], contract)
+        self.assertEqual(unbound["status"], "NOT_BOUND_TO_RUN")
+        self.assertEqual(unbound["inputs"], {})
+
+        source = checkout / "fixtures/meteorology/synthetic-v1.json"
+        bound = meteorology_input_provenance([source], contract)
+        self.assertEqual(bound["status"], "BOUND_TO_CANONICAL_INPUTS")
+        record = bound["inputs"][str(source.resolve())]
+        self.assertEqual(record["sha256"], digest(source))
+        self.assertEqual(record["schema_id"], contract["schema_id"])
+        self.assertEqual(record["schema_version"], contract["schema_version"])
+
+    def test_meteorology_input_provenance_rejects_schema_mismatch(self):
+        contract = {
+            "schema_id": "flexpart-gpu.canonical-meteorology",
+            "schema_version": 1,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "snapshot.json"
+            path.write_text(json.dumps({
+                "schema": {
+                    "id": "flexpart-gpu.canonical-meteorology",
+                    "version": 2,
+                }
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "schema mismatch"):
+                meteorology_input_provenance([path], contract)
+
+    def test_meteorology_input_provenance_rejects_missing_or_malformed_input(self):
+        contract = {
+            "schema_id": "flexpart-gpu.canonical-meteorology",
+            "schema_version": 1,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            missing = root / "missing.json"
+            with self.assertRaisesRegex(ValueError, "missing"):
+                meteorology_input_provenance([missing], contract)
+
+            malformed = root / "malformed.json"
+            malformed.write_text("{broken", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "malformed"):
+                meteorology_input_provenance([malformed], contract)
 
     def test_artifacts_hash_each_file_in_directory(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -21,6 +21,14 @@ REQUIRED_VERTTRANSFORM_SNIPPETS = (
     "log(pold/pint)*tv",
 )
 
+REQUIRED_WINDFIELDS_SNIPPETS = (
+    "akz(1)=0.",
+    "bkz(1)=1.",
+    "akz(i+1)=0.5*(akm(i+1)+akm(i))",
+    "bkz(i+1)=0.5*(bkm(i+1)+bkm(i))",
+    "nuvz=nuvz+1",
+)
+
 
 def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -79,8 +87,9 @@ def main():
         raise ValueError("oracle checkout is dirty")
 
     verttransform = args.oracle_checkout / "src" / "verttransform_mod.f90"
+    windfields = args.oracle_checkout / "src" / "windfields_mod.f90"
     qvsat = args.oracle_checkout / "src" / "qvsat_mod.f90"
-    for path in (verttransform, qvsat):
+    for path in (verttransform, windfields, qvsat):
         if not path.is_file():
             raise ValueError(f"missing oracle source {path}")
     source_text = verttransform.read_text(encoding="utf-8")
@@ -89,6 +98,14 @@ def main():
     if missing:
         raise ValueError(
             "pinned verttransform source no longer matches the harness contract: "
+            + repr(missing)
+        )
+    windfields_text = windfields.read_text(encoding="utf-8")
+    missing = [snippet for snippet in REQUIRED_WINDFIELDS_SNIPPETS
+               if snippet not in windfields_text]
+    if missing:
+        raise ValueError(
+            "pinned windfields source no longer matches the hybrid-level contract: "
             + repr(missing)
         )
 
@@ -145,10 +162,12 @@ def main():
             "pinned_commit": pinned_commit,
             "checkout_clean": True,
             "verttransform_mod_sha256": sha256(verttransform),
+            "windfields_mod_sha256": sha256(windfields),
             "qvsat_mod_sha256": sha256(qvsat),
             "harness_output_path": str(args.oracle),
             "harness_output_sha256": sha256(args.oracle),
             "source_contract_snippets_verified": True,
+            "hybrid_level_construction_verified": True,
             "note": (
                 "The harness links the pinned oracle par_mod/qvsat_mod directly and "
                 "replays the scalar column loop from verttransform_ecmwf_heights; "

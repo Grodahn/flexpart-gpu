@@ -210,11 +210,12 @@
     "manifest_path": "reference/flexpart-11.1.json"
   },
   "oracle_command_overrides": {
-    "turbulence_formulation": "adaptive_w_sigw",
+    "turbulence_formulation": "fixed_sync_w",
     "lturbulence": 1,
-    "ctl": 5,
+    "ctl": -5,
     "ifine": 4,
-    "lconvection": 0
+    "lconvection": 0,
+    "lsynctime_s": 900
   },
   "expected_artifacts": {
     "required": [
@@ -276,6 +277,7 @@
     "Meteorology from ERA5 native model levels in fixtures/etex/native-mini/.",
     "Paired run with DATEM station observations for model evaluation.",
     "No scientific parity claimed: representation differences are documented in representation_differences.",
-    "Diagnostic metrics only: FB, NMSE, correlation, FAC2, timing/peak concentration."
+    "Diagnostic metrics only: FB, NMSE, correlation, FAC2, timing/peak concentration.",
+    "Oracle ETEX COMMAND preserves historical fixed-timestep semantics: CTL=-5 selects method=0/mintime=LSYNCTIME, LSYNCTIME=900 s; FLEXPART selects the w formulation and forces effective IFINE=1 internally although the raw COMMAND contains IFINE=4."
   ]
 }

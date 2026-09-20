@@ -168,7 +168,8 @@
     "lturbulence": 1,
     "ctl": 5,
     "ifine": 4,
-    "lconvection": 0
+    "lconvection": 0,
+    "lsynctime_s": 300
   },
   "expected_artifacts": {
     "required": [

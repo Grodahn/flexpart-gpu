@@ -474,14 +474,15 @@ def outgrid_text(case: dict) -> str:
 # (see fixtures/corpus/cases/MIGRATION_NOTES.md): every checked-in case is
 # migrated to v2. `turbulence_formulation` is the typed Issue #67 contract
 # decision: FLEXPART derives the dispersion method and Markov-chain
-# formulation from the sign/magnitude of CTL, and the corpus freezes one
-# explicit mode instead of inferring it from a numeric threshold.
+# formulation from the sign/magnitude of CTL; schema v2 records the actual
+# closed mode explicitly instead of inferring it from a numeric threshold.
 CANONICAL_ORACLE_FIELDS = (
     "turbulence_formulation",
     "lturbulence",
     "lconvection",
     "ctl",
     "ifine",
+    "lsynctime_s",
     "ldrydep",
     "lwetdep",
     "ldecay",
@@ -491,11 +492,19 @@ LEGACY_ORACLE_FIELDS = {
     "LCONVECTION": "lconvection",
     "CTL": "ctl",
     "IFINE": "ifine",
+    "LSYNCTIME": "lsynctime_s",
     "LDRYDEP": "ldrydep",
     "LWETDEP": "lwetdep",
     "LDECAY": "ldecay",
 }
-REQUIRED_ORACLE_FIELDS = ("turbulence_formulation", "lturbulence", "lconvection", "ctl", "ifine")
+REQUIRED_ORACLE_FIELDS = (
+    "turbulence_formulation",
+    "lturbulence",
+    "lconvection",
+    "ctl",
+    "ifine",
+    "lsynctime_s",
+)
 FLAG_ORACLE_FIELDS = ("lturbulence", "lconvection", "ldrydep", "lwetdep", "ldecay")
 
 # Oracle flag -> physics_switches agreement required by the fail-closed
@@ -520,13 +529,13 @@ PHYSICS_AGREEMENT = (
 #   selects the w/sigw formulation (turbswitch=.true.); CTL < 0.1 silently
 #   selects the w formulation and forces ifine=1.
 #
-# The validation contract deliberately freezes exactly one mode — the
-# adaptive Lagrangian-time-scale integration with the w/sigw Markov
-# formulation — and requires the typed `turbulence_formulation` field so the
-# scientific choice is machine-readable. Every other mode (including negative
-# CTL's fixed-timestep mode) is rejected with an explicit "unsupported mode"
-# error instead of being inferred from a numeric CTL threshold.
-SUPPORTED_TURBULENCE_FORMULATIONS = frozenset({"adaptive_w_sigw"})
+# Schema v2 supports the two formulations actually present in the checked-in
+# corpus: synthetic cases use adaptive w/sigw, while ETEX-MINI-013 preserves
+# its historical fixed-timestep / w configuration. The declared formulation
+# must agree with CTL; no mode is inferred by case ID.
+SUPPORTED_TURBULENCE_FORMULATIONS = frozenset(
+    {"adaptive_w_sigw", "fixed_sync_w"}
+)
 
 # CTL >= this value keeps the pinned oracle's w/sigw Markov formulation
 # (turbswitch=.true., readoptions_mod.f90:645-650); below it the oracle
@@ -549,13 +558,6 @@ LDIRECT_BACKWARD = -1
 # OutputQuantity. Keep the enum value recognizable so the error can name the
 # unsupported mode, but fail closed before rendering a backward COMMAND.
 SUPPORTED_SIMULATION_DIRECTIONS = frozenset({"forward"})
-
-# The corpus execution profile freezes FLEXPART LSYNCTIME=300 s. This is not a
-# hidden fallback: every output timing is validated against it using the same
-# constraints enforced by pinned FLEXPART readoptions_mod.f90 (LOUTAVER,
-# LOUTSTEP and LOUTSAMPLE multiples of LSYNCTIME; LOUTAVER/LOUTSTEP at least
-# twice LSYNCTIME).
-FLEXPART_CORPUS_LSYNCTIME_S = 300
 
 # Closed scientific output semantics mirrored by Rust OutputQuantity.
 SUPPORTED_OUTPUT_QUANTITIES = frozenset(
@@ -702,12 +704,8 @@ def _required_simulation_direction(case_id: str, case: dict) -> str:
     return direction
 
 
-def _required_output(case_id: str, case: dict) -> dict:
-    """Fail-closed output-timing reader (LOUTSTEP/LOUTAVER/LOUTSAMPLE).
-
-    Mirrors the canonical OutputSpec contract and the pinned FLEXPART
-    readoptions checks for the frozen corpus LSYNCTIME.
-    """
+def _required_output(case_id: str, case: dict, sync_s: int) -> dict:
+    """Fail-closed output timing validated against the declared LSYNCTIME."""
     output = case.get("output")
     if not isinstance(output, dict):
         raise SystemExit(
@@ -751,7 +749,11 @@ def _required_output(case_id: str, case: dict) -> dict:
             "FLEXPART LOUTAVER <= LOUTSTEP"
         )
 
-    sync_s = FLEXPART_CORPUS_LSYNCTIME_S
+    if isinstance(sync_s, bool) or not isinstance(sync_s, int) or sync_s <= 0:
+        raise SystemExit(
+            f"{case_id}: oracle_command_overrides.lsynctime_s must be a positive integer, "
+            f"got {sync_s!r}"
+        )
     for name, value in (
         ("interval_s", interval_s),
         ("averaging_window_s", averaging_window_s),
@@ -760,7 +762,7 @@ def _required_output(case_id: str, case: dict) -> dict:
         if value % sync_s != 0:
             raise SystemExit(
                 f"{case_id}: output.{name} ({value}s) must be a multiple of "
-                f"the frozen FLEXPART LSYNCTIME={sync_s}s"
+                f"the declared FLEXPART LSYNCTIME={sync_s}s"
             )
     if averaging_window_s < 2 * sync_s:
         raise SystemExit(
@@ -1166,24 +1168,25 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
             "particle time steps from it (advance_mod.f90:557-568), "
             f"got {ctl!r}"
         )
-    if ctl_f < 0.0:
-        raise SystemExit(
-            f"{case_id}: oracle override ctl={ctl!r} contradicts "
-            f"turbulence_formulation={formulation!r}: CTL < 0 selects the "
-            "fixed-timestep dispersion mode (method=0, mintime=lsynctime, "
-            "readoptions_mod.f90:786-795), a valid FLEXPART mode that is "
-            "deliberately unsupported by this validation contract; it freezes "
-            "the adaptive w/sigw formulation (CTL > 0, method=1)"
-        )
-    if ctl_f < CTL_FORMULATION_THRESHOLD:
-        raise SystemExit(
-            f"{case_id}: oracle override ctl={ctl!r} contradicts "
-            f"turbulence_formulation={formulation!r}: CTL >= "
-            f"{CTL_FORMULATION_THRESHOLD} is required for the w/sigw Markov "
-            "formulation (turbswitch=.true.); below it the oracle silently "
-            "reformulates the Markov chain for w and forces ifine=1 "
-            "(readoptions_mod.f90:645-650)"
-        )
+    if formulation == "adaptive_w_sigw":
+        if ctl_f < CTL_FORMULATION_THRESHOLD:
+            raise SystemExit(
+                f"{case_id}: oracle override ctl={ctl!r} contradicts "
+                "turbulence_formulation='adaptive_w_sigw': CTL must be >= "
+                f"{CTL_FORMULATION_THRESHOLD}; CTL <= 0 selects fixed-timestep "
+                "method=0/mintime=lsynctime and values below the threshold select "
+                "the w formulation and force effective ifine=1 "
+                "(readoptions_mod.f90:645-650,786-795)"
+            )
+    elif formulation == "fixed_sync_w":
+        if ctl_f >= 0.0:
+            raise SystemExit(
+                f"{case_id}: oracle override ctl={ctl!r} contradicts "
+                "turbulence_formulation='fixed_sync_w': CTL must be < 0 so "
+                "FLEXPART selects method=0 with mintime=lsynctime; CTL < 0.1 "
+                "also selects the w formulation and forces effective ifine=1 "
+                "(readoptions_mod.f90:645-650,786-795)"
+            )
     ifine = normalized["ifine"]
     if isinstance(ifine, bool) or not isinstance(ifine, int):
         raise SystemExit(
@@ -1193,6 +1196,12 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
     if not 1 <= ifine <= 10:
         raise SystemExit(
             f"{case_id}: oracle override ifine must be in 1..=10, got {ifine!r}"
+        )
+    lsynctime_s = normalized["lsynctime_s"]
+    if isinstance(lsynctime_s, bool) or not isinstance(lsynctime_s, int) or lsynctime_s <= 0:
+        raise SystemExit(
+            f"{case_id}: oracle override lsynctime_s must be a positive integer, "
+            f"got {lsynctime_s!r}"
         )
     physics = mandatory_physics_switches(case_id, case)
     for field, physics_key in PHYSICS_AGREEMENT:
@@ -1224,7 +1233,7 @@ def command_text(case_id: str, case: dict) -> str:
     lconvection = int(overrides["lconvection"])
     direction = _required_simulation_direction(case_id, case)
     ldirect = LDIRECT_FORWARD if direction == "forward" else LDIRECT_BACKWARD
-    output = _required_output(case_id, case)
+    output = _required_output(case_id, case, int(overrides["lsynctime_s"]))
     return (
         "&COMMAND\n"
         f" LDIRECT= {ldirect:>15},\n"
@@ -1236,7 +1245,7 @@ def command_text(case_id: str, case: dict) -> str:
         f" LOUTAVER={output['averaging_window_s']:>15},\n"
         f" LOUTSAMPLE={output['sampling_interval_s']:>14},\n"
         " ITSPLIT=        99999999,\n"
-        f" LSYNCTIME={FLEXPART_CORPUS_LSYNCTIME_S:>15},\n"
+        f" LSYNCTIME={int(overrides['lsynctime_s']):>15},\n"
         f" CTL=            {ctl:.7f},\n"
         f" IFINE=                 {ifine},\n"
         " IOUT=                  1,\n"
@@ -1534,14 +1543,14 @@ def verify_rendered_case(case_id: str, case: dict, files: dict, specnum: int) ->
     direction = _required_simulation_direction(case_id, case)
     expected_ldirect = LDIRECT_FORWARD if direction == "forward" else LDIRECT_BACKWARD
     check("COMMAND LDIRECT", int(namelist_value(command, "LDIRECT")), expected_ldirect)
-    output = _required_output(case_id, case)
+    output = _required_output(case_id, case, int(overrides["lsynctime_s"]))
     check("COMMAND LOUTSTEP", int(namelist_value(command, "LOUTSTEP")), output["interval_s"])
     check("COMMAND LOUTAVER", int(namelist_value(command, "LOUTAVER")), output["averaging_window_s"])
     check("COMMAND LOUTSAMPLE", int(namelist_value(command, "LOUTSAMPLE")), output["sampling_interval_s"])
     check(
         "COMMAND LSYNCTIME",
         int(namelist_value(command, "LSYNCTIME")),
-        FLEXPART_CORPUS_LSYNCTIME_S,
+        int(overrides["lsynctime_s"]),
     )
 
     species_text = files["SPECIES"]
@@ -1641,7 +1650,7 @@ def validate_and_normalize_case_for_generation(
 
     integration = _required_integration(case_id, case)
     direction = _required_simulation_direction(case_id, case)
-    output = _required_output(case_id, case)
+    output = _required_output(case_id, case, int(oracle["lsynctime_s"]))
     domain = _required_domain(case_id, case)
 
     release = _validate_release_contract(case_id, case, domain)

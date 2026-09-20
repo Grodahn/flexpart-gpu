@@ -174,6 +174,37 @@ class OracleOverrideTest(unittest.TestCase):
         text = GEN.command_text("WIND-UNI-002", case)
         self.assertAlmostEqual(float(GEN.namelist_value(text, "CTL")), 5.0, places=6)
 
+    def test_etex_preserves_historical_fixed_sync_command_semantics(self):
+        case = load_case("ETEX-MINI-013")
+        overrides = case["oracle_command_overrides"]
+        self.assertEqual(overrides["turbulence_formulation"], "fixed_sync_w")
+        self.assertEqual(overrides["ctl"], -5)
+        self.assertEqual(overrides["ifine"], 4)
+        self.assertEqual(overrides["lsynctime_s"], 900)
+        text = GEN.command_text("ETEX-MINI-013", case)
+        self.assertAlmostEqual(float(GEN.namelist_value(text, "CTL")), -5.0, places=6)
+        self.assertEqual(int(GEN.namelist_value(text, "IFINE")), 4)
+        self.assertEqual(int(GEN.namelist_value(text, "LSYNCTIME")), 900)
+        self.assertEqual(int(GEN.namelist_value(text, "LOUTSAMPLE")), 900)
+
+        actual = (REPO / "fixtures" / "etex" / "mini" / "config" / "COMMAND").read_text(
+            encoding="utf-8"
+        )
+        for key in ("CTL", "IFINE", "LSYNCTIME", "LOUTSTEP", "LOUTAVER", "LOUTSAMPLE"):
+            self.assertAlmostEqual(
+                float(GEN.namelist_value(text, key)),
+                float(GEN.namelist_value(actual, key)),
+                places=6,
+                msg=f"ETEX {key} must preserve the real COMMAND semantics",
+            )
+
+    def test_missing_lsynctime_rejected_without_default(self):
+        case = copy.deepcopy(load_case("WIND-UNI-002"))
+        del case["oracle_command_overrides"]["lsynctime_s"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("lsynctime_s", str(ctx.exception))
+
     def test_zero_ctl_rejected_for_nonzero_timestep_division(self):
         case = load_case("ADV-ANA-001")
         case = copy.deepcopy(case)
@@ -183,20 +214,18 @@ class OracleOverrideTest(unittest.TestCase):
         self.assertIn("non-zero", str(ctx.exception))
         self.assertIn("readoptions_mod.f90:653", str(ctx.exception))
 
-    def test_negative_ctl_rejected_as_deliberately_unsupported_fixed_mode(self):
-        case = load_case("WIND-UNI-002")
-        case = copy.deepcopy(case)
-        # CTL=-5.0 is the pinned oracle's own default; in FLEXPART it selects
-        # the fixed-timestep mode (method=0, mintime=lsynctime,
-        # readoptions_mod.f90:786-795), which the contract deliberately freezes
-        # out in favour of the adaptive w/sigw mode.
+    def test_negative_ctl_requires_fixed_sync_w_formulation(self):
+        case = copy.deepcopy(load_case("WIND-UNI-002"))
         case["oracle_command_overrides"]["ctl"] = -5.0
         with self.assertRaises(SystemExit) as ctx:
             GEN.command_text("WIND-UNI-002", case)
-        rendered = str(ctx.exception)
-        self.assertIn("deliberately", rendered)
-        self.assertIn("unsupported", rendered)
-        self.assertIn("fixed", rendered)
+        self.assertIn("adaptive_w_sigw", str(ctx.exception))
+
+        case["oracle_command_overrides"]["turbulence_formulation"] = "fixed_sync_w"
+        case["oracle_command_overrides"]["lsynctime_s"] = 900
+        text = GEN.command_text("WIND-UNI-002", case)
+        self.assertAlmostEqual(float(GEN.namelist_value(text, "CTL")), -5.0, places=6)
+        self.assertEqual(int(GEN.namelist_value(text, "LSYNCTIME")), 900)
 
     def test_small_positive_ctl_rejected_for_turbulence_formulation(self):
         case = load_case("WIND-UNI-002")
@@ -223,10 +252,12 @@ class OracleOverrideTest(unittest.TestCase):
     def test_unknown_turbulence_formulation_rejected(self):
         case = load_case("WIND-UNI-002")
         case = copy.deepcopy(case)
-        case["oracle_command_overrides"]["turbulence_formulation"] = "fixed_sync"
+        case["oracle_command_overrides"]["turbulence_formulation"] = "fixed_sync_unknown"
         with self.assertRaises(SystemExit) as ctx:
             GEN.command_text("WIND-UNI-002", case)
-        self.assertIn("adaptive_w_sigw", str(ctx.exception))
+        rendered = str(ctx.exception)
+        self.assertIn("adaptive_w_sigw", rendered)
+        self.assertIn("fixed_sync_w", rendered)
 
     def test_missing_turbulence_formulation_rejected(self):
         case = load_case("WIND-UNI-002")
@@ -907,7 +938,7 @@ class DirectionOutputSemanticsTest(unittest.TestCase):
             GEN.command_text("WIND-UNI-002", case)
         self.assertIn("output.quantity", str(ctx.exception))
 
-    def test_output_timings_must_match_frozen_lsynctime(self):
+    def test_output_timings_must_match_declared_lsynctime(self):
         case = self._case()
         case["output"]["sampling_interval_s"] = 301
         with self.assertRaises(SystemExit) as ctx:
@@ -915,9 +946,9 @@ class DirectionOutputSemanticsTest(unittest.TestCase):
         self.assertIn("LSYNCTIME", str(ctx.exception))
 
         case = self._case()
-        case["output"]["interval_s"] = GEN.FLEXPART_CORPUS_LSYNCTIME_S
-        case["output"]["averaging_window_s"] = GEN.FLEXPART_CORPUS_LSYNCTIME_S
-        case["output"]["sampling_interval_s"] = GEN.FLEXPART_CORPUS_LSYNCTIME_S
+        case["output"]["interval_s"] = case["oracle_command_overrides"]["lsynctime_s"]
+        case["output"]["averaging_window_s"] = case["oracle_command_overrides"]["lsynctime_s"]
+        case["output"]["sampling_interval_s"] = case["oracle_command_overrides"]["lsynctime_s"]
         with self.assertRaises(SystemExit) as ctx:
             GEN.command_text("WIND-UNI-002", case)
         self.assertIn("2*LSYNCTIME", str(ctx.exception))
@@ -950,7 +981,7 @@ class DirectionOutputSemanticsTest(unittest.TestCase):
         code = [
             line for line in source.splitlines() if not line.lstrip().startswith("#")
         ]
-        for key in ("LDIRECT", "LOUTSTEP", "LOUTAVER", "LOUTSAMPLE"):
+        for key in ("LDIRECT", "LOUTSTEP", "LOUTAVER", "LOUTSAMPLE", "LSYNCTIME"):
             self.assertIsNone(
                 re.search(rf"{key}\s*=\s*[+-]?\d", "\n".join(code)),
                 f"hard-coded {key} default remains in the generator path",

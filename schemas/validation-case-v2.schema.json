@@ -954,7 +954,10 @@
       "additionalProperties": false,
       "properties": {
         "turbulence_formulation": {
-          "const": "adaptive_w_sigw"
+          "enum": [
+            "adaptive_w_sigw",
+            "fixed_sync_w"
+          ]
         },
         "lturbulence": {
           "type": "integer",
@@ -987,10 +990,15 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 1
+        },
+        "lsynctime_s": {
+          "type": "integer",
+          "minimum": 1
         }
       },
       "required": [
-        "turbulence_formulation"
+        "turbulence_formulation",
+        "lsynctime_s"
       ]
     },
     "expected_artifact": {

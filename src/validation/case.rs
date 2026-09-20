@@ -662,11 +662,10 @@ pub struct ExpectedArtifacts {
 ///   `ctl >= 0.1` selects the w/sigw formulation (`turbswitch=.true.`);
 ///   `ctl < 0.1` silently selects the w formulation and forces `ifine=1`.
 ///
-/// This validation contract deliberately freezes exactly one mode — the
-/// adaptive Lagrangian-time-scale integration with the w/sigw Markov
-/// formulation — and makes that choice machine-readable instead of inferring
-/// it from a numeric `ctl` threshold alone. Other valid FLEXPART modes are
-/// rejected with an explicit "unsupported mode" error.
+/// Schema v2 supports the two formulations that are actually present in the
+/// checked-in validation corpus. The synthetic corpus uses adaptive w/sigw;
+/// ETEX-MINI-013 preserves its historical fixed-timestep / w formulation.
+/// The typed value is authoritative and must agree with `ctl`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum OracleTurbulenceFormulation {
@@ -675,12 +674,19 @@ pub enum OracleTurbulenceFormulation {
     #[default]
     #[serde(rename = "adaptive_w_sigw")]
     AdaptiveWSigmaW,
+    /// Fixed particle timestep (`method=0`, `mintime=lsynctime`) with the
+    /// w Markov formulation selected by CTL < 0.1. FLEXPART forces effective
+    /// IFINE=1 in this formulation even if the raw COMMAND contains another
+    /// IFINE value; ETEX-MINI-013 historically contains IFINE=4.
+    #[serde(rename = "fixed_sync_w")]
+    FixedSyncW,
 }
 
 impl std::fmt::Display for OracleTurbulenceFormulation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             OracleTurbulenceFormulation::AdaptiveWSigmaW => "adaptive_w_sigw",
+            OracleTurbulenceFormulation::FixedSyncW => "fixed_sync_w",
         })
     }
 }
@@ -707,9 +713,13 @@ pub struct OracleCommandOverrides {
     /// CTL parameter (Hanna turbulence scaling).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ctl: Option<f32>,
-    /// IFINE sub-stepping factor.
+    /// IFINE value written to COMMAND. In fixed_sync_w FLEXPART forces the
+    /// effective value to 1 internally (readoptions_mod.f90:645-650).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ifine: Option<u32>,
+    /// FLEXPART synchronisation interval (COMMAND LSYNCTIME) [s].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lsynctime_s: Option<u32>,
     /// Dry deposition flag.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ldrydep: Option<u8>,
@@ -814,11 +824,6 @@ pub struct OutputSpec {
     /// Scientific quantity each output field represents.
     pub quantity: OutputQuantity,
 }
-
-/// Frozen FLEXPART synchronisation interval for the schema-v2 corpus
-/// execution profile. The generator emits `LSYNCTIME=300`; output timings
-/// must satisfy the corresponding pinned FLEXPART readoptions constraints.
-pub const FLEXPART_CORPUS_LSYNCTIME_S: u32 = 300;
 
 /// Complete validation case manifest.
 ///
@@ -1388,7 +1393,16 @@ impl ValidationCaseManifest {
             });
         }
 
-        let sync = FLEXPART_CORPUS_LSYNCTIME_S;
+        let sync = self.oracle_command_overrides.lsynctime_s.ok_or(
+            ValidationCaseError::MissingField {
+                field: "oracle_command_overrides.lsynctime_s",
+            },
+        )?;
+        if sync == 0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "oracle_command_overrides.lsynctime_s must be > 0".to_string(),
+            });
+        }
         for (name, magnitude) in [
             ("output.interval_s", output.interval_s),
             ("output.averaging_window_s", output.averaging_window_s),
@@ -1398,7 +1412,7 @@ impl ValidationCaseManifest {
                 return Err(ValidationCaseError::AmbiguousField {
                     field: name,
                     message: format!(
-                        "{name}={magnitude} s must be a multiple of the frozen FLEXPART LSYNCTIME={sync} s"
+                        "{name}={magnitude} s must be a multiple of the declared FLEXPART LSYNCTIME={sync} s"
                     ),
                 });
             }
@@ -2192,6 +2206,14 @@ impl ValidationCaseManifest {
         let ifine = overrides.ifine.ok_or(ValidationCaseError::MissingField {
             field: "oracle_command_overrides.ifine",
         })?;
+        let lsynctime_s = overrides.lsynctime_s.ok_or(ValidationCaseError::MissingField {
+            field: "oracle_command_overrides.lsynctime_s",
+        })?;
+        if lsynctime_s == 0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "oracle_command_overrides.lsynctime_s must be > 0".to_string(),
+            });
+        }
         if !(1..=10).contains(&ifine) {
             return Err(ValidationCaseError::InvalidPhysicsSwitches {
                 message: format!(
@@ -2226,13 +2248,11 @@ impl ValidationCaseManifest {
     ///   unconditionally (`readoptions_mod.f90:653`) and sizes particle steps
     ///   from it (`advance_mod.f90:557-568`);
     /// - `ctl < 0` selects the fixed-timestep dispersion mode (`method=0`,
-    ///   `mintime=lsynctime`, `readoptions_mod.f90:786-795`): a valid FLEXPART
-    ///   mode the validation contract deliberately does not support (it
-    ///   freezes the adaptive w/sigw mode);
-    /// - `0 < ctl < CTL_W_SIGW_FORMULATION_THRESHOLD` silently switches the
-    ///   Markov chain from w/sigw to w and forces `ifine=1`
-    ///   (`readoptions_mod.f90:645-650`) and is inconsistent with the declared
-    ///   formulation.
+    ///   `mintime=lsynctime`) and the w formulation; this is represented
+    ///   explicitly as `fixed_sync_w` for ETEX-MINI-013;
+    /// - `0 < ctl < CTL_W_SIGW_FORMULATION_THRESHOLD` selects adaptive timing
+    ///   but silently switches the Markov chain to w and forces `ifine=1`;
+    ///   that mixed mode is not present in the corpus and remains unsupported.
     fn validate_oracle_ctl_formulation(
         ctl: f32,
         formulation: OracleTurbulenceFormulation,
@@ -2252,29 +2272,35 @@ impl ValidationCaseManifest {
                 ),
             });
         }
-        if ctl < 0.0 {
-            return Err(ValidationCaseError::InvalidPhysicsSwitches {
-                message: format!(
-                    "oracle_command_overrides.ctl={ctl} contradicts \
-                     turbulence_formulation={formulation}: CTL < 0 selects the \
-                     fixed-timestep dispersion mode (method=0, mintime=lsynctime, \
-                     readoptions_mod.f90:786-795), a valid FLEXPART mode that is \
-                     deliberately unsupported by this validation contract; it \
-                     freezes the adaptive w/sigw formulation (CTL > 0, method=1)"
-                ),
-            });
-        }
-        if ctl < CTL_W_SIGW_FORMULATION_THRESHOLD {
-            return Err(ValidationCaseError::InvalidPhysicsSwitches {
-                message: format!(
-                    "oracle_command_overrides.ctl={ctl} contradicts \
-                     turbulence_formulation={formulation}: CTL >= \
-                     {CTL_W_SIGW_FORMULATION_THRESHOLD} is required for the w/sigw \
-                     Markov formulation (turbswitch=.true.); below it the oracle silently \
-                     reformulates the Markov chain for w and forces ifine=1 \
-                     (readoptions_mod.f90:645-650)"
-                ),
-            });
+
+        match formulation {
+            OracleTurbulenceFormulation::AdaptiveWSigmaW => {
+                if ctl < CTL_W_SIGW_FORMULATION_THRESHOLD {
+                    return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                        message: format!(
+                            "oracle_command_overrides.ctl={ctl} contradicts \
+                             turbulence_formulation={formulation}: adaptive_w_sigw requires \
+                             CTL >= {CTL_W_SIGW_FORMULATION_THRESHOLD}; CTL <= 0 selects \
+                             fixed-timestep method=0/mintime=lsynctime and values below the \
+                             threshold select the w formulation and force effective IFINE=1 \
+                             (readoptions_mod.f90:645-650,786-795)"
+                        ),
+                    });
+                }
+            }
+            OracleTurbulenceFormulation::FixedSyncW => {
+                if ctl >= 0.0 {
+                    return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                        message: format!(
+                            "oracle_command_overrides.ctl={ctl} contradicts \
+                             turbulence_formulation={formulation}: fixed_sync_w requires \
+                             CTL < 0 so FLEXPART selects method=0 with mintime=lsynctime; \
+                             CTL < 0.1 also selects the w formulation and forces effective \
+                             IFINE=1 (readoptions_mod.f90:645-650,786-795)"
+                        ),
+                    });
+                }
+            }
         }
         Ok(())
     }
@@ -2790,6 +2816,7 @@ mod tests {
                 lturbulence: Some(1),
                 ctl: Some(5.0),
                 ifine: Some(4),
+                lsynctime_s: Some(300),
                 lconvection: Some(0),
                 ..Default::default()
             },
@@ -3270,16 +3297,16 @@ mod tests {
     }
 
     #[test]
-    fn output_timings_must_match_frozen_sync_interval() {
+    fn output_timings_must_match_declared_sync_interval() {
         let mut manifest = make_minimal_manifest();
         manifest.output.sampling_interval_s = 301;
         let err = manifest.validate().expect_err("non-multiple sample must fail");
         assert!(err.to_string().contains("LSYNCTIME"));
 
         let mut manifest = make_minimal_manifest();
-        manifest.output.interval_s = FLEXPART_CORPUS_LSYNCTIME_S;
-        manifest.output.averaging_window_s = FLEXPART_CORPUS_LSYNCTIME_S;
-        manifest.output.sampling_interval_s = FLEXPART_CORPUS_LSYNCTIME_S;
+        manifest.output.interval_s = manifest.oracle_command_overrides.lsynctime_s.expect("lsynctime");
+        manifest.output.averaging_window_s = manifest.oracle_command_overrides.lsynctime_s.expect("lsynctime");
+        manifest.output.sampling_interval_s = manifest.oracle_command_overrides.lsynctime_s.expect("lsynctime");
         let err = manifest.validate().expect_err("interval/average below 2*sync must fail");
         assert!(err.to_string().contains("2*LSYNCTIME"));
     }
@@ -3436,6 +3463,13 @@ mod tests {
         let oracle = manifest.stochastic.oracle_seed.as_ref().unwrap();
         assert_eq!(oracle.kind, OracleKind::SeedableValidationOracle);
         assert_eq!(oracle.seed, Some(1));
+        assert_eq!(
+            manifest.oracle_command_overrides.turbulence_formulation,
+            OracleTurbulenceFormulation::FixedSyncW
+        );
+        assert_eq!(manifest.oracle_command_overrides.ctl, Some(-5.0));
+        assert_eq!(manifest.oracle_command_overrides.ifine, Some(4));
+        assert_eq!(manifest.oracle_command_overrides.lsynctime_s, Some(900));
         assert!(manifest.representation_differences.vertical_coordinate.is_some());
         assert!(manifest.representation_differences.wind_components.is_some());
         assert!(manifest.representation_differences.known_input_equivalence_limitations.iter().any(|l| l.code == "INPUT_EQUIVALENCE_NOT_DEMONSTRATED"));
@@ -3662,23 +3696,18 @@ mod tests {
     }
 
     #[test]
-    fn negative_ctl_is_rejected_as_deliberately_unsupported_fixed_mode() {
+    fn fixed_sync_ctl_requires_explicit_fixed_formulation() {
         let mut manifest = make_minimal_manifest();
         manifest.oracle_command_overrides.ctl = Some(-5.0);
-        let err = manifest.validate().expect_err("ctl=-5 must fail");
-        assert!(matches!(
-            err,
-            ValidationCaseError::InvalidPhysicsSwitches { .. }
-        ));
-        let rendered = err.to_string();
-        assert!(
-            rendered.contains("deliberately") && rendered.contains("unsupported"),
-            "error must state the mode is deliberately unsupported: {rendered}"
-        );
-        assert!(
-            rendered.contains("fixed") && rendered.contains("readoptions_mod.f90:786-795"),
-            "error must name the unsupported FLEXPART mode: {rendered}"
-        );
+        let err = manifest
+            .validate()
+            .expect_err("negative CTL with adaptive formulation must fail");
+        assert!(err.to_string().contains("adaptive_w_sigw"));
+
+        manifest.oracle_command_overrides.turbulence_formulation =
+            OracleTurbulenceFormulation::FixedSyncW;
+        manifest.oracle_command_overrides.lsynctime_s = Some(900);
+        manifest.validate().expect("explicit fixed_sync_w mode validates");
     }
 
     #[test]
@@ -3732,13 +3761,13 @@ mod tests {
         raw["oracle_command_overrides"]
             .as_object_mut()
             .expect("overrides object")
-            .insert("turbulence_formulation".to_string(), serde_json::json!("fixed_sync"));
+            .insert("turbulence_formulation".to_string(), serde_json::json!("fixed_sync_unknown"));
         let text = serde_json::to_string(&raw).expect("re-serialize");
         let err = ValidationCaseManifest::parse(&text, Path::new("badform.json")).expect_err("fails");
         let rendered = err.to_string();
         assert!(
-            rendered.contains("adaptive_w_sigw"),
-            "error must enumerate the supported variant: {rendered}"
+            rendered.contains("adaptive_w_sigw") && rendered.contains("fixed_sync_w"),
+            "error must enumerate the supported variants: {rendered}"
         );
     }
 

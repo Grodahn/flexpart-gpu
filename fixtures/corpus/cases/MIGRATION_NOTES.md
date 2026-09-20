@@ -89,16 +89,16 @@ disabled on both paths.
 | `oracle_command_overrides.CTL` | `oracle_command_overrides.ctl` | Renamed, values preserved. Required; must be consistent with the declared `turbulence_formulation` (see the Issue #67 section below). |
 | `oracle_command_overrides.IFINE` | `oracle_command_overrides.ifine` | Renamed, values preserved. Required; must be in 1..=10 (`readoptions_mod.f90:624` silently clamps `IFINE` to `>= 1`). |
 | - | `oracle_command_overrides.ldrydep/lwetdep/ldecay` | Introduced as optional flags (exactly 0/1 when present). Unset in migrated cases; deposition is selected via `physics_switches` + SPECIES. |
-| (absent in DRY-007/WET-008) | explicit `lturbulence/ctl/ifine/lconvection` | Introduced with the values the generator previously defaulted to (`1/5.0/4/0`), matching the checked-in fixtures byte-for-byte. No scientific change. |
-| (none) | `oracle_command_overrides.turbulence_formulation` | Introduced (Issue #67). Required typed enum making the frozen FLEXPART mode machine-readable; see below. |
+| (absent in DRY-007/WET-008) | explicit `lturbulence/ctl/ifine/lconvection` | Introduced with the values the generator previously defaulted to (`1/5.0/4/0`), matching the synthetic fixtures. ETEX keeps its separate historical `CTL=-5.0 / IFINE=4` COMMAND values. |
+| (none) | `oracle_command_overrides.turbulence_formulation` | Introduced (Issue #67). Required typed enum making the actual FLEXPART mode machine-readable; synthetic cases use `adaptive_w_sigw`, ETEX-MINI-013 preserves `fixed_sync_w`. |
+| workflow/COMMAND value | `oracle_command_overrides.lsynctime_s` | Required explicit FLEXPART `LSYNCTIME` [s]. Synthetic cases use `300`; ETEX-MINI-013 preserves its real `900`. No case may inherit a global sync default. |
 
 ## Turbulence/integration formulation (Issue #67)
 
-The corpus freezes exactly one FLEXPART turbulence/time-step formulation,
-declared explicitly by the required
-
-`oracle_command_overrides.turbulence_formulation` field (= `adaptive_w_sigw`).
-Scientific choice is never inferred from a numeric `CTL` value alone.
+Schema v2 represents the two FLEXPART turbulence/time-step formulations that
+are actually present in the checked-in validation cases. The scientific choice
+is explicit in `oracle_command_overrides.turbulence_formulation`; it is never
+inferred from a case ID or from `CTL` alone.
 
 Rationale from the pinned oracle (`reference/flexpart-11.1.json`, commit
 `c70586c2b7f5258850705325881c61f557ea9bd8`):
@@ -106,32 +106,25 @@ Rationale from the pinned oracle (`reference/flexpart-11.1.json`, commit
 - FLEXPART derives the dispersion method from the sign of `CTL`
   (`readoptions_mod.f90:786-795`): `CTL > 0` selects the adaptive method
   (`method=1`, `mintime=minstep=1`); `CTL <= 0` selects the fixed-timestep
-  method (`method=0`, `mintime=lsynctime`). The adaptive method sizes the
-  particle step from the local Lagrangian time scales
-  (`advance_mod.f90:557-568`).
+  method (`method=0`, `mintime=lsynctime`).
 - FLEXPART derives the Markov-chain formulation from the magnitude of `CTL`
-  (`readoptions_mod.f90:626,645-650`): `CTL >= 0.1` selects the w/sigw
-  formulation (`turbswitch=.true.`); `CTL < 0.1` silently selects the w
-  formulation and re-sets `ifine=1`.
+  (`readoptions_mod.f90:626,645-650`): `CTL >= 0.1` selects w/sigw;
+  `CTL < 0.1` selects w and forces effective `ifine=1`.
 
-Every checked-in case runs `CTL=5.0 / IFINE=4` (adaptive, w/sigw). The
-contract states that choice explicitly and rejects, in both the Rust
-validator and the Python generator (single documented threshold constant
-`CTL_W_SIGW_FORMULATION_THRESHOLD` / `CTL_FORMULATION_THRESHOLD = 0.1`):
+The closed v2 modes are:
 
-- missing or unknown `turbulence_formulation` values (typed enum; this schema
-  revision supports exactly `adaptive_w_sigw`);
-- `CTL = 0`: the oracle computes `ctl = 1./ctl` unconditionally
-  (`readoptions_mod.f90:653`) and sizes particle steps from it, so this is a
-  division by zero producing a divergent step;
-- `CTL < 0`: the fixed-timestep method (`method=0`) is a valid FLEXPART mode
-  — it is the oracle's own `CTL=-5.0` default — and is *deliberately
-  unsupported* by this validation contract (the error names the mode and the
-  reason instead of hiding behind `CTL >= 0.1`);
-- `0 < CTL < 0.1`: silently re-interpreted as the w formulation with
-  `ifine=1`, inconsistent with the declared formulation;
-- `IFINE = 0`: silently clamped to 1 by `max(ifine,1)`
-  (`readoptions_mod.f90:624`); the contract requires `1..=10`.
+- `adaptive_w_sigw`: synthetic corpus cases, `CTL=5.0`, raw `IFINE=4`,
+  explicit `LSYNCTIME=300`.
+- `fixed_sync_w`: ETEX-MINI-013, preserving the real ETEX COMMAND:
+  `CTL=-5.0`, raw `IFINE=4`, explicit `LSYNCTIME=900`. FLEXPART therefore
+  runs method=0 with `mintime=lsynctime`, selects the w formulation, and
+  forces effective `ifine=1` internally. The manifest intentionally records
+  both the raw COMMAND IFINE and the typed effective formulation.
+
+Validation rejects a CTL/formulation mismatch in either direction, rejects
+`CTL=0`, and still rejects the unsupported positive sub-threshold combination
+`0 < CTL < 0.1`. `IFINE=0` is rejected because FLEXPART would silently
+clamp it to 1. `lsynctime_s` is required explicitly for every case.
 
 ## Deposition forcing
 
@@ -142,7 +135,7 @@ validator and the Python generator (single documented threshold constant
 | `deposition.wet_scavenging_coefficient_s_inv` | `deposition.wet_scavenging_coefficient_s_inv` | Preserved (DRY `0.0`, WET `0.005`). |
 | `deposition.wet_precipitating_fraction` | `deposition.wet_precipitating_fraction` | Preserved (DRY `0.0`, WET `1.0`). |
 | `deposition.isolated_check` | `notes` | Moved: analytic kernel-check description preserved in notes; not a driver input. |
-| - | `deposition: null` (absent) | Introduced convention: cases with deposition off carry no block; ETEX-MINI-013 (switches on, forcing defined by its own pipeline) also carries no block. An absent block never means zero forcing. |
+| - | `deposition: null` (absent) | Introduced convention: cases with deposition off carry no block. ETEX-MINI-013 now explicitly declares inert/no-removal species physics and therefore also carries no deposition block. |
 
 ## Free-text expectations and provenance notes
 
@@ -244,18 +237,20 @@ substitutes for a missing block.
 
 Validated fail-closed in both the Rust validator and the Python generator:
 every timing value is whole positive seconds; `sampling_interval_s <=
-averaging_window_s <= interval_s`; the frozen corpus execution profile uses
-`LSYNCTIME=300` and therefore all three output timings must be multiples of
-300 s, while averaging/output intervals must each be at least 600 s, matching
+averaging_window_s <= interval_s`; each case declares
+`oracle_command_overrides.lsynctime_s` explicitly. Synthetic cases
+use 300 s; ETEX-MINI-013 preserves 900 s. All three output timings must be
+multiples of that case-specific value, while averaging/output intervals must
+each be at least `2*LSYNCTIME`, matching
 the pinned FLEXPART `readoptions_mod.f90` checks. The Python raw path accepts
 only the same closed output quantity as the Rust enum. Backward simulations
 are rejected until their source-receptor output semantics and units are
 modeled explicitly. A missing `simulation_direction` or `output` block (or
 any sub-field) is rejected with a field-specific error.
-The generated COMMAND column layout for the historical values
-(`LDIRECT=1`, `LOUTSTEP=1800`, `LOUTAVER=1800`, `LOUTSAMPLE=300`) is
-byte-identical to the previously checked-in fixtures; no scientific value
-changed in migration.
+Synthetic generated COMMAND values remain `LDIRECT=1`, `LOUTSTEP=1800`,
+`LOUTAVER=1800`, `LOUTSAMPLE=300`, `LSYNCTIME=300`. ETEX-MINI-013 instead
+preserves its existing real COMMAND timing (`LOUTSTEP/LOUTAVER=10800`,
+`LOUTSAMPLE/LSYNCTIME=900`) and fixed `CTL=-5` formulation.
 
 ## Machine-readable schema contract
 

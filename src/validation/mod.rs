@@ -7,6 +7,7 @@
 //!
 //! Also provides the versioned validation case manifest contract (Issue #51).
 
+pub mod candidate_physics;
 pub mod case;
 
 use std::fs;

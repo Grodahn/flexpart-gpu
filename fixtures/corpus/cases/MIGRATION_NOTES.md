@@ -327,3 +327,18 @@ V1 is not supported and has no sunset period: all checked-in documents are
 v2, and every parser (Rust `ValidationCaseManifest::parse`, the Fortran
 fixture generator/auditor, the evaluator) rejects v1 fail-closed. The
 previous scattered v1 adapters are removed, not deprecated.
+
+
+## Candidate physics/runtime profile (Blocker-1 follow-up)
+
+Schema v2 cases now carry `candidate_physics_profile` pointing to
+`reference/candidate-physics/candidate-forward-timeloop-v1.json`. The profile
+pins candidate PBL computation options, strict meteorology time-bound behavior,
+one candidate integration dispatch per manifest timestep, the synthetic
+thermodynamic background used by the #6 corpus, and the inactive dry-deposition
+reference height. These values previously entered through
+`ForwardTimeLoopConfig::default()` or runner literals.
+
+Synthetic `surface` blocks now also carry explicit `u10_m_s`/`v10_m_s`.
+The migrated values preserve the runner's previous effective inputs, including
+WIND-SHEAR-003's historical 5 m/s / 0 m/s PBL surface wind.

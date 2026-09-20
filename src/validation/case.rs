@@ -28,6 +28,14 @@ pub const ORACLE_EXECUTION_PROFILE_ID: &str = "flexpart-11.1-single-thread";
 pub const ORACLE_EXECUTION_PROFILE_VERSION: u32 = 1;
 pub const ORACLE_EXECUTION_PROFILE_PATH: &str = "reference/flexpart-11.1.json";
 
+/// Stable candidate-side physics/runtime profile used by validation runners.
+/// The case manifest references this profile so PBL/integration behavior never
+/// comes from Rust `Default` implementations.
+pub const CANDIDATE_PHYSICS_PROFILE_ID: &str = "candidate-forward-timeloop-v1";
+pub const CANDIDATE_PHYSICS_PROFILE_VERSION: u32 = 1;
+pub const CANDIDATE_PHYSICS_PROFILE_PATH: &str =
+    "reference/candidate-physics/candidate-forward-timeloop-v1.json";
+
 /// Stable identity of the completed #50 oracle stochastic-identity contract.
 /// Case manifests reference this contract and never duplicate its
 /// requested-identity -> FLEXPART RNG-state mapping.
@@ -227,6 +235,28 @@ pub struct ExecutionProfileRef {
     pub version: u32,
     /// Manifest file path for verification.
     pub manifest_path: String,
+}
+
+/// Stable reference to the candidate-side physics/runtime profile consumed by
+/// validation runners. Shared PBL, substep and synthetic thermodynamic-state
+/// settings live in the referenced profile rather than executable defaults.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CandidatePhysicsProfileRef {
+    pub id: String,
+    pub version: u32,
+    pub manifest_path: String,
+}
+
+impl CandidatePhysicsProfileRef {
+    #[must_use]
+    pub fn canonical() -> Self {
+        Self {
+            id: CANDIDATE_PHYSICS_PROFILE_ID.to_string(),
+            version: CANDIDATE_PHYSICS_PROFILE_VERSION,
+            manifest_path: CANDIDATE_PHYSICS_PROFILE_PATH.to_string(),
+        }
+    }
 }
 
 /// Domain specification with explicit units.
@@ -528,6 +558,10 @@ pub enum WindSpec {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SurfaceSpec {
+    /// 10-m eastward wind used by candidate PBL diagnostics [m/s].
+    pub u10_m_s: f32,
+    /// 10-m northward wind used by candidate PBL diagnostics [m/s].
+    pub v10_m_s: f32,
     /// Surface pressure [Pa].
     pub surface_pressure_pa: f32,
     /// 2-m temperature [K].
@@ -896,6 +930,9 @@ pub struct ValidationCaseManifest {
     pub stochastic: StochasticIdentitySpec,
     /// Execution profile reference (frozen #49).
     pub execution_profile: ExecutionProfileRef,
+    /// Candidate-side versioned physics/runtime profile. Required so shared
+    /// PBL/integration settings never come from executable defaults.
+    pub candidate_physics_profile: CandidatePhysicsProfileRef,
     /// Oracle COMMAND namelist overrides. Required; no default block exists.
     pub oracle_command_overrides: OracleCommandOverrides,
     /// Expected output artifacts.
@@ -945,6 +982,8 @@ pub enum ValidationCaseError {
     InvalidStochasticIdentity { message: String },
     #[error("invalid execution profile reference: {message}")]
     InvalidExecutionProfile { message: String },
+    #[error("invalid candidate physics profile reference: {message}")]
+    InvalidCandidatePhysicsProfile { message: String },
     #[error("ambiguous field: {field} - {message}")]
     AmbiguousField { field: &'static str, message: String },
     #[error("unit mismatch: {field} expected {expected}, got {actual}")]
@@ -1172,6 +1211,15 @@ impl ValidationCaseManifest {
                 ),
             });
         }
+        if self.integration.dt_s.fract() != 0.0 {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "integration.dt_s",
+                message: format!(
+                    "dt_s ({}) must be whole seconds because ForwardTimeLoopConfig uses integer-second timesteps",
+                    self.integration.dt_s
+                ),
+            });
+        }
         if self.integration.steps == 0 {
             return Err(ValidationCaseError::InvalidPhysicsSwitches {
                 message: "integration.steps must be > 0".to_string(),
@@ -1242,6 +1290,23 @@ impl ValidationCaseManifest {
                     self.execution_profile.id,
                     self.execution_profile.version,
                     self.execution_profile.manifest_path
+                ),
+            });
+        }
+
+        if self.candidate_physics_profile.id != CANDIDATE_PHYSICS_PROFILE_ID
+            || self.candidate_physics_profile.version != CANDIDATE_PHYSICS_PROFILE_VERSION
+            || self.candidate_physics_profile.manifest_path != CANDIDATE_PHYSICS_PROFILE_PATH
+        {
+            return Err(ValidationCaseError::InvalidCandidatePhysicsProfile {
+                message: format!(
+                    "candidate_physics_profile must reference {} v{} at {}, got {} v{} at {}",
+                    CANDIDATE_PHYSICS_PROFILE_ID,
+                    CANDIDATE_PHYSICS_PROFILE_VERSION,
+                    CANDIDATE_PHYSICS_PROFILE_PATH,
+                    self.candidate_physics_profile.id,
+                    self.candidate_physics_profile.version,
+                    self.candidate_physics_profile.manifest_path
                 ),
             });
         }
@@ -2885,6 +2950,8 @@ mod tests {
                 w_m_s: 0.0,
             },
             surface: Some(SurfaceSpec {
+                u10_m_s: 5.0,
+                v10_m_s: -3.0,
                 surface_pressure_pa: 101325.0,
                 temperature_2m_k: 289.0,
                 dewpoint_2m_k: 284.0,
@@ -2974,6 +3041,7 @@ mod tests {
                 version: 1,
                 manifest_path: "reference/flexpart-11.1.json".to_string(),
             },
+            candidate_physics_profile: CandidatePhysicsProfileRef::canonical(),
             oracle_command_overrides: OracleCommandOverrides {
                 turbulence_formulation: OracleTurbulenceFormulation::AdaptiveWSigmaW,
                 lturbulence: Some(1),
@@ -3190,6 +3258,28 @@ mod tests {
         let mut manifest = make_minimal_manifest();
         manifest.stochastic.oracle_seed.as_mut().unwrap().seed = None;
         manifest.validate().expect("seedable default-equivalent mode validates");
+    }
+
+    #[test]
+    fn candidate_physics_profile_reference_is_pinned() {
+        let mut manifest = make_minimal_manifest();
+        manifest.validate().expect("canonical candidate profile validates");
+        manifest.candidate_physics_profile.version += 1;
+        let err = manifest.validate().expect_err("wrong candidate profile must fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::InvalidCandidatePhysicsProfile { .. }
+        ));
+    }
+
+    #[test]
+    fn fractional_candidate_timestep_is_rejected() {
+        let mut manifest = make_minimal_manifest();
+        manifest.integration.dt_s = 12.5;
+        manifest.integration.steps = 288;
+        manifest.integration.total_s = 3600.0;
+        let err = manifest.validate().expect_err("fractional dt must fail");
+        assert!(err.to_string().contains("whole seconds"));
     }
 
     #[test]

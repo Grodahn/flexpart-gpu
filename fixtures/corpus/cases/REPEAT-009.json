@@ -59,6 +59,8 @@
     "w_m_s": 0
   },
   "surface": {
+    "u10_m_s": 5,
+    "v10_m_s": -3,
     "surface_pressure_pa": 101325,
     "temperature_2m_k": 289,
     "dewpoint_2m_k": 284,
@@ -146,6 +148,11 @@
     "id": "flexpart-11.1-single-thread",
     "version": 1,
     "manifest_path": "reference/flexpart-11.1.json"
+  },
+  "candidate_physics_profile": {
+    "id": "candidate-forward-timeloop-v1",
+    "version": 1,
+    "manifest_path": "reference/candidate-physics/candidate-forward-timeloop-v1.json"
   },
   "oracle_command_overrides": {
     "turbulence_formulation": "adaptive_w_sigw",

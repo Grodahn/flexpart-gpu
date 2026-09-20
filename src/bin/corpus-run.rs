@@ -24,14 +24,16 @@ use flexpart_gpu::gpu::{
     advect_particles_gpu_with_sampling, GpuContext, ParticleBuffers, WindBuffers,
     WindSamplingOptions,
 };
-use flexpart_gpu::io::TimeBoundsBehavior;
+use flexpart_gpu::validation::candidate_physics::CandidatePhysicsProfile;
 use flexpart_gpu::particles::{Particle, ParticleInit};
 use flexpart_gpu::physics::VelocityToGridScale;
 use flexpart_gpu::simulation::{
     ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket,
     ParticleForcingField,
 };
-use flexpart_gpu::validation::case::{CandidatePhiloxDerivation, ValidationCaseManifest};
+use flexpart_gpu::validation::case::{
+    CandidatePhiloxDerivation, ReleaseTiming, SourceGeometry, ValidationCaseManifest, WindSpec,
+};
 use flexpart_gpu::wind::{SurfaceFields, WindField3D, WindFieldGrid};
 use ndarray::Array1;
 use serde::Serialize;
@@ -224,22 +226,103 @@ fn resolve_ensemble_count(
     }
 }
 
-fn end_timestamp(start: &str, total_s: i64) -> String {
-    // Corpus fixtures start at 2024-01-01 00:00:00; all totals are whole hours.
-    assert_eq!(
-        start, "20240101000000",
-        "corpus start must be 20240101000000"
-    );
-    let hours = total_s / 3600;
-    let mins = (total_s % 3600) / 60;
-    let secs = total_s % 60;
-    format!("20240101{hours:02}{mins:02}{secs:02}")
+fn end_timestamp(start: &str, total_s: i64) -> Result<String, String> {
+    let start_seconds = parse_timestamp_seconds(start)?;
+    format_timestamp_seconds(
+        start_seconds
+            .checked_add(total_s)
+            .ok_or_else(|| format!("timestamp overflow for {start} + {total_s}s"))?,
+    )
 }
 
-fn velocity_scale(lat_deg: f64, heights: &[f32]) -> VelocityToGridScale {
+fn parse_timestamp_seconds(value: &str) -> Result<i64, String> {
+    if value.len() != 14 || !value.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(format!("{value:?} must be YYYYMMDDHHMMSS"));
+    }
+    let part = |start: usize, end: usize| -> Result<u32, String> {
+        value[start..end]
+            .parse::<u32>()
+            .map_err(|_| format!("invalid timestamp component in {value:?}"))
+    };
+    let year = part(0, 4)?;
+    let month = part(4, 6)?;
+    let day = part(6, 8)?;
+    let hour = part(8, 10)?;
+    let minute = part(10, 12)?;
+    let second = part(12, 14)?;
+    let leap = |y: u32| y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    if year == 0 || !(1..=12).contains(&month) || hour > 23 || minute > 59 || second > 59 {
+        return Err(format!("invalid Gregorian timestamp {value:?}"));
+    }
+    let month_days = [
+        31_u32,
+        if leap(year) { 29 } else { 28 },
+        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+    ];
+    if day == 0 || day > month_days[(month - 1) as usize] {
+        return Err(format!("invalid Gregorian timestamp {value:?}"));
+    }
+    Ok(days_from_civil(year as i32, month, day) * 86_400
+        + i64::from(hour) * 3_600
+        + i64::from(minute) * 60
+        + i64::from(second))
+}
+
+fn format_timestamp_seconds(seconds: i64) -> Result<String, String> {
+    let days = seconds.div_euclid(86_400);
+    let sod = seconds.rem_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    if !(1..=9999).contains(&year) {
+        return Err(format!("timestamp out of range: {seconds}"));
+    }
+    let hour = sod / 3_600;
+    let minute = (sod % 3_600) / 60;
+    let second = sod % 60;
+    Ok(format!(
+        "{year:04}{month:02}{day:02}{hour:02}{minute:02}{second:02}"
+    ))
+}
+
+fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
+    let mut y = i64::from(year);
+    let m = i64::from(month);
+    let d = i64::from(day);
+    if m <= 2 {
+        y -= 1;
+    }
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = m + if m > 2 { -3 } else { 9 };
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+fn civil_from_days(days_since_epoch: i64) -> (i32, u32, u32) {
+    let z = days_since_epoch + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let mut y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = mp + if mp < 10 { 3 } else { -9 };
+    if m <= 2 {
+        y += 1;
+    }
+    (y as i32, m as u32, d as u32)
+}
+
+fn velocity_scale(
+    lat_deg: f64,
+    dx_deg: f64,
+    dy_deg: f64,
+    heights: &[f32],
+) -> VelocityToGridScale {
     let lat_rad = lat_deg * std::f64::consts::PI / 180.0;
-    let dx_m = R_EARTH_M * lat_rad.cos() * (0.1 * std::f64::consts::PI / 180.0);
-    let dy_m = R_EARTH_M * (0.1 * std::f64::consts::PI / 180.0);
+    let dx_m = R_EARTH_M * lat_rad.cos() * (dx_deg * std::f64::consts::PI / 180.0);
+    let dy_m = R_EARTH_M * (dy_deg * std::f64::consts::PI / 180.0);
     let mut level_heights_m = [0.0_f32; 16];
     for (i, h) in heights.iter().take(16).enumerate() {
         level_heights_m[i] = *h;
@@ -252,120 +335,104 @@ fn velocity_scale(lat_deg: f64, heights: &[f32]) -> VelocityToGridScale {
     }
 }
 
-fn build_wind(nx: usize, ny: usize, nz: usize, case: &serde_json::Value) -> WindField3D {
+fn build_wind(
+    nx: usize,
+    ny: usize,
+    nz: usize,
+    manifest: &ValidationCaseManifest,
+    profile: &CandidatePhysicsProfile,
+) -> Result<WindField3D, String> {
     let mut field = WindField3D::zeros(nx, ny, nz);
-    let wind = &case["wind"];
-    let profile = wind
-        .get("profile")
-        .and_then(|v| v.as_str())
-        .unwrap_or("uniform");
-    let heights: Vec<f32> = case["domain"]["wind_heights_m"]
-        .as_array()
-        .map(|a| a.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect())
-        .unwrap_or_else(|| vec![0.0; nz]);
-    if profile == "linear_shear" {
-        let u0 = wind.get("u0_m_s").and_then(|v| v.as_f64()).unwrap_or(2.0) as f32;
-        let shear = wind
-            .get("u_shear_per_s")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.004) as f32;
-        for k in 0..nz {
-            let z = heights.get(k).copied().unwrap_or(0.0);
-            let u = u0 + shear * z;
-            for i in 0..nx {
-                for j in 0..ny {
-                    field.u_ms[[i, j, k]] = u;
+    match &manifest.wind {
+        WindSpec::Uniform { u_m_s, v_m_s, w_m_s } => {
+            field.u_ms.fill(*u_m_s);
+            field.v_ms.fill(*v_m_s);
+            field.w_ms.fill(*w_m_s);
+        }
+        WindSpec::LinearShear {
+            u0_m_s,
+            u_shear_per_s,
+            v_m_s,
+            w_m_s,
+        } => {
+            for k in 0..nz {
+                let z = manifest
+                    .domain
+                    .wind_heights_m
+                    .get(k)
+                    .copied()
+                    .ok_or_else(|| format!("case {}: missing wind height {k}", manifest.case_id))?;
+                let u = *u0_m_s + *u_shear_per_s * z;
+                for i in 0..nx {
+                    for j in 0..ny {
+                        field.u_ms[[i, j, k]] = u;
+                        field.v_ms[[i, j, k]] = *v_m_s;
+                        field.w_ms[[i, j, k]] = *w_m_s;
+                    }
                 }
             }
         }
-    } else {
-        let u = wind.get("u_m_s").and_then(|v| v.as_f64()).unwrap_or(5.0) as f32;
-        let v = wind.get("v_m_s").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-        let w = wind.get("w_m_s").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-        field.u_ms.fill(u);
-        field.v_ms.fill(v);
-        field.w_ms.fill(w);
+        WindSpec::RealWeather { .. } => {
+            return Err(format!(
+                "case {}: real-weather cases are not executed by corpus-run",
+                manifest.case_id
+            ));
+        }
     }
-    field.temperature_k.fill(285.0);
-    field.specific_humidity.fill(0.005);
-    field.pressure_pa.fill(100_000.0);
-    field.air_density_kg_m3.fill(1.2);
-    field.density_gradient_kg_m2.fill(-0.0008);
-    field
+    let met = profile.synthetic_meteorology;
+    field.temperature_k.fill(met.temperature_k);
+    field.specific_humidity.fill(met.specific_humidity);
+    field.pressure_pa.fill(met.pressure_pa);
+    field.air_density_kg_m3.fill(met.air_density_kg_m3);
+    field.density_gradient_kg_m2.fill(met.density_gradient_kg_m2);
+    Ok(field)
 }
 
-fn build_surface(nx: usize, ny: usize, case: &serde_json::Value) -> SurfaceFields {
+fn build_surface(
+    nx: usize,
+    ny: usize,
+    manifest: &ValidationCaseManifest,
+) -> Result<SurfaceFields, String> {
+    let spec = manifest.surface.as_ref().ok_or_else(|| {
+        format!(
+            "case {}: synthetic driver requires explicit surface fields",
+            manifest.case_id
+        )
+    })?;
     let mut surface = SurfaceFields::zeros(nx, ny);
-    let s = &case["surface"];
-    let get = |key: &str, default: f32| {
-        s.get(key)
-            .and_then(|v| v.as_f64())
-            .unwrap_or(default as f64) as f32
-    };
-    surface
-        .surface_pressure_pa
-        .fill(get("surface_pressure_pa", 101_325.0));
-    surface.u10_ms.fill(
-        case["wind"]
-            .get("u_m_s")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(5.0) as f32,
-    );
-    surface.v10_ms.fill(
-        case["wind"]
-            .get("v_m_s")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0) as f32,
-    );
-    surface
-        .temperature_2m_k
-        .fill(get("temperature_2m_k", 289.0));
-    surface.dewpoint_2m_k.fill(get("dewpoint_2m_k", 284.0));
-    surface
-        .precip_large_scale_mm_h
-        .fill(get("precip_large_scale_mm_h", 0.0));
-    surface
-        .precip_convective_mm_h
-        .fill(get("precip_convective_mm_h", 0.0));
-    surface
-        .sensible_heat_flux_w_m2
-        .fill(get("sensible_heat_flux_w_m2", 0.0));
-    surface
-        .solar_radiation_w_m2
-        .fill(get("solar_radiation_w_m2", 120.0));
-    surface
-        .surface_stress_n_m2
-        .fill(get("surface_stress_n_m2", 0.2));
-    surface
-        .friction_velocity_ms
-        .fill(get("friction_velocity_m_s", 0.35));
+    surface.surface_pressure_pa.fill(spec.surface_pressure_pa);
+    surface.u10_ms.fill(spec.u10_m_s);
+    surface.v10_ms.fill(spec.v10_m_s);
+    surface.temperature_2m_k.fill(spec.temperature_2m_k);
+    surface.dewpoint_2m_k.fill(spec.dewpoint_2m_k);
+    surface.precip_large_scale_mm_h.fill(spec.precip_large_scale_mm_h);
+    surface.precip_convective_mm_h.fill(spec.precip_convective_mm_h);
+    surface.sensible_heat_flux_w_m2.fill(spec.sensible_heat_flux_w_m2);
+    surface.solar_radiation_w_m2.fill(spec.solar_radiation_w_m2);
+    surface.surface_stress_n_m2.fill(spec.surface_stress_n_m2);
+    surface.friction_velocity_ms.fill(spec.friction_velocity_m_s);
     surface
         .convective_velocity_scale_ms
-        .fill(get("convective_velocity_scale_m_s", 0.0));
-    surface.mixing_height_m.fill(get("mixing_height_m", 1500.0));
-    surface
-        .tropopause_height_m
-        .fill(get("tropopause_height_m", 10_000.0));
+        .fill(spec.convective_velocity_scale_m_s);
+    surface.mixing_height_m.fill(spec.mixing_height_m);
+    surface.tropopause_height_m.fill(spec.tropopause_height_m);
     surface
         .inv_obukhov_length_per_m
-        .fill(get("inv_obukhov_length_per_m", 0.0));
-    surface
+        .fill(spec.inv_obukhov_length_per_m);
+    Ok(surface)
 }
 
-fn forcing_for_case(case: &serde_json::Value) -> ForwardStepForcing {
-    let deposition = &case["deposition"];
-    let dry = deposition
-        .get("dry_deposition_velocity_m_s")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0) as f32;
-    let wet_lambda = deposition
-        .get("wet_scavenging_coefficient_s_inv")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0) as f32;
-    let wet_frac = deposition
-        .get("wet_precipitating_fraction")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0) as f32;
+fn forcing_for_case(manifest: &ValidationCaseManifest) -> ForwardStepForcing {
+    let (dry, wet_lambda, wet_frac) = manifest.deposition.as_ref().map_or(
+        (0.0, 0.0, 0.0),
+        |deposition| {
+            (
+                deposition.dry_deposition_velocity_m_s,
+                deposition.wet_scavenging_coefficient_s_inv,
+                deposition.wet_precipitating_fraction,
+            )
+        },
+    );
     ForwardStepForcing {
         dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(dry)],
         wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(wet_lambda)],
@@ -373,6 +440,25 @@ fn forcing_for_case(case: &serde_json::Value) -> ForwardStepForcing {
         decay_constant_s_inv: vec![0.0],
         rho_grad_over_rho: 0.0,
     }
+}
+
+fn candidate_dry_reference_height_m(
+    manifest: &ValidationCaseManifest,
+    profile: &CandidatePhysicsProfile,
+) -> Result<f32, String> {
+    if manifest.physics_switches.dry_deposition {
+        return manifest
+            .deposition
+            .as_ref()
+            .and_then(|d| d.dry_reference_height_m)
+            .ok_or_else(|| {
+                format!(
+                    "case {}: dry deposition requires deposition.dry_reference_height_m",
+                    manifest.case_id
+                )
+            });
+    }
+    Ok(profile.inactive_dry_reference_height_m)
 }
 
 fn compute_metrics(
@@ -617,126 +703,60 @@ fn run_advective_case(
 #[allow(clippy::too_many_lines)]
 fn run_driver_case(
     case_id: &str,
-    case: &serde_json::Value,
     manifest: &ValidationCaseManifest,
+    profile: &CandidatePhysicsProfile,
     seed_index: u32,
     out_dir: &Path,
     revision: &str,
 ) -> Result<(), String> {
-    let domain = &case["domain"];
-    let nx = domain["nx"].as_u64().unwrap_or(32) as usize;
-    let ny = domain["ny"].as_u64().unwrap_or(32) as usize;
-    let nz = domain["nz"].as_u64().unwrap_or(8) as usize;
-    let heights: Vec<f32> = domain["wind_heights_m"]
-        .as_array()
-        .map(|a| a.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect())
-        .unwrap_or_else(|| vec![0.0; nz]);
-    let release = &case["release"];
-    // Normalized source geometry: points map directly; boxes are supported
-    // only with degenerate lon/lat (vertical line), matching the candidate
-    // ReleaseConfig shape. Anything else fails closed.
-    let geometry = release.get("geometry").ok_or_else(|| {
-        format!("case {case_id}: missing release.geometry")
-    })?;
-    let geometry_kind = geometry.get("kind").and_then(|v| v.as_str()).ok_or_else(|| {
-        format!("case {case_id}: release.geometry.kind missing")
-    })?;
-    let number = |object: &serde_json::Value, field: &str| -> Result<f64, String> {
-        object.get(field).and_then(|v| v.as_f64()).ok_or_else(|| {
-            format!("case {case_id}: release.geometry.{field} missing or not a number")
-        })
-    };
-    let (lon, lat, z_min, z_max) = match geometry_kind {
-        "point" => {
-            let lon = number(geometry, "lon_deg")?;
-            let lat = number(geometry, "lat_deg")?;
-            let z = number(geometry, "z_m")?;
-            (lon, lat, z, z)
-        }
-        "box" => {
-            let lon_min = number(geometry, "lon_min_deg")?;
-            let lon_max = number(geometry, "lon_max_deg")?;
-            let lat_min = number(geometry, "lat_min_deg")?;
-            let lat_max = number(geometry, "lat_max_deg")?;
-            if lon_min != lon_max || lat_min != lat_max {
-                return Err(format!(
-                    "case {case_id}: box lon/lat ranges are not supported by the candidate ReleaseConfig (only vertical ranges)"
-                ));
+    let domain = &manifest.domain;
+    let nx = usize::try_from(domain.nx).map_err(|_| format!("case {case_id}: domain.nx out of range"))?;
+    let ny = usize::try_from(domain.ny).map_err(|_| format!("case {case_id}: domain.ny out of range"))?;
+    let nz = usize::try_from(domain.nz).map_err(|_| format!("case {case_id}: domain.nz out of range"))?;
+    let heights = domain.wind_heights_m.clone();
+    let release = &manifest.release;
+    let (lon, lat, z_min, z_max) = match &release.geometry {
+        SourceGeometry::Point { lon_deg, lat_deg, z_m } => (
+            f64::from(*lon_deg), f64::from(*lat_deg), f64::from(*z_m), f64::from(*z_m)),
+        SourceGeometry::Box { lon_min_deg, lon_max_deg, lat_min_deg, lat_max_deg, z_min_m, z_max_m } => {
+            if lon_min_deg != lon_max_deg || lat_min_deg != lat_max_deg {
+                return Err(format!("case {case_id}: box lon/lat ranges are not supported by the candidate ReleaseConfig (only vertical ranges)"));
             }
-            let z_min = number(geometry, "z_min_m")?;
-            let z_max = number(geometry, "z_max_m")?;
-            (lon_min, lat_min, z_min, z_max)
-        }
-        other => {
-            return Err(format!(
-                "case {case_id}: unknown release.geometry.kind {other:?}"
-            ));
+            (*lon_min_deg, *lat_min_deg, f64::from(*z_min_m), f64::from(*z_max_m))
         }
     };
-    let count = release["particle_count"].as_u64().ok_or_else(|| {
-        format!("case {case_id}: release.particle_count missing or not a number")
-    })?;
-    let mass_total = release
-        .get("inventory")
-        .and_then(|v| v.get("quantity_kg"))
-        .and_then(|v| v.as_f64())
-        .ok_or_else(|| {
-            format!("case {case_id}: release.inventory.quantity_kg missing or not a number")
-        })?;
-    let integration = &case["integration"];
-    let start = integration
-        .get("start")
-        .and_then(|v| v.as_str())
-        .unwrap_or("20240101000000");
-    let dt = integration
-        .get("dt_s")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(300);
-    let steps = integration
-        .get("steps")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(12) as i64;
-    let total_s = dt * steps;
-    let end = end_timestamp(start, total_s);
-    let xlon0 = domain["xlon0_deg"].as_f64().unwrap_or(9.5);
-    let ylat0 = domain["ylat0_deg"].as_f64().unwrap_or(8.5);
-    let dx = domain["dx_deg"].as_f64().unwrap_or(0.1);
-    let dy = domain["dy_deg"].as_f64().unwrap_or(0.1);
+    let count = u64::from(release.particle_count);
+    let mass_total = f64::from(release.inventory.quantity_kg);
+    let integration = &manifest.integration;
+    let start = integration.start.as_str();
+    if integration.dt_s.fract() != 0.0 || integration.total_s.fract() != 0.0 {
+        return Err(format!("case {case_id}: integration dt_s/total_s must be whole integer seconds"));
+    }
+    let dt = integration.dt_s as i64;
+    let total_s = integration.total_s as i64;
+    let end = end_timestamp(start, total_s)?;
+    let xlon0 = f64::from(domain.xlon0_deg);
+    let ylat0 = f64::from(domain.ylat0_deg);
+    let dx = f64::from(domain.dx_deg);
+    let dy = f64::from(domain.dy_deg);
 
     // Fail-closed Philox resolution happens before any GPU work below.
     // Identical-repeat semantics come from the manifest flag, never from
     // hard-coded case IDs.
     let (key, counter) = resolve_candidate_seed(case_id, manifest, seed_index)?;
 
-    let release_grid = GridDomain {
-        xlon0,
-        ylat0,
-        dx,
-        dy,
-        nx,
-        ny,
+    let release_grid = GridDomain { xlon0, ylat0, dx, dy, nx, ny };
+    let release_at = match &release.timing {
+        ReleaseTiming::Instant { at } => at.as_str(),
+        ReleaseTiming::Window { .. } => {
+            return Err(format!("case {case_id}: corpus-run candidate driver supports only instant releases"));
+        }
     };
-    // Normalized release timing (validated equal to the integration start
-    // for instant releases) drives the candidate release window.
-    let timing = release.get("timing").ok_or_else(|| {
-        format!("case {case_id}: missing release.timing")
-    })?;
-    if timing.get("kind").and_then(|v| v.as_str()) != Some("instant") {
-        return Err(format!(
-            "case {case_id}: only instant release timing is supported by the candidate driver"
-        ));
-    }
-    let release_at = timing.get("at").and_then(|v| v.as_str()).ok_or_else(|| {
-        format!("case {case_id}: release.timing.at missing")
-    })?;
     let releases = vec![ReleaseConfig {
         name: case_id.to_string(),
         start_time: release_at.to_string(),
         end_time: release_at.to_string(),
-        lon,
-        lat,
-        z_min: z_min,
-        z_max: z_max,
+        lon, lat, z_min, z_max,
         mass_kg: mass_total,
         particle_count: count,
         species_masses_kg: None,
@@ -746,13 +766,15 @@ fn run_driver_case(
         start_timestamp: start.to_string(),
         end_timestamp: end.clone(),
         timestep_seconds: dt,
-        time_bounds_behavior: TimeBoundsBehavior::Clamp,
-        velocity_to_grid_scale: velocity_scale(lat, &heights),
+        time_bounds_behavior: profile.time_bounds_behavior(),
+        velocity_to_grid_scale: velocity_scale(lat, dx, dy, &heights),
+        pbl_options: profile.pbl_options(),
+        dry_reference_height_m: candidate_dry_reference_height_m(manifest, profile)?,
         philox_key: key,
         initial_philox_counter: counter,
+        spatial_sort: None,
         sync_particle_store_each_step: true,
         collect_deposition_probabilities_each_step: true,
-        ..ForwardTimeLoopConfig::default()
     };
     // Probe the adapter that the driver will select (same env-driven
     // selection as ForwardTimeLoopDriver::new). The driver owns its context
@@ -775,31 +797,23 @@ fn run_driver_case(
     ))
     .map_err(|e| format!("driver init: {e}"))?;
 
-    let wind = build_wind(nx, ny, nz, case);
-    let surface = build_surface(nx, ny, case);
+    let wind = build_wind(nx, ny, nz, manifest, profile)?;
+    let surface = build_surface(nx, ny, manifest)?;
     let grid = WindFieldGrid::new(
-        nx,
-        ny,
-        nz,
-        nz,
-        nz,
-        dx as f32,
-        dy as f32,
-        xlon0 as f32,
-        ylat0 as f32,
+        nx, ny, nz, nz, nz, dx as f32, dy as f32, xlon0 as f32, ylat0 as f32,
         Array1::from_vec(heights.clone()),
     );
     let _ = grid;
-    let start_secs = 1_704_067_200_i64;
+    let start_secs = driver.current_time_seconds();
+    let end_secs = driver.end_time_seconds();
+    if end_secs <= start_secs {
+        return Err(format!("case {case_id}: candidate met bracket requires end > start, got {start_secs}..{end_secs}"));
+    }
     let met = MetTimeBracket {
-        wind_t0: &wind,
-        wind_t1: &wind,
-        surface_t0: &surface,
-        surface_t1: &surface,
-        time_t0_seconds: start_secs,
-        time_t1_seconds: start_secs + total_s,
+        wind_t0: &wind, wind_t1: &wind, surface_t0: &surface, surface_t1: &surface,
+        time_t0_seconds: start_secs, time_t1_seconds: end_secs,
     };
-    let forcing = forcing_for_case(case);
+    let forcing = forcing_for_case(manifest);
     // Step the driver manually so per-process deposited reservoirs can be
     // accumulated from the reported per-slot removal probabilities. The
     // driver applies dry deposition before wet deposition within each step,
@@ -938,10 +952,11 @@ fn main() {
                 manifest.case_id
             );
         }
-        // Raw value still carries the driver physics blocks, whose shapes are
-        // unchanged by the migration (domain/release/wind/surface/integration/
-        // deposition); stochastic identity and ensemble count come only from
-        // the typed manifest above.
+        let candidate_profile = CandidatePhysicsProfile::load(&manifest.candidate_physics_profile)
+            .unwrap_or_else(|e| panic!("{}: {e}", manifest.case_id));
+        // ADV-ANA-001 still uses the isolated advection kernel; its raw JSON is
+        // parsed only for that legacy kernel adapter. Driver cases consume the
+        // typed manifest exclusively.
         let case: serde_json::Value = serde_json::from_str(&text).expect("parse case fixture");
         if case_id == "ADV-ANA-001" {
             run_advective_case(case_id, &case, &out_dir, &revision).expect("advective case failed");
@@ -951,7 +966,9 @@ fn main() {
             let run_seeds = resolve_ensemble_count(case_id, &manifest, cli_seeds)
                 .unwrap_or_else(|e| panic!("{e}"));
             for seed in 0..run_seeds as u32 {
-                run_driver_case(case_id, &case, &manifest, seed, &out_dir, &revision)
+                run_driver_case(
+                    case_id, &manifest, &candidate_profile, seed, &out_dir, &revision,
+                )
                     .unwrap_or_else(|e| panic!("{case_id} seed {seed} failed: {e}"));
             }
         }
@@ -1050,6 +1067,36 @@ mod tests {
         assert_eq!(key0, [3737180555, 305419896]);
         let count = resolve_ensemble_count("REPEAT-009", &manifest, None).expect("count");
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn candidate_runner_uses_manifest_dry_reference_height() {
+        let mut manifest = load_manifest("DRY-007");
+        let profile = CandidatePhysicsProfile::load(&manifest.candidate_physics_profile).expect("profile");
+        manifest.deposition.as_mut().expect("dry deposition").dry_reference_height_m = Some(23.0);
+        assert_eq!(candidate_dry_reference_height_m(&manifest, &profile).expect("href"), 23.0);
+    }
+
+    #[test]
+    fn velocity_scale_uses_declared_grid_spacing() {
+        let heights = [0.0_f32, 100.0];
+        let fine = velocity_scale(50.0, 0.1, 0.1, &heights);
+        let coarse = velocity_scale(50.0, 0.2, 0.25, &heights);
+        assert!(coarse.x_grid_per_meter < fine.x_grid_per_meter);
+        assert!(coarse.y_grid_per_meter < fine.y_grid_per_meter);
+    }
+
+    #[test]
+    fn end_timestamp_is_not_hard_coded_to_2024_01_01() {
+        assert_eq!(end_timestamp("20240228235900", 120).expect("timestamp"), "20240229000100");
+    }
+
+    #[test]
+    fn shear_surface_wind_is_explicit_and_preserved() {
+        let manifest = load_manifest("WIND-SHEAR-003");
+        let surface = manifest.surface.as_ref().expect("surface");
+        assert_eq!(surface.u10_m_s, 5.0);
+        assert_eq!(surface.v10_m_s, 0.0);
     }
 
     #[test]

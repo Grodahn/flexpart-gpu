@@ -93,6 +93,9 @@
           "type": "null"
         }
       ]
+    },
+    "candidate_physics_profile": {
+      "$ref": "#/$defs/candidate_physics_profile"
     }
   },
   "required": [
@@ -110,6 +113,7 @@
     "validation_definition_refs",
     "stochastic",
     "execution_profile",
+    "candidate_physics_profile",
     "oracle_command_overrides",
     "expected_artifacts",
     "representation_differences",
@@ -595,9 +599,17 @@
         },
         "precip_convective_mm_h": {
           "type": "number"
+        },
+        "u10_m_s": {
+          "type": "number"
+        },
+        "v10_m_s": {
+          "type": "number"
         }
       },
       "required": [
+        "u10_m_s",
+        "v10_m_s",
         "surface_pressure_pa",
         "temperature_2m_k",
         "dewpoint_2m_k",
@@ -625,7 +637,8 @@
         },
         "dt_s": {
           "type": "number",
-          "exclusiveMinimum": 0
+          "exclusiveMinimum": 0,
+          "multipleOf": 1
         },
         "steps": {
           "type": "integer",
@@ -1247,6 +1260,26 @@
         "horizontal_ref",
         "heights_m",
         "heights_ref"
+      ]
+    },
+    "candidate_physics_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "candidate-forward-timeloop-v1"
+        },
+        "version": {
+          "const": 1
+        },
+        "manifest_path": {
+          "const": "reference/candidate-physics/candidate-forward-timeloop-v1.json"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "manifest_path"
       ]
     }
   }

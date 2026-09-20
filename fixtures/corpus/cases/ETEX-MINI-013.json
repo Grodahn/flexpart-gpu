@@ -193,6 +193,11 @@
     "version": 1,
     "manifest_path": "reference/flexpart-11.1.json"
   },
+  "candidate_physics_profile": {
+    "id": "candidate-forward-timeloop-v1",
+    "version": 1,
+    "manifest_path": "reference/candidate-physics/candidate-forward-timeloop-v1.json"
+  },
   "oracle_command_overrides": {
     "turbulence_formulation": "fixed_sync_w",
     "lturbulence": 1,

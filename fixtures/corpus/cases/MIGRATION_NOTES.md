@@ -22,7 +22,7 @@ No scientific value changed in migration; only representation.
 | `seeds.derivation` | `stochastic.candidate_philox.derivation` | Preserved verbatim (including the PBL-NEUTRAL-005 CI seed-0 suffix). REPEAT-009 documents identical reuse. |
 | `seeds.requirement` (REPEAT-009) | `notes` | Moved to notes ("bit-identical particle states across repeats"). |
 | `seeds` as a string (ADV-ANA-001 `"deterministic (no RNG consumed)"`) | `stochastic: {candidate_philox: null, oracle_seed: null}` | Removed free-form marker; deterministic cases declare no identity and validate without one. |
-| - | `stochastic.oracle_seed` | Introduced (non-scientific runner metadata): `seedable-validation-oracle`, seed 1, 5 repetitions for cases with an oracle counterpart; `null` for REPEAT-009, which has no oracle counterpart. |
+| - | `stochastic.oracle_seed` | Typed oracle stochastic namespace. `pristine-oracle` is seedless and carries no seedable strategy. `seedable-validation-oracle` references the completed #50 contract by stable strategy id/version/path and may carry a requested identity or seed=null for the #50 default-equivalent mode. Candidate Philox values are never interpreted as oracle identities. |
 | `fortran_repeatability_note` (REPEAT-009) | `notes` | Moved verbatim. |
 
 ## Oracle command overrides (generated namelist stays uppercase)
@@ -110,10 +110,15 @@ can never be written as apparently valid documents.
 
 ## Units
 
-V1 `units` blocks were partial per case; v2 carries the full explicit set.
-The ADV-ANA-001 `displacement: m` unit is preserved as the typed
-`units.displacement` field (it was silently discarded before strict
-parsing).
+V1 `units` blocks were partial per case. V2 now validates units required by
+the active semantics instead of checking only `units.wind`. Every case
+declares canonical model units for wind, height, mass, time and concentration;
+surface cases additionally require pressure, temperature, heat-flux and
+inverse-Obukhov units, while shear/deposition/scavenging units are required
+when those semantics are active. ETEX observation values may be pg/m3, but
+the model-output quantity in the case contract is canonical kg/m3; observation
+conversion remains evaluation-layer responsibility. ADV-ANA-001 keeps its
+explicit displacement unit.
 
 ## Coordinate semantics and source normalization
 
@@ -200,6 +205,15 @@ The generated COMMAND column layout for the historical values
 (`LDIRECT=1`, `LOUTSTEP=1800`, `LOUTAVER=1800`, `LOUTSAMPLE=300`) is
 byte-identical to the previously checked-in fixtures; no scientific value
 changed in migration.
+
+## External metric and threshold references
+
+Schema v2 carries `validation_definition_refs` instead of copying metric
+formulas or numeric gates into cases. Checked-in cases reference
+`scripts/evaluate/metrics.py` (report-schema 1.0.0),
+`evaluation/thresholds/scientific-thresholds-v1.json`, and
+`fixtures/corpus/thresholds.json`. Later #43/#55 contracts can replace or
+extend these stable references without embedding threshold values in #51.
 
 ## v1 support statement
 

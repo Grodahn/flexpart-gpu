@@ -11,15 +11,24 @@
     "xlon0_deg": 9.5,
     "ylat0_deg": 8.5,
     "horizontal_ref": "geographic_lon_lat_degrees",
-    "wind_heights_m": [50.0, 100.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0],
+    "wind_heights_m": [
+      50,
+      100,
+      500,
+      1000,
+      2000,
+      5000,
+      10000,
+      20000
+    ],
     "wind_heights_ref": "agl"
   },
   "release": {
     "geometry": {
       "kind": "point",
-      "lon_deg": 10.0,
-      "lat_deg": 10.0,
-      "z_m": 50.0
+      "lon_deg": 10,
+      "lat_deg": 10,
+      "z_m": 50
     },
     "vertical_ref": "agl",
     "timing": {
@@ -30,7 +39,7 @@
       "id": "SPECIES_024"
     },
     "inventory": {
-      "quantity_kg": 1.0,
+      "quantity_kg": 1,
       "unit": "kg"
     },
     "particle_count": 1000,
@@ -38,30 +47,30 @@
   },
   "wind": {
     "profile": "uniform",
-    "u_m_s": 5.0,
-    "v_m_s": -3.0,
-    "w_m_s": 0.0
+    "u_m_s": 5,
+    "v_m_s": -3,
+    "w_m_s": 0
   },
   "surface": {
-    "surface_pressure_pa": 101325.0,
-    "temperature_2m_k": 289.0,
-    "dewpoint_2m_k": 284.0,
-    "sensible_heat_flux_w_m2": 40.0,
-    "solar_radiation_w_m2": 220.0,
+    "surface_pressure_pa": 101325,
+    "temperature_2m_k": 289,
+    "dewpoint_2m_k": 284,
+    "sensible_heat_flux_w_m2": 40,
+    "solar_radiation_w_m2": 220,
     "surface_stress_n_m2": 0.2,
     "friction_velocity_m_s": 0.35,
     "convective_velocity_scale_m_s": 0.1,
-    "mixing_height_m": 1500.0,
-    "tropopause_height_m": 10000.0,
-    "inv_obukhov_length_per_m": 0.0,
-    "precip_large_scale_mm_h": 0.0,
-    "precip_convective_mm_h": 0.0
+    "mixing_height_m": 1500,
+    "tropopause_height_m": 10000,
+    "inv_obukhov_length_per_m": 0,
+    "precip_large_scale_mm_h": 0,
+    "precip_convective_mm_h": 0
   },
   "integration": {
     "start": "20240101000000",
-    "dt_s": 300.0,
+    "dt_s": 300,
     "steps": 12,
-    "total_s": 3600.0
+    "total_s": 3600
   },
   "physics_switches": {
     "turbulence": true,
@@ -85,17 +94,52 @@
     "height": "m",
     "mass": "kg",
     "time": "s",
-    "inv_obukhov": "1/m"
+    "inv_obukhov": "1/m",
+    "concentration": "kg/m3"
+  },
+  "validation_definition_refs": {
+    "metric_contracts": [
+      {
+        "id": "evaluation-metrics",
+        "version": "report-schema-1.0.0",
+        "path": "scripts/evaluate/metrics.py"
+      }
+    ],
+    "threshold_contracts": [
+      {
+        "id": "scientific-thresholds",
+        "version": "v1",
+        "path": "evaluation/thresholds/scientific-thresholds-v1.json"
+      },
+      {
+        "id": "corpus-thresholds",
+        "version": "1",
+        "path": "fixtures/corpus/thresholds.json"
+      }
+    ]
   },
   "stochastic": {
     "candidate_philox": {
-      "base_key": [3737180555, 305419896],
-      "base_counter": [0, 0, 0, 0],
+      "base_key": [
+        3737180555,
+        305419896
+      ],
+      "base_counter": [
+        0,
+        0,
+        0,
+        0
+      ],
       "count": 10,
       "derivation": "seed i uses key [base0 + i, base1] with zeroed counter"
     },
     "oracle_seed": {
       "kind": "seedable-validation-oracle",
+      "strategy": {
+        "strategy": "flexpart-oracle-validation-seed-offset",
+        "version": 1,
+        "contract_path": "reference/oracle-stochastic-identity.json"
+      },
       "seed": 1,
       "repetitions": 5
     }
@@ -108,7 +152,7 @@
   "oracle_command_overrides": {
     "turbulence_formulation": "adaptive_w_sigw",
     "lturbulence": 1,
-    "ctl": 5.0,
+    "ctl": 5,
     "ifine": 4,
     "lconvection": 0
   },
@@ -128,7 +172,6 @@
   "input_equivalence": "not_applicable",
   "notes": [
     "Stochastic case: 10 independent Philox seeds for candidate; 5 repetitions of seedable oracle with FLEXPART_VALIDATION_SEED=1.",
-    "Expected: COM advects east/south with 5/-3 m/s wind; plume spreads in x/y/z; all particles in [0, BLH]; mass conserved.",
-    "Oracle RNG: seed 1 maps to iseed1=-(7+0+1)=-8, iseed2=-(88+0+1)=-89, rannumb idummy=-(320+1)=-321 (single thread)."
+    "Expected: COM advects east/south with 5/-3 m/s wind; plume spreads in x/y/z; all particles in [0, BLH]; mass conserved."
   ]
 }

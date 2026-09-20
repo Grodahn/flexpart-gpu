@@ -19,6 +19,13 @@ use thiserror::Error;
 /// Schema version for the validation case manifest.
 pub const VALIDATION_CASE_SCHEMA_VERSION: u32 = 2;
 
+/// Stable identity of the completed #50 oracle stochastic-identity contract.
+/// Case manifests reference this contract and never duplicate its
+/// requested-identity -> FLEXPART RNG-state mapping.
+pub const ORACLE_STOCHASTIC_STRATEGY_ID: &str = "flexpart-oracle-validation-seed-offset";
+pub const ORACLE_STOCHASTIC_STRATEGY_VERSION: u32 = 1;
+pub const ORACLE_STOCHASTIC_CONTRACT_PATH: &str = "reference/oracle-stochastic-identity.json";
+
 /// Oracle kind as defined in issue #50 stochastic identity contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -121,14 +128,38 @@ pub struct DepositionSpec {
     pub wet_precipitating_fraction: f32,
 }
 
-/// Oracle-side seed identity per issue #50 contract.
+/// Stable reference to the completed #50 seedable-oracle strategy contract.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OracleStrategyRef {
+    pub strategy: String,
+    pub version: u32,
+    pub contract_path: String,
+}
+
+impl OracleStrategyRef {
+    #[must_use]
+    pub fn canonical() -> Self {
+        Self {
+            strategy: ORACLE_STOCHASTIC_STRATEGY_ID.to_string(),
+            version: ORACLE_STOCHASTIC_STRATEGY_VERSION,
+            contract_path: ORACLE_STOCHASTIC_CONTRACT_PATH.to_string(),
+        }
+    }
+}
+
+/// Oracle-side stochastic identity per issue #50 contract.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OracleSeedIdentity {
     /// Oracle kind: pristine-oracle or seedable-validation-oracle.
     pub kind: OracleKind,
-    /// Validation seed value (canonical decimal in [1, 1000000000]).
-    /// Omit or set to null for default mode (pristine bit-exact initialization).
+    /// Required for seedable-validation-oracle; forbidden for pristine-oracle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<OracleStrategyRef>,
+    /// Requested identity [1, 1000000000]. Null means default mode.
+    /// For pristine-oracle it MUST be null; for the seedable oracle null is
+    /// the #50 default-equivalent offset-zero mode.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<u32>,
     /// Number of repetitions for repeatability characterization.
@@ -138,6 +169,22 @@ pub struct OracleSeedIdentity {
 
 fn default_repetitions() -> u32 {
     5
+}
+
+/// Stable reference to a metric/threshold definition owned outside #51.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ValidationDefinitionRef {
+    pub id: String,
+    pub version: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ValidationDefinitionRefs {
+    pub metric_contracts: Vec<ValidationDefinitionRef>,
+    pub threshold_contracts: Vec<ValidationDefinitionRef>,
 }
 
 /// Execution profile reference (from frozen #49 contract).
@@ -730,6 +777,9 @@ pub struct ValidationCaseManifest {
     pub deposition: Option<DepositionSpec>,
     /// Explicit units for all quantities.
     pub units: UnitsSpec,
+    /// External metric/threshold definitions. Numeric gates/formulas remain
+    /// owned outside #51 and are referenced rather than duplicated.
+    pub validation_definition_refs: ValidationDefinitionRefs,
     /// Stochastic identity specification (candidate + oracle).
     pub stochastic: StochasticIdentitySpec,
     /// Execution profile reference (frozen #49).
@@ -1041,12 +1091,8 @@ impl ValidationCaseManifest {
             });
         }
 
-        // Validate units (check required fields present)
-        if self.units.wind.is_empty() {
-            return Err(ValidationCaseError::MissingField {
-                field: "units.wind",
-            });
-        }
+        self.validate_units()?;
+        self.validate_validation_definition_refs()?;
 
         // Validate expected artifacts
         if self.expected_artifacts.candidate_dir.is_empty() {
@@ -1065,6 +1111,112 @@ impl ValidationCaseManifest {
             });
         }
 
+        Ok(())
+    }
+
+    fn validate_units(&self) -> Result<(), ValidationCaseError> {
+        let require = |field: &'static str,
+                       actual: Option<&str>,
+                       expected: &str|
+         -> Result<(), ValidationCaseError> {
+            let Some(actual) = actual else {
+                return Err(ValidationCaseError::MissingField { field });
+            };
+            if actual != expected {
+                return Err(ValidationCaseError::AmbiguousField {
+                    field,
+                    message: format!("expected unit {expected:?}, got {actual:?}"),
+                });
+            }
+            Ok(())
+        };
+
+        if self.units.wind != "m/s" {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "units.wind",
+                message: format!("expected unit \"m/s\", got {:?}", self.units.wind),
+            });
+        }
+        require("units.height", self.units.height.as_deref(), "m")?;
+        require("units.mass", self.units.mass.as_deref(), "kg")?;
+        require("units.time", self.units.time.as_deref(), "s")?;
+        require("units.concentration", self.units.concentration.as_deref(), "kg/m3")?;
+
+        if self.surface.is_some() {
+            require("units.pressure", self.units.pressure.as_deref(), "Pa")?;
+            require("units.temperature", self.units.temperature.as_deref(), "K")?;
+            require("units.heat_flux", self.units.heat_flux.as_deref(), "W/m2")?;
+            require("units.inv_obukhov", self.units.inv_obukhov.as_deref(), "1/m")?;
+        }
+        if matches!(self.wind, WindSpec::LinearShear { .. }) {
+            require("units.shear", self.units.shear.as_deref(), "1/s")?;
+        }
+        if self.physics_switches.dry_deposition {
+            require(
+                "units.deposition_velocity",
+                self.units.deposition_velocity.as_deref(),
+                "m/s",
+            )?;
+        }
+        if self.physics_switches.wet_deposition {
+            require(
+                "units.scavenging_coefficient",
+                self.units.scavenging_coefficient.as_deref(),
+                "1/s",
+            )?;
+        }
+        if let Some(unit) = self.units.displacement.as_deref() {
+            if unit != "m" {
+                return Err(ValidationCaseError::AmbiguousField {
+                    field: "units.displacement",
+                    message: format!("expected unit \"m\", got {unit:?}"),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_validation_definition_refs(&self) -> Result<(), ValidationCaseError> {
+        let validate =
+            |field: &'static str,
+             refs: &[ValidationDefinitionRef]|
+             -> Result<(), ValidationCaseError> {
+                if refs.is_empty() {
+                    return Err(ValidationCaseError::MissingField { field });
+                }
+                for reference in refs {
+                    if reference.id.is_empty()
+                        || reference.version.is_empty()
+                        || reference.path.is_empty()
+                    {
+                        return Err(ValidationCaseError::AmbiguousField {
+                            field,
+                            message: "definition references require non-empty id/version/path"
+                                .to_string(),
+                        });
+                    }
+                    if Path::new(&reference.path).is_absolute()
+                        || reference.path.split('/').any(|segment| segment == "..")
+                    {
+                        return Err(ValidationCaseError::AmbiguousField {
+                            field,
+                            message: format!(
+                                "definition reference path must be repository-relative without '..': {}",
+                                reference.path
+                            ),
+                        });
+                    }
+                }
+                Ok(())
+            };
+        validate(
+            "validation_definition_refs.metric_contracts",
+            &self.validation_definition_refs.metric_contracts,
+        )?;
+        validate(
+            "validation_definition_refs.threshold_contracts",
+            &self.validation_definition_refs.threshold_contracts,
+        )?;
         Ok(())
     }
 
@@ -1603,7 +1755,6 @@ impl ValidationCaseManifest {
     }
 
     fn validate_stochastic(&self) -> Result<(), ValidationCaseError> {
-        // Candidate Philox identity validation
         if let Some(candidate) = &self.stochastic.candidate_philox {
             if candidate.count == 0 {
                 return Err(ValidationCaseError::InvalidStochasticIdentity {
@@ -1617,24 +1768,60 @@ impl ValidationCaseManifest {
             }
         }
 
-        // Oracle seed identity validation
         if let Some(oracle) = &self.stochastic.oracle_seed {
-            if let Some(seed) = oracle.seed {
-                if seed == 0 || seed > 1_000_000_000 {
-                    return Err(ValidationCaseError::InvalidStochasticIdentity {
-                        message: format!("oracle_seed.seed must be in [1, 1000000000], got {seed}"),
-                    });
-                }
-            }
             if oracle.repetitions == 0 {
                 return Err(ValidationCaseError::InvalidStochasticIdentity {
                     message: "oracle_seed.repetitions must be > 0".to_string(),
                 });
             }
+            match oracle.kind {
+                OracleKind::PristineOracle => {
+                    if oracle.seed.is_some() {
+                        return Err(ValidationCaseError::InvalidStochasticIdentity {
+                            message: "pristine-oracle cannot carry a requested seed; use seed=null for pristine/default mode".to_string(),
+                        });
+                    }
+                    if oracle.strategy.is_some() {
+                        return Err(ValidationCaseError::InvalidStochasticIdentity {
+                            message: "pristine-oracle cannot declare the seedable #50 strategy".to_string(),
+                        });
+                    }
+                }
+                OracleKind::SeedableValidationOracle => {
+                    let strategy = oracle.strategy.as_ref().ok_or_else(|| {
+                        ValidationCaseError::InvalidStochasticIdentity {
+                            message: "seedable-validation-oracle requires a stable #50 strategy reference".to_string(),
+                        }
+                    })?;
+                    if strategy.strategy != ORACLE_STOCHASTIC_STRATEGY_ID
+                        || strategy.version != ORACLE_STOCHASTIC_STRATEGY_VERSION
+                        || strategy.contract_path != ORACLE_STOCHASTIC_CONTRACT_PATH
+                    {
+                        return Err(ValidationCaseError::InvalidStochasticIdentity {
+                            message: format!(
+                                "unsupported oracle strategy reference: expected {} v{} at {}, got {} v{} at {}",
+                                ORACLE_STOCHASTIC_STRATEGY_ID,
+                                ORACLE_STOCHASTIC_STRATEGY_VERSION,
+                                ORACLE_STOCHASTIC_CONTRACT_PATH,
+                                strategy.strategy,
+                                strategy.version,
+                                strategy.contract_path
+                            ),
+                        });
+                    }
+                    if let Some(seed) = oracle.seed {
+                        if seed == 0 || seed > 1_000_000_000 {
+                            return Err(ValidationCaseError::InvalidStochasticIdentity {
+                                message: format!(
+                                    "oracle_seed.seed must be in [1, 1000000000], got {seed}"
+                                ),
+                            });
+                        }
+                    }
+                }
+            }
         }
 
-        // For analytic cases with no RNG consumption, both can be None
-        // For stochastic cases, at least one should be specified
         if self.physics_switches.turbulence
             && self.stochastic.candidate_philox.is_none()
             && self.stochastic.oracle_seed.is_none()
@@ -1644,7 +1831,6 @@ impl ValidationCaseManifest {
                 message: "stochastic identity required when turbulence is enabled".to_string(),
             });
         }
-
         Ok(())
     }
 
@@ -2047,9 +2233,29 @@ mod tests {
                 }),
                 oracle_seed: Some(OracleSeedIdentity {
                     kind: OracleKind::SeedableValidationOracle,
+                    strategy: Some(OracleStrategyRef::canonical()),
                     seed: Some(1),
                     repetitions: 5,
                 }),
+            },
+            validation_definition_refs: ValidationDefinitionRefs {
+                metric_contracts: vec![ValidationDefinitionRef {
+                    id: "evaluation-metrics".to_string(),
+                    version: "report-schema-1.0.0".to_string(),
+                    path: "scripts/evaluate/metrics.py".to_string(),
+                }],
+                threshold_contracts: vec![
+                    ValidationDefinitionRef {
+                        id: "scientific-thresholds".to_string(),
+                        version: "v1".to_string(),
+                        path: "evaluation/thresholds/scientific-thresholds-v1.json".to_string(),
+                    },
+                    ValidationDefinitionRef {
+                        id: "corpus-thresholds".to_string(),
+                        version: "1".to_string(),
+                        path: "fixtures/corpus/thresholds.json".to_string(),
+                    },
+                ],
             },
             execution_profile: ExecutionProfileRef {
                 id: "flexpart-11.1-single-thread".to_string(),
@@ -2113,6 +2319,7 @@ mod tests {
         let mut manifest = make_minimal_manifest();
         manifest.stochastic.oracle_seed = Some(OracleSeedIdentity {
             kind: OracleKind::SeedableValidationOracle,
+            strategy: Some(OracleStrategyRef::canonical()),
             seed: Some(0), // Invalid: 0 is rejected per #50 contract
             repetitions: 5,
         });
@@ -2128,6 +2335,7 @@ mod tests {
         let mut manifest = make_minimal_manifest();
         manifest.stochastic.oracle_seed = Some(OracleSeedIdentity {
             kind: OracleKind::SeedableValidationOracle,
+            strategy: Some(OracleStrategyRef::canonical()),
             seed: Some(1_000_000_001), // Invalid: > 1e9
             repetitions: 5,
         });
@@ -2136,6 +2344,69 @@ mod tests {
             err,
             ValidationCaseError::InvalidStochasticIdentity { .. }
         ));
+    }
+
+    #[test]
+    fn pristine_oracle_default_mode_is_seedless() {
+        let mut manifest = make_minimal_manifest();
+        manifest.stochastic.oracle_seed = Some(OracleSeedIdentity {
+            kind: OracleKind::PristineOracle,
+            strategy: None,
+            seed: None,
+            repetitions: 2,
+        });
+        manifest.validate().expect("pristine default mode validates");
+        manifest.stochastic.oracle_seed.as_mut().unwrap().seed = Some(1);
+        let err = manifest.validate().expect_err("pristine seed must fail");
+        assert!(err.to_string().contains("pristine-oracle"));
+    }
+
+    #[test]
+    fn seedable_oracle_requires_exact_issue50_reference() {
+        let mut manifest = make_minimal_manifest();
+        manifest.stochastic.oracle_seed.as_mut().unwrap().strategy = None;
+        let err = manifest.validate().expect_err("missing strategy must fail");
+        assert!(err.to_string().contains("#50 strategy"));
+
+        let mut manifest = make_minimal_manifest();
+        manifest.stochastic.oracle_seed.as_mut().unwrap().strategy =
+            Some(OracleStrategyRef {
+                strategy: "wrong".to_string(),
+                version: 1,
+                contract_path: ORACLE_STOCHASTIC_CONTRACT_PATH.to_string(),
+            });
+        let err = manifest.validate().expect_err("wrong strategy must fail");
+        assert!(err.to_string().contains("unsupported oracle strategy reference"));
+
+        let mut manifest = make_minimal_manifest();
+        manifest.stochastic.oracle_seed.as_mut().unwrap().seed = None;
+        manifest.validate().expect("seedable default-equivalent mode validates");
+    }
+
+    #[test]
+    fn context_required_units_fail_closed() {
+        let mut manifest = make_minimal_manifest();
+        manifest.units.mass = None;
+        assert!(manifest.validate().expect_err("missing mass unit").to_string().contains("units.mass"));
+
+        let mut manifest = make_minimal_manifest();
+        manifest.units.concentration = Some("pg/m3".to_string());
+        assert!(manifest.validate().expect_err("wrong concentration unit").to_string().contains("units.concentration"));
+
+        let mut manifest = make_minimal_manifest();
+        manifest.units.pressure = None;
+        assert!(manifest.validate().expect_err("missing pressure unit").to_string().contains("units.pressure"));
+    }
+
+    #[test]
+    fn validation_definition_refs_fail_closed() {
+        let mut manifest = make_minimal_manifest();
+        manifest.validation_definition_refs.metric_contracts.clear();
+        assert!(manifest.validate().expect_err("missing metric refs").to_string().contains("metric_contracts"));
+
+        let mut manifest = make_minimal_manifest();
+        manifest.validation_definition_refs.threshold_contracts[0].path = "../bad.json".to_string();
+        assert!(manifest.validate().expect_err("parent path").to_string().contains("repository-relative"));
     }
 
     #[test]

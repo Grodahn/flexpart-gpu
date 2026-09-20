@@ -48,6 +48,27 @@ FORTRAN_OUT = CORPUS / "fortran"
 
 # FLEXPART RELEASES MASS is in grams; candidate case masses are in kilograms.
 KG_TO_G = 1000.0
+MASS_CONSISTENCY_TOLERANCE_REL = 1e-6
+
+ORACLE_STOCHASTIC_STRATEGY_ID = "flexpart-oracle-validation-seed-offset"
+ORACLE_STOCHASTIC_STRATEGY_VERSION = 1
+ORACLE_STOCHASTIC_CONTRACT_PATH = "reference/oracle-stochastic-identity.json"
+
+CANONICAL_UNIT_VALUES = {
+    "wind": "m/s",
+    "displacement": "m",
+    "pressure": "Pa",
+    "temperature": "K",
+    "heat_flux": "W/m2",
+    "height": "m",
+    "mass": "kg",
+    "time": "s",
+    "shear": "1/s",
+    "inv_obukhov": "1/m",
+    "deposition_velocity": "m/s",
+    "scavenging_coefficient": "1/s",
+    "concentration": "kg/m3",
+}
 
 # Standard concentration output levels [m] shared by all synthetic corpus
 # cases. The output grid is independent of the wind-field levels; one fixed
@@ -72,27 +93,39 @@ RESTART_NOTE = (
 )
 
 
-def case_total_mass_kg(case_id: str, case: dict) -> float:
-    """Total released mass [kg] from the normalized release inventory.
+def _timestamp14(value, case_id: str, field: str) -> str:
+    if not isinstance(value, str) or len(value) != 14 or not value.isdigit():
+        raise SystemExit(
+            f"{case_id}: {field} must be YYYYMMDDHHMMSS (14 digits), got {value!r}"
+        )
+    return value
 
-    The raw Python path (``json.loads``, no Rust validator) must not be weaker
-    than the canonical contract: the mass must be declared as a finite number,
-    never defaulted.
-    """
+
+def case_total_mass_kg(case_id: str, case: dict) -> float:
     release = _required_release(case_id, case)
     inventory = release.get("inventory")
     if not isinstance(inventory, dict):
+        raise SystemExit(f"{case_id}: release.inventory must be an object, got {inventory!r}")
+    if inventory.get("unit") != "kg":
         raise SystemExit(
-            f"{case_id}: release.inventory must be an object, got {inventory!r}"
+            f"{case_id}: release.inventory.unit must be 'kg', got {inventory.get('unit')!r}"
         )
-    return _finite_number(
+    quantity = _finite_number(
         inventory.get("quantity_kg"), case_id, "release.inventory.quantity_kg"
     )
+    if quantity <= 0:
+        raise SystemExit(
+            f"{case_id}: release.inventory.quantity_kg must be finite and > 0, got {quantity!r}"
+        )
+    return quantity
 
 
 def species_number_for_case(case_id: str, case: dict) -> int:
-    """Map the normalized species id (``SPECIES_<NNN>``) to ``SPECNUM_REL``."""
-    species_id = case["release"]["species"]["id"]
+    release = _required_release(case_id, case)
+    species = release.get("species")
+    if not isinstance(species, dict):
+        raise SystemExit(f"{case_id}: release.species must be an object, got {species!r}")
+    species_id = species.get("id")
     if not isinstance(species_id, str) or not species_id.startswith("SPECIES_"):
         raise SystemExit(
             f"{case_id}: release.species.id {species_id!r} must match SPECIES_<NNN>"
@@ -106,44 +139,36 @@ def species_number_for_case(case_id: str, case: dict) -> int:
 
 
 def release_window_datetimes(case_id: str, case: dict) -> tuple:
-    """Derive (start, end) YYYYMMDDHHMMSS release stamps from normalized timing."""
     release = _required_release(case_id, case)
     timing = release.get("timing")
     if not isinstance(timing, dict):
-        raise SystemExit(
-            f"{case_id}: release.timing must be an object, got {timing!r}"
-        )
+        raise SystemExit(f"{case_id}: release.timing must be an object, got {timing!r}")
     kind = timing.get("kind")
     if kind == "instant":
-        stamp = timing["at"]
-        if not isinstance(stamp, str):
+        stamp = _timestamp14(timing.get("at"), case_id, "release.timing.at")
+        integration = _required_integration(case_id, case)
+        if stamp != integration["start"]:
             raise SystemExit(
-                f"{case_id}: release.timing.at must be a YYYYMMDDHHMMSS string, got {stamp!r}"
+                f"{case_id}: release.timing.at {stamp} must equal integration.start "
+                f"{integration['start']}"
             )
         return stamp, stamp
     if kind == "window":
-        for key in ("start", "end"):
-            if not isinstance(timing.get(key), str):
-                raise SystemExit(
-                    f"{case_id}: release.timing.{key} must be a "
-                    f"YYYYMMDDHHMMSS string, got {timing.get(key)!r}"
-                )
-        return timing["start"], timing["end"]
+        start = _timestamp14(timing.get("start"), case_id, "release.timing.start")
+        end = _timestamp14(timing.get("end"), case_id, "release.timing.end")
+        if end < start:
+            raise SystemExit(
+                f"{case_id}: release.timing.end {end} must be >= start {start}"
+            )
+        return start, end
     raise SystemExit(f"{case_id}: unknown release.timing.kind {kind!r}")
 
 
 def flexpart_datetime(stamp: str) -> tuple:
-    """Split a YYYYMMDDHHMMSS stamp into (YYYYMMDD int, HHMMSS int)."""
     return int(stamp[0:8]), int(stamp[8:14])
 
 
 def release_vertical(case_id: str, case: dict) -> tuple:
-    """Return (z1, z2, zkind) for FLEXPART RELEASES.
-
-    AGL maps to ``ZKIND=1`` (meters above ground, the repository convention
-    asserted by the ETEX input-equivalence audit). ASL has no established
-    ZKIND mapping and fails closed.
-    """
     release = _required_release(case_id, case)
     if release.get("vertical_ref") != "agl":
         raise SystemExit(
@@ -152,43 +177,125 @@ def release_vertical(case_id: str, case: dict) -> tuple:
         )
     geometry = release.get("geometry")
     if not isinstance(geometry, dict):
-        raise SystemExit(
-            f"{case_id}: release.geometry must be an object, got {geometry!r}"
-        )
+        raise SystemExit(f"{case_id}: release.geometry must be an object, got {geometry!r}")
     kind = geometry.get("kind")
     if kind == "point":
         z = _finite_number(geometry.get("z_m"), case_id, "release.geometry.z_m")
+        if z < 0:
+            raise SystemExit(f"{case_id}: release.geometry.z_m must be >= 0 for AGL")
         return z, z, 1
     if kind == "box":
-        return (
-            _finite_number(geometry.get("z_min_m"), case_id, "release.geometry.z_min_m"),
-            _finite_number(geometry.get("z_max_m"), case_id, "release.geometry.z_max_m"),
-            1,
-        )
+        z_min = _finite_number(geometry.get("z_min_m"), case_id, "release.geometry.z_min_m")
+        z_max = _finite_number(geometry.get("z_max_m"), case_id, "release.geometry.z_max_m")
+        if z_min < 0 or z_max < 0:
+            raise SystemExit(f"{case_id}: release box heights must be >= 0 for AGL")
+        if z_max < z_min:
+            raise SystemExit(
+                f"{case_id}: release.geometry.z_max_m {z_max} must be >= z_min_m {z_min}"
+            )
+        return z_min, z_max, 1
     raise SystemExit(f"{case_id}: unknown release.geometry.kind {kind!r}")
+
+
+def _checked_lon(value, case_id: str, field: str) -> float:
+    lon = _finite_number(value, case_id, field)
+    if not -180.0 <= lon <= 360.0:
+        raise SystemExit(f"{case_id}: {field} must be in [-180, 360], got {lon}")
+    return lon
+
+
+def _checked_lat(value, case_id: str, field: str) -> float:
+    lat = _finite_number(value, case_id, field)
+    if not -90.0 <= lat <= 90.0:
+        raise SystemExit(f"{case_id}: {field} must be in [-90, 90], got {lat}")
+    return lat
 
 
 def release_lonlat(case_id: str, case: dict) -> tuple:
-    """Return (lon1, lon2, lat1, lat2) for FLEXPART RELEASES."""
     release = _required_release(case_id, case)
     geometry = release.get("geometry")
     if not isinstance(geometry, dict):
-        raise SystemExit(
-            f"{case_id}: release.geometry must be an object, got {geometry!r}"
-        )
+        raise SystemExit(f"{case_id}: release.geometry must be an object, got {geometry!r}")
     kind = geometry.get("kind")
     if kind == "point":
-        lon = _finite_number(geometry.get("lon_deg"), case_id, "release.geometry.lon_deg")
-        lat = _finite_number(geometry.get("lat_deg"), case_id, "release.geometry.lat_deg")
+        lon = _checked_lon(geometry.get("lon_deg"), case_id, "release.geometry.lon_deg")
+        lat = _checked_lat(geometry.get("lat_deg"), case_id, "release.geometry.lat_deg")
         return lon, lon, lat, lat
     if kind == "box":
-        return (
-            _finite_number(geometry.get("lon_min_deg"), case_id, "release.geometry.lon_min_deg"),
-            _finite_number(geometry.get("lon_max_deg"), case_id, "release.geometry.lon_max_deg"),
-            _finite_number(geometry.get("lat_min_deg"), case_id, "release.geometry.lat_min_deg"),
-            _finite_number(geometry.get("lat_max_deg"), case_id, "release.geometry.lat_max_deg"),
-        )
+        lon_min = _checked_lon(geometry.get("lon_min_deg"), case_id, "release.geometry.lon_min_deg")
+        lon_max = _checked_lon(geometry.get("lon_max_deg"), case_id, "release.geometry.lon_max_deg")
+        lat_min = _checked_lat(geometry.get("lat_min_deg"), case_id, "release.geometry.lat_min_deg")
+        lat_max = _checked_lat(geometry.get("lat_max_deg"), case_id, "release.geometry.lat_max_deg")
+        if lon_max < lon_min:
+            raise SystemExit(f"{case_id}: release.geometry.lon_max_deg must be >= lon_min_deg")
+        if lat_max < lat_min:
+            raise SystemExit(f"{case_id}: release.geometry.lat_max_deg must be >= lat_min_deg")
+        return lon_min, lon_max, lat_min, lat_max
     raise SystemExit(f"{case_id}: unknown release.geometry.kind {kind!r}")
+
+
+def _validate_release_contract(case_id: str, case: dict, domain: dict) -> dict:
+    release = _required_release(case_id, case)
+    count = _required_particle_count(case_id, release)
+    total = case_total_mass_kg(case_id, case)
+    species_number_for_case(case_id, case)
+    release_window_datetimes(case_id, case)
+    lon1, lon2, lat1, lat2 = release_lonlat(case_id, case)
+    z1, z2, _ = release_vertical(case_id, case)
+
+    per_particle = release.get("mass_kg_per_particle")
+    if per_particle is not None:
+        per_particle = _finite_number(
+            per_particle, case_id, "release.mass_kg_per_particle"
+        )
+        if per_particle <= 0:
+            raise SystemExit(
+                f"{case_id}: release.mass_kg_per_particle must be finite and > 0"
+            )
+        implied = per_particle * count
+        if abs((implied - total) / total) > MASS_CONSISTENCY_TOLERANCE_REL:
+            raise SystemExit(
+                f"{case_id}: release.mass_kg_per_particle x particle_count implies "
+                f"{implied}, inconsistent with inventory {total}"
+            )
+
+    containment = case.get("require_source_containment", True)
+    if not isinstance(containment, bool):
+        raise SystemExit(
+            f"{case_id}: require_source_containment must be a boolean, got {containment!r}"
+        )
+    if containment:
+        heights = domain.get("wind_heights_m")
+        if not isinstance(heights, list) or not heights:
+            raise SystemExit(
+                f"{case_id}: domain.wind_heights_m must be a non-empty array for source containment"
+            )
+        height_values = [
+            _finite_number(v, case_id, "domain.wind_heights_m") for v in heights
+        ]
+        lon_min = float(domain["xlon0_deg"])
+        lon_max = lon_min + int(domain["nx"]) * float(domain["dx_deg"])
+        lat_min = float(domain["ylat0_deg"])
+        lat_max = lat_min + int(domain["ny"]) * float(domain["dy_deg"])
+        height_min, height_max = height_values[0], height_values[-1]
+        eps = 1e-6
+        for label, lon, lat, z in (("min", lon1, lat1, z1), ("max", lon2, lat2, z2)):
+            if not lon_min - eps <= lon <= lon_max + eps:
+                raise SystemExit(
+                    f"{case_id}: release geometry {label} longitude {lon} outside domain "
+                    f"[{lon_min}, {lon_max}]"
+                )
+            if not lat_min - eps <= lat <= lat_max + eps:
+                raise SystemExit(
+                    f"{case_id}: release geometry {label} latitude {lat} outside domain "
+                    f"[{lat_min}, {lat_max}]"
+                )
+            if not height_min - eps <= z <= height_max + eps:
+                raise SystemExit(
+                    f"{case_id}: release geometry {label} height {z} outside domain levels "
+                    f"[{height_min}, {height_max}]"
+                )
+    return release
 
 
 def sim_end_date(start: str, total_s: int) -> tuple:
@@ -528,6 +635,123 @@ def _required_output(case_id: str, case: dict) -> dict:
     }
 
 
+def _validate_stochastic_contract(case_id: str, case: dict, physics: dict) -> None:
+    stochastic = case.get("stochastic")
+    if not isinstance(stochastic, dict):
+        raise SystemExit(f"{case_id}: stochastic must be an object")
+    candidate = stochastic.get("candidate_philox")
+    if candidate is not None:
+        if not isinstance(candidate, dict):
+            raise SystemExit(f"{case_id}: stochastic.candidate_philox must be an object or null")
+        count = candidate.get("count")
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            raise SystemExit(f"{case_id}: stochastic.candidate_philox.count must be > 0")
+        if not isinstance(candidate.get("derivation"), str) or not candidate["derivation"]:
+            raise SystemExit(f"{case_id}: stochastic.candidate_philox.derivation must not be empty")
+
+    oracle = stochastic.get("oracle_seed")
+    if oracle is not None:
+        if not isinstance(oracle, dict):
+            raise SystemExit(f"{case_id}: stochastic.oracle_seed must be an object or null")
+        repetitions = oracle.get("repetitions", 5)
+        if isinstance(repetitions, bool) or not isinstance(repetitions, int) or repetitions <= 0:
+            raise SystemExit(f"{case_id}: stochastic.oracle_seed.repetitions must be > 0")
+        kind = oracle.get("kind")
+        seed = oracle.get("seed")
+        strategy = oracle.get("strategy")
+        if kind == "pristine-oracle":
+            if seed is not None:
+                raise SystemExit(f"{case_id}: pristine-oracle cannot carry a requested seed")
+            if strategy is not None:
+                raise SystemExit(f"{case_id}: pristine-oracle cannot declare a seedable strategy")
+        elif kind == "seedable-validation-oracle":
+            expected = {
+                "strategy": ORACLE_STOCHASTIC_STRATEGY_ID,
+                "version": ORACLE_STOCHASTIC_STRATEGY_VERSION,
+                "contract_path": ORACLE_STOCHASTIC_CONTRACT_PATH,
+            }
+            if strategy != expected:
+                raise SystemExit(
+                    f"{case_id}: seedable-validation-oracle requires the exact #50 strategy "
+                    f"reference {expected!r}, got {strategy!r}"
+                )
+            if seed is not None and (
+                isinstance(seed, bool) or not isinstance(seed, int) or not 1 <= seed <= 1_000_000_000
+            ):
+                raise SystemExit(
+                    f"{case_id}: stochastic.oracle_seed.seed must be in [1, 1000000000]"
+                )
+        else:
+            raise SystemExit(f"{case_id}: unsupported stochastic.oracle_seed.kind {kind!r}")
+
+    if physics["turbulence"] and candidate is None and oracle is None:
+        raise SystemExit(f"{case_id}: stochastic identity required when turbulence is enabled")
+
+
+def _required_units(case_id: str, case: dict, wind: dict, surface, physics: dict) -> dict:
+    units = case.get("units")
+    if not isinstance(units, dict):
+        raise SystemExit(f"{case_id}: units must be an object")
+    unknown = sorted(set(units) - set(CANONICAL_UNIT_VALUES))
+    if unknown:
+        raise SystemExit(f"{case_id}: unknown units field(s): {', '.join(unknown)}")
+
+    required = {"wind", "height", "mass", "time", "concentration"}
+    if surface is not None:
+        required.update({"pressure", "temperature", "heat_flux", "inv_obukhov"})
+    if wind["profile"] == "linear_shear":
+        required.add("shear")
+    if physics["dry_deposition"]:
+        required.add("deposition_velocity")
+    if physics["wet_deposition"]:
+        required.add("scavenging_coefficient")
+
+    for field in required:
+        expected = CANONICAL_UNIT_VALUES[field]
+        if units.get(field) != expected:
+            raise SystemExit(
+                f"{case_id}: units.{field} must be {expected!r}, got {units.get(field)!r}"
+            )
+    for field, actual in units.items():
+        expected = CANONICAL_UNIT_VALUES[field]
+        if actual != expected:
+            raise SystemExit(
+                f"{case_id}: units.{field} must be {expected!r}, got {actual!r}"
+            )
+    return units
+
+
+def _required_validation_definition_refs(case_id: str, case: dict) -> dict:
+    refs = case.get("validation_definition_refs")
+    if not isinstance(refs, dict):
+        raise SystemExit(f"{case_id}: validation_definition_refs must be an object")
+    if set(refs) != {"metric_contracts", "threshold_contracts"}:
+        raise SystemExit(
+            f"{case_id}: validation_definition_refs must contain exactly "
+            "metric_contracts and threshold_contracts"
+        )
+    for field in ("metric_contracts", "threshold_contracts"):
+        values = refs.get(field)
+        if not isinstance(values, list) or not values:
+            raise SystemExit(f"{case_id}: validation_definition_refs.{field} must be non-empty")
+        for ref in values:
+            if not isinstance(ref, dict) or set(ref) != {"id", "version", "path"}:
+                raise SystemExit(
+                    f"{case_id}: validation_definition_refs.{field} entries require id/version/path"
+                )
+            for key in ("id", "version", "path"):
+                if not isinstance(ref[key], str) or not ref[key]:
+                    raise SystemExit(
+                        f"{case_id}: validation_definition_refs.{field}.{key} must be non-empty"
+                    )
+            if ref["path"].startswith("/") or ".." in ref["path"].split("/"):
+                raise SystemExit(
+                    f"{case_id}: validation definition path must be repository-relative "
+                    f"without '..': {ref['path']!r}"
+                )
+    return refs
+
+
 def mandatory_physics_switches(case_id: str, case: dict) -> dict:
     """Fail-closed physics_switches reader used by the raw Python path.
 
@@ -584,12 +808,18 @@ def _required_domain(case_id: str, case: dict) -> dict:
         raise SystemExit(f"{case_id}: domain must be an object, got {domain!r}")
     for field in ("xlon0_deg", "ylat0_deg", "dx_deg", "dy_deg"):
         _finite_number(domain.get(field), case_id, f"domain.{field}")
-    for field in ("nx", "ny"):
+    for field in ("nx", "ny", "nz"):
         value = domain.get(field)
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise SystemExit(
                 f"{case_id}: domain.{field} must be a positive integer, got {value!r}"
             )
+    heights = domain.get("wind_heights_m")
+    if not isinstance(heights, list) or len(heights) != domain["nz"]:
+        raise SystemExit(f"{case_id}: domain.wind_heights_m length must equal domain.nz")
+    parsed = [_finite_number(v, case_id, "domain.wind_heights_m") for v in heights]
+    if any(b <= a for a, b in zip(parsed, parsed[1:])):
+        raise SystemExit(f"{case_id}: domain.wind_heights_m must be strictly increasing")
     return domain
 
 
@@ -1223,13 +1453,13 @@ def validate_and_normalize_case_for_generation(
     integration = _required_integration(case_id, case)
     direction = _required_simulation_direction(case_id, case)
     output = _required_output(case_id, case)
+    domain = _required_domain(case_id, case)
 
-    release = _required_release(case_id, case)
+    release = _validate_release_contract(case_id, case, domain)
     mass_kg = case_total_mass_kg(case_id, case)
     release_window_datetimes(case_id, case)
     lon1, lon2, lat1, lat2 = release_lonlat(case_id, case)
     z1, z2, _zkind = release_vertical(case_id, case)
-    _required_particle_count(case_id, release)
     specnum = species_number_for_case(case_id, case)
 
     wind = _required_wind(case_id, case)
@@ -1237,9 +1467,10 @@ def validate_and_normalize_case_for_generation(
     meteorology = _required_meteorology(case_id, wind) if profile == "real_weather" else None
 
     physics = mandatory_physics_switches(case_id, case)
-    _required_surface(case_id, case, physics)
-
-    domain = _required_domain(case_id, case)
+    surface = _required_surface(case_id, case, physics)
+    _validate_stochastic_contract(case_id, case, physics)
+    _required_units(case_id, case, wind, surface, physics)
+    _required_validation_definition_refs(case_id, case)
 
     if specnum == 40:
         if aerosol is None or not aerosol.is_file():

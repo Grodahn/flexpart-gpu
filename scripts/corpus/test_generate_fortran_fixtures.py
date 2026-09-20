@@ -489,6 +489,31 @@ class PreflightFailClosedTest(unittest.TestCase):
 
         self._assert_aborts_before_writes(mutate, "particle_count")
 
+    def test_release_zero_mass_aborts_before_any_write(self):
+        def mutate(case):
+            case["release"]["inventory"]["quantity_kg"] = 0
+        self._assert_aborts_before_writes(mutate, "quantity_kg")
+
+    def test_release_per_particle_mass_mismatch_aborts_before_any_write(self):
+        def mutate(case):
+            case["release"]["mass_kg_per_particle"] = 0.123
+        self._assert_aborts_before_writes(mutate, "mass_kg_per_particle")
+
+    def test_release_bad_timestamp_aborts_before_any_write(self):
+        def mutate(case):
+            case["release"]["timing"]["at"] = "20240101"
+        self._assert_aborts_before_writes(mutate, "YYYYMMDDHHMMSS")
+
+    def test_release_negative_agl_aborts_before_any_write(self):
+        def mutate(case):
+            case["release"]["geometry"]["z_m"] = -1
+        self._assert_aborts_before_writes(mutate, ">= 0")
+
+    def test_release_outside_domain_aborts_before_any_write(self):
+        def mutate(case):
+            case["release"]["geometry"]["lon_deg"] = 20.0
+        self._assert_aborts_before_writes(mutate, "outside domain")
+
     def test_malformed_physics_switches_aborts_before_any_write(self):
         def mutate(case):
             case["physics_switches"] = {"turbulence": True}
@@ -500,6 +525,35 @@ class PreflightFailClosedTest(unittest.TestCase):
             case["oracle_command_overrides"]["ctl"] = 0
 
         self._assert_aborts_before_writes(mutate, "ctl")
+
+    def test_seedable_oracle_missing_strategy_ref_aborts_before_any_write(self):
+        def mutate(case):
+            case["stochastic"]["oracle_seed"].pop("strategy", None)
+        self._assert_aborts_before_writes(mutate, "#50 strategy")
+
+    def test_pristine_oracle_with_seed_aborts_before_any_write(self):
+        def mutate(case):
+            case["stochastic"]["oracle_seed"] = {
+                "kind": "pristine-oracle",
+                "seed": 1,
+                "repetitions": 2,
+            }
+        self._assert_aborts_before_writes(mutate, "pristine-oracle")
+
+    def test_missing_context_unit_aborts_before_any_write(self):
+        def mutate(case):
+            case["units"].pop("mass", None)
+        self._assert_aborts_before_writes(mutate, "units.mass")
+
+    def test_wrong_concentration_unit_aborts_before_any_write(self):
+        def mutate(case):
+            case["units"]["concentration"] = "pg/m3"
+        self._assert_aborts_before_writes(mutate, "units.concentration")
+
+    def test_missing_metric_definition_refs_aborts_before_any_write(self):
+        def mutate(case):
+            case["validation_definition_refs"]["metric_contracts"] = []
+        self._assert_aborts_before_writes(mutate, "metric_contracts")
 
     def test_outgrid_rounding_mismatch_aborts_before_any_write(self):
         def mutate(case):

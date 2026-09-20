@@ -297,7 +297,59 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
 
   test -s "${VERTICAL_DIR}/comparison-report.json" \
     || fail "Vertical-column comparison report is missing"
-  log_info "FLEXPART-11.1 vertical-column comparison passed."
+
+  # Repeat the same oracle comparison on one real 137-level ERA5/ETEX column.
+  if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
+    ${DOCKER_USER_ARGS} \
+    flexpart-fortran python3 /workspace/flexpart-gpu/scripts/vertical/extract_real_etex_column.py \
+      --canonical /workspace/flexpart-gpu/fixtures/meteorology/era5-etex-native-v1.json \
+      --canonical-provenance /workspace/flexpart-gpu/fixtures/meteorology/era5-etex-native-v1.provenance.json \
+      --surface-archive /workspace/flexpart-gpu/fixtures/etex/native-mini/era5-surface-19941023-24.npz \
+      --output /workspace/target/ci-gate/vertical-column/real-column-snapshot.json \
+      --provenance-output /workspace/target/ci-gate/vertical-column/real-column-fixture-provenance.json \
+      2>&1 | tee "${VERTICAL_DIR}/real-column-extract.log"; then
+    fail "Extracting the real #30 ERA5/ETEX vertical column failed"
+  fi
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/prepare_oracle_column.py" \
+    --snapshot "${VERTICAL_DIR}/real-column-snapshot.json" \
+    --output "${VERTICAL_DIR}/real-oracle-input.txt"; then
+    fail "Preparing the real #30 vertical oracle input failed"
+  fi
+
+  if ! cargo run --quiet --bin vertical-column-report -- \
+    "${VERTICAL_DIR}/real-column-snapshot.json" \
+    "${VERTICAL_DIR}/real-candidate.json"; then
+    fail "Candidate real #30 vertical-column transform failed"
+  fi
+
+  if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
+    ${DOCKER_USER_ARGS} \
+    flexpart-fortran bash -c "
+      set -euo pipefail
+      /workspace/target/ci-gate/vertical-column/oracle-build/vertical-column-oracle \
+        /workspace/target/ci-gate/vertical-column/real-oracle-input.txt \
+        /workspace/target/ci-gate/vertical-column/real-oracle-output.txt
+    " 2>&1 | tee "${VERTICAL_DIR}/real-oracle-run.log"; then
+    fail "Pinned FLEXPART real #30 vertical-column oracle harness failed"
+  fi
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/compare_oracle_column.py" \
+    --candidate "${VERTICAL_DIR}/real-candidate.json" \
+    --oracle "${VERTICAL_DIR}/real-oracle-output.txt" \
+    --oracle-checkout "${ORACLE_CHECKOUT}" \
+    --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+    --source-snapshot "${VERTICAL_DIR}/real-column-snapshot.json" \
+    --output "${VERTICAL_DIR}/real-comparison-report.json"; then
+    fail "FLEXPART-11.1 real vertical-column comparison failed"
+  fi
+
+  test -s "${VERTICAL_DIR}/real-comparison-report.json" \
+    || fail "Real vertical-column comparison report is missing"
+  test -s "${VERTICAL_DIR}/real-column-fixture-provenance.json" \
+    || fail "Real vertical-column fixture provenance is missing"
+
+  log_info "FLEXPART-11.1 synthetic and real vertical-column comparisons passed."
 fi
 # ---------------------------------------------------------------------------
 # 3. Prove a real software-WGPU adapter (fail-closed, no skip allowed).
@@ -423,7 +475,9 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${CANDIDATE_LOG}" \
     --artifact "${OUTPUT_DIR}/sw-wgpu-advection.log" \
     --artifact "${OUTPUT_DIR}/gpu-preflight.log" \
-    --artifact "${OUTPUT_DIR}/vertical-column/comparison-report.json" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
+    --artifact "${OUTPUT_DIR}/vertical-column/comparison-report.json" \
+    --artifact "${OUTPUT_DIR}/vertical-column/real-comparison-report.json" \
+    --artifact "${OUTPUT_DIR}/vertical-column/real-column-fixture-provenance.json" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
     fail "Provenance manifest generation failed (missing artifact or unpinned oracle)"
   fi
   test -s "${OUTPUT_DIR}/run-manifest.json" || fail "Provenance manifest missing: ${OUTPUT_DIR}/run-manifest.json"

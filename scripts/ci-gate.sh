@@ -540,7 +540,10 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${OUTPUT_DIR}/sw-wgpu-advection.log" \
     --artifact "${OUTPUT_DIR}/gpu-preflight.log" \
     --artifact "${OUTPUT_DIR}/vertical-column/comparison-report.json" \
+    --artifact "${OUTPUT_DIR}/vertical-column/conformance-comparison-report.json" \
+    --artifact "${OUTPUT_DIR}/vertical-column/routine-oracle-provenance.json" \
     --artifact "${OUTPUT_DIR}/vertical-column/real-comparison-report.json" \
+    --artifact "${OUTPUT_DIR}/vertical-column/real-conformance-comparison-report.json" \
     --artifact "${OUTPUT_DIR}/vertical-column/real-column-fixture-provenance.json" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
     fail "Provenance manifest generation failed (missing artifact or unpinned oracle)"
   fi

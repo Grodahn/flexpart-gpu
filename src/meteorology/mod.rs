@@ -1,3 +1,5 @@
+pub mod vertical;
+
 //! Canonical provider-independent meteorology contract for issue #29.
 //!
 //! Provider/file adapters normalize into these types. Physics must not depend on

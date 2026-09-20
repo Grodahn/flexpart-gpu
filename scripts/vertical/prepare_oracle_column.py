@@ -17,6 +17,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--motion", type=Path)
     args = parser.parse_args()
 
     snapshot = json.loads(args.snapshot.read_text(encoding="utf-8"))
@@ -62,6 +63,29 @@ def main():
         f"{temperature_value} {humidity_value}"
         for temperature_value, humidity_value in zip(temperature, humidity)
     )
+
+    if args.motion is None:
+        lines.append("0")
+    else:
+        motion = json.loads(args.motion.read_text(encoding="utf-8"))
+        expected = {
+            "kind": "pressure_velocity_omega",
+            "unit": "pascal_per_second",
+            "sign": "positive_pressure_increasing",
+            "vertical_staggering": "level_interface",
+        }
+        for key, value in expected.items():
+            if motion.get(key) != value:
+                raise ValueError(
+                    f"oracle motion fixture requires {key}={value!r}, got {motion.get(key)!r}"
+                )
+        motion_values = motion.get("values")
+        if not isinstance(motion_values, list) or len(motion_values) != nz + 1:
+            raise ValueError("oracle interface omega must contain nz+1 values")
+        if any(not np.isfinite(value) for value in motion_values):
+            raise ValueError("oracle interface omega contains non-finite values")
+        lines.append("1")
+        lines.extend(str(value) for value in motion_values)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text("\n".join(lines) + "\n", encoding="utf-8")

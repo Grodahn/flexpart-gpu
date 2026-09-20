@@ -34,6 +34,7 @@ jobs:
           cd flexpart-gpu
           cargo test --lib meteorology::tests
           cargo test --test meteorology_contract
+          python3 -m unittest scripts/test_oracle_run_manifest.py
 
       - name: Install Lavapipe (software Vulkan)
         run: |

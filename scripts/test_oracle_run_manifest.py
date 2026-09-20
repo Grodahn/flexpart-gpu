@@ -8,7 +8,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from write_oracle_run_manifest import adapter_line, artifacts, digest, validate_runtime_profile
+from write_oracle_run_manifest import (
+    adapter_line,
+    artifacts,
+    digest,
+    meteorology_contract_identity,
+    validate_runtime_profile,
+)
 
 
 class OracleRunManifestTest(unittest.TestCase):
@@ -69,6 +75,31 @@ class OracleRunManifestTest(unittest.TestCase):
             incomplete.write_text(json.dumps(reference), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "incomplete"):
                 validate_runtime_profile(incomplete, {})
+
+    def test_meteorology_contract_identity_reads_checked_in_schema(self):
+        checkout = Path(__file__).resolve().parents[1]
+        identity = meteorology_contract_identity(checkout)
+        self.assertEqual(identity["schema_id"], "flexpart-gpu.canonical-meteorology")
+        self.assertEqual(identity["schema_version"], 1)
+        source = checkout / "fixtures/meteorology/synthetic-v1.json"
+        self.assertEqual(identity["identity_source_sha256"], digest(source))
+
+    def test_meteorology_contract_identity_fails_closed_when_missing_or_malformed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixture = root / "fixtures/meteorology/synthetic-v1.json"
+            with self.assertRaisesRegex(ValueError, "missing"):
+                meteorology_contract_identity(root)
+
+            fixture.parent.mkdir(parents=True)
+            fixture.write_text("{not json", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "malformed"):
+                meteorology_contract_identity(root)
+
+            fixture.write_text(json.dumps({"schema": {"id": "", "version": 0}}),
+                               encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "id"):
+                meteorology_contract_identity(root)
 
     def test_artifacts_hash_each_file_in_directory(self):
         with tempfile.TemporaryDirectory() as directory:

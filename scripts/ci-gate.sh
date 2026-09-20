@@ -363,6 +363,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --candidate-log "${CANDIDATE_LOG}" \
     --input "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
     --input "${PROJECT_ROOT}/src/bin/fortran-validation.rs" \
+    --input "${PROJECT_ROOT}/fixtures/meteorology/synthetic-v1.json" \
     --artifact "${CANDIDATE_OUTPUT}" \
     --artifact "${CANDIDATE_LOG}" \
     --artifact "${OUTPUT_DIR}/sw-wgpu-advection.log" \
@@ -370,6 +371,17 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     fail "Provenance manifest generation failed (missing artifact or unpinned oracle)"
   fi
   test -s "${OUTPUT_DIR}/run-manifest.json" || fail "Provenance manifest missing: ${OUTPUT_DIR}/run-manifest.json"
+  if ! "${HOST_PYTHON}" -c '
+import json, sys
+data = json.load(open(sys.argv[1]))
+contract = data["meteorology_contract"]
+assert contract["schema_id"] == "flexpart-gpu.canonical-meteorology"
+assert contract["schema_version"] == 1
+assert len(contract["identity_source_sha256"]) == 64
+print("meteorology contract provenance: OK")
+' "${OUTPUT_DIR}/run-manifest.json" 2>&1 | tee "${OUTPUT_DIR}/meteorology-provenance-check.log"; then
+    fail "Run manifest lacks valid canonical meteorology schema provenance"
+  fi
 else
   echo "oracle build skipped; run-manifest not generated" > "${OUTPUT_DIR}/run-manifest.log"
 fi

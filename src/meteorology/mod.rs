@@ -825,6 +825,89 @@ mod tests {
     }
 
     #[test]
+    fn unit_mismatch_fails_closed() {
+        let mut value = snapshot();
+        let wind_u = value
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::WindU)
+            .expect("wind_u field");
+        wind_u.unit = Unit::Kelvin;
+
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::UnitMismatch(FieldId::WindU))
+        );
+    }
+
+    #[test]
+    fn shape_mismatch_fails_closed() {
+        let mut value = snapshot();
+        let temperature = value
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::Temperature)
+            .expect("temperature field");
+        temperature.shape = vec![1, 1, 2];
+        temperature.values = vec![280.0; 2];
+
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::ShapeMismatch(FieldId::Temperature))
+        );
+    }
+
+    #[test]
+    fn unknown_calendar_fails_deserialization() {
+        let mut encoded = serde_json::to_value(snapshot()).expect("serialize snapshot");
+        encoded["fields"][0]["time"]["calendar"] = serde_json::Value::String("julian".into());
+        let decoded = serde_json::from_value::<Snapshot>(encoded);
+        assert!(decoded.is_err(), "unsupported calendars must fail deserialization");
+    }
+
+    #[test]
+    fn inconsistent_hybrid_metadata_fails_closed() {
+        let mut value = snapshot();
+        value.vertical_coordinate = VerticalCoordinate {
+            kind: VerticalCoordinateKind::HybridSigmaPressure,
+            reference: VerticalReference::ModelNative,
+            ordering: VerticalOrdering::Increasing,
+            level_values: vec![25_000.0, 75_000.0],
+            interface_values: Some(vec![0.0, 50_000.0, 100_000.0]),
+            hybrid_a_interface_pa: Some(vec![0.0, 0.0]),
+            hybrid_b_interface: Some(vec![0.0, 0.5, 1.0]),
+            reference_surface_pressure_pa: Some(100_000.0),
+            surface_pressure_dependency: Some(FieldId::SurfacePressure),
+        };
+
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InvalidVerticalCoordinate)
+        );
+    }
+
+    #[test]
+    fn missing_hybrid_surface_pressure_dependency_fails_closed() {
+        let mut value = snapshot();
+        value.vertical_coordinate = VerticalCoordinate {
+            kind: VerticalCoordinateKind::HybridSigmaPressure,
+            reference: VerticalReference::ModelNative,
+            ordering: VerticalOrdering::Increasing,
+            level_values: vec![25_000.0, 75_000.0],
+            interface_values: Some(vec![0.0, 50_000.0, 100_000.0]),
+            hybrid_a_interface_pa: Some(vec![0.0, 0.0, 0.0]),
+            hybrid_b_interface: Some(vec![0.0, 0.5, 1.0]),
+            reference_surface_pressure_pa: Some(100_000.0),
+            surface_pressure_dependency: None,
+        };
+
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InvalidVerticalCoordinate)
+        );
+    }
+
+    #[test]
     fn wind_u_x_face_staggering_is_supported() {
         let mut value = snapshot();
         let wind_u = value
@@ -911,6 +994,39 @@ mod tests {
         assert_eq!(
             value.validate(&Requirements::advection()),
             Err(ContractError::InvalidStaggering(FieldId::Temperature))
+        );
+    }
+
+    #[test]
+    fn accumulation_reset_after_interval_start_fails_closed() {
+        let mut value = snapshot();
+        value.fields.push(Field {
+            id: FieldId::LargeScalePrecipitation,
+            shape: vec![2, 1],
+            axis_order: vec![Axis::X, Axis::Y],
+            unit: Unit::KilogramPerSquareMeter,
+            sign: SignConvention::NonNegative,
+            storage_order: StorageOrder::XFastest,
+            horizontal_staggering: HorizontalStaggering::CellCenter,
+            vertical_staggering: VerticalStaggering::NotApplicable,
+            time: FieldTime {
+                calendar: Calendar::Gregorian,
+                kind: TemporalKind::AccumulatedSinceReset,
+                valid_time_epoch_seconds: 1_000,
+                interval_start_epoch_seconds: Some(0),
+                interval_end_epoch_seconds: Some(1_000),
+                accumulation: Some(Accumulation {
+                    reset_epoch_seconds: 1,
+                }),
+            },
+            values: vec![0.1, 0.2],
+        });
+
+        assert_eq!(
+            value.validate(&Requirements::advection()),
+            Err(ContractError::InvalidTemporalMetadata(
+                FieldId::LargeScalePrecipitation
+            ))
         );
     }
 

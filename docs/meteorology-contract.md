@@ -119,7 +119,8 @@ Implemented:
 - explicit grid, vertical, unit, sign, calendar, time/accumulation and staggering metadata;
 - fail-closed validation of schema identity, dimensions, required fields, units/signs,
   vertical metadata, accumulation windows/resets and basic physical domains;
-- machine-readable Provenance value containing schema id/version;
+- machine-readable Snapshot provenance plus repository-wide run-manifest provenance containing
+  canonical meteorology schema id/version and a SHA-256 of the checked-in identity source;
 - checked-in synthetic 3-D fixture and round-trip test;
 - checked-in real-data native-level fixture derived from the repository's
   independently sourced ERA5/ETEX corpus
@@ -134,12 +135,13 @@ Implemented:
 - provenance integrity test that recomputes the artifact digest, checks the pinned
   source checksums, the documented retrieval identity, the selected slice indices,
   the represented/omitted field lists, the baseline FLEXPART 11.1 oracle reference and
-  the half-level averaging consistency of level_values/interface_values.
+  the half-level averaging consistency of level_values/interface_values;
+- representative fail-closed tests for missing fields, unit mismatch, dimensions,
+  unsupported calendar values, field-specific staggering, invalid hybrid metadata and
+  ambiguous/invalid accumulation reset semantics.
 
 Still required before #29 can close:
 
-- wire schema id/version into the repository-wide run-manifest path that owns candidate
-  provenance;
 - finish the pinned FLEXPART 11.1 source crosswalk for cloud phase/water and land-use/season
   mapping when #23/#33/#36 oracle contracts expose the exact v11.1 branches;
 - add provider-adapter normalization in #32, not here.

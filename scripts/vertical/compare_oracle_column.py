@@ -24,7 +24,7 @@ REQUIRED_VERTTRANSFORM_SNIPPETS = (
     "pinmconv(ix,jy,1)=(uvzlev(ix,jy,2))/",
     "pinmconv(ix,jy,kz)=(uvzlev(ix,jy,kz+1)-uvzlev(ix,jy,kz-1))/",
     "pinmconv(ix,jy,nz)=(uvzlev(ix,jy,nz)-uvzlev(ix,jy,nz-1))/",
-    "ww(ix,jy,1,n)=wwh(ix,jy,1)*pinmconv(ix,jy,1)",
+    "ww(0:nxlim,0:nylim,1,n)=wwh(0:nxlim,0:nylim,1)*pinmconv(0:nxlim,0:nylim,1)",
 )
 
 REQUIRED_WINDFIELDS_SNIPPETS = (

@@ -779,8 +779,13 @@ pub fn reconstruct_vertical_geometry(
     })
 }
 
-/// Reconstruct vertical geometry and normalize an optional native vertical
-/// motion field without performing vertical interpolation (#31 owns that).
+/// Reconstruct vertical geometry and normalize native vertical motion without
+/// performing vertical interpolation (#31 owns that).
+///
+/// This is the public normalization boundary: geometry and motion conversion
+/// are intentionally derived from the same Snapshot in one operation so callers
+/// cannot combine pressure/height geometry from one meteorological state with
+/// surface pressure or ordering metadata from another.
 pub fn reconstruct_vertical_geometry_with_motion(
     snapshot: &Snapshot,
     native_motion: &NativeVerticalMotion,
@@ -800,7 +805,7 @@ pub fn reconstruct_vertical_geometry_with_motion(
 /// [Pa/s] by dz/dp [m/Pa]. Eta-dot first becomes the FLEXPART-ready pressure
 /// vertical velocity using the centered half-level reconstruction used by
 /// FLEXPART preprocessing, then follows the same pressure-to-height step.
-pub fn normalize_vertical_motion(
+fn normalize_vertical_motion(
     snapshot: &Snapshot,
     geometry: &VerticalTransformResult,
     native_motion: &NativeVerticalMotion,

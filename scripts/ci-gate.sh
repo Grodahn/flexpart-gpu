@@ -253,13 +253,15 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
 
   if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/prepare_oracle_column.py" \
     --snapshot "${PROJECT_ROOT}/fixtures/vertical/synthetic-column-v1.json" \
+    --motion "${PROJECT_ROOT}/fixtures/vertical/synthetic-omega-interface-v1.json" \
     --output "${VERTICAL_DIR}/oracle-input.txt"; then
     fail "Preparing the #30 vertical oracle input failed"
   fi
 
   if ! cargo run --quiet --bin vertical-column-report -- \
     "${PROJECT_ROOT}/fixtures/vertical/synthetic-column-v1.json" \
-    "${VERTICAL_DIR}/candidate.json"; then
+    "${VERTICAL_DIR}/candidate.json" \
+    "${PROJECT_ROOT}/fixtures/vertical/synthetic-omega-interface-v1.json"; then
     fail "Candidate #30 vertical-column transform failed"
   fi
 
@@ -291,6 +293,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --oracle-checkout "${ORACLE_CHECKOUT}" \
     --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
     --source-snapshot "${PROJECT_ROOT}/fixtures/vertical/synthetic-column-v1.json" \
+    --source-motion "${PROJECT_ROOT}/fixtures/vertical/synthetic-omega-interface-v1.json" \
     --output "${VERTICAL_DIR}/comparison-report.json"; then
     fail "FLEXPART-11.1 vertical-column comparison failed"
   fi
@@ -349,7 +352,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
   test -s "${VERTICAL_DIR}/real-column-fixture-provenance.json" \
     || fail "Real vertical-column fixture provenance is missing"
 
-  log_info "FLEXPART-11.1 synthetic and real vertical-column comparisons passed."
+  log_info "FLEXPART-11.1 synthetic pressure/height/omega and real vertical-column comparisons passed."
 fi
 # ---------------------------------------------------------------------------
 # 3. Prove a real software-WGPU adapter (fail-closed, no skip allowed).

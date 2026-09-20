@@ -327,6 +327,12 @@ def main():
         if oracle["execution_mode"] == "pinned_routine":
             if parsed_provenance.get("pinned_commit") != pinned_commit:
                 raise ValueError("routine provenance pinned commit mismatch")
+            if parsed_provenance.get("checkout_clean") is not True:
+                raise ValueError("routine provenance does not record a clean checkout")
+            if parsed_provenance.get("source_path") != "src/verttransform_mod.f90":
+                raise ValueError("routine provenance source path mismatch")
+            if parsed_provenance.get("source_sha256") != sha256(verttransform):
+                raise ValueError("routine provenance source hash mismatch")
             if parsed_provenance.get("routine") != "verttransform_ecmwf_heights":
                 raise ValueError("routine provenance names the wrong FLEXPART routine")
     elif oracle["execution_mode"] == "pinned_routine":

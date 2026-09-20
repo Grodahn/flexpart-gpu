@@ -135,6 +135,11 @@ pub struct ResolvedReleaseHeight {
     pub height_agl_m: f32,
     pub height_asl_m: f32,
 }
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct ResolvedReleaseHeightRange {
+    pub lower: ResolvedReleaseHeight,
+    pub upper: ResolvedReleaseHeight,
+}
 
 /// One model-level point exposed through the immutable #30 runtime boundary.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -383,6 +388,12 @@ pub enum VerticalTransformError {
         height_m: f32,
         reference: VerticalReference,
         terrain_asl_m: f32,
+    },
+    #[error("invalid release height range {lower_m}..{upper_m} m for {reference:?}")]
+    InvalidReleaseHeightRange {
+        lower_m: f32,
+        upper_m: f32,
+        reference: VerticalReference,
     },
     #[error("unsupported or ambiguous native vertical-motion semantics: {reason}")]
     InvalidNativeVerticalMotion { reason: &'static str },
@@ -1302,6 +1313,40 @@ pub fn resolve_release_height(
     })
 }
 
+/// Resolve ordered release-height bounds with one explicit reference.
+pub fn resolve_release_height_range(
+    lower_m: f32,
+    upper_m: f32,
+    reference: VerticalReference,
+    terrain_asl_m: f32,
+) -> Result<ResolvedReleaseHeightRange, VerticalTransformError> {
+    if lower_m > upper_m {
+        return Err(VerticalTransformError::InvalidReleaseHeightRange {
+            lower_m,
+            upper_m,
+            reference,
+        });
+    }
+    let lower = resolve_release_height(lower_m, reference, terrain_asl_m)?;
+    let upper = resolve_release_height(upper_m, reference, terrain_asl_m)?;
+    Ok(ResolvedReleaseHeightRange { lower, upper })
+}
+
+pub fn resolve_release_height_range_at_column(
+    runtime: VerticalRuntimeView<'_>,
+    x: usize,
+    y: usize,
+    lower_m: f32,
+    upper_m: f32,
+    reference: VerticalReference,
+) -> Result<ResolvedReleaseHeightRange, VerticalTransformError> {
+    resolve_release_height_range(
+        lower_m,
+        upper_m,
+        reference,
+        runtime.terrain_asl_m(x, y)?,
+    )
+}
 /// Resolve a release height using terrain from a validated #30 runtime column.
 pub fn resolve_release_height_at_column(
     runtime: VerticalRuntimeView<'_>,

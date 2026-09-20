@@ -214,10 +214,38 @@
     "lwetdep": 1
   },
   "expected_artifacts": {
-    "candidate_dir": "target/etex/mini/candidate",
-    "oracle_dir": "target/etex/mini/oracle",
-    "comparison_report": "target/etex/mini/comparison_report.json",
-    "run_manifest": "target/etex/mini/run_manifest.json"
+    "required": [
+      {
+        "id": "candidate.raw",
+        "producer": "candidate",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "candidate.decoded",
+        "producer": "candidate",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "oracle.raw",
+        "producer": "oracle",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "oracle.decoded",
+        "producer": "oracle",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "comparison.report",
+        "producer": "validation_pipeline",
+        "class": "comparison_report"
+      },
+      {
+        "id": "run.manifest",
+        "producer": "validation_pipeline",
+        "class": "run_manifest"
+      }
+    ]
   },
   "representation_differences": {
     "vertical_coordinate": "GPU: 16 fixed AGL levels (10-20000m); Oracle: 137 native hybrid model levels.",
@@ -229,9 +257,14 @@
       "INPUT_EQUIVALENCE_NOT_DEMONSTRATED per fixtures/etex/mini/README.md.",
       "These are structural representation differences, not errors.",
       "Input equivalence audit in target/etex/mini/input_equivalence_report.json."
+    ],
+    "known_input_equivalence_limitations": [
+      {
+        "code": "INPUT_EQUIVALENCE_NOT_DEMONSTRATED",
+        "description": "Existing ETEX evidence has not demonstrated candidate/oracle input equivalence; #52 must emit the authoritative gate verdict before parity scoring."
+      }
     ]
   },
-  "input_equivalence": "not_demonstrated",
   "require_source_containment": false,
   "notes": [
     "Domain containment waived: the declared placeholder domain and release geometry predate input-equivalence work (see representation_differences); containment is enforced for all synthetic corpus cases.",

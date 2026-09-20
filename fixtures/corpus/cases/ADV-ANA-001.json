@@ -118,17 +118,44 @@
     "ifine": 4
   },
   "expected_artifacts": {
-    "candidate_dir": "target/corpus/candidate/ADV-ANA-001",
-    "oracle_dir": "target/corpus/oracle/ADV-ANA-001",
-    "comparison_report": "target/corpus/comparison_report.json",
-    "run_manifest": "target/corpus/run_manifest.json"
+    "required": [
+      {
+        "id": "candidate.raw",
+        "producer": "candidate",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "candidate.decoded",
+        "producer": "candidate",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "oracle.raw",
+        "producer": "oracle",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "oracle.decoded",
+        "producer": "oracle",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "comparison.report",
+        "producer": "validation_pipeline",
+        "class": "comparison_report"
+      },
+      {
+        "id": "run.manifest",
+        "producer": "validation_pipeline",
+        "class": "run_manifest"
+      }
+    ]
   },
   "representation_differences": {
     "notes": [
       "Analytic case: no RNG consumed, no representation differences."
     ]
   },
-  "input_equivalence": "not_applicable",
   "notes": [
     "Deterministic case: no stochastic identity needed.",
     "Candidate uses isolated advection kernel; oracle runs with LTURBULENCE=0, LCONVECTION=0.",

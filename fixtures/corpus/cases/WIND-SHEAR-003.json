@@ -159,17 +159,44 @@
     "lconvection": 0
   },
   "expected_artifacts": {
-    "candidate_dir": "target/corpus/candidate/WIND-SHEAR-003",
-    "oracle_dir": "target/corpus/oracle/WIND-SHEAR-003",
-    "comparison_report": "target/corpus/comparison_report.json",
-    "run_manifest": "target/corpus/run_manifest.json"
+    "required": [
+      {
+        "id": "candidate.raw",
+        "producer": "candidate",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "candidate.decoded",
+        "producer": "candidate",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "oracle.raw",
+        "producer": "oracle",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "oracle.decoded",
+        "producer": "oracle",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "comparison.report",
+        "producer": "validation_pipeline",
+        "class": "comparison_report"
+      },
+      {
+        "id": "run.manifest",
+        "producer": "validation_pipeline",
+        "class": "run_manifest"
+      }
+    ]
   },
   "representation_differences": {
     "notes": [
       "Candidate uses true-height shear u(z) = 2.0 + 0.004*z; oracle uses a level-proxy shear in GRIB (documented approximation, diagnostic comparison)."
     ]
   },
-  "input_equivalence": "not_applicable",
   "notes": [
     "Migrated from v1 without scientific change: wind note 'u(z) = 2.0 + 0.004*z; 2 m/s at surface, about 14 m/s at 3000 m' preserved here.",
     "Sheared synthetic GRIB via scripts/generate_synthetic_grib.py --u-shear-per-m 0.004 (same single reference path, extended generator)."

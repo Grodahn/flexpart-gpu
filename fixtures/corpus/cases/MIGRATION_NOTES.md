@@ -167,11 +167,7 @@ Unchanged shapes and values; only representation notes:
 ## Introduced runner metadata (non-scientific)
 
 `execution_profile` (frozen `flexpart-11.1-single-thread` v1 + manifest
-path), `expected_artifacts` (candidate/oracle dirs, comparison report, run
-manifest; `oracle_dir` omitted for REPEAT-009, which has no oracle run),
-`representation_differences`, and `input_equivalence: not_applicable`
-(synthetic cases) are new in v2 and identical in kind to the previously
-migrated ADV-ANA-001/WIND-UNI-002/ETEX-MINI-013.
+path), `expected_artifacts.required` (stable artifact IDs plus producer/class, with no filesystem paths or hashes), and `representation_differences` are new in v2 and identical in kind to the previously migrated ADV-ANA-001/WIND-UNI-002/ETEX-MINI-013. Concrete artifact locations, hashes and immutable run attribution remain owned by #53.
 
 ## Simulation direction and output semantics
 
@@ -206,16 +202,13 @@ The generated COMMAND column layout for the historical values
 byte-identical to the previously checked-in fixtures; no scientific value
 changed in migration.
 
-## Explicit status and error semantics
+## Input-equivalence ownership and error semantics
 
-Schema v2 requires `input_equivalence` on every case. Omitting it is an error;
-the parser no longer silently turns a missing status into `not_applicable`.
-This keeps `not_applicable` an explicit scientific statement.
+Schema v2 deliberately carries **no input-equivalence verdict**. A case may declare structured representation differences and `known_input_equivalence_limitations`, but only #52 may emit the authoritative `DEMONSTRATED` / `NOT_DEMONSTRATED` gate result. Legacy/ad-hoc `input_equivalence` fields are rejected by the closed contract. ETEX-MINI-013 preserves its existing `INPUT_EQUIVALENCE_NOT_DEMONSTRATED` limitation as declarative context without turning schema validation into an equivalence decision.
 
-Manifest file writes now report a distinct `WriteFile` error instead of being
-misclassified as read failures. Unit-value disagreements use the dedicated
-`UnitMismatch` validation error; missing unit fields still report
-`MissingField`.
+`expected_artifacts` now declares stable artifact IDs, producers and semantic classes (`raw_model_output`, `decoded_model_output`, `comparison_report`, `run_manifest`) rather than target paths. #53 owns concrete paths, hashes and immutable run attribution.
+
+Manifest file writes report a distinct `WriteFile` error instead of being misclassified as read failures. Unit-value disagreements use the dedicated `UnitMismatch` validation error; missing unit fields still report `MissingField`.
 
 ## External metric and threshold references
 

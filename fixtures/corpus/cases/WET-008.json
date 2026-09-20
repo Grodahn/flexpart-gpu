@@ -163,17 +163,44 @@
     "lconvection": 0
   },
   "expected_artifacts": {
-    "candidate_dir": "target/corpus/candidate/WET-008",
-    "oracle_dir": "target/corpus/oracle/WET-008",
-    "comparison_report": "target/corpus/comparison_report.json",
-    "run_manifest": "target/corpus/run_manifest.json"
+    "required": [
+      {
+        "id": "candidate.raw",
+        "producer": "candidate",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "candidate.decoded",
+        "producer": "candidate",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "oracle.raw",
+        "producer": "oracle",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "oracle.decoded",
+        "producer": "oracle",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "comparison.report",
+        "producer": "validation_pipeline",
+        "class": "comparison_report"
+      },
+      {
+        "id": "run.manifest",
+        "producer": "validation_pipeline",
+        "class": "run_manifest"
+      }
+    ]
   },
   "representation_differences": {
     "notes": [
       "Scavenging aerosol SPECIES with precipitating GRIB; dry path disabled by zero dry-deposition velocity in the candidate."
     ]
   },
-  "input_equivalence": "not_applicable",
   "notes": [
     "Migrated from v1 without scientific change: deposition block carried key-for-key; isolated_check (dt 60 s, 12 steps, analytic mass(t) = mass0 * exp(-lambda * frac * t)) documents the kernel check and is preserved here.",
     "Scavenging aerosol SPECIES copied from upstream examples/Aerosol/SPECIES/SPECIES_040 with precipitating GRIB; dry path disabled by zero dry-deposition velocity in the candidate and by species/precip selection in the oracle."

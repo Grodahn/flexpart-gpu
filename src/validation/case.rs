@@ -10,6 +10,7 @@
 //! case is migrated to v2 and parsers reject v1 fail-closed. See
 //! `fixtures/corpus/cases/MIGRATION_NOTES.md` for the field-by-field mapping.
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::str::FromStr;
 
@@ -555,19 +556,44 @@ pub struct UnitsSpec {
     pub concentration: Option<String>,
 }
 
-/// Expected artifacts produced by a validation run.
+/// Producer namespace for a required validation artifact.
+///
+/// Paths, hashes, and concrete immutable artifact identities are intentionally
+/// not part of the case contract; #53 binds these declarations to actual run
+/// artifacts and provenance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactProducer {
+    Candidate,
+    Oracle,
+    ValidationPipeline,
+}
+
+/// Semantic class of a required validation artifact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactClass {
+    RawModelOutput,
+    DecodedModelOutput,
+    ComparisonReport,
+    RunManifest,
+}
+
+/// One stable artifact requirement declared by the case.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExpectedArtifactRequirement {
+    pub id: String,
+    pub producer: ArtifactProducer,
+    pub class: ArtifactClass,
+}
+
+/// Required artifact classes for a validation case.
+/// #51 declares what evidence must exist; #53 owns path/hash attribution.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExpectedArtifacts {
-    /// Candidate output directory pattern.
-    pub candidate_dir: String,
-    /// Oracle output directory pattern.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub oracle_dir: Option<String>,
-    /// Comparison report path.
-    pub comparison_report: String,
-    /// Run manifest path (provenance).
-    pub run_manifest: String,
+    pub required: Vec<ExpectedArtifactRequirement>,
 }
 
 /// Oracle turbulence/integration formulation selection (Issue #67).
@@ -642,7 +668,16 @@ pub struct OracleCommandOverrides {
     pub ldecay: Option<u8>,
 }
 
-/// Structured representation differences for #52 input-equivalence verdicts.
+/// A known limitation that #52 must consider when proving input equivalence.
+/// This is declarative case context, not an equivalence verdict.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InputEquivalenceLimitation {
+    pub code: String,
+    pub description: String,
+}
+
+/// Structured representation differences for #52 input-equivalence evaluation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct RepresentationDifferences {
@@ -661,22 +696,15 @@ pub struct RepresentationDifferences {
     /// PBL diagnostic differences.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pbl_diagnostics: Option<String>,
+    /// Known input-equivalence limitations carried forward for #52.
+    /// Absence does not imply demonstrated equivalence.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub known_input_equivalence_limitations: Vec<InputEquivalenceLimitation>,
     /// Additional notes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<Vec<String>>,
 }
 
-/// Input equivalence status for #52.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum InputEquivalenceStatus {
-    /// Input equivalence has been demonstrated.
-    Demonstrated,
-    /// Input equivalence has not been demonstrated (default for real-weather cases).
-    NotDemonstrated,
-    /// Input equivalence is not applicable (analytic/synthetic cases).
-    NotApplicable,
-}
 
 /// Simulation direction, i.e. the FLEXPART `LDIRECT` semantic
 /// (`readoptions_mod.f90`): `ldirect` contains the direction of time,
@@ -789,12 +817,10 @@ pub struct ValidationCaseManifest {
     pub oracle_command_overrides: OracleCommandOverrides,
     /// Expected output artifacts.
     pub expected_artifacts: ExpectedArtifacts,
-    /// Structured representation differences for #52.
+    /// Structured representation differences and known limitations for #52.
+    /// This field never contains an input-equivalence verdict.
     #[serde(default)]
     pub representation_differences: RepresentationDifferences,
-    /// Input equivalence status for #52. Required explicitly: absence must
-    /// never be interpreted as "not applicable".
-    pub input_equivalence: InputEquivalenceStatus,
     /// Whether the release geometry must lie inside the domain.
     /// Synthetic corpus cases require containment; ETEX-MINI-013 waives it
     /// (placeholder domain/release pending #52 input-equivalence work) with
@@ -1095,27 +1121,48 @@ impl ValidationCaseManifest {
 
         self.validate_units()?;
         self.validate_validation_definition_refs()?;
-
-        // Validate expected artifacts
-        if self.expected_artifacts.candidate_dir.is_empty() {
-            return Err(ValidationCaseError::MissingField {
-                field: "expected_artifacts.candidate_dir",
-            });
-        }
-        if self.expected_artifacts.comparison_report.is_empty() {
-            return Err(ValidationCaseError::MissingField {
-                field: "expected_artifacts.comparison_report",
-            });
-        }
-        if self.expected_artifacts.run_manifest.is_empty() {
-            return Err(ValidationCaseError::MissingField {
-                field: "expected_artifacts.run_manifest",
-            });
-        }
+        self.validate_representation_differences()?;
+        self.validate_expected_artifacts()?;
 
         Ok(())
     }
 
+    fn validate_representation_differences(&self) -> Result<(), ValidationCaseError> {
+        for limitation in &self.representation_differences.known_input_equivalence_limitations {
+            if limitation.code.trim().is_empty() || limitation.description.trim().is_empty() {
+                return Err(ValidationCaseError::AmbiguousField {
+                    field: "representation_differences.known_input_equivalence_limitations",
+                    message: "limitation code and description must not be empty".to_string(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_expected_artifacts(&self) -> Result<(), ValidationCaseError> {
+        if self.expected_artifacts.required.is_empty() { return Err(ValidationCaseError::MissingField { field: "expected_artifacts.required" }); }
+        let mut ids = HashSet::new();
+        let mut candidate_raw = false;
+        let mut candidate_decoded = false;
+        let mut comparison_report = false;
+        let mut run_manifest = false;
+        for artifact in &self.expected_artifacts.required {
+            if artifact.id.trim().is_empty() { return Err(ValidationCaseError::AmbiguousField { field: "expected_artifacts.required.id", message: "artifact id must not be empty".to_string() }); }
+            if !ids.insert(artifact.id.as_str()) { return Err(ValidationCaseError::AmbiguousField { field: "expected_artifacts.required.id", message: format!("duplicate artifact id {}", artifact.id) }); }
+            match (artifact.producer, artifact.class) {
+                (ArtifactProducer::Candidate, ArtifactClass::RawModelOutput) => candidate_raw = true,
+                (ArtifactProducer::Candidate, ArtifactClass::DecodedModelOutput) => candidate_decoded = true,
+                (ArtifactProducer::Oracle, ArtifactClass::RawModelOutput) | (ArtifactProducer::Oracle, ArtifactClass::DecodedModelOutput) => {},
+                (ArtifactProducer::ValidationPipeline, ArtifactClass::ComparisonReport) => comparison_report = true,
+                (ArtifactProducer::ValidationPipeline, ArtifactClass::RunManifest) => run_manifest = true,
+                _ => return Err(ValidationCaseError::AmbiguousField { field: "expected_artifacts.required", message: format!("artifact {} has invalid producer/class pairing {:?}/{:?}", artifact.id, artifact.producer, artifact.class) }),
+            }
+        }
+        for (present, label) in [(candidate_raw, "candidate/raw_model_output"), (candidate_decoded, "candidate/decoded_model_output"), (comparison_report, "validation_pipeline/comparison_report"), (run_manifest, "validation_pipeline/run_manifest")] {
+            if !present { return Err(ValidationCaseError::AmbiguousField { field: "expected_artifacts.required", message: format!("missing required artifact class {label}") }); }
+        }
+        Ok(())
+    }
     fn validate_units(&self) -> Result<(), ValidationCaseError> {
         let require = |field: &'static str,
                        actual: Option<&str>,
@@ -2283,13 +2330,16 @@ mod tests {
                 ..Default::default()
             },
             expected_artifacts: ExpectedArtifacts {
-                candidate_dir: "target/corpus/candidate/TEST-001".to_string(),
-                oracle_dir: Some("target/corpus/oracle/TEST-001".to_string()),
-                comparison_report: "target/corpus/comparison_report.json".to_string(),
-                run_manifest: "target/corpus/run_manifest.json".to_string(),
+                required: vec![
+                    ExpectedArtifactRequirement { id: "candidate.raw".to_string(), producer: ArtifactProducer::Candidate, class: ArtifactClass::RawModelOutput },
+                    ExpectedArtifactRequirement { id: "candidate.decoded".to_string(), producer: ArtifactProducer::Candidate, class: ArtifactClass::DecodedModelOutput },
+                    ExpectedArtifactRequirement { id: "oracle.raw".to_string(), producer: ArtifactProducer::Oracle, class: ArtifactClass::RawModelOutput },
+                    ExpectedArtifactRequirement { id: "oracle.decoded".to_string(), producer: ArtifactProducer::Oracle, class: ArtifactClass::DecodedModelOutput },
+                    ExpectedArtifactRequirement { id: "comparison.report".to_string(), producer: ArtifactProducer::ValidationPipeline, class: ArtifactClass::ComparisonReport },
+                    ExpectedArtifactRequirement { id: "run.manifest".to_string(), producer: ArtifactProducer::ValidationPipeline, class: ArtifactClass::RunManifest },
+                ],
             },
             representation_differences: RepresentationDifferences::default(),
-            input_equivalence: InputEquivalenceStatus::NotApplicable,
             require_source_containment: true,
             notes: vec![],
         }
@@ -2470,19 +2520,28 @@ mod tests {
     }
 
     #[test]
-    fn missing_input_equivalence_is_rejected() {
+    fn case_level_input_equivalence_verdict_is_rejected() {
         let mut raw = minimal_manifest_json();
-        raw.as_object_mut()
-            .expect("manifest object")
-            .remove("input_equivalence");
-        let err = parse_json_value(&raw).expect_err("missing input equivalence fails");
-        let rendered = err.to_string();
-        assert!(
-            rendered.contains("input_equivalence"),
-            "error must name the missing field: {rendered}"
-        );
+        raw.as_object_mut().expect("manifest object").insert("input_equivalence".to_string(), serde_json::json!("demonstrated"));
+        let err = parse_json_value(&raw).expect_err("#52 verdict must not live in #51 manifest");
+        assert!(err.to_string().contains("input_equivalence"));
     }
 
+    #[test]
+    fn expected_artifact_paths_are_rejected() {
+        let mut raw = minimal_manifest_json();
+        raw["expected_artifacts"] = serde_json::json!({"candidate_dir":"target/corpus/candidate/TEST-001","comparison_report":"target/corpus/comparison_report.json","run_manifest":"target/corpus/run_manifest.json"});
+        let err = parse_json_value(&raw).expect_err("paths belong to #53, not #51");
+        assert!(err.to_string().contains("candidate_dir"));
+    }
+
+    #[test]
+    fn expected_artifacts_require_candidate_raw_and_decoded_classes() {
+        let mut manifest = make_minimal_manifest();
+        manifest.expected_artifacts.required.retain(|a| a.class != ArtifactClass::DecodedModelOutput);
+        let err = manifest.validate().expect_err("candidate decoded artifact is required");
+        assert!(err.to_string().contains("candidate/decoded_model_output"));
+    }
     #[test]
     fn missing_simulation_direction_is_rejected() {
         let mut raw = minimal_manifest_json();
@@ -2707,22 +2766,6 @@ mod tests {
     }
 
     #[test]
-    fn input_equivalence_status_serialization() {
-        assert_eq!(
-            serde_json::to_string(&InputEquivalenceStatus::Demonstrated).unwrap(),
-            "\"demonstrated\""
-        );
-        assert_eq!(
-            serde_json::to_string(&InputEquivalenceStatus::NotDemonstrated).unwrap(),
-            "\"not_demonstrated\""
-        );
-        assert_eq!(
-            serde_json::to_string(&InputEquivalenceStatus::NotApplicable).unwrap(),
-            "\"not_applicable\""
-        );
-    }
-
-    #[test]
     fn load_and_validate_adv_ana_001() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("fixtures")
@@ -2735,7 +2778,6 @@ mod tests {
         assert!(!manifest.physics_switches.turbulence);
         assert!(manifest.stochastic.candidate_philox.is_none());
         assert!(manifest.stochastic.oracle_seed.is_none());
-        assert_eq!(manifest.input_equivalence, InputEquivalenceStatus::NotApplicable);
         manifest.validate().expect("ADV-ANA-001 should validate");
     }
 
@@ -2756,7 +2798,6 @@ mod tests {
         let oracle = manifest.stochastic.oracle_seed.as_ref().unwrap();
         assert_eq!(oracle.kind, OracleKind::SeedableValidationOracle);
         assert_eq!(oracle.seed, Some(1));
-        assert_eq!(manifest.input_equivalence, InputEquivalenceStatus::NotApplicable);
         manifest.validate().expect("WIND-UNI-002 should validate");
     }
 
@@ -2779,9 +2820,11 @@ mod tests {
         let oracle = manifest.stochastic.oracle_seed.as_ref().unwrap();
         assert_eq!(oracle.kind, OracleKind::SeedableValidationOracle);
         assert_eq!(oracle.seed, Some(1));
-        assert_eq!(manifest.input_equivalence, InputEquivalenceStatus::NotDemonstrated);
         assert!(manifest.representation_differences.vertical_coordinate.is_some());
         assert!(manifest.representation_differences.wind_components.is_some());
+        assert!(manifest.representation_differences.known_input_equivalence_limitations.iter().any(|l| l.code == "INPUT_EQUIVALENCE_NOT_DEMONSTRATED"));
+        let serialized = serde_json::to_value(&manifest).expect("serialize ETEX manifest");
+        assert!(serialized.get("input_equivalence").is_none());
         manifest.validate().expect("ETEX-MINI-013 should validate");
     }
 

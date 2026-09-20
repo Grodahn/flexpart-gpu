@@ -157,17 +157,44 @@
     "lconvection": 0
   },
   "expected_artifacts": {
-    "candidate_dir": "target/corpus/candidate/PBL-UNSTABLE-006",
-    "oracle_dir": "target/corpus/oracle/PBL-UNSTABLE-006",
-    "comparison_report": "target/corpus/comparison_report.json",
-    "run_manifest": "target/corpus/run_manifest.json"
+    "required": [
+      {
+        "id": "candidate.raw",
+        "producer": "candidate",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "candidate.decoded",
+        "producer": "candidate",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "oracle.raw",
+        "producer": "oracle",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "oracle.decoded",
+        "producer": "oracle",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "comparison.report",
+        "producer": "validation_pipeline",
+        "class": "comparison_report"
+      },
+      {
+        "id": "run.manifest",
+        "producer": "validation_pipeline",
+        "class": "run_manifest"
+      }
+    ]
   },
   "representation_differences": {
     "notes": [
       "Vigorous mixing: large vertical spread and mean height well above release within a 2000 m PBL."
     ]
   },
-  "input_equivalence": "not_applicable",
   "notes": [
     "Migrated from v1 without scientific change: expected_property moved to representation_differences."
   ]

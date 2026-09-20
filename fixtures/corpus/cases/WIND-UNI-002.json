@@ -157,10 +157,38 @@
     "lconvection": 0
   },
   "expected_artifacts": {
-    "candidate_dir": "target/corpus/candidate/WIND-UNI-002",
-    "oracle_dir": "target/corpus/oracle/WIND-UNI-002",
-    "comparison_report": "target/corpus/comparison_report.json",
-    "run_manifest": "target/corpus/run_manifest.json"
+    "required": [
+      {
+        "id": "candidate.raw",
+        "producer": "candidate",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "candidate.decoded",
+        "producer": "candidate",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "oracle.raw",
+        "producer": "oracle",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "oracle.decoded",
+        "producer": "oracle",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "comparison.report",
+        "producer": "validation_pipeline",
+        "class": "comparison_report"
+      },
+      {
+        "id": "run.manifest",
+        "producer": "validation_pipeline",
+        "class": "run_manifest"
+      }
+    ]
   },
   "representation_differences": {
     "notes": [
@@ -169,7 +197,6 @@
       "Vertical coordinate differs (AGL vs hybrid); RNG namespaces are separate per #50 contract."
     ]
   },
-  "input_equivalence": "not_applicable",
   "notes": [
     "Stochastic case: 10 independent Philox seeds for candidate; 5 repetitions of seedable oracle with FLEXPART_VALIDATION_SEED=1.",
     "Expected: COM advects east/south with 5/-3 m/s wind; plume spreads in x/y/z; all particles in [0, BLH]; mass conserved."

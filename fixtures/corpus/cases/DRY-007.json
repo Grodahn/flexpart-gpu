@@ -164,17 +164,44 @@
     "lconvection": 0
   },
   "expected_artifacts": {
-    "candidate_dir": "target/corpus/candidate/DRY-007",
-    "oracle_dir": "target/corpus/oracle/DRY-007",
-    "comparison_report": "target/corpus/comparison_report.json",
-    "run_manifest": "target/corpus/run_manifest.json"
+    "required": [
+      {
+        "id": "candidate.raw",
+        "producer": "candidate",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "candidate.decoded",
+        "producer": "candidate",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "oracle.raw",
+        "producer": "oracle",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "oracle.decoded",
+        "producer": "oracle",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "comparison.report",
+        "producer": "validation_pipeline",
+        "class": "comparison_report"
+      },
+      {
+        "id": "run.manifest",
+        "producer": "validation_pipeline",
+        "class": "run_manifest"
+      }
+    ]
   },
   "representation_differences": {
     "notes": [
       "Depositing aerosol SPECIES with zero-precipitation GRIB (LSP=CP=0); inert SPECIES_024 is the no-deposition control."
     ]
   },
-  "input_equivalence": "not_applicable",
   "notes": [
     "Migrated from v1 without scientific change: deposition block carried key-for-key; isolated_check (dt 60 s, 12 steps, analytic mass(t) = mass0 * exp(-vdep/(2*HREF) * t)) documents the kernel check and is preserved here.",
     "Depositing aerosol SPECIES copied from upstream examples/Aerosol/SPECIES/SPECIES_040 with zero-precipitation GRIB (LSP=CP=0); inert SPECIES_024 is the no-deposition control."

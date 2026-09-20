@@ -56,6 +56,11 @@ def main() -> None:
 
     report = {
         "schema": "flexpart-gpu.vertical-direct-oracle-provenance.v1",
+        "pinned_commit": pinned,
+        "checkout_clean": True,
+        "source_path": "src/verttransform_mod.f90",
+        "source_sha256": sha256(vert_source),
+        "routine": "verttransform_ecmwf_heights",
         "oracle": {
             "name": manifest["name"],
             "version": manifest["version"],

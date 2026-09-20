@@ -244,6 +244,7 @@ def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
         initial = seed.get("metrics", {}).get("initial_mass_kg")
         check(f"{stem} initial mass", initial is not None and math.isclose(initial, expected_mass, rel_tol=1e-12),
               f"{initial} vs {expected_mass}")
+        check(f"{stem} adapter recorded", bool(seed.get("adapter")))
         if deterministic:
             pass
         elif identity_error is not None:
@@ -288,9 +289,6 @@ def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
                 len(seen_identities) == ensemble_count,
                 f"found {len(seen_identities)}, expected {ensemble_count}",
             )
-        check(f"{stem} adapter recorded", bool(seed.get("adapter")))
-
-
 def audit_oracle_case(case_id: str, fort_dir: Path, oracle_dir: Path, require: bool) -> None:
     summary = oracle_dir / case_id / "oracle_summary.json"
     if not summary.is_file():

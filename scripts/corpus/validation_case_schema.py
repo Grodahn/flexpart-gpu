@@ -67,7 +67,14 @@ def _type_matches(expected, value):
     if expected == "object":
         return isinstance(value, dict)
     if expected == "integer":
-        return isinstance(value, int) and not isinstance(value, bool)
+        return (
+            isinstance(value, int)
+            and not isinstance(value, bool)
+        ) or (
+            isinstance(value, float)
+            and math.isfinite(value)
+            and value.is_integer()
+        )
     if expected == "number":
         return (
             isinstance(value, (int, float))

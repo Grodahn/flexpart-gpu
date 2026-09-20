@@ -39,6 +39,16 @@ def load_case(case_id: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+class CanonicalSchemaTest(unittest.TestCase):
+    def test_all_checked_in_cases_satisfy_python_schema_validator(self):
+        for path in sorted((REPO / "fixtures" / "corpus" / "cases").glob("*.json")):
+            with self.subTest(case=path.name):
+                GEN.validate_case_document(
+                    json.loads(path.read_text(encoding="utf-8")),
+                    source=str(path),
+                )
+
+
 class OracleOverrideTest(unittest.TestCase):
     def test_adv_ana_001_generates_turbulence_off(self):
         case = load_case("ADV-ANA-001")

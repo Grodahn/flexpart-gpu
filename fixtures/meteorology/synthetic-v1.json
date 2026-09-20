@@ -1,0 +1,113 @@
+{
+  "schema": {
+    "id": "flexpart-gpu.canonical-meteorology",
+    "version": 1
+  },
+  "horizontal_grid": {
+    "nx": 2,
+    "ny": 1,
+    "xlon0_deg": 6.0,
+    "ylat0_deg": 50.0,
+    "dx_deg": 0.25,
+    "dy_deg": 0.25,
+    "longitude_domain": "minus180_to180"
+  },
+  "vertical_coordinate": {
+    "kind": "pressure",
+    "reference": "model_native",
+    "ordering": "decreasing",
+    "level_values": [90000.0, 80000.0]
+  },
+  "fields": [
+    {
+      "id": "wind_u",
+      "shape": [2, 1, 2],
+      "axis_order": ["x", "y", "z"],
+      "unit": "meter_per_second",
+      "sign": "positive_eastward",
+      "horizontal_staggering": "cell_center",
+      "vertical_staggering": "level_center",
+      "time": {
+        "calendar": "gregorian",
+        "kind": "instantaneous",
+        "valid_time_epoch_seconds": 1000
+      },
+      "values": [1.0, 1.0, 1.0, 1.0]
+    },
+    {
+      "id": "wind_v",
+      "shape": [2, 1, 2],
+      "axis_order": ["x", "y", "z"],
+      "unit": "meter_per_second",
+      "sign": "positive_northward",
+      "horizontal_staggering": "cell_center",
+      "vertical_staggering": "level_center",
+      "time": {
+        "calendar": "gregorian",
+        "kind": "instantaneous",
+        "valid_time_epoch_seconds": 1000
+      },
+      "values": [0.5, 0.5, 0.5, 0.5]
+    },
+    {
+      "id": "vertical_velocity",
+      "shape": [2, 1, 2],
+      "axis_order": ["x", "y", "z"],
+      "unit": "meter_per_second",
+      "sign": "positive_upward",
+      "horizontal_staggering": "cell_center",
+      "vertical_staggering": "level_center",
+      "time": {
+        "calendar": "gregorian",
+        "kind": "instantaneous",
+        "valid_time_epoch_seconds": 1000
+      },
+      "values": [0.0, 0.0, 0.0, 0.0]
+    },
+    {
+      "id": "temperature",
+      "shape": [2, 1, 2],
+      "axis_order": ["x", "y", "z"],
+      "unit": "kelvin",
+      "sign": "signed_scalar",
+      "horizontal_staggering": "cell_center",
+      "vertical_staggering": "level_center",
+      "time": {
+        "calendar": "gregorian",
+        "kind": "instantaneous",
+        "valid_time_epoch_seconds": 1000
+      },
+      "values": [280.0, 275.0, 281.0, 276.0]
+    },
+    {
+      "id": "specific_humidity",
+      "shape": [2, 1, 2],
+      "axis_order": ["x", "y", "z"],
+      "unit": "kilogram_per_kilogram",
+      "sign": "non_negative",
+      "horizontal_staggering": "cell_center",
+      "vertical_staggering": "level_center",
+      "time": {
+        "calendar": "gregorian",
+        "kind": "instantaneous",
+        "valid_time_epoch_seconds": 1000
+      },
+      "values": [0.004, 0.003, 0.0041, 0.0031]
+    },
+    {
+      "id": "pressure",
+      "shape": [2, 1, 2],
+      "axis_order": ["x", "y", "z"],
+      "unit": "pascal",
+      "sign": "non_negative",
+      "horizontal_staggering": "cell_center",
+      "vertical_staggering": "level_center",
+      "time": {
+        "calendar": "gregorian",
+        "kind": "instantaneous",
+        "valid_time_epoch_seconds": 1000
+      },
+      "values": [90000.0, 80000.0, 90000.0, 80000.0]
+    }
+  ]
+}

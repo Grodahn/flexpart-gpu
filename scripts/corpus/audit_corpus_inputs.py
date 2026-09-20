@@ -173,7 +173,7 @@ def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
     seeds = sorted(case_dir.glob("seed_*.json"))
     release = case["release"]
     expected_count = int(release["particle_count"])
-    expected_mass = GEN.case_total_mass_kg(case)
+    expected_mass = GEN.case_total_mass_kg(case_id, case)
     base_key, base_counter, ensemble_count, deterministic, identical, identity_error = (
         candidate_philox_identity(case_id, case)
     )

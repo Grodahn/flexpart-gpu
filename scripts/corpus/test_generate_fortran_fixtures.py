@@ -2,6 +2,8 @@
 """Regression tests for canonical Oracle override normalization/generation.
 
 No GPU or model execution: parser/unit-level only.
+Covers the fail-closed raw-Python path: wind/surface/physics_switches/
+integration blocks must not decay to defaults on malformed input.
 """
 
 import copy
@@ -189,6 +191,182 @@ class OracleOverrideTest(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             GEN.command_text("WIND-UNI-002", case)
         self.assertIn("turbulence_formulation", str(ctx.exception))
+
+
+class MeteoPhysicsFailClosedTest(unittest.TestCase):
+    """Fail-closed meteo generation: malformed input never decays to defaults.
+
+    Mirrors the canonical Rust contract (ValidationCaseManifest): `wind` is a
+    required tagged union, `physics_switches` is a mandatory 5-boolean object,
+    and `surface` is null-or-object where null is only permitted when the
+    declared physics do not require surface data.
+    """
+
+    def test_uniform_wind_uses_declared_components(self):
+        case = load_case("WIND-UNI-002")
+        args = GEN.meteo_args("WIND-UNI-002", case)
+        self.assertIn("--u-wind 5.0 --v-wind -3.0 --w-wind 0.0", args)
+
+    def test_linear_shear_wind_uses_declared_components(self):
+        case = load_case("WIND-SHEAR-003")
+        args = GEN.meteo_args("WIND-SHEAR-003", case)
+        self.assertIn("--u-wind 2.0", args)
+        self.assertIn("--u-shear-per-m 0.004", args)
+
+    def test_real_weather_returns_empty_string(self):
+        case = load_case("ETEX-MINI-013")
+        self.assertEqual(GEN.meteo_args("ETEX-MINI-013", case), "")
+
+    def test_wind_missing_raises(self):
+        case = load_case("ADV-ANA-001")
+        case = copy.deepcopy(case)
+        del case["wind"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.meteo_args("ADV-ANA-001", case)
+        self.assertIn("wind", str(ctx.exception))
+
+    def test_wind_non_object_raises(self):
+        case = load_case("ADV-ANA-001")
+        case = copy.deepcopy(case)
+        case["wind"] = False
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.meteo_args("ADV-ANA-001", case)
+        self.assertIn("wind", str(ctx.exception))
+
+    def test_wind_unknown_profile_raises(self):
+        case = load_case("ADV-ANA-001")
+        case = copy.deepcopy(case)
+        case["wind"]["profile"] = "hurricane"
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.meteo_args("ADV-ANA-001", case)
+        self.assertIn("profile", str(ctx.exception))
+
+    def test_wind_missing_component_never_defaulted(self):
+        case = load_case("ADV-ANA-001")
+        case = copy.deepcopy(case)
+        del case["wind"]["u_m_s"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.meteo_args("ADV-ANA-001", case)
+        self.assertIn("u_m_s", str(ctx.exception))
+
+    def test_surface_null_permitted_without_turbulence_or_deposition(self):
+        case = load_case("ADV-ANA-001")
+        self.assertIsNone(case.get("surface"))
+        args = GEN.meteo_args("ADV-ANA-001", case)
+        self.assertIn("--sshf 40.0 --blh 1500.0 --lsp 0.0 --cp 0.0", args)
+
+    def test_surface_null_rejected_when_physics_requires_surface(self):
+        case = load_case("PBL-NEUTRAL-005")
+        case = copy.deepcopy(case)
+        case["surface"] = None
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.meteo_args("PBL-NEUTRAL-005", case)
+        rendered = str(ctx.exception)
+        self.assertIn("surface", rendered)
+        self.assertIn("turbulence", rendered)
+
+    def test_surface_non_null_falsey_rejected_not_normalized(self):
+        for bad in (False, 0, 0.0, "", []):
+            with self.subTest(value=bad):
+                case = load_case("ADV-ANA-001")
+                case = copy.deepcopy(case)
+                case["surface"] = bad
+                with self.assertRaises(SystemExit) as ctx:
+                    GEN.meteo_args("ADV-ANA-001", case)
+                self.assertIn("surface", str(ctx.exception))
+
+    def test_surface_missing_consumed_field_rejected(self):
+        case = load_case("PBL-NEUTRAL-005")
+        case = copy.deepcopy(case)
+        del case["surface"]["mixing_height_m"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.meteo_args("PBL-NEUTRAL-005", case)
+        self.assertIn("mixing_height_m", str(ctx.exception))
+
+    def test_surface_non_numeric_field_rejected(self):
+        case = load_case("PBL-NEUTRAL-005")
+        case = copy.deepcopy(case)
+        case["surface"]["sensible_heat_flux_w_m2"] = "warm"
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.meteo_args("PBL-NEUTRAL-005", case)
+        self.assertIn("sensible_heat_flux_w_m2", str(ctx.exception))
+
+    def test_wet_008_uses_declared_surface_precipitation(self):
+        case = load_case("WET-008")
+        args = GEN.meteo_args("WET-008", case)
+        self.assertIn("--lsp 2.0 --cp 1.0", args)
+
+    def test_physics_switches_missing_raises(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        del case["physics_switches"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("physics_switches", str(ctx.exception))
+
+    def test_physics_switches_non_object_raises(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        case["physics_switches"] = False
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("physics_switches", str(ctx.exception))
+
+    def test_physics_switch_missing_key_raises(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        del case["physics_switches"]["dry_deposition"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("dry_deposition", str(ctx.exception))
+
+    def test_physics_switch_non_boolean_raises(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        case["physics_switches"]["turbulence"] = 1
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("turbulence", str(ctx.exception))
+
+    def test_physics_switches_unknown_key_raises(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        case["physics_switches"]["plume_rise"] = True
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("plume_rise", str(ctx.exception))
+
+    def test_malformed_physics_never_skips_agreement_check(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        case["physics_switches"]["turbulence"] = "yes"
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("turbulence", str(ctx.exception))
+
+    def test_integration_missing_start_raises(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        del case["integration"]["start"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("start", str(ctx.exception))
+
+    def test_integration_missing_total_s_raises(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        del case["integration"]["total_s"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.ageclass_text("WIND-UNI-002", case)
+        self.assertIn("total_s", str(ctx.exception))
+
+    def test_integration_fractional_total_s_raises(self):
+        case = load_case("WIND-UNI-002")
+        case = copy.deepcopy(case)
+        case["integration"]["total_s"] = 3600.5
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.command_text("WIND-UNI-002", case)
+        self.assertIn("second", str(ctx.exception))
 
 
 if __name__ == "__main__":

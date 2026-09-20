@@ -61,9 +61,22 @@ RECEPTORS_ZERO = """************************************************************
 """
 
 
-def case_total_mass_kg(case: dict) -> float:
-    """Total released mass [kg] from the normalized release inventory."""
-    return float(case["release"]["inventory"]["quantity_kg"])
+def case_total_mass_kg(case_id: str, case: dict) -> float:
+    """Total released mass [kg] from the normalized release inventory.
+
+    The raw Python path (``json.loads``, no Rust validator) must not be weaker
+    than the canonical contract: the mass must be declared as a finite number,
+    never defaulted.
+    """
+    release = _required_release(case_id, case)
+    inventory = release.get("inventory")
+    if not isinstance(inventory, dict):
+        raise SystemExit(
+            f"{case_id}: release.inventory must be an object, got {inventory!r}"
+        )
+    return _finite_number(
+        inventory.get("quantity_kg"), case_id, "release.inventory.quantity_kg"
+    )
 
 
 def species_number_for_case(case_id: str, case: dict) -> int:
@@ -83,12 +96,27 @@ def species_number_for_case(case_id: str, case: dict) -> int:
 
 def release_window_datetimes(case_id: str, case: dict) -> tuple:
     """Derive (start, end) YYYYMMDDHHMMSS release stamps from normalized timing."""
-    timing = case["release"]["timing"]
+    release = _required_release(case_id, case)
+    timing = release.get("timing")
+    if not isinstance(timing, dict):
+        raise SystemExit(
+            f"{case_id}: release.timing must be an object, got {timing!r}"
+        )
     kind = timing.get("kind")
     if kind == "instant":
         stamp = timing["at"]
+        if not isinstance(stamp, str):
+            raise SystemExit(
+                f"{case_id}: release.timing.at must be a YYYYMMDDHHMMSS string, got {stamp!r}"
+            )
         return stamp, stamp
     if kind == "window":
+        for key in ("start", "end"):
+            if not isinstance(timing.get(key), str):
+                raise SystemExit(
+                    f"{case_id}: release.timing.{key} must be a "
+                    f"YYYYMMDDHHMMSS string, got {timing.get(key)!r}"
+                )
         return timing["start"], timing["end"]
     raise SystemExit(f"{case_id}: unknown release.timing.kind {kind!r}")
 
@@ -105,45 +133,71 @@ def release_vertical(case_id: str, case: dict) -> tuple:
     asserted by the ETEX input-equivalence audit). ASL has no established
     ZKIND mapping and fails closed.
     """
-    release = case["release"]
+    release = _required_release(case_id, case)
     if release.get("vertical_ref") != "agl":
         raise SystemExit(
             f"{case_id}: vertical_ref {release.get('vertical_ref')!r} has no "
             "FLEXPART ZKIND mapping (only agl -> ZKIND=1 is established)"
         )
-    geometry = release["geometry"]
+    geometry = release.get("geometry")
+    if not isinstance(geometry, dict):
+        raise SystemExit(
+            f"{case_id}: release.geometry must be an object, got {geometry!r}"
+        )
     kind = geometry.get("kind")
     if kind == "point":
-        z = float(geometry["z_m"])
+        z = _finite_number(geometry.get("z_m"), case_id, "release.geometry.z_m")
         return z, z, 1
     if kind == "box":
-        return float(geometry["z_min_m"]), float(geometry["z_max_m"]), 1
+        return (
+            _finite_number(geometry.get("z_min_m"), case_id, "release.geometry.z_min_m"),
+            _finite_number(geometry.get("z_max_m"), case_id, "release.geometry.z_max_m"),
+            1,
+        )
     raise SystemExit(f"{case_id}: unknown release.geometry.kind {kind!r}")
 
 
 def release_lonlat(case_id: str, case: dict) -> tuple:
     """Return (lon1, lon2, lat1, lat2) for FLEXPART RELEASES."""
-    geometry = case["release"]["geometry"]
+    release = _required_release(case_id, case)
+    geometry = release.get("geometry")
+    if not isinstance(geometry, dict):
+        raise SystemExit(
+            f"{case_id}: release.geometry must be an object, got {geometry!r}"
+        )
     kind = geometry.get("kind")
     if kind == "point":
-        lon = float(geometry["lon_deg"])
-        lat = float(geometry["lat_deg"])
+        lon = _finite_number(geometry.get("lon_deg"), case_id, "release.geometry.lon_deg")
+        lat = _finite_number(geometry.get("lat_deg"), case_id, "release.geometry.lat_deg")
         return lon, lon, lat, lat
     if kind == "box":
-        return (float(geometry["lon_min_deg"]), float(geometry["lon_max_deg"]),
-                float(geometry["lat_min_deg"]), float(geometry["lat_max_deg"]))
+        return (
+            _finite_number(geometry.get("lon_min_deg"), case_id, "release.geometry.lon_min_deg"),
+            _finite_number(geometry.get("lon_max_deg"), case_id, "release.geometry.lon_max_deg"),
+            _finite_number(geometry.get("lat_min_deg"), case_id, "release.geometry.lat_min_deg"),
+            _finite_number(geometry.get("lat_max_deg"), case_id, "release.geometry.lat_max_deg"),
+        )
     raise SystemExit(f"{case_id}: unknown release.geometry.kind {kind!r}")
 
 
 def sim_end_date(start: str, total_s: int) -> tuple:
     """Derive (IEDATE, IETIME) from the YYYYMMDDHHMMSS start plus seconds.
 
-    All corpus cases start at 2024-01-01 00:00:00 and run whole hours.
+    All corpus cases start at 2024-01-01 00:00:00 and run whole hours;
+    COMMAND IBDATE/IBTIME are fixed to 20240101 000000, so any other start
+    fails closed instead of writing a mismatched header.
     """
-    assert start == "20240101000000", f"unexpected corpus start: {start}"
+    if start != "20240101000000":
+        raise SystemExit(
+            f"unsupported integration.start {start!r}: COMMAND IBDATE/IBTIME are "
+            "fixed to 20240101 000000; only 20240101000000 is established"
+        )
     hours, rem = divmod(total_s, 3600)
     minutes, seconds = divmod(rem, 60)
-    assert hours < 100, f"corpus run exceeds COMMAND date arithmetic: {total_s}s"
+    if hours >= 100:
+        raise SystemExit(
+            f"corpus run exceeds COMMAND date arithmetic: {total_s}s"
+        )
     return 20240101, hours * 10000 + minutes * 100 + seconds
 
 
@@ -231,12 +285,126 @@ SUPPORTED_TURBULENCE_FORMULATIONS = frozenset({"adaptive_w_sigw"})
 CTL_FORMULATION_THRESHOLD = 0.1
 
 
-def _declared_physics_switch(physics: object, key: str):
-    """Return the declared physics_switches boolean for ``key`` or None."""
+# Physics switches are mandatory in the canonical contract (the Rust
+# `PhysicsSwitches` struct is a required member, not an `Option`). The raw
+# Python path enforces the same shape so Oracle/physics agreement checks
+# never degrade into a skipped comparison on malformed input.
+PHYSICS_SWITCH_FIELDS = (
+    "turbulence",
+    "convection",
+    "dry_deposition",
+    "wet_deposition",
+    "decay",
+)
+
+# Wind profiles recognized by the synthetic-GRIB flag builder (Rust
+# `WindSpec` is a required tagged union, not a defaultable block).
+WIND_PROFILES = frozenset({"uniform", "linear_shear", "real_weather"})
+
+# Synthetic-GRIB surface defaults, applied ONLY when surface data is
+# legitimately absent (surface: null with turbulence and deposition declared
+# off, mirroring the Rust validate_physics_consistency contract). Named
+# constants so a truthiness collapse can never silently reintroduce them.
+ANALYTIC_DEFAULT_SENSIBLE_HEAT_FLUX_W_M2 = 40.0
+ANALYTIC_DEFAULT_MIXING_HEIGHT_M = 1500.0
+ANALYTIC_DEFAULT_PRECIP_LARGE_SCALE_MM_H = 0.0
+ANALYTIC_DEFAULT_PRECIP_CONVECTIVE_MM_H = 0.0
+
+
+def _finite_number(value, case_id: str, field: str) -> float:
+    """Fail-closed JSON number reader: a real number, never a bool, finite."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise SystemExit(f"{case_id}: {field} must be a finite number, got {value!r}")
+    number = float(value)
+    if not math.isfinite(number):
+        raise SystemExit(f"{case_id}: {field} must be finite, got {value!r}")
+    return number
+
+
+def _required_release(case_id: str, case: dict) -> dict:
+    """Fail-closed release reader: the normalized release block must exist."""
+    release = case.get("release")
+    if not isinstance(release, dict):
+        raise SystemExit(f"{case_id}: release must be an object, got {release!r}")
+    return release
+
+
+def _required_wind(case_id: str, case: dict) -> dict:
+    """Fail-closed wind reader: an object with a recognized profile.
+
+    Rust `WindSpec` declares a required tagged union; `json.loads` alone must
+    not treat a missing/non-object wind block as an implicit uniform wind.
+    """
+    wind = case.get("wind")
+    if not isinstance(wind, dict):
+        raise SystemExit(f"{case_id}: wind must be an object, got {wind!r}")
+    profile = wind.get("profile")
+    if not isinstance(profile, str) or profile not in WIND_PROFILES:
+        raise SystemExit(
+            f"{case_id}: unsupported wind.profile {profile!r}; supported: "
+            f"{', '.join(sorted(WIND_PROFILES))}"
+        )
+    return wind
+
+
+def _required_integration(case_id: str, case: dict) -> dict:
+    """Fail-closed integration reader shared by COMMAND and AGECLASSES.
+
+    Both namelists derive durations from the same block; validating it once
+    here guarantees they cannot drift apart, and that ``sim_end_date`` never
+    receives a missing or implicit start stamp.
+    """
+    integration = case.get("integration")
+    if not isinstance(integration, dict):
+        raise SystemExit(f"{case_id}: integration must be an object, got {integration!r}")
+    start = integration.get("start")
+    if not isinstance(start, str):
+        raise SystemExit(
+            f"{case_id}: integration.start must be a YYYYMMDDHHMMSS string, got {start!r}"
+        )
+    total_s = _finite_number(integration.get("total_s"), case_id, "integration.total_s")
+    if total_s != int(total_s):
+        raise SystemExit(
+            f"{case_id}: integration.total_s must be whole seconds, got {total_s!r}"
+        )
+    if total_s <= 0:
+        raise SystemExit(
+            f"{case_id}: integration.total_s must be positive, got {total_s!r}"
+        )
+    return {"start": start, "total_s": int(total_s)}
+
+
+def mandatory_physics_switches(case_id: str, case: dict) -> dict:
+    """Fail-closed physics_switches reader used by the raw Python path.
+
+    The Python generator does not run the Rust ValidationCaseManifest
+    validator, so it independently enforces the canonical schema-v2 physics
+    contract: one object, exactly the five switch fields, every value a
+    strict boolean. A malformed or missing block raises instead of collapsing
+    to None, so Oracle-vs-physics agreement checks are never skipped on input
+    type alone.
+    """
+    physics = case.get("physics_switches")
     if not isinstance(physics, dict):
-        return None
-    value = physics.get(key)
-    return value if isinstance(value, bool) else None
+        raise SystemExit(
+            f"{case_id}: physics_switches must be an object with "
+            f"{', '.join(PHYSICS_SWITCH_FIELDS)}, got {physics!r}"
+        )
+    unknown = sorted(set(physics).difference(PHYSICS_SWITCH_FIELDS))
+    if unknown:
+        raise SystemExit(
+            f"{case_id}: unknown physics_switches field(s) "
+            f"{', '.join(repr(key) for key in unknown)}; a schema-v2 physics "
+            "switch block declares exactly turbulence, convection, "
+            "dry_deposition, wet_deposition, decay"
+        )
+    for field in PHYSICS_SWITCH_FIELDS:
+        value = physics.get(field)
+        if not isinstance(value, bool):
+            raise SystemExit(
+                f"{case_id}: physics_switches.{field} must be a boolean, got {value!r}"
+            )
+    return physics
 
 
 def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
@@ -353,13 +521,11 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
         raise SystemExit(
             f"{case_id}: oracle override ifine must be in 1..=10, got {ifine!r}"
         )
-    physics = case.get("physics_switches")
+    physics = mandatory_physics_switches(case_id, case)
     for field, physics_key in PHYSICS_AGREEMENT:
         if field not in normalized:
             continue
-        declared = _declared_physics_switch(physics, physics_key)
-        if declared is None:
-            continue
+        declared = physics[physics_key]
         if declared != (normalized[field] == 1):
             raise SystemExit(
                 f"{case_id}: physics_switches.{physics_key}={declared} conflicts "
@@ -370,11 +536,9 @@ def normalize_oracle_overrides(case_id: str, case: dict) -> dict:
 
 def command_text(case_id: str, case: dict) -> str:
     """COMMAND namelist derived from case integration and switch overrides."""
-    integration = case["integration"]
+    integration = _required_integration(case_id, case)
     overrides = normalize_oracle_overrides(case_id, case)
-    iedate, ietime = sim_end_date(
-        integration.get("start", "20240101000000"), int(integration["total_s"])
-    )
+    iedate, ietime = sim_end_date(integration["start"], integration["total_s"])
     ctl = float(overrides["ctl"])
     ifine = int(overrides["ifine"])
     lturbulence = int(overrides["lturbulence"])
@@ -422,13 +586,18 @@ def releases_text(case_id: str, case: dict, specnum: int) -> str:
 
     FLEXPART MASS is in grams; the candidate works in kilograms.
     """
-    release = case["release"]
-    mass_g = case_total_mass_kg(case) * KG_TO_G
+    release = _required_release(case_id, case)
+    mass_g = case_total_mass_kg(case_id, case) * KG_TO_G
     start_stamp, end_stamp = release_window_datetimes(case_id, case)
     idate1, itime1 = flexpart_datetime(start_stamp)
     idate2, itime2 = flexpart_datetime(end_stamp)
     lon1, lon2, lat1, lat2 = release_lonlat(case_id, case)
     z1, z2, zkind = release_vertical(case_id, case)
+    particles = release.get("particle_count")
+    if isinstance(particles, bool) or not isinstance(particles, int) or particles <= 0:
+        raise SystemExit(
+            f"{case_id}: release.particle_count must be a positive integer, got {particles!r}"
+        )
     return (
         "&RELEASES_CTRL\n"
         " NSPEC      =           1,\n"
@@ -447,49 +616,97 @@ def releases_text(case_id: str, case: dict, specnum: int) -> str:
         f" Z2      =     {z2:9.3f},\n"
         f" ZKIND   =              {zkind},\n"
         f" MASS    =       {mass_g:.4E},\n"
-        f" PARTS   =       {int(release['particle_count']):10d},\n"
+        f" PARTS   =       {particles:10d},\n"
         f' COMMENT =    "{case_id}",\n'
         " /\n"
     )
 
 
-def ageclass_text(case: dict) -> str:
+def ageclass_text(case_id: str, case: dict) -> str:
     """Single age class covering the full integration window."""
-    total_s = int(case["integration"]["total_s"])
-    return f"&AGECLASS\n NAGECLASS= 1,\n LAGE= {total_s},\n /\n"
+    integration = _required_integration(case_id, case)
+    return f"&AGECLASS\n NAGECLASS= 1,\n LAGE= {integration['total_s']},\n /\n"
 
 
 def meteo_args(case_id: str, case: dict) -> str:
     """Exact synthetic-GRIB generator flags derived from case wind/surface.
 
-    For real-weather cases (RealWeather profile), the meteorology comes from
-    the native ERA5 data in fixtures/etex/native-mini/ and is not generated
-    synthetically. This function returns an empty string for RealWeather cases.
+    Fail-closed: the raw Python path (``json.loads``, no Rust validator) must
+    not be weaker than the canonical schema-v2 contract for the fields it
+    consumes, so malformed blocks are rejected instead of decaying to defaults:
+
+    - `wind` must be an object with a recognized `profile` (Rust `WindSpec`).
+    - For `uniform`/`linear_shear` every consumed component must be present
+      and a finite number; a missing component is never defaulted (e.g. an
+      implicit 5.0 m/s u-wind).
+    - `surface` must be `null` or an object. A non-null falsey value
+      (`false`, `0`, `[]`, `""`) is rejected, not normalized to `{}`.
+    - `surface: null` is accepted only when the declared physics do not
+      require surface data (turbulence and deposition off), matching the Rust
+      `validate_physics_consistency` contract. Analytic defaults are applied
+      only in that legitimately-absent case.
+    - For the `real_weather` profile the meteorology comes from native ERA5
+      fixture data (fixtures/etex/native-mini/) and no synthetic GRIB is
+      generated; this function returns an empty string.
     """
-    wind = case.get("wind", {})
-    profile = wind.get("profile", "uniform")
-    
+    wind = _required_wind(case_id, case)
+    profile = wind["profile"]
     if profile == "real_weather":
-        # Real-weather meteorology comes from native ERA5 fixture data
-        # (fixtures/etex/native-mini/), not synthetic GRIB generation.
         return ""
-    
-    # Analytic cases declare `surface: null`; treat it like an absent block and
-    # fall back to the per-field defaults used for the synthetic GRIB flags.
-    surface = case.get("surface") or {}
-    u = wind.get("u_m_s", wind.get("u0_m_s", 5.0))
-    v = wind.get("v_m_s", 0.0)
-    shear = float(wind.get("u_shear_per_s", 0.0))
-    sshf = float(surface.get("sensible_heat_flux_w_m2", 40.0))
-    blh = float(surface.get("mixing_height_m", 1500.0))
-    lsp = float(surface.get("precip_large_scale_mm_h", 0.0))
-    cp = float(surface.get("precip_convective_mm_h", 0.0))
-    if case_id == "WET-008":
-        lsp, cp = 2.0, 1.0
-    if case_id in ("DRY-007", "ADV-ANA-001"):
-        lsp, cp = 0.0, 0.0
+    if profile == "uniform":
+        u = _finite_number(wind.get("u_m_s"), case_id, "wind.u_m_s")
+        v = _finite_number(wind.get("v_m_s"), case_id, "wind.v_m_s")
+        w = _finite_number(wind.get("w_m_s"), case_id, "wind.w_m_s")
+        shear = 0.0
+    elif profile == "linear_shear":
+        u = _finite_number(wind.get("u0_m_s"), case_id, "wind.u0_m_s")
+        v = _finite_number(wind.get("v_m_s"), case_id, "wind.v_m_s")
+        w = _finite_number(wind.get("w_m_s"), case_id, "wind.w_m_s")
+        shear = _finite_number(wind.get("u_shear_per_s"), case_id, "wind.u_shear_per_s")
+    else:
+        raise SystemExit(
+            f"{case_id}: unsupported wind.profile {profile!r}; supported: "
+            f"{', '.join(sorted(WIND_PROFILES))}"
+        )
+
+    physics = mandatory_physics_switches(case_id, case)
+    surface_required = (
+        physics["turbulence"]
+        or physics["dry_deposition"]
+        or physics["wet_deposition"]
+    )
+    surface = case.get("surface")
+    if surface is not None and not isinstance(surface, dict):
+        raise SystemExit(
+            f"{case_id}: surface must be null or an object, got {surface!r}"
+        )
+    if surface is None:
+        if surface_required:
+            raise SystemExit(
+                f"{case_id}: surface is null but the declared physics "
+                "(physics_switches.turbulence/dry_deposition/wet_deposition) "
+                "require surface data; refusing to substitute analytic defaults"
+            )
+        sshf = ANALYTIC_DEFAULT_SENSIBLE_HEAT_FLUX_W_M2
+        blh = ANALYTIC_DEFAULT_MIXING_HEIGHT_M
+        lsp = ANALYTIC_DEFAULT_PRECIP_LARGE_SCALE_MM_H
+        cp = ANALYTIC_DEFAULT_PRECIP_CONVECTIVE_MM_H
+    else:
+        sshf = _finite_number(
+            surface.get("sensible_heat_flux_w_m2"),
+            case_id,
+            "surface.sensible_heat_flux_w_m2",
+        )
+        blh = _finite_number(surface.get("mixing_height_m"), case_id, "surface.mixing_height_m")
+        lsp = _finite_number(
+            surface.get("precip_large_scale_mm_h"), case_id, "surface.precip_large_scale_mm_h"
+        )
+        cp = _finite_number(
+            surface.get("precip_convective_mm_h"), case_id, "surface.precip_convective_mm_h"
+        )
+
     return (
-        f"--nx 32 --ny 32 --nz 12 --u-wind {u} --v-wind {v} --w-wind 0.0 "
+        f"--nx 32 --ny 32 --nz 12 --u-wind {u} --v-wind {v} --w-wind {w} "
         f"--u-shear-per-m {shear} --sshf {sshf} --blh {blh} "
         f"--lsp {lsp} --cp {cp} --start-date 20240101 --hours 3"
     )
@@ -631,7 +848,7 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
     check("RELEASES ITIME2", int(namelist_value(releases, "ITIME2")), itime2)
     check("RELEASES PARTS", int(namelist_value(releases, "PARTS")), int(release["particle_count"]))
     check("RELEASES SPECNUM_REL", int(namelist_value(releases, "SPECNUM_REL")), specnum)
-    expected_g = case_total_mass_kg(case) * KG_TO_G
+    expected_g = case_total_mass_kg(case_id, case) * KG_TO_G
     actual_g = float(namelist_value(releases, "MASS").replace("D", "E"))
     # MASS is written with %.4E (5 significant digits).
     check("RELEASES MASS_g", actual_g, expected_g, 1e-4 * expected_g)
@@ -673,10 +890,9 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
         raise SystemExit(f"{case_id}: derived fixtures drift from case JSON:\n" + "\n".join(failures))
 
 
-def is_real_weather(case: dict) -> bool:
+def is_real_weather(case_id: str, case: dict) -> bool:
     """Check if the case uses real-weather meteorology (RealWeather profile)."""
-    wind = case.get("wind", {})
-    return wind.get("profile") == "real_weather"
+    return _required_wind(case_id, case)["profile"] == "real_weather"
 
 
 def main() -> None:
@@ -708,6 +924,12 @@ def main() -> None:
             # RESTART-010 documents the oracle-only restart path and reuses
             # the neutral release/grid shape.
             case = json.loads((CASES / "PBL-NEUTRAL-005.json").read_text(encoding="utf-8"))
+        if case.get("schema_version") != 2 or "version" in case:
+            raise SystemExit(
+                f"{case_id}: unsupported schema: expected only schema_version 2, "
+                f"got schema_version={case.get('schema_version')!r} "
+                f"version={case.get('version')!r} (v1 frozen, see MIGRATION_NOTES.md)"
+            )
         outdir = FORTRAN_OUT / case_id
         (outdir / "SPECIES").mkdir(parents=True, exist_ok=True)
         specnum = species_number_for_case(case_id, case)
@@ -716,7 +938,7 @@ def main() -> None:
             releases_text(case_id, case, specnum), encoding="utf-8"
         )
         (outdir / "OUTGRID").write_text(outgrid_text(case), encoding="utf-8")
-        (outdir / "AGECLASSES").write_text(ageclass_text(case), encoding="utf-8")
+        (outdir / "AGECLASSES").write_text(ageclass_text(case_id, case), encoding="utf-8")
         (outdir / "RECEPTORS").write_text(RECEPTORS_ZERO, encoding="utf-8")
         if specnum == 40:
             if not aerosol.is_file():
@@ -730,7 +952,7 @@ def main() -> None:
             shutil.copyfile(tracer, outdir / "SPECIES" / "SPECIES_024")
         
         # Handle meteorology: synthetic cases generate GRIB, real-weather uses native fixture data
-        if is_real_weather(case):
+        if is_real_weather(case_id, case):
             # Real-weather case (e.g., ETEX-MINI-013): meteorology comes from native ERA5 fixture
             # No synthetic GRIB generation; METEO_ARGS.txt is empty
             (outdir / "METEO_ARGS.txt").write_text("\n", encoding="utf-8")
@@ -761,9 +983,9 @@ def main() -> None:
             "release_lat_deg": lat1,
             "release_z_m": z1,
             "particle_count": case["release"]["particle_count"],
-            "candidate_mass_kg": case_total_mass_kg(case),
+            "candidate_mass_kg": case_total_mass_kg(case_id, case),
             "mass_conversion": "MASS_g = mass_kg * 1000 (FLEXPART MASS is in grams)",
-            "oracle_mass_g": case_total_mass_kg(case) * KG_TO_G,
+            "oracle_mass_g": case_total_mass_kg(case_id, case) * KG_TO_G,
             "outgrid_from_domain": {
                 key: case["domain"][key]
                 for key in ("xlon0_deg", "ylat0_deg", "nx", "ny", "dx_deg", "dy_deg")

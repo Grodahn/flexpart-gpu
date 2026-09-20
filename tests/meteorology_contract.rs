@@ -2,7 +2,7 @@ use flexpart_gpu::meteorology::{Requirements, Snapshot, SCHEMA_VERSION};
 
 #[test]
 fn checked_in_synthetic_fixture_validates_and_roundtrips() {
-    let source = include_str!("../../fixtures/meteorology/synthetic-v1.json");
+    let source = include_str!("../fixtures/meteorology/synthetic-v1.json");
     let snapshot: Snapshot = serde_json::from_str(source).expect("parse canonical fixture");
 
     snapshot

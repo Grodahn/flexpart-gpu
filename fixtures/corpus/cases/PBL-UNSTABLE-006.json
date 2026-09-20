@@ -205,5 +205,6 @@
   },
   "notes": [
     "Migrated from v1 without scientific change: expected_property moved to representation_differences."
-  ]
+  ],
+  "require_source_containment": true
 }

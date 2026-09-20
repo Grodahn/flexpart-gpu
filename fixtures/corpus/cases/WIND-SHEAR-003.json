@@ -208,5 +208,6 @@
   "notes": [
     "Migrated from v1 without scientific change: wind note 'u(z) = 2.0 + 0.004*z; 2 m/s at surface, about 14 m/s at 3000 m' preserved here.",
     "Sheared synthetic GRIB via scripts/generate_synthetic_grib.py --u-shear-per-m 0.004 (same single reference path, extended generator)."
-  ]
+  ],
+  "require_source_containment": true
 }

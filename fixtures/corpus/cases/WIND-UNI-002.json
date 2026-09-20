@@ -208,5 +208,6 @@
   "notes": [
     "Stochastic case: 10 independent Philox seeds for candidate; 5 repetitions of seedable oracle with FLEXPART_VALIDATION_SEED=1.",
     "Expected: COM advects east/south with 5/-3 m/s wind; plume spreads in x/y/z; all particles in [0, BLH]; mass conserved."
-  ]
+  ],
+  "require_source_containment": true
 }

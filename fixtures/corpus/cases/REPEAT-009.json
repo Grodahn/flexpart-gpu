@@ -189,5 +189,6 @@
     "Requirement: bit-identical particle states across repeats.",
     "Oracle overrides document the shared neutral configuration only; no oracle run is performed for this case.",
     "The Fortran oracle exposes no seed control: random_mod.f90 alloc_random hard-codes iseed1=-7-i and iseed2=-88-i per OpenMP thread, with no COMMAND namelist override. Repeated oracle runs are therefore not a controlled multi-seed experiment; no multi-seed oracle parity is claimed."
-  ]
+  ],
+  "require_source_containment": true
 }

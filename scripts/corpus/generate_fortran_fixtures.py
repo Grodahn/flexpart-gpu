@@ -51,6 +51,10 @@ FORTRAN_OUT = CORPUS / "fortran"
 KG_TO_G = 1000.0
 MASS_CONSISTENCY_TOLERANCE_REL = 1e-6
 
+ORACLE_EXECUTION_PROFILE_ID = "flexpart-11.1-single-thread"
+ORACLE_EXECUTION_PROFILE_VERSION = 1
+ORACLE_EXECUTION_PROFILE_PATH = "reference/flexpart-11.1.json"
+
 ORACLE_STOCHASTIC_STRATEGY_ID = "flexpart-oracle-validation-seed-offset"
 ORACLE_STOCHASTIC_STRATEGY_VERSION = 1
 ORACLE_STOCHASTIC_CONTRACT_PATH = "reference/oracle-stochastic-identity.json"
@@ -405,7 +409,11 @@ def _validate_release_contract(case_id: str, case: dict, domain: dict) -> dict:
                 f"{implied}, inconsistent with inventory {total}"
             )
 
-    containment = case.get("require_source_containment", True)
+    if "require_source_containment" not in case:
+        raise SystemExit(
+            f"{case_id}: require_source_containment is required explicitly"
+        )
+    containment = case["require_source_containment"]
     if not isinstance(containment, bool):
         raise SystemExit(
             f"{case_id}: require_source_containment must be a boolean, got {containment!r}"
@@ -604,6 +612,43 @@ def _finite_number(value, case_id: str, field: str) -> float:
     if not math.isfinite(number):
         raise SystemExit(f"{case_id}: {field} must be finite, got {value!r}")
     return number
+
+
+def _normalized_repo_path(value, case_id: str, field: str, *, allow_trailing_slash=False) -> str:
+    if not isinstance(value, str) or not value:
+        raise SystemExit(f"{case_id}: {field} must be a non-empty repository-relative path")
+    if (
+        value.startswith("/")
+        or value.startswith(".")
+        or "\\" in value
+        or "//" in value
+        or any(part in (".", "..") for part in value.split("/"))
+        or (value.endswith("/") and not allow_trailing_slash)
+    ):
+        raise SystemExit(
+            f"{case_id}: {field} must be a normalized repository-relative path, got {value!r}"
+        )
+    return value
+
+
+def _required_execution_profile(case_id: str, case: dict) -> dict:
+    profile = case.get("execution_profile")
+    if not isinstance(profile, dict):
+        raise SystemExit(f"{case_id}: execution_profile must be an object")
+    expected = {
+        "id": ORACLE_EXECUTION_PROFILE_ID,
+        "version": ORACLE_EXECUTION_PROFILE_VERSION,
+        "manifest_path": ORACLE_EXECUTION_PROFILE_PATH,
+    }
+    if profile != expected:
+        raise SystemExit(
+            f"{case_id}: execution_profile must reference frozen #49 profile "
+            f"{expected!r}, got {profile!r}"
+        )
+    _normalized_repo_path(
+        profile["manifest_path"], case_id, "execution_profile.manifest_path"
+    )
+    return profile
 
 
 def _required_release(case_id: str, case: dict) -> dict:
@@ -1035,12 +1080,34 @@ def _required_meteorology(case_id: str, wind: dict, integration: dict) -> dict:
         raise SystemExit(
             f"{case_id}: wind.meteorology must be an object for real_weather, got {meteorology!r}"
         )
-    for field in ("dataset_id", "source_path", "version"):
+    for field in ("dataset_id", "source_path", "version", "digest"):
         value = meteorology.get(field)
         if not isinstance(value, str) or not value:
             raise SystemExit(
                 f"{case_id}: wind.meteorology.{field} must be a non-empty string, got {value!r}"
             )
+    _normalized_repo_path(
+        meteorology["source_path"],
+        case_id,
+        "wind.meteorology.source_path",
+        allow_trailing_slash=True,
+    )
+    digest = meteorology["digest"]
+    if len(digest) == 64:
+        if any(ch not in "0123456789abcdefABCDEF" for ch in digest):
+            raise SystemExit(
+                f"{case_id}: wind.meteorology.digest sha256 must be hexadecimal"
+            )
+    elif digest.startswith("manifest:"):
+        manifest_path = digest[len("manifest:"):]
+        _normalized_repo_path(
+            manifest_path, case_id, "wind.meteorology.digest manifest path"
+        )
+    else:
+        raise SystemExit(
+            f"{case_id}: wind.meteorology.digest must be 64-char sha256 or "
+            "manifest:<normalized repository-relative file path>"
+        )
     for field in ("candidate_transformation", "oracle_transformation"):
         transformation = meteorology.get(field)
         if not isinstance(transformation, dict):
@@ -1684,6 +1751,7 @@ def validate_and_normalize_case_for_generation(
         )
 
     oracle = normalize_oracle_overrides(case_id, case)
+    _required_execution_profile(case_id, case)
 
     integration = _required_integration(case_id, case)
     direction = _required_simulation_direction(case_id, case)

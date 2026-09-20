@@ -23,6 +23,11 @@ pub const VALIDATION_CASE_SCHEMA_VERSION: u32 = 2;
 /// Checked-in machine-readable structural contract for schema v2.
 pub const VALIDATION_CASE_SCHEMA_PATH: &str = "schemas/validation-case-v2.schema.json";
 
+/// Stable identity of the frozen #49 FLEXPART oracle execution profile.
+pub const ORACLE_EXECUTION_PROFILE_ID: &str = "flexpart-11.1-single-thread";
+pub const ORACLE_EXECUTION_PROFILE_VERSION: u32 = 1;
+pub const ORACLE_EXECUTION_PROFILE_PATH: &str = "reference/flexpart-11.1.json";
+
 /// Stable identity of the completed #50 oracle stochastic-identity contract.
 /// Case manifests reference this contract and never duplicate its
 /// requested-identity -> FLEXPART RNG-state mapping.
@@ -874,18 +879,12 @@ pub struct ValidationCaseManifest {
     #[serde(default)]
     pub representation_differences: RepresentationDifferences,
     /// Whether the release geometry must lie inside the domain.
-    /// Synthetic corpus cases require containment; ETEX-MINI-013 waives it
-    /// (placeholder domain/release pending #52 input-equivalence work) with
-    /// rationale in `notes`. Defaults to true.
-    #[serde(default = "default_containment_required")]
+    /// Required explicitly: synthetic corpus cases use true; ETEX-MINI-013
+    /// explicitly waives containment pending #52 input-equivalence work.
     pub require_source_containment: bool,
     /// Additional notes.
     #[serde(default)]
     pub notes: Vec<String>,
-}
-
-fn default_containment_required() -> bool {
-    true
 }
 
 /// Errors for validation case manifest handling.
@@ -1161,6 +1160,15 @@ impl ValidationCaseManifest {
                 ),
             });
         }
+        if self.integration.total_s.fract() != 0.0 {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "integration.total_s",
+                message: format!(
+                    "total_s ({}) must be whole seconds because manifest/FLEXPART timestamps are second-resolution",
+                    self.integration.total_s
+                ),
+            });
+        }
         let expected_total = self.integration.dt_s * self.integration.steps as f32;
         if !expected_total.is_finite()
             || (self.integration.total_s - expected_total).abs() > 1e-6
@@ -1194,15 +1202,21 @@ impl ValidationCaseManifest {
         // Validate deposition forcing against deposition switches
         self.validate_deposition()?;
 
-        // Validate execution profile reference
-        if self.execution_profile.id.is_empty() {
+        // Validate the frozen #49 execution profile reference exactly.
+        if self.execution_profile.id != ORACLE_EXECUTION_PROFILE_ID
+            || self.execution_profile.version != ORACLE_EXECUTION_PROFILE_VERSION
+            || self.execution_profile.manifest_path != ORACLE_EXECUTION_PROFILE_PATH
+        {
             return Err(ValidationCaseError::InvalidExecutionProfile {
-                message: "execution_profile.id must not be empty".to_string(),
-            });
-        }
-        if self.execution_profile.version == 0 {
-            return Err(ValidationCaseError::InvalidExecutionProfile {
-                message: "execution_profile.version must be > 0".to_string(),
+                message: format!(
+                    "execution_profile must reference {} v{} at {}, got {} v{} at {}",
+                    ORACLE_EXECUTION_PROFILE_ID,
+                    ORACLE_EXECUTION_PROFILE_VERSION,
+                    ORACLE_EXECUTION_PROFILE_PATH,
+                    self.execution_profile.id,
+                    self.execution_profile.version,
+                    self.execution_profile.manifest_path
+                ),
             });
         }
 
@@ -1954,30 +1968,54 @@ impl ValidationCaseManifest {
                 field: "meteorology.source_path",
             });
         }
-        if met.source_path.starts_with('/') || met.source_path.starts_with('.') {
+        if met.source_path.starts_with('/')
+            || met.source_path.starts_with('.')
+            || met.source_path.contains('\\')
+            || met
+                .source_path
+                .split('/')
+                .any(|segment| segment == "." || segment == "..")
+            || met.source_path.contains("//")
+        {
             return Err(ValidationCaseError::AmbiguousField {
                 field: "meteorology.source_path",
-                message: "source_path must be a normalized repository-relative path (no leading '/' or '.')".to_string(),
+                message: "source_path must be a normalized repository-relative path (no absolute/dot-parent/backslash/double-slash form)".to_string(),
             });
         }
 
-        // Validate digest format (sha256 or manifest reference)
+        // Validate digest format (sha256 or a normalized repository-relative manifest reference).
         if met.digest.is_empty() {
             return Err(ValidationCaseError::MissingField {
                 field: "meteorology.digest",
             });
         }
-        // Accept either 64-char hex (sha256) or "manifest:<path>"
-        if met.digest.len() != 64 && !met.digest.starts_with("manifest:") {
+        if met.digest.len() == 64 {
+            if !met.digest.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Err(ValidationCaseError::AmbiguousField {
+                    field: "meteorology.digest",
+                    message: "sha256 digest must be hexadecimal".to_string(),
+                });
+            }
+        } else if let Some(manifest_path) = met.digest.strip_prefix("manifest:") {
+            if manifest_path.is_empty()
+                || manifest_path.starts_with('/')
+                || manifest_path.starts_with('.')
+                || manifest_path.ends_with('/')
+                || manifest_path.contains('\\')
+                || manifest_path.contains("//")
+                || manifest_path
+                    .split('/')
+                    .any(|segment| segment == "." || segment == ".." || segment.is_empty())
+            {
+                return Err(ValidationCaseError::AmbiguousField {
+                    field: "meteorology.digest",
+                    message: "manifest digest must be manifest:<normalized repository-relative file path>".to_string(),
+                });
+            }
+        } else {
             return Err(ValidationCaseError::AmbiguousField {
                 field: "meteorology.digest",
-                message: "digest must be 64-char hex sha256 or 'manifest:<path>'".to_string(),
-            });
-        }
-        if met.digest.len() == 64 && !met.digest.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(ValidationCaseError::AmbiguousField {
-                field: "meteorology.digest",
-                message: "sha256 digest must be hexadecimal".to_string(),
+                message: "digest must be 64-char hex sha256 or 'manifest:<normalized repository-relative file path>'".to_string(),
             });
         }
 
@@ -2678,6 +2716,15 @@ mod tests {
                     return Err(format!(
                         "{path}: {number} is not less than exclusiveMaximum {maximum}"
                     ));
+                }
+            }
+            if let Some(multiple) = node.get("multipleOf").and_then(serde_json::Value::as_f64) {
+                if multiple <= 0.0 {
+                    return Err(format!("{path}: schema multipleOf must be > 0"));
+                }
+                let quotient = number / multiple;
+                if (quotient - quotient.round()).abs() > 1e-9 {
+                    return Err(format!("{path}: {number} is not a multiple of {multiple}"));
                 }
             }
         }
@@ -4279,10 +4326,8 @@ mod tests {
     /// Recursively assert the serialized manifest preserves every source key.
     ///
     /// Explicit JSON `null` in the source is equivalent to an absent key in
-    /// the output (`skip_serializing_if` on `Option` fields); anything else
-    /// must match exactly so silently discarded fields fail loudly.
-    /// Fields with defaults that are serialized even when absent from source
-    /// (e.g. `require_source_containment` defaulting to true) are exempted.
+    /// the output (`skip_serializing_if` on optional non-contract fields);
+    /// anything else must match exactly so silently discarded fields fail loudly.
     fn assert_source_keys_preserved(source: &serde_json::Value, output: &serde_json::Value, path: &str) {
         match (source, output) {
             (serde_json::Value::Object(source_map), serde_json::Value::Object(output_map)) => {
@@ -4297,11 +4342,6 @@ mod tests {
                     assert_source_keys_preserved(source_value, output_value, &child);
                 }
                 for key in output_map.keys() {
-                    if key == "require_source_containment" {
-                        // This field has a default (true) that serializes even
-                        // when absent from source; exempt from the round-trip check.
-                        continue;
-                    }
                     assert!(
                         source_map.contains_key(key),
                         "serialized field {path}.{key} has no source counterpart"
@@ -4334,6 +4374,68 @@ mod tests {
                 );
             }
             _ => assert_eq!(source, output, "value changed at {path}"),
+        }
+    }
+
+    #[test]
+    fn source_containment_policy_is_required_explicitly() {
+        let schema = load_validation_case_schema();
+        let mut raw = minimal_manifest_json();
+        raw.as_object_mut()
+            .expect("manifest object")
+            .remove("require_source_containment");
+        assert!(
+            validate_json_schema_subset(&schema, &schema, &raw, "$").is_err(),
+            "JSON Schema must reject an omitted containment policy"
+        );
+        let err = parse_json_value(&raw)
+            .expect_err("Rust must reject an omitted containment policy");
+        assert!(
+            err.to_string().contains("require_source_containment"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn integration_total_seconds_are_whole_in_schema_and_rust() {
+        let schema = load_validation_case_schema();
+        let mut raw = minimal_manifest_json();
+        raw["integration"]["dt_s"] = serde_json::json!(0.5);
+        raw["integration"]["steps"] = serde_json::json!(1);
+        raw["integration"]["total_s"] = serde_json::json!(0.5);
+        assert!(
+            validate_json_schema_subset(&schema, &schema, &raw, "$").is_err(),
+            "JSON Schema must reject fractional total_s"
+        );
+        let err = parse_json_value(&raw)
+            .expect_err("Rust must reject fractional total_s");
+        assert!(
+            err.to_string().contains("whole seconds"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn execution_profile_must_match_frozen_issue49_reference() {
+        let schema = load_validation_case_schema();
+        for (field, value) in [
+            ("id", serde_json::json!("some-other-profile")),
+            ("version", serde_json::json!(2)),
+            ("manifest_path", serde_json::json!("reference/other.json")),
+            ("manifest_path", serde_json::json!("")),
+        ] {
+            let mut raw = minimal_manifest_json();
+            raw["execution_profile"][field] = value;
+            assert!(
+                validate_json_schema_subset(&schema, &schema, &raw, "$").is_err(),
+                "JSON Schema must reject execution-profile drift in {field}"
+            );
+            let err = parse_json_value(&raw)
+                .expect_err("execution profile drift must fail");
+            assert!(
+                err.to_string().contains("execution_profile"),
+                "unexpected: {err}"
+            );
         }
     }
 
@@ -4821,6 +4923,40 @@ mod tests {
         });
         let err = parse_json_value(&raw).expect_err("empty candidate description fails");
         assert!(err.to_string().contains("candidate_transformation.description"));
+    }
+
+    #[test]
+    fn real_weather_meteorology_bad_manifest_digest_path_rejected() {
+        for digest in [
+            "manifest:",
+            "manifest:/absolute/path.json",
+            "manifest:../outside.json",
+            "manifest:fixtures//DIGESTS.json",
+            "manifest:fixtures\\DIGESTS.json",
+        ] {
+            let mut raw = minimal_manifest_json();
+            raw["wind"] = serde_json::json!({
+                "profile": "real_weather",
+                "meteorology": {
+                    "dataset_id": "test",
+                    "version": "1",
+                    "source_path": "fixtures/weather/",
+                    "digest": digest,
+                    "temporal_coverage": ["20240101000000", "20240101010000"],
+                    "horizontal_coord": "test",
+                    "vertical_coord": "test",
+                    "required_fields": ["u"],
+                    "candidate_transformation": {"description": "d", "script": "s", "version": "v"},
+                    "oracle_transformation": {"description": "d", "script": "s", "version": "v"}
+                }
+            });
+            let err = parse_json_value(&raw)
+                .expect_err("bad manifest digest path must fail");
+            assert!(
+                err.to_string().contains("meteorology.digest"),
+                "unexpected for {digest}: {err}"
+            );
+        }
     }
 
     #[test]

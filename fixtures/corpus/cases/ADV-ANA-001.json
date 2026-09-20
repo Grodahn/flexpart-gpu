@@ -168,5 +168,6 @@
     "Deterministic case: no stochastic identity needed.",
     "Candidate uses isolated advection kernel; oracle runs with LTURBULENCE=0, LCONVECTION=0.",
     "Expected: 10 m/s * 3600 s = 36000 m eastward displacement; no spread; mass conserved."
-  ]
+  ],
+  "require_source_containment": true
 }

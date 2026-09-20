@@ -213,5 +213,6 @@
   "notes": [
     "Migrated from v1 without scientific change: deposition block carried key-for-key; isolated_check (dt 60 s, 12 steps, analytic mass(t) = mass0 * exp(-lambda * frac * t)) documents the kernel check and is preserved here.",
     "Scavenging aerosol SPECIES copied from upstream examples/Aerosol/SPECIES/SPECIES_040 with precipitating GRIB; dry path disabled by zero dry-deposition velocity in the candidate and by species/precip selection in the oracle."
-  ]
+  ],
+  "require_source_containment": true
 }

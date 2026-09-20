@@ -144,12 +144,17 @@ def candidate_philox_identity(case_id: str, case: dict):
             )
     cand = stochastic["candidate_philox"]
     if cand is None:
-        if case_id == "ADV-ANA-001":
-            return None, None, 1, True, None, None
-        return None, None, None, False, None, (
-            f"case {case_id}: missing stochastic.candidate_philox; "
-            "no default key substituted"
-        )
+        physics = case.get("physics_switches")
+        if not isinstance(physics, dict) or not isinstance(physics.get("turbulence"), bool):
+            return None, None, None, False, None, (
+                f"case {case_id}: physics_switches.turbulence must be an explicit boolean"
+            )
+        if physics["turbulence"]:
+            return None, None, None, False, None, (
+                f"case {case_id}: turbulence requires stochastic.candidate_philox; "
+                "no default key substituted"
+            )
+        return None, None, 1, True, None, None
     base_key = _as_u32_list(cand.get("base_key"), 2)
     base_counter = _as_u32_list(cand.get("base_counter"), 4)
     count = cand.get("count")
@@ -203,16 +208,18 @@ def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
         check(f"{case_id} Philox identity declared", False, identity_error)
     else:
         check(f"{case_id} Philox identity declared", True)
-    if case_id == "ADV-ANA-001":
-        check(f"{case_id} exactly one deterministic seed", len(seeds) == 1, f"found {len(seeds)}")
-    elif case_id == "REPEAT-009":
-        check(f"{case_id} exactly two repeat seeds", len(seeds) == 2, f"found {len(seeds)}")
-        if len(seeds) == 2:
-            a = json.loads(seeds[0].read_text(encoding="utf-8"))
-            b = json.loads(seeds[1].read_text(encoding="utf-8"))
-            check(f"{case_id} repeats share one Philox key", a.get("philox_key") == b.get("philox_key"))
+    if identity_error is None:
+        expected_seed_files = 1 if deterministic else ensemble_count
+        check(
+            f"{case_id} candidate artifact count matches manifest",
+            len(seeds) == expected_seed_files,
+            f"found {len(seeds)}, expected {expected_seed_files}",
+        )
     else:
         check(f"{case_id} seed files present", len(seeds) >= 1, "no seed_*.json")
+
+    seen_indices = set()
+    seen_identities = set()
     for path in seeds:
         seed = json.loads(path.read_text(encoding="utf-8"))
         stem = f"{case_id}/{path.name}"
@@ -226,11 +233,14 @@ def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
         elif identity_error is not None:
             check(f"{stem} Philox derivation", False, identity_error)
         else:
-            idx = seed.get("seed_index", 0)
-            if not isinstance(idx, int) or idx < 0 or idx >= ensemble_count:
+            idx = seed.get("seed_index")
+            if not isinstance(idx, int) or isinstance(idx, bool) or idx < 0 or idx >= ensemble_count:
                 check(f"{stem} seed_index in declared ensemble", False,
                       f"seed_index {seed.get('seed_index')} outside [0, {ensemble_count})")
+            elif idx in seen_indices:
+                check(f"{stem} seed_index unique", False, f"duplicate seed_index {idx}")
             else:
+                seen_indices.add(idx)
                 expected_key, expected_counter = expected_philox_for_seed(
                     case_id, base_key, base_counter, idx, derivation
                 )
@@ -238,6 +248,30 @@ def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
                       f"{seed.get('philox_key')} vs {expected_key}")
                 check(f"{stem} Philox counter", seed.get("philox_counter") == expected_counter,
                       f"{seed.get('philox_counter')} vs {expected_counter}")
+                identity = (
+                    tuple(seed.get("philox_key") or ()),
+                    tuple(seed.get("philox_counter") or ()),
+                )
+                seen_identities.add(identity)
+
+    if identity_error is None and not deterministic:
+        check(
+            f"{case_id} seed indices cover declared ensemble",
+            seen_indices == set(range(ensemble_count)),
+            f"found {sorted(seen_indices)}, expected {list(range(ensemble_count))}",
+        )
+        if derivation == PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1:
+            check(
+                f"{case_id} reuse derivation shares one Philox identity",
+                len(seen_identities) == 1,
+                f"found {len(seen_identities)} identities",
+            )
+        elif derivation == PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1:
+            check(
+                f"{case_id} wrapping derivation uses distinct Philox identities",
+                len(seen_identities) == ensemble_count,
+                f"found {len(seen_identities)}, expected {ensemble_count}",
+            )
         check(f"{stem} adapter recorded", bool(seed.get("adapter")))
 
 

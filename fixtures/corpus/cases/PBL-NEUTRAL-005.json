@@ -205,5 +205,6 @@
   },
   "notes": [
     "Migrated from v1 without scientific change: expected_property moved to representation_differences; derivation string preserved verbatim including the CI seed-0 note."
-  ]
+  ],
+  "require_source_containment": true
 }

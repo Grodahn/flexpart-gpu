@@ -53,7 +53,7 @@ calendar dates (including leap-year/day validation) and fail closed on invalid
 months, days, hours, minutes, or seconds.
 
 `integration.start`, `dt_s`, `steps`, and `total_s` are validated together.
-`total_s` must equal `dt_s * steps`; the simulation end is derived from the
+`total_s` is explicitly whole seconds and must equal `dt_s * steps`; the simulation end is derived from the
 validated start plus `total_s` rather than inferred from string ordering or a
 hard-coded calendar date. The raw-Python COMMAND generator now derives both
 `IBDATE`/`IBTIME` and `IEDATE`/`IETIME` from that integration block.
@@ -197,7 +197,7 @@ v2 introduces typed enums and structures so runners never guess:
 | `release.mass_kg_total` | `release.inventory` | Typed: `quantity_kg` + `unit` (`kg`). |
 | `release.mass_kg_per_particle` | `release.mass_kg_per_particle` | Kept; validated consistent with `quantity_kg / particle_count` within 1e-6. |
 | (none) | `domain.wind_heights_ref` | Required: `agl` (all checked-in cases). |
-| `domain`/`release` (implicit) | `require_source_containment` | Synthetic cases must lie inside domain; ETEX-MINI-013 waives it with note. |
+| `domain`/`release` (implicit) | `require_source_containment` | Required explicit boolean: synthetic cases declare `true`; ETEX-MINI-013 declares `false` with rationale. No containment default remains. |
 
 All checked-in cases use `SourceGeometry::Point` with `VerticalRef::Agl`,
 `ReleaseTiming::Instant` matching the integration start, and
@@ -219,14 +219,14 @@ those quantities. Removed without replacement: `reference_height`,
 ## Integration, release, domain, wind, surface, switches
 
 Unchanged shapes and values; only representation notes:
-- `integration.dt_s/total_s`: JSON integers (`300`, `3600`) render as floats (`300.0`, `3600.0`). Same values.
+- `integration.dt_s` remains numeric; `integration.total_s` is contractually whole seconds in JSON Schema, Rust and Python because case/FLEXPART timestamps are second-resolution.
 - `release`: added derived `mass_kg_per_particle` (total/count) for readability; `mass_kg_total` unchanged and authoritative.
 - `domain`, `wind` (uniform/shear parameters), `surface`, `physics_switches`: values preserved exactly. REPEAT-009 gains the neutral `surface` and neutral `physics_switches` (turbulence on) matching its documented `based_on` configuration; v1 carried neither because it referenced the neutral case by name.
 
 ## Introduced runner metadata (non-scientific)
 
-`execution_profile` (frozen `flexpart-11.1-single-thread` v1 + manifest
-path), `expected_artifacts.required` (stable artifact IDs plus producer/class, with no filesystem paths or hashes), and `representation_differences` are new in v2 and identical in kind to the previously migrated ADV-ANA-001/WIND-UNI-002/ETEX-MINI-013. Concrete artifact locations, hashes and immutable run attribution remain owned by #53.
+`execution_profile` is pinned exactly to `flexpart-11.1-single-thread` v1 at
+`reference/flexpart-11.1.json` (no alternate/empty path is accepted), `expected_artifacts.required` (stable artifact IDs plus producer/class, with no filesystem paths or hashes), and `representation_differences` are new in v2 and identical in kind to the previously migrated ADV-ANA-001/WIND-UNI-002/ETEX-MINI-013. Concrete artifact locations, hashes and immutable run attribution remain owned by #53.
 
 ## Simulation direction and output semantics
 
@@ -278,6 +278,12 @@ and `lsynctime_s`; both enforce `IFINE <= 10`; and the schema encodes the
 same closed CTL/formulation relationship (`adaptive_w_sigw` requires
 `CTL >= 0.1`, `fixed_sync_w` requires `CTL < 0`). The Rust manifest has
 no default Oracle override block.
+
+JSON Schema also requires the explicit source-containment policy, requires
+`integration.total_s` to be a whole-second multiple, and pins the #49
+execution-profile id/version/path exactly. Rust and raw Python mirror those
+requirements. Real-weather `manifest:<path>` digests must contain a non-empty,
+normalized repository-relative file path; `manifest:` alone is invalid.
 
 Rust remains authoritative for cross-field scientific invariants not encoded
 in JSON Schema (for example timestep arithmetic, coupled physics switches and

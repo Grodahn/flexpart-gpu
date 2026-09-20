@@ -103,6 +103,7 @@
     "oracle_command_overrides",
     "expected_artifacts",
     "representation_differences",
+    "require_source_containment",
     "notes"
   ],
   "$defs": {
@@ -622,7 +623,8 @@
         },
         "total_s": {
           "type": "number",
-          "exclusiveMinimum": 0
+          "exclusiveMinimum": 0,
+          "multipleOf": 1
         }
       },
       "required": [
@@ -938,16 +940,13 @@
       "additionalProperties": false,
       "properties": {
         "id": {
-          "type": "string",
-          "minLength": 1
+          "const": "flexpart-11.1-single-thread"
         },
         "version": {
-          "type": "integer",
-          "minimum": 1
+          "const": 1
         },
         "manifest_path": {
-          "type": "string",
-          "minLength": 1
+          "const": "reference/flexpart-11.1.json"
         }
       },
       "required": [

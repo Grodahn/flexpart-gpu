@@ -378,6 +378,24 @@ class ChronologyFailClosedTest(unittest.TestCase):
             GEN._required_meteorology("ETEX-MINI-013", case["wind"], integration)
         self.assertIn("cover the full simulation", str(ctx.exception))
 
+    def test_real_weather_manifest_digest_path_must_be_normalized(self):
+        for digest in (
+            "manifest:",
+            "manifest:/absolute/DIGESTS.json",
+            "manifest:../DIGESTS.json",
+            "manifest:fixtures//DIGESTS.json",
+            "manifest:fixtures\\DIGESTS.json",
+        ):
+            case = copy.deepcopy(load_case("ETEX-MINI-013"))
+            integration = GEN._required_integration("ETEX-MINI-013", case)
+            case["wind"]["meteorology"]["digest"] = digest
+            with self.subTest(digest=digest):
+                with self.assertRaises(SystemExit) as ctx:
+                    GEN._required_meteorology(
+                        "ETEX-MINI-013", case["wind"], integration
+                    )
+                self.assertIn("digest", str(ctx.exception))
+
     def test_command_dates_are_derived_from_integration_start(self):
         case = copy.deepcopy(load_case("WIND-UNI-002"))
         case["integration"]["start"] = "20240229010203"
@@ -710,6 +728,16 @@ class PreflightFailClosedTest(unittest.TestCase):
             case["physics_switches"] = {"turbulence": True}
 
         self._assert_aborts_before_writes(mutate, "physics_switches")
+
+    def test_missing_source_containment_policy_aborts_before_any_write(self):
+        def mutate(case):
+            case.pop("require_source_containment", None)
+        self._assert_aborts_before_writes(mutate, "require_source_containment")
+
+    def test_execution_profile_drift_aborts_before_any_write(self):
+        def mutate(case):
+            case["execution_profile"]["manifest_path"] = "reference/other.json"
+        self._assert_aborts_before_writes(mutate, "frozen #49 profile")
 
     def test_malformed_oracle_override_aborts_before_any_write(self):
         def mutate(case):

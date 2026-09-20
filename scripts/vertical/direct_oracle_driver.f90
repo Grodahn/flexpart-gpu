@@ -112,7 +112,7 @@ program vertical_direct_oracle
   endif
 
   open(newunit=output_unit, file=trim(output_path), status="replace", action="write")
-  write(output_unit,'(A)') "FLEXPART_VERTICAL_DIRECT_ORACLE_V1"
+  write(output_unit,'(A)') "FLEXPART_VERTICAL_ROUTINE_ORACLE_V1"
   write(output_unit,'(I0)') native_nz
 
   do j=1,native_nz

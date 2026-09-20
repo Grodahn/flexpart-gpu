@@ -206,6 +206,17 @@ The generated COMMAND column layout for the historical values
 byte-identical to the previously checked-in fixtures; no scientific value
 changed in migration.
 
+## Explicit status and error semantics
+
+Schema v2 requires `input_equivalence` on every case. Omitting it is an error;
+the parser no longer silently turns a missing status into `not_applicable`.
+This keeps `not_applicable` an explicit scientific statement.
+
+Manifest file writes now report a distinct `WriteFile` error instead of being
+misclassified as read failures. Unit-value disagreements use the dedicated
+`UnitMismatch` validation error; missing unit fields still report
+`MissingField`.
+
 ## External metric and threshold references
 
 Schema v2 carries `validation_definition_refs` instead of copying metric

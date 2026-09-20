@@ -792,8 +792,8 @@ pub struct ValidationCaseManifest {
     /// Structured representation differences for #52.
     #[serde(default)]
     pub representation_differences: RepresentationDifferences,
-    /// Input equivalence status for #52.
-    #[serde(default = "default_input_equivalence")]
+    /// Input equivalence status for #52. Required explicitly: absence must
+    /// never be interpreted as "not applicable".
     pub input_equivalence: InputEquivalenceStatus,
     /// Whether the release geometry must lie inside the domain.
     /// Synthetic corpus cases require containment; ETEX-MINI-013 waives it
@@ -806,10 +806,6 @@ pub struct ValidationCaseManifest {
     pub notes: Vec<String>,
 }
 
-fn default_input_equivalence() -> InputEquivalenceStatus {
-    InputEquivalenceStatus::NotApplicable
-}
-
 fn default_containment_required() -> bool {
     true
 }
@@ -819,6 +815,12 @@ fn default_containment_required() -> bool {
 pub enum ValidationCaseError {
     #[error("failed to read case file `{path}`: {source}")]
     ReadFile {
+        path: std::path::PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to write case file `{path}`: {source}")]
+    WriteFile {
         path: std::path::PathBuf,
         #[source]
         source: std::io::Error,
@@ -1117,36 +1119,46 @@ impl ValidationCaseManifest {
     fn validate_units(&self) -> Result<(), ValidationCaseError> {
         let require = |field: &'static str,
                        actual: Option<&str>,
-                       expected: &str|
+                       expected: &'static str|
          -> Result<(), ValidationCaseError> {
             let Some(actual) = actual else {
                 return Err(ValidationCaseError::MissingField { field });
             };
             if actual != expected {
-                return Err(ValidationCaseError::AmbiguousField {
+                return Err(ValidationCaseError::UnitMismatch {
                     field,
-                    message: format!("expected unit {expected:?}, got {actual:?}"),
+                    expected: expected.to_string(),
+                    actual: actual.to_string(),
                 });
             }
             Ok(())
         };
 
         if self.units.wind != "m/s" {
-            return Err(ValidationCaseError::AmbiguousField {
+            return Err(ValidationCaseError::UnitMismatch {
                 field: "units.wind",
-                message: format!("expected unit \"m/s\", got {:?}", self.units.wind),
+                expected: "m/s".to_string(),
+                actual: self.units.wind.clone(),
             });
         }
         require("units.height", self.units.height.as_deref(), "m")?;
         require("units.mass", self.units.mass.as_deref(), "kg")?;
         require("units.time", self.units.time.as_deref(), "s")?;
-        require("units.concentration", self.units.concentration.as_deref(), "kg/m3")?;
+        require(
+            "units.concentration",
+            self.units.concentration.as_deref(),
+            "kg/m3",
+        )?;
 
         if self.surface.is_some() {
             require("units.pressure", self.units.pressure.as_deref(), "Pa")?;
             require("units.temperature", self.units.temperature.as_deref(), "K")?;
             require("units.heat_flux", self.units.heat_flux.as_deref(), "W/m2")?;
-            require("units.inv_obukhov", self.units.inv_obukhov.as_deref(), "1/m")?;
+            require(
+                "units.inv_obukhov",
+                self.units.inv_obukhov.as_deref(),
+                "1/m",
+            )?;
         }
         if matches!(self.wind, WindSpec::LinearShear { .. }) {
             require("units.shear", self.units.shear.as_deref(), "1/s")?;
@@ -1167,9 +1179,10 @@ impl ValidationCaseManifest {
         }
         if let Some(unit) = self.units.displacement.as_deref() {
             if unit != "m" {
-                return Err(ValidationCaseError::AmbiguousField {
+                return Err(ValidationCaseError::UnitMismatch {
                     field: "units.displacement",
-                    message: format!("expected unit \"m\", got {unit:?}"),
+                    expected: "m".to_string(),
+                    actual: unit.to_string(),
                 });
             }
         }
@@ -2110,14 +2123,14 @@ impl ValidationCaseManifest {
     /// # Errors
     /// Returns the validation error if the manifest is invalid,
     /// [`ValidationCaseError::ParseJson`] if serialization fails,
-    /// or [`ValidationCaseError::ReadFile`] if the file cannot be written.
+    /// or [`ValidationCaseError::WriteFile`] if the file cannot be written.
     pub fn write_to_file(&self, path: &Path) -> Result<(), ValidationCaseError> {
         self.validate()?;
         let json = serde_json::to_string_pretty(self).map_err(|source| ValidationCaseError::ParseJson {
             path: path.to_path_buf(),
             source,
         })?;
-        std::fs::write(path, json).map_err(|source| ValidationCaseError::ReadFile {
+        std::fs::write(path, json).map_err(|source| ValidationCaseError::WriteFile {
             path: path.to_path_buf(),
             source,
         })
@@ -2292,6 +2305,16 @@ mod tests {
     }
 
     #[test]
+    fn write_failure_uses_write_file_error() {
+        let manifest = make_minimal_manifest();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let err = manifest
+            .write_to_file(dir.path())
+            .expect_err("writing JSON to a directory must fail");
+        assert!(matches!(err, ValidationCaseError::WriteFile { .. }));
+    }
+
+    #[test]
     fn schema_version_mismatch_rejected() {
         let mut manifest = make_minimal_manifest();
         manifest.schema_version = 999;
@@ -2384,6 +2407,20 @@ mod tests {
     }
 
     #[test]
+    fn unit_mismatch_uses_dedicated_error_variant() {
+        let mut manifest = make_minimal_manifest();
+        manifest.units.wind = "km/h".to_string();
+        let err = manifest.validate().expect_err("wrong wind unit must fail");
+        assert!(matches!(
+            err,
+            ValidationCaseError::UnitMismatch {
+                field: "units.wind",
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn context_required_units_fail_closed() {
         let mut manifest = make_minimal_manifest();
         manifest.units.mass = None;
@@ -2430,6 +2467,20 @@ mod tests {
         );
         assert_eq!(forward.flexpart_ldirect(), 1);
         assert_eq!(backward.flexpart_ldirect(), -1);
+    }
+
+    #[test]
+    fn missing_input_equivalence_is_rejected() {
+        let mut raw = minimal_manifest_json();
+        raw.as_object_mut()
+            .expect("manifest object")
+            .remove("input_equivalence");
+        let err = parse_json_value(&raw).expect_err("missing input equivalence fails");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("input_equivalence"),
+            "error must name the missing field: {rendered}"
+        );
     }
 
     #[test]

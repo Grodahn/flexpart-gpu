@@ -199,9 +199,12 @@ v2 introduces typed enums and structures so runners never guess:
 | (none) | `domain.wind_heights_ref` | Required: `agl` (all checked-in cases). |
 | `domain`/`release` (implicit) | `require_source_containment` | Required explicit boolean: synthetic cases declare `true`; ETEX-MINI-013 declares `false` with rationale. No containment default remains. |
 
-All checked-in cases use `SourceGeometry::Point` with `VerticalRef::Agl`,
-`ReleaseTiming::Instant` matching the integration start, and
-`SpeciesRef { id: "SPECIES_024" }` (or `SPECIES_040` for DRY/WET).
+Synthetic checked-in cases use `SourceGeometry::Point` with `VerticalRef::Agl`
+and `ReleaseTiming::Instant` matching the integration start. ETEX-MINI-013
+uses the real ETEX-1 release as a degenerate horizontal `Box` at
+(-2.0, 48.058) spanning 5-15 m AGL and the actual 16:00-03:40 release window.
+Cases use `SPECIES_024` except DRY/WET, which use their pinned
+`SPECIES_040` physics contracts.
 Inventory uses `MassUnit::Kg`. The manifest `vertical_ref` maps to
 FLEXPART `RELEASES` `ZKIND=1` (meters above ground, confirmed by the
 ETEX input-equivalence audit). `HorizontalCoordRef::GeographicLonLatDegrees`
@@ -220,8 +223,19 @@ those quantities. Removed without replacement: `reference_height`,
 
 Unchanged shapes and values; only representation notes:
 - `integration.dt_s` remains numeric; `integration.total_s` is contractually whole seconds in JSON Schema, Rust and Python because case/FLEXPART timestamps are second-resolution.
-- `release`: added derived `mass_kg_per_particle` (total/count) for readability; `mass_kg_total` unchanged and authoritative.
-- `domain`, `wind` (uniform/shear parameters), `surface`, `physics_switches`: values preserved exactly. REPEAT-009 gains the neutral `surface` and neutral `physics_switches` (turbulence on) matching its documented `based_on` configuration; v1 carried neither because it referenced the neutral case by name.
+- `release`: added derived `mass_kg_per_particle` (total/count) for readability. Synthetic case values are preserved; ETEX-MINI-013 is corrected to the existing real mini pipeline: 340 kg, 10,000 particles, (-2.0, 48.058), 5-15 m AGL, 16:00-03:40.
+- `domain`, `wind`, `surface`, `physics_switches`: synthetic values are preserved. ETEX-MINI-013 now mirrors `prepare_native_era5.py`: 65x41x16 meteorology at 0.25 deg from (-8,43), the exact 16 AGL levels, 900 s candidate timestep, and no invented static surface block because ERA5 supplies time-varying surface fields.
+- `output_grid`: optional for legacy synthetic cases but required by the semantic validator for real-weather cases. ETEX declares the distinct real 64x40x5 FLEXPART/candidate comparison grid with heights [100,500,1000,2000,5000] m.
+
+## ETEX real-run alignment
+
+ETEX-MINI-013 is not a synthetic placeholder. Its v2 fields are regression-checked
+against the existing mini pipeline: `fixtures/etex/mini/config/RELEASES`,
+`OUTGRID`, `COMMAND`, `scripts/etex/prepare_native_era5.py`, and the
+ForwardTimeLoopConfig Philox default used by `etex-run`. The normal ETEX path
+uses the pristine unmodified FLEXPART 11.1 oracle; the #50 seedable oracle remains
+a separate WIND-UNI-002 validation instrument. `INPUT_EQUIVALENCE_NOT_DEMONSTRATED`
+remains declarative context owned by #52.
 
 ## Introduced runner metadata (non-scientific)
 

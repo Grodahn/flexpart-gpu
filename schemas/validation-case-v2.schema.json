@@ -83,6 +83,16 @@
       "items": {
         "type": "string"
       }
+    },
+    "output_grid": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/output_grid"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [
@@ -1176,6 +1186,67 @@
         "version",
         "path",
         "git_blob_sha"
+      ]
+    },
+    "output_grid": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nx": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ny": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "nz": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dx_deg": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "dy_deg": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "xlon0_deg": {
+          "type": "number"
+        },
+        "ylat0_deg": {
+          "type": "number"
+        },
+        "horizontal_ref": {
+          "const": "geographic_lon_lat_degrees"
+        },
+        "heights_m": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "heights_ref": {
+          "enum": [
+            "agl",
+            "asl"
+          ]
+        }
+      },
+      "required": [
+        "nx",
+        "ny",
+        "nz",
+        "dx_deg",
+        "dy_deg",
+        "xlon0_deg",
+        "ylat0_deg",
+        "horizontal_ref",
+        "heights_m",
+        "heights_ref"
       ]
     }
   }

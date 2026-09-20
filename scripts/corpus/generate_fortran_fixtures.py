@@ -459,18 +459,73 @@ def sim_end_date(start: str, total_s: int) -> tuple:
     return int(end_dt.strftime("%Y%m%d")), int(end_dt.strftime("%H%M%S"))
 
 
+def _required_output_grid(case_id: str, case: dict, *, required: bool):
+    """Validate an explicit concentration/comparison grid.
+
+    Real-weather cases require this block because their meteorological point
+    grid and concentration output grid are distinct. Synthetic cases retain
+    the legacy shared output-grid policy until that policy is migrated
+    separately.
+    """
+    grid = case.get("output_grid")
+    if grid is None:
+        if required:
+            raise SystemExit(
+                f"{case_id}: output_grid is required for real_weather cases"
+            )
+        return None
+    if not isinstance(grid, dict):
+        raise SystemExit(f"{case_id}: output_grid must be an object, got {grid!r}")
+    for field in ("nx", "ny", "nz"):
+        value = grid.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise SystemExit(
+                f"{case_id}: output_grid.{field} must be a positive integer, got {value!r}"
+            )
+    for field in ("xlon0_deg", "ylat0_deg", "dx_deg", "dy_deg"):
+        value = _finite_number(grid.get(field), case_id, f"output_grid.{field}")
+        if field in ("dx_deg", "dy_deg") and value <= 0:
+            raise SystemExit(
+                f"{case_id}: output_grid.{field} must be > 0, got {value!r}"
+            )
+    if grid.get("horizontal_ref") != "geographic_lon_lat_degrees":
+        raise SystemExit(
+            f"{case_id}: output_grid.horizontal_ref must be 'geographic_lon_lat_degrees'"
+        )
+    if grid.get("heights_ref") not in ("agl", "asl"):
+        raise SystemExit(
+            f"{case_id}: output_grid.heights_ref must be 'agl' or 'asl'"
+        )
+    heights = grid.get("heights_m")
+    if not isinstance(heights, list) or len(heights) != grid["nz"]:
+        raise SystemExit(
+            f"{case_id}: output_grid.heights_m length must equal output_grid.nz"
+        )
+    values = [_finite_number(v, case_id, "output_grid.heights_m") for v in heights]
+    if any(v < 0 for v in values) or any(b <= a for a, b in zip(values, values[1:])):
+        raise SystemExit(
+            f"{case_id}: output_grid.heights_m must be finite, >= 0 and strictly increasing"
+        )
+    return grid
+
+
 def outgrid_text(case: dict) -> str:
-    """OUTGRID namelist derived from the case domain block."""
-    domain = case["domain"]
-    heights = ", ".join(f"{h:6.1f}" for h in STANDARD_OUTHEIGHTS) + ","
+    """Render FLEXPART OUTGRID from explicit output_grid when present."""
+    grid = case.get("output_grid")
+    if grid is None:
+        grid = case["domain"]
+        heights_values = STANDARD_OUTHEIGHTS
+    else:
+        heights_values = grid["heights_m"]
+    heights = ", ".join(f"{h:6.1f}" for h in heights_values) + ","
     return (
         "&OUTGRID\n"
-        f" OUTLON0=   {domain['xlon0_deg']:7.2f},\n"
-        f" OUTLAT0=   {domain['ylat0_deg']:7.2f},\n"
-        f" NUMXGRID=   {domain['nx']:7d},\n"
-        f" NUMYGRID=   {domain['ny']:7d},\n"
-        f" DXOUT=     {domain['dx_deg']:7.2f},\n"
-        f" DYOUT=     {domain['dy_deg']:7.2f},\n"
+        f" OUTLON0=   {grid['xlon0_deg']:7.2f},\n"
+        f" OUTLAT0=   {grid['ylat0_deg']:7.2f},\n"
+        f" NUMXGRID=   {grid['nx']:7d},\n"
+        f" NUMYGRID=   {grid['ny']:7d},\n"
+        f" DXOUT=     {grid['dx_deg']:7.2f},\n"
+        f" DYOUT=     {grid['dy_deg']:7.2f},\n"
         f" OUTHEIGHTS=  {heights}\n"
         " /\n"
     )
@@ -1155,13 +1210,17 @@ def _required_surface(case_id: str, case: dict, physics: dict):
 
     - surface must be ``null`` or an object; a non-null falsey value
       (``false``, ``0``, ``[]``, ``""``) is rejected, never normalized to ``{}``.
-    - ``surface: null`` is accepted only when the declared physics do not
-      require surface data (turbulence and deposition off), mirroring the
-      Rust ``validate_physics_consistency`` contract.
+    - ``surface: null`` is accepted when analytic physics do not require it
+      or when ``wind.profile=real_weather`` supplies time-varying surface
+      fields through the meteorology contract.
     """
+    real_weather = (
+        isinstance(case.get("wind"), dict)
+        and case["wind"].get("profile") == "real_weather"
+    )
     surface_required = (
         physics["turbulence"] or physics["dry_deposition"] or physics["wet_deposition"]
-    )
+    ) and not real_weather
     surface = case.get("surface")
     if surface is not None and not isinstance(surface, dict):
         raise SystemExit(
@@ -1631,12 +1690,13 @@ def verify_rendered_case(case_id: str, case: dict, files: dict, specnum: int) ->
     check("RELEASES MASS_g", actual_g, expected_g, 1e-4 * expected_g)
 
     outgrid = files["OUTGRID"]
-    check("OUTGRID OUTLON0", float(namelist_value(outgrid, "OUTLON0")), float(domain["xlon0_deg"]), 1e-9)
-    check("OUTGRID OUTLAT0", float(namelist_value(outgrid, "OUTLAT0")), float(domain["ylat0_deg"]), 1e-9)
-    check("OUTGRID NUMXGRID", int(namelist_value(outgrid, "NUMXGRID")), int(domain["nx"]))
-    check("OUTGRID NUMYGRID", int(namelist_value(outgrid, "NUMYGRID")), int(domain["ny"]))
-    check("OUTGRID DXOUT", float(namelist_value(outgrid, "DXOUT")), float(domain["dx_deg"]), 1e-9)
-    check("OUTGRID DYOUT", float(namelist_value(outgrid, "DYOUT")), float(domain["dy_deg"]), 1e-9)
+    output_grid = case.get("output_grid") or domain
+    check("OUTGRID OUTLON0", float(namelist_value(outgrid, "OUTLON0")), float(output_grid["xlon0_deg"]), 1e-9)
+    check("OUTGRID OUTLAT0", float(namelist_value(outgrid, "OUTLAT0")), float(output_grid["ylat0_deg"]), 1e-9)
+    check("OUTGRID NUMXGRID", int(namelist_value(outgrid, "NUMXGRID")), int(output_grid["nx"]))
+    check("OUTGRID NUMYGRID", int(namelist_value(outgrid, "NUMYGRID")), int(output_grid["ny"]))
+    check("OUTGRID DXOUT", float(namelist_value(outgrid, "DXOUT")), float(output_grid["dx_deg"]), 1e-9)
+    check("OUTGRID DYOUT", float(namelist_value(outgrid, "DYOUT")), float(output_grid["dy_deg"]), 1e-9)
 
     command = files["COMMAND"]
     overrides = normalize_oracle_overrides(case_id, case)
@@ -1772,6 +1832,9 @@ def validate_and_normalize_case_for_generation(
         if profile == "real_weather"
         else None
     )
+    output_grid = _required_output_grid(
+        case_id, case, required=(profile == "real_weather")
+    )
 
     physics = mandatory_physics_switches(case_id, case)
     species_profile = _validate_species_physics_contract(case_id, case, physics)
@@ -1822,13 +1885,28 @@ def validate_and_normalize_case_for_generation(
         "candidate_mass_kg": mass_kg,
         "mass_conversion": "MASS_g = mass_kg * 1000 (FLEXPART MASS is in grams)",
         "oracle_mass_g": mass_kg * KG_TO_G,
-        "outgrid_from_domain": {
-            key: domain[key]
-            for key in ("xlon0_deg", "ylat0_deg", "nx", "ny", "dx_deg", "dy_deg")
-        },
-        "outheights_m": STANDARD_OUTHEIGHTS,
-        "outheights_note": "Standard concentration output levels shared by all "
-        "synthetic cases; independent of wind-field levels.",
+        "output_grid": (
+            {
+                key: output_grid[key]
+                for key in (
+                    "xlon0_deg", "ylat0_deg", "nx", "ny", "nz",
+                    "dx_deg", "dy_deg", "heights_m", "heights_ref"
+                )
+            }
+            if output_grid is not None
+            else {
+                "xlon0_deg": domain["xlon0_deg"],
+                "ylat0_deg": domain["ylat0_deg"],
+                "nx": domain["nx"],
+                "ny": domain["ny"],
+                "nz": len(STANDARD_OUTHEIGHTS),
+                "dx_deg": domain["dx_deg"],
+                "dy_deg": domain["dy_deg"],
+                "heights_m": STANDARD_OUTHEIGHTS,
+                "heights_ref": "agl",
+                "policy": "legacy synthetic shared output grid",
+            }
+        ),
     }
     files = {
         "COMMAND": command_text(case_id, case),

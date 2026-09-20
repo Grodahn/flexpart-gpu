@@ -224,29 +224,157 @@ class OracleOverrideTest(unittest.TestCase):
         text = GEN.command_text("WIND-UNI-002", case)
         self.assertAlmostEqual(float(GEN.namelist_value(text, "CTL")), 5.0, places=6)
 
-    def test_etex_preserves_historical_fixed_sync_command_semantics(self):
+    def test_etex_manifest_matches_real_mini_pipeline_contract(self):
         case = load_case("ETEX-MINI-013")
+
+        # Candidate meteorology/run contract from prepare_native_era5.py / etex-run.
+        self.assertEqual(
+            (case["domain"]["nx"], case["domain"]["ny"], case["domain"]["nz"]),
+            (65, 41, 16),
+        )
+        self.assertEqual(
+            (case["domain"]["xlon0_deg"], case["domain"]["ylat0_deg"]),
+            (-8, 43),
+        )
+        self.assertEqual(
+            case["domain"]["wind_heights_m"],
+            [10, 50, 100, 200, 400, 600, 900, 1300, 1800, 2500, 3500,
+             5000, 7000, 10000, 14000, 20000],
+        )
+        self.assertIsNone(case["surface"])
+        self.assertEqual(case["integration"], {
+            "start": "19941023160000",
+            "dt_s": 900,
+            "steps": 48,
+            "total_s": 43200,
+        })
+        self.assertEqual(case["release"]["particle_count"], 10000)
+        self.assertAlmostEqual(case["release"]["mass_kg_per_particle"], 0.034)
+        self.assertEqual(case["release"]["timing"], {
+            "kind": "window",
+            "start": "19941023160000",
+            "end": "19941024034000",
+        })
+
+        # etex-run currently inherits this exact ForwardTimeLoopConfig default.
+        self.assertEqual(
+            case["stochastic"]["candidate_philox"]["base_key"],
+            [0xDECAFBAD, 0x12345678],
+        )
+        self.assertEqual(case["stochastic"]["candidate_philox"]["base_counter"], [0, 0, 0, 0])
+        self.assertEqual(case["stochastic"]["candidate_philox"]["count"], 1)
+        timeloop = (REPO / "src" / "simulation" / "timeloop.rs").read_text(encoding="utf-8")
+        self.assertIn("philox_key: [0xDECA_FBAD, 0x1234_5678]", timeloop)
+
+        oracle_seed = case["stochastic"]["oracle_seed"]
+        self.assertEqual(oracle_seed["kind"], "pristine-oracle")
+        self.assertEqual(oracle_seed["repetitions"], 1)
+        self.assertNotIn("seed", oracle_seed)
+        self.assertNotIn("strategy", oracle_seed)
+
+        # The source preparation code is the existing ETEX GPU run authority.
+        prepare = (REPO / "scripts" / "etex" / "prepare_native_era5.py").read_text(
+            encoding="utf-8"
+        )
+        for fragment in (
+            '"nx": 65, "ny": 41, "nz": 16',
+            '"xlon0_deg": -8.0, "ylat0_deg": 43.0',
+            '"particle_count": 10000',
+            '"dt_seconds": 900',
+            '"output": {"nx": 64, "ny": 40, "nz": 5',
+        ):
+            self.assertIn(fragment, prepare)
+
+        heights_match = re.search(
+            r"HEIGHTS_M\s*=\s*np\.asarray\(\s*\[([^\]]+)\]",
+            prepare,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(heights_match)
+        source_heights = [
+            float(value)
+            for value in re.findall(r"-?\d+(?:\.\d+)?", heights_match.group(1))
+        ]
+        self.assertEqual(source_heights, case["domain"]["wind_heights_m"])
+
+        # RELEASES: every scientific release value mirrors the existing config.
+        generated_releases = GEN.releases_text("ETEX-MINI-013", case, 24)
+        actual_releases = (
+            REPO / "fixtures" / "etex" / "mini" / "config" / "RELEASES"
+        ).read_text(encoding="utf-8")
+        for key in (
+            "SPECNUM_REL", "IDATE1", "ITIME1", "IDATE2", "ITIME2",
+            "LON1", "LON2", "LAT1", "LAT2", "Z1", "Z2", "ZKIND", "MASS", "PARTS",
+        ):
+            generated = float(GEN.namelist_value(generated_releases, key).replace("D", "E"))
+            actual = float(GEN.namelist_value(actual_releases, key).replace("D", "E"))
+            self.assertAlmostEqual(generated, actual, places=6, msg=f"ETEX RELEASES {key}")
+
+        # OUTGRID is distinct from the 65x41 meteorology domain.
+        self.assertEqual(case["output_grid"], {
+            "nx": 64,
+            "ny": 40,
+            "nz": 5,
+            "dx_deg": 0.25,
+            "dy_deg": 0.25,
+            "xlon0_deg": -8,
+            "ylat0_deg": 43,
+            "horizontal_ref": "geographic_lon_lat_degrees",
+            "heights_m": [100, 500, 1000, 2000, 5000],
+            "heights_ref": "agl",
+        })
+        generated_outgrid = GEN.outgrid_text(case)
+        actual_outgrid = (
+            REPO / "fixtures" / "etex" / "mini" / "config" / "OUTGRID"
+        ).read_text(encoding="utf-8")
+        for key in ("OUTLON0", "OUTLAT0", "NUMXGRID", "NUMYGRID", "DXOUT", "DYOUT"):
+            self.assertAlmostEqual(
+                float(GEN.namelist_value(generated_outgrid, key)),
+                float(GEN.namelist_value(actual_outgrid, key)),
+                places=6,
+                msg=f"ETEX OUTGRID {key}",
+            )
+        def outheights(text):
+            match = re.search(r"\bOUTHEIGHTS\s*=\s*([^/]+)", text, re.DOTALL)
+            self.assertIsNotNone(match)
+            return [float(v) for v in re.findall(r"-?\d+(?:\.\d+)?", match.group(1))]
+        self.assertEqual(outheights(generated_outgrid), outheights(actual_outgrid))
+        self.assertEqual(outheights(actual_outgrid), case["output_grid"]["heights_m"])
+
+        # COMMAND: preserve the actual pristine ETEX fixed-sync semantics.
         overrides = case["oracle_command_overrides"]
         self.assertEqual(overrides["turbulence_formulation"], "fixed_sync_w")
         self.assertEqual(overrides["ctl"], -5)
         self.assertEqual(overrides["ifine"], 4)
+        self.assertEqual(overrides["lturbulence"], 1)
         self.assertEqual(overrides["lsynctime_s"], 900)
-        text = GEN.command_text("ETEX-MINI-013", case)
-        self.assertAlmostEqual(float(GEN.namelist_value(text, "CTL")), -5.0, places=6)
-        self.assertEqual(int(GEN.namelist_value(text, "IFINE")), 4)
-        self.assertEqual(int(GEN.namelist_value(text, "LSYNCTIME")), 900)
-        self.assertEqual(int(GEN.namelist_value(text, "LOUTSAMPLE")), 900)
-
-        actual = (REPO / "fixtures" / "etex" / "mini" / "config" / "COMMAND").read_text(
-            encoding="utf-8"
-        )
-        for key in ("CTL", "IFINE", "LSYNCTIME", "LOUTSTEP", "LOUTAVER", "LOUTSAMPLE"):
+        generated_command = GEN.command_text("ETEX-MINI-013", case)
+        actual_command = (
+            REPO / "fixtures" / "etex" / "mini" / "config" / "COMMAND"
+        ).read_text(encoding="utf-8")
+        for key in (
+            "LTURBULENCE", "CTL", "IFINE", "LSYNCTIME",
+            "LOUTSTEP", "LOUTAVER", "LOUTSAMPLE",
+        ):
             self.assertAlmostEqual(
-                float(GEN.namelist_value(text, key)),
-                float(GEN.namelist_value(actual, key)),
+                float(GEN.namelist_value(generated_command, key)),
+                float(GEN.namelist_value(actual_command, key)),
                 places=6,
-                msg=f"ETEX {key} must preserve the real COMMAND semantics",
+                msg=f"ETEX COMMAND {key}",
             )
+
+    def test_real_weather_requires_explicit_output_grid(self):
+        case = copy.deepcopy(load_case("ETEX-MINI-013"))
+        del case["output_grid"]
+        with self.assertRaises(SystemExit) as ctx:
+            GEN.validate_and_normalize_case_for_generation(
+                "ETEX-MINI-013",
+                case,
+                case_file="fixtures/corpus/cases/ETEX-MINI-013.json",
+                tracer=Path(__file__),
+                aerosol=None,
+            )
+        self.assertIn("output_grid", str(ctx.exception))
 
     def test_missing_lsynctime_rejected_without_default(self):
         case = copy.deepcopy(load_case("WIND-UNI-002"))

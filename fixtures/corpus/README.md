@@ -16,9 +16,10 @@ Start from `fixtures/corpus/corpus.json` (versioned index) and
   fixed configuration, documented call, and status (`implemented` or `blocked`
   with a verifiable dependency).
 - `cases/*.json`: canonical `schema_version` 2 validation-case manifests
-  (Issue #51: domain, release, wind, surface, integration, physics switches,
-  deposition forcing, stochastic Philox identity, execution profile,
-  oracle overrides, expected artifacts, and content-addressed species-physics
+  (Issue #51: meteorology/candidate domain, optional explicit comparison
+  `output_grid` (required for real-weather cases), release, wind, surface,
+  integration, physics switches, deposition forcing, stochastic identities,
+  execution profile, oracle overrides, expected artifacts, and content-addressed species-physics
   references under `reference/species-physics/`). Their checked-in machine-readable
   structural contract is `schemas/validation-case-v2.schema.json` (JSON Schema
   Draft 2020-12); cross-field scientific invariants remain enforced by
@@ -37,7 +38,9 @@ Start from `fixtures/corpus/corpus.json` (versioned index) and
 
 The ERA5/ETEX mini run (`fixtures/etex/native-mini/`,
 `fixtures/etex/mini/`, `scripts/run-etex.sh mini`) is the real-weather corpus
-member (`ETEX-MINI-013`). No new large datasets are added. Its input audit
+member (`ETEX-MINI-013`). Its manifest mirrors the existing mini pipeline:
+65×41×16 prepared meteorology, the real ETEX release, 900 s candidate timestep,
+and the distinct 64×40×5 concentration output grid. No new large datasets are added. Its input audit
 status remains `INPUT_EQUIVALENCE_NOT_DEMONSTRATED`
 (`fixtures/etex/mini/README.md`, `target/etex/mini/input_equivalence_report.json`);
 a green corpus smoke test must never override that audit.

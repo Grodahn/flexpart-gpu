@@ -256,6 +256,27 @@ pub struct DomainSpec {
     pub wind_heights_ref: VerticalRef,
 }
 
+/// Explicit concentration/comparison output grid.
+///
+/// This is deliberately separate from the meteorological/candidate domain:
+/// ETEX uses a 65x41x16 meteorological grid but a 64x40x5 concentration
+/// output grid. Synthetic corpus cases may omit this block until their
+/// legacy shared output-grid policy is migrated into the v2 contract.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutputGridSpec {
+    pub nx: u32,
+    pub ny: u32,
+    pub nz: u32,
+    pub dx_deg: f32,
+    pub dy_deg: f32,
+    pub xlon0_deg: f32,
+    pub ylat0_deg: f32,
+    pub horizontal_ref: HorizontalCoordRef,
+    pub heights_m: Vec<f32>,
+    pub heights_ref: VerticalRef,
+}
+
 /// Horizontal coordinate convention for domain and release geometry.
 ///
 /// All checked-in cases use geographic coordinates. The convention is part of
@@ -857,6 +878,11 @@ pub struct ValidationCaseManifest {
     pub simulation_direction: SimulationDirection,
     /// Output timing and scientific semantics (required, never defaulted).
     pub output: OutputSpec,
+    /// Explicit concentration/comparison output grid. Required for
+    /// real-weather cases; synthetic cases still use the legacy shared grid
+    /// until that policy is migrated separately.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_grid: Option<OutputGridSpec>,
     /// Driver deposition forcing. `None` when deposition is off.
     /// Migrated key-for-key from the legacy v1 `deposition` block.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -875,8 +901,7 @@ pub struct ValidationCaseManifest {
     /// Expected output artifacts.
     pub expected_artifacts: ExpectedArtifacts,
     /// Structured representation differences and known limitations for #52.
-    /// This field never contains an input-equivalence verdict.
-    #[serde(default)]
+    /// Required explicitly; this field never contains an input-equivalence verdict.
     pub representation_differences: RepresentationDifferences,
     /// Whether the release geometry must lie inside the domain.
     /// Required explicitly: synthetic corpus cases use true; ETEX-MINI-013
@@ -1190,8 +1215,9 @@ impl ValidationCaseManifest {
         // Validate physics switches consistency with other fields
         self.validate_physics_consistency()?;
 
-        // Validate output timing semantics (positive, internally consistent)
+        // Validate output timing and the explicit comparison grid.
         self.validate_output()?;
+        self.validate_output_grid()?;
 
         // Validate stochastic identity
         self.validate_stochastic()?;
@@ -1378,6 +1404,71 @@ impl ValidationCaseManifest {
             "validation_definition_refs.threshold_contracts",
             &self.validation_definition_refs.threshold_contracts,
         )?;
+        Ok(())
+    }
+
+    fn validate_output_grid(&self) -> Result<(), ValidationCaseError> {
+        let real_weather = matches!(self.wind, WindSpec::RealWeather { .. });
+        let Some(grid) = &self.output_grid else {
+            if real_weather {
+                return Err(ValidationCaseError::MissingField {
+                    field: "output_grid",
+                });
+            }
+            return Ok(());
+        };
+
+        if grid.nx == 0 || grid.ny == 0 || grid.nz == 0 {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "output_grid nx/ny/nz must be > 0".to_string(),
+            });
+        }
+        for (field, value) in [
+            ("output_grid.dx_deg", grid.dx_deg),
+            ("output_grid.dy_deg", grid.dy_deg),
+        ] {
+            if !value.is_finite() || value <= 0.0 {
+                return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                    message: format!("{field} must be finite and > 0, got {value}"),
+                });
+            }
+        }
+        if !grid.xlon0_deg.is_finite() || !(-180.0..=360.0).contains(&grid.xlon0_deg) {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "output_grid.xlon0_deg must be finite and in [-180, 360], got {}",
+                    grid.xlon0_deg
+                ),
+            });
+        }
+        if !grid.ylat0_deg.is_finite() || !(-90.0..=90.0).contains(&grid.ylat0_deg) {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: format!(
+                    "output_grid.ylat0_deg must be finite and in [-90, 90], got {}",
+                    grid.ylat0_deg
+                ),
+            });
+        }
+        if grid.heights_m.len() != grid.nz as usize {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "output_grid.heights_m",
+                message: format!(
+                    "heights_m length ({}) must equal output_grid.nz ({})",
+                    grid.heights_m.len(),
+                    grid.nz
+                ),
+            });
+        }
+        if grid.heights_m.iter().any(|h| !h.is_finite() || *h < 0.0) {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "output_grid.heights_m must be finite and >= 0".to_string(),
+            });
+        }
+        if grid.heights_m.windows(2).any(|w| w[1] <= w[0]) {
+            return Err(ValidationCaseError::InvalidPhysicsSwitches {
+                message: "output_grid.heights_m must be strictly increasing".to_string(),
+            });
+        }
         Ok(())
     }
 
@@ -1813,11 +1904,14 @@ impl ValidationCaseManifest {
     }
 
     fn validate_physics_consistency(&self) -> Result<(), ValidationCaseError> {
-        // Surface fields required when turbulence is enabled
-        if self.physics_switches.turbulence && self.surface.is_none() {
+        // Analytic/synthetic turbulence cases require an explicit static surface
+        // block. Real-weather cases source time-varying surface fields from the
+        // meteorology contract instead and must not invent representative values.
+        let real_weather = matches!(self.wind, WindSpec::RealWeather { .. });
+        if self.physics_switches.turbulence && self.surface.is_none() && !real_weather {
             return Err(ValidationCaseError::AmbiguousField {
                 field: "surface",
-                message: "surface fields required when physics_switches.turbulence=true".to_string(),
+                message: "surface fields required when physics_switches.turbulence=true unless wind.profile=real_weather supplies them through meteorology".to_string(),
             });
         }
 
@@ -1837,6 +1931,7 @@ impl ValidationCaseManifest {
         // Deposition switches require surface fields with relevant parameters
         if (self.physics_switches.dry_deposition || self.physics_switches.wet_deposition)
             && self.surface.is_none()
+            && !real_weather
         {
             return Err(ValidationCaseError::AmbiguousField {
                 field: "surface",
@@ -2824,6 +2919,7 @@ mod tests {
                 sampling_interval_s: 300,
                 quantity: OutputQuantity::TimeAveragedMassConcentrationKgM3,
             },
+            output_grid: None,
             deposition: None,
             units: UnitsSpec {
                 wind: "m/s".to_string(),
@@ -2879,6 +2975,7 @@ mod tests {
                 manifest_path: "reference/flexpart-11.1.json".to_string(),
             },
             oracle_command_overrides: OracleCommandOverrides {
+                turbulence_formulation: OracleTurbulenceFormulation::AdaptiveWSigmaW,
                 lturbulence: Some(1),
                 ctl: Some(5.0),
                 ifine: Some(4),
@@ -3525,12 +3622,59 @@ mod tests {
             manifest.release.species.physics_contract.profile,
             SpeciesPhysicsProfile::Species024InertV1
         );
-        assert!(manifest.surface.is_some());
-        assert!(manifest.stochastic.candidate_philox.is_some());
-        assert!(manifest.stochastic.oracle_seed.is_some());
-        let oracle = manifest.stochastic.oracle_seed.as_ref().unwrap();
-        assert_eq!(oracle.kind, OracleKind::SeedableValidationOracle);
-        assert_eq!(oracle.seed, Some(1));
+        assert!(manifest.surface.is_none());
+        assert_eq!((manifest.domain.nx, manifest.domain.ny, manifest.domain.nz), (65, 41, 16));
+        assert_eq!(manifest.integration.dt_s, 900.0);
+        assert_eq!(manifest.integration.steps, 48);
+        assert_eq!(manifest.integration.total_s, 43200.0);
+
+        match &manifest.release.geometry {
+            SourceGeometry::Box {
+                lon_min_deg,
+                lon_max_deg,
+                lat_min_deg,
+                lat_max_deg,
+                z_min_m,
+                z_max_m,
+            } => {
+                assert_eq!((*lon_min_deg, *lon_max_deg), (-2.0, -2.0));
+                assert_eq!((*lat_min_deg, *lat_max_deg), (48.058, 48.058));
+                assert_eq!((*z_min_m, *z_max_m), (5.0, 15.0));
+            }
+            other => panic!("ETEX release must be a vertical box at one lon/lat, got {other:?}"),
+        }
+        assert_eq!(
+            manifest.release.timing,
+            ReleaseTiming::Window {
+                start: "19941023160000".to_string(),
+                end: "19941024034000".to_string(),
+            }
+        );
+        assert_eq!(manifest.release.particle_count, 10_000);
+        assert_eq!(manifest.release.inventory.quantity_kg, 340.0);
+
+        let output_grid = manifest.output_grid.as_ref().expect("ETEX output grid");
+        assert_eq!((output_grid.nx, output_grid.ny, output_grid.nz), (64, 40, 5));
+        assert_eq!(
+            output_grid.heights_m,
+            vec![100.0, 500.0, 1000.0, 2000.0, 5000.0]
+        );
+
+        let candidate = manifest
+            .stochastic
+            .candidate_philox
+            .as_ref()
+            .expect("ETEX candidate Philox");
+        assert_eq!(candidate.base_key, [0xDECA_FBAD, 0x1234_5678]);
+        assert_eq!(candidate.base_counter, [0, 0, 0, 0]);
+        assert_eq!(candidate.count, 1);
+
+        let oracle = manifest.stochastic.oracle_seed.as_ref().expect("ETEX oracle identity");
+        assert_eq!(oracle.kind, OracleKind::PristineOracle);
+        assert_eq!(oracle.seed, None);
+        assert_eq!(oracle.repetitions, 1);
+        assert!(oracle.strategy.is_none());
+
         assert_eq!(
             manifest.oracle_command_overrides.turbulence_formulation,
             OracleTurbulenceFormulation::FixedSyncW
@@ -3544,6 +3688,40 @@ mod tests {
         let serialized = serde_json::to_value(&manifest).expect("serialize ETEX manifest");
         assert!(serialized.get("input_equivalence").is_none());
         manifest.validate().expect("ETEX-MINI-013 should validate");
+    }
+
+    #[test]
+    fn real_weather_case_requires_explicit_output_grid() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases")
+            .join("ETEX-MINI-013.json");
+        let text = std::fs::read_to_string(&path).expect("read ETEX case");
+        let mut raw: serde_json::Value = serde_json::from_str(&text).expect("parse ETEX JSON");
+        raw.as_object_mut()
+            .expect("ETEX object")
+            .remove("output_grid");
+        let err = parse_json_value(&raw)
+            .expect_err("real-weather case without output_grid must fail");
+        assert!(
+            err.to_string().contains("output_grid"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn representation_differences_are_required_in_rust_contract() {
+        let mut raw = minimal_manifest_json();
+        raw.as_object_mut()
+            .expect("manifest object")
+            .remove("representation_differences");
+        let err = parse_json_value(&raw)
+            .expect_err("missing representation_differences must fail");
+        assert!(
+            err.to_string().contains("representation_differences"),
+            "unexpected: {err}"
+        );
     }
 
     #[test]

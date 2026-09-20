@@ -240,6 +240,10 @@ No provider decoder should require a physics module to understand provider metad
 Implemented:
 
 - versioned serializable schema/types;
+- central `FIELD_SPECS` table as the single source for canonical unit/sign/temporal policy
+  and named physics requirement-set membership; `Requirements::*` is derived from it;
+- machine-checked compact field matrix in this document; contract tests fail on stale,
+  missing or extra rows;
 - explicit grid, vertical, unit, sign, calendar, time/accumulation and staggering metadata;
 - fail-closed validation of schema identity, dimensions, required fields, units/signs,
   vertical metadata, accumulation windows/resets and basic physical domains;

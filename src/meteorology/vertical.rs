@@ -1406,6 +1406,125 @@ mod tests {
     }
 
     #[test]
+    fn omega_negative_pressure_velocity_becomes_positive_upward_geometric_velocity() {
+        let snapshot = geometry_snapshot(VerticalOrdering::Increasing);
+        let geometry = reconstruct_vertical_geometry(&snapshot).expect("geometry");
+        let native = NativeVerticalMotion {
+            kind: NativeVerticalMotionKind::PressureVelocityOmega,
+            unit: NativeVerticalMotionUnit::PascalPerSecond,
+            sign: NativeVerticalMotionSign::PositivePressureIncreasing,
+            vertical_staggering: VerticalStaggering::LevelCenter,
+            values: vec![-1.0, 0.0, -2.0, 0.0],
+            provenance: NativeVerticalMotionProvenance {
+                source_id: "synthetic-omega".to_string(),
+            },
+        };
+
+        let normalized =
+            normalize_vertical_motion(&snapshot, &geometry, &native).expect("normalize omega");
+        assert_eq!(normalized.vertical_staggering, VerticalStaggering::LevelCenter);
+        assert!(normalized.values_ms[volume_offset(0, 0, 0, 2, 1)] > 0.0);
+        assert!(normalized.values_ms[volume_offset(0, 0, 1, 2, 1)] > 0.0);
+        assert_eq!(normalized.values_ms[volume_offset(1, 0, 0, 2, 1)], 0.0);
+        assert_eq!(normalized.values_ms[volume_offset(1, 0, 1, 2, 1)], 0.0);
+    }
+
+    #[test]
+    fn eta_dot_centered_recurrence_reconstructs_interface_pressure_velocity() {
+        let snapshot = geometry_snapshot(VerticalOrdering::Increasing);
+        let eta_dot = vec![-1.0e-5, 0.0, -3.0e-5, 0.0];
+
+        let omega = eta_dot_to_pressure_velocity_interfaces(
+            &snapshot,
+            &eta_dot,
+            NativeVerticalMotionSign::PositiveEtaIncreasing,
+        )
+        .expect("eta-dot to omega");
+
+        assert_relative_eq!(omega[interface_offset(0, 0, 0, 2, 1)], 0.0, epsilon = 1.0e-7);
+        assert_relative_eq!(omega[interface_offset(0, 0, 1, 2, 1)], -2.0, epsilon = 2.0e-6);
+        assert_relative_eq!(omega[interface_offset(0, 0, 2, 2, 1)], -4.0, epsilon = 4.0e-6);
+        assert_eq!(omega[interface_offset(1, 0, 0, 2, 1)], 0.0);
+        assert_eq!(omega[interface_offset(1, 0, 1, 2, 1)], 0.0);
+        assert_eq!(omega[interface_offset(1, 0, 2, 2, 1)], 0.0);
+    }
+
+    #[test]
+    fn eta_dot_sign_is_explicit_and_normalizes_to_upward_positive_interfaces() {
+        let snapshot = geometry_snapshot(VerticalOrdering::Increasing);
+        let geometry = reconstruct_vertical_geometry(&snapshot).expect("geometry");
+        let native = NativeVerticalMotion {
+            kind: NativeVerticalMotionKind::EtaCoordinateVelocity,
+            unit: NativeVerticalMotionUnit::PerSecond,
+            sign: NativeVerticalMotionSign::PositiveEtaDecreasing,
+            vertical_staggering: VerticalStaggering::LevelCenter,
+            // Positive toward decreasing eta is the same physical motion as
+            // negative values in the ECMWF eta-increasing direction.
+            values: vec![1.0e-5, 0.0, 3.0e-5, 0.0],
+            provenance: NativeVerticalMotionProvenance {
+                source_id: "synthetic-etadot".to_string(),
+            },
+        };
+
+        let normalized =
+            normalize_vertical_motion(&snapshot, &geometry, &native).expect("normalize eta-dot");
+        assert_eq!(
+            normalized.vertical_staggering,
+            VerticalStaggering::LevelInterface
+        );
+        assert_relative_eq!(
+            normalized.values_ms[interface_offset(0, 0, 0, 2, 1)],
+            0.0,
+            epsilon = 1.0e-7
+        );
+        assert!(normalized.values_ms[interface_offset(0, 0, 1, 2, 1)] > 0.0);
+        assert!(normalized.values_ms[interface_offset(0, 0, 2, 2, 1)] > 0.0);
+    }
+
+    #[test]
+    fn geometric_vertical_motion_is_identity_with_explicit_upward_semantics() {
+        let snapshot = geometry_snapshot(VerticalOrdering::Increasing);
+        let geometry = reconstruct_vertical_geometry(&snapshot).expect("geometry");
+        let native = NativeVerticalMotion {
+            kind: NativeVerticalMotionKind::GeometricVelocity,
+            unit: NativeVerticalMotionUnit::MeterPerSecond,
+            sign: NativeVerticalMotionSign::PositiveUpward,
+            vertical_staggering: VerticalStaggering::LevelCenter,
+            values: vec![1.0, -2.0, 3.0, -4.0],
+            provenance: NativeVerticalMotionProvenance {
+                source_id: "already-geometric".to_string(),
+            },
+        };
+
+        let normalized =
+            normalize_vertical_motion(&snapshot, &geometry, &native).expect("identity normalize");
+        assert_eq!(normalized.values_ms, native.values);
+    }
+
+    #[test]
+    fn ambiguous_native_vertical_motion_semantics_fail_closed() {
+        let snapshot = geometry_snapshot(VerticalOrdering::Increasing);
+        let geometry = reconstruct_vertical_geometry(&snapshot).expect("geometry");
+        let native = NativeVerticalMotion {
+            kind: NativeVerticalMotionKind::PressureVelocityOmega,
+            unit: NativeVerticalMotionUnit::MeterPerSecond,
+            sign: NativeVerticalMotionSign::PositivePressureIncreasing,
+            vertical_staggering: VerticalStaggering::LevelCenter,
+            values: vec![0.0; 4],
+            provenance: NativeVerticalMotionProvenance {
+                source_id: "wrong-unit".to_string(),
+            },
+        };
+
+        let error = normalize_vertical_motion(&snapshot, &geometry, &native)
+            .expect_err("omega declared as m/s must fail");
+        assert!(matches!(
+            error,
+            VerticalTransformError::InvalidNativeVerticalMotion { .. }
+        ));
+    }
+
+    #[test]
     fn agl_asl_conversion_is_column_local_and_handles_below_sea_level_terrain() {
         let terrain = vec![100.0, -20.0];
         let agl = vec![0.0, 0.0, 500.0, 500.0];

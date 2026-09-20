@@ -268,9 +268,10 @@ class OracleOverrideTest(unittest.TestCase):
 
         oracle_seed = case["stochastic"]["oracle_seed"]
         self.assertEqual(oracle_seed["kind"], "pristine-oracle")
+        self.assertIsNone(oracle_seed["strategy"])
+        self.assertEqual(oracle_seed["mode"], "default")
+        self.assertIsNone(oracle_seed["seed"])
         self.assertEqual(oracle_seed["repetitions"], 1)
-        self.assertNotIn("seed", oracle_seed)
-        self.assertNotIn("strategy", oracle_seed)
 
         # The source preparation code is the existing ETEX GPU run authority.
         prepare = (REPO / "scripts" / "etex" / "prepare_native_era5.py").read_text(
@@ -873,19 +874,38 @@ class PreflightFailClosedTest(unittest.TestCase):
 
         self._assert_aborts_before_writes(mutate, "ctl")
 
-    def test_seedable_oracle_missing_strategy_ref_aborts_before_any_write(self):
-        def mutate(case):
-            case["stochastic"]["oracle_seed"].pop("strategy", None)
-        self._assert_aborts_before_writes(mutate, "#50 strategy")
+    def test_oracle_state_fields_are_required_explicitly(self):
+        for field in ("strategy", "mode", "seed"):
+            with self.subTest(field=field):
+                def mutate(case, field=field):
+                    case["stochastic"]["oracle_seed"].pop(field, None)
+                self._assert_aborts_before_writes(
+                    mutate, f"stochastic.oracle_seed.{field}"
+                )
 
     def test_pristine_oracle_with_seed_aborts_before_any_write(self):
         def mutate(case):
             case["stochastic"]["oracle_seed"] = {
                 "kind": "pristine-oracle",
+                "strategy": None,
+                "mode": "default",
                 "seed": 1,
                 "repetitions": 2,
             }
-        self._assert_aborts_before_writes(mutate, "pristine-oracle")
+        self._assert_aborts_before_writes(mutate, "seed=null")
+
+    def test_oracle_mode_seed_consistency_aborts_before_any_write(self):
+        def missing_requested_seed(case):
+            oracle = case["stochastic"]["oracle_seed"]
+            oracle["mode"] = "requested_identity"
+            oracle["seed"] = None
+        self._assert_aborts_before_writes(missing_requested_seed, "requested_identity")
+
+        def seeded_default(case):
+            oracle = case["stochastic"]["oracle_seed"]
+            oracle["mode"] = "default"
+            oracle["seed"] = 3
+        self._assert_aborts_before_writes(seeded_default, "requires seed=null")
 
     def test_missing_context_unit_aborts_before_any_write(self):
         def mutate(case):

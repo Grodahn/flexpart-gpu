@@ -935,21 +935,32 @@ def _validate_stochastic_contract(case_id: str, case: dict, physics: dict) -> No
     if oracle is not None:
         if not isinstance(oracle, dict):
             raise SystemExit(f"{case_id}: stochastic.oracle_seed must be an object or null")
-        if "repetitions" not in oracle:
+        allowed = {"kind", "strategy", "mode", "seed", "repetitions"}
+        unknown = sorted(set(oracle) - allowed)
+        if unknown:
             raise SystemExit(
-                f"{case_id}: stochastic.oracle_seed.repetitions is required explicitly"
+                f"{case_id}: unknown stochastic.oracle_seed field(s): {', '.join(unknown)}"
             )
+        for field in ("kind", "strategy", "mode", "seed", "repetitions"):
+            if field not in oracle:
+                raise SystemExit(
+                    f"{case_id}: stochastic.oracle_seed.{field} is required explicitly; "
+                    "null is distinct from omission"
+                )
         repetitions = oracle["repetitions"]
         if isinstance(repetitions, bool) or not isinstance(repetitions, int) or repetitions <= 0:
             raise SystemExit(f"{case_id}: stochastic.oracle_seed.repetitions must be > 0")
-        kind = oracle.get("kind")
-        seed = oracle.get("seed")
-        strategy = oracle.get("strategy")
+        kind = oracle["kind"]
+        mode = oracle["mode"]
+        seed = oracle["seed"]
+        strategy = oracle["strategy"]
         if kind == "pristine-oracle":
-            if seed is not None:
-                raise SystemExit(f"{case_id}: pristine-oracle cannot carry a requested seed")
             if strategy is not None:
-                raise SystemExit(f"{case_id}: pristine-oracle cannot declare a seedable strategy")
+                raise SystemExit(f"{case_id}: pristine-oracle requires strategy=null")
+            if mode != "default":
+                raise SystemExit(f"{case_id}: pristine-oracle requires mode='default'")
+            if seed is not None:
+                raise SystemExit(f"{case_id}: pristine-oracle default mode requires seed=null")
         elif kind == "seedable-validation-oracle":
             expected = {
                 "strategy": ORACLE_STOCHASTIC_STRATEGY_ID,
@@ -961,11 +972,25 @@ def _validate_stochastic_contract(case_id: str, case: dict, physics: dict) -> No
                     f"{case_id}: seedable-validation-oracle requires the exact #50 strategy "
                     f"reference {expected!r}, got {strategy!r}"
                 )
-            if seed is not None and (
-                isinstance(seed, bool) or not isinstance(seed, int) or not 1 <= seed <= 1_000_000_000
-            ):
+            if mode == "default":
+                if seed is not None:
+                    raise SystemExit(
+                        f"{case_id}: seedable-validation-oracle mode='default' requires seed=null"
+                    )
+            elif mode == "requested_identity":
+                if (
+                    isinstance(seed, bool)
+                    or not isinstance(seed, int)
+                    or not 1 <= seed <= 1_000_000_000
+                ):
+                    raise SystemExit(
+                        f"{case_id}: mode='requested_identity' requires "
+                        "stochastic.oracle_seed.seed in [1, 1000000000]"
+                    )
+            else:
                 raise SystemExit(
-                    f"{case_id}: stochastic.oracle_seed.seed must be in [1, 1000000000]"
+                    f"{case_id}: stochastic.oracle_seed.mode must be 'default' or "
+                    f"'requested_identity', got {mode!r}"
                 )
         else:
             raise SystemExit(f"{case_id}: unsupported stochastic.oracle_seed.kind {kind!r}")

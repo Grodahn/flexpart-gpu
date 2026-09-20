@@ -229,7 +229,6 @@ else
   rm -f "${ORACLE_CHECKOUT}/src/gitversion.txt"
   # The build must leave the oracle checkout clean.
   ORACLE_POST_STATUS="$(git -C "${ORACLE_CHECKOUT}" status --porcelain 2>/dev/null || true)"
-  ORACLE_POST_STATUS="$(git -C "${ORACLE_CHECKOUT}" status --porcelain 2>/dev/null || true)"
   if [ -n "${ORACLE_POST_STATUS}" ]; then
     log_error "Oracle status after build:"
     echo "${ORACLE_POST_STATUS}" | head -20

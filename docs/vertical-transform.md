@@ -121,3 +121,80 @@ Both comparisons use predeclared tolerances:
 
 A missing artifact, dirty/wrong oracle checkout, changed source contract, level
 count mismatch, or field outside tolerance fails the technical gate.
+
+## Vertical motion normalization
+
+Canonical `FieldId::VerticalVelocity` is always geometric vertical air velocity in
+`m/s`, positive upward. Native/provider representations are never inserted into
+that field before #30 normalization.
+
+The provider-independent native contract records four independent facts:
+
+- representation kind: geometric velocity, pressure velocity (omega), or eta-dot;
+- unit: `m/s`, `Pa/s`, or `1/s`;
+- sign convention;
+- vertical staggering (model center or interface).
+
+Unsupported or ambiguous combinations fail closed. Provider parameter ids and
+variable names remain #32 concerns.
+
+### Already-geometric velocity
+
+`m/s`, positive upward is an identity conversion. Staggering is retained.
+
+### Pressure velocity / omega
+
+Omega is `dp/dt` in `Pa/s`, positive toward increasing pressure. FLEXPART 11.1
+describes its W input as Pa/s and converts it to geometric vertical velocity by
+multiplying by `pinmconv = dz/dp`. Since pressure decreases with height,
+`dz/dp < 0`; therefore negative omega (rising air) becomes positive geometric
+`w`.
+
+For the native interface/W representation, #30 reproduces FLEXPART's
+`pinmconv` discretization on the physical bottom-to-top column, including the
+artificial surface model level:
+
+- one-sided `dz/dp` at the lower boundary;
+- centered `dz/dp` in the interior;
+- one-sided `dz/dp` at the upper boundary.
+
+The normalized values retain their vertical staggering. #30 does not interpolate
+them onto another vertical grid; #31 owns interpolation/sampling.
+
+The synthetic column oracle supplies explicit interface omega values to both the
+Rust candidate and the pinned FLEXPART-source-linked Fortran harness and compares
+the resulting geometric `m/s` values interface by interface.
+
+### Raw eta-dot
+
+Raw ECMWF eta-coordinate velocity is `dη/dt [1/s]`. FLEXPART core does not use
+that raw quantity as `wwh`; FLEXPART preprocessing normally multiplies eta-dot
+by the hybrid-coordinate `dp/dη` factor to produce the FLEXPART-ready pressure
+vertical velocity in `Pa/s`.
+
+For a hybrid layer bounded by native half-level coefficients:
+
+```
+dA = A_lower - A_upper
+dB = B_lower - B_upper
+pref = reference_surface_pressure
+scale = ps * (dA/ps + dB) / (dA/pref + dB)
+```
+
+The full-level eta-dot value is mapped to bounding interface pressure velocity
+with the centered recurrence used by the preprocessing path. The model-top
+pressure-velocity boundary is explicitly zero; the reconstructed interface
+omega profile is then passed through the exact same omega→geometric-W
+normalization described above.
+
+Eta direction is explicit in the native contract (`positive_eta_increasing` or
+`positive_eta_decreasing`) and is normalized before the recurrence. The
+conversion provenance therefore distinguishes:
+
+1. raw eta-dot input;
+2. eta-dot → FLEXPART-ready pressure velocity;
+3. pressure velocity → geometric `m/s`, positive upward.
+
+The eta-dot preprocessing stage is validated independently from the FLEXPART
+core oracle because the pristine FLEXPART 11.1 executable expects the
+preprocessed pressure-velocity quantity, not raw eta-dot.

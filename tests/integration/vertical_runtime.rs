@@ -174,7 +174,7 @@ fn runtime_view_preserves_normalized_motion_staggering_for_interpolation() {
             .count()
     );
     assert_eq!(
-        normalized.provenance().algorithm_id,
+        normalized.provenance().algorithm_id.as_str(),
         "omega_interface_flexpart11_pinmconv_v1"
     );
     assert!(normalized.values_ms().iter().all(|value| value.is_finite()));

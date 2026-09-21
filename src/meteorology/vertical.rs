@@ -70,11 +70,28 @@ pub struct NativeVerticalMotionProvenance {
 
 /// Physics-ready vertical air motion. Values are always geometric m/s with
 /// positive-upward sign. Staggering is retained so #31 owns interpolation.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct NormalizedVerticalMotion {
-    pub vertical_staggering: VerticalStaggering,
-    pub values_ms: Vec<f32>,
-    pub provenance: NormalizedVerticalMotionProvenance,
+    vertical_staggering: VerticalStaggering,
+    values_ms: Vec<f32>,
+    provenance: NormalizedVerticalMotionProvenance,
+}
+
+impl NormalizedVerticalMotion {
+    #[must_use]
+    pub const fn vertical_staggering(&self) -> VerticalStaggering {
+        self.vertical_staggering
+    }
+
+    #[must_use]
+    pub fn values_ms(&self) -> &[f32] {
+        &self.values_ms
+    }
+
+    #[must_use]
+    pub const fn provenance(&self) -> &NormalizedVerticalMotionProvenance {
+        &self.provenance
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -109,20 +126,20 @@ pub struct HybridPressureGrid {
 ///
 /// Heights are column-wise 3-D fields; they must never be collapsed to one
 /// horizontally averaged vertical profile.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct VerticalTransformResult {
-    pub nx: usize,
-    pub ny: usize,
-    pub nz: usize,
-    pub interface_pressure_pa: Vec<f32>,
-    pub interface_height_asl_m: Vec<f32>,
-    pub interface_height_agl_m: Vec<f32>,
-    pub level_pressure_pa: Vec<f32>,
-    pub terrain_asl_m: Vec<f32>,
-    pub height_asl_m: Vec<f32>,
-    pub height_agl_m: Vec<f32>,
-    pub vertical_velocity: Option<NormalizedVerticalMotion>,
-    pub provenance: VerticalTransformProvenance,
+    nx: usize,
+    ny: usize,
+    nz: usize,
+    interface_pressure_pa: Vec<f32>,
+    interface_height_asl_m: Vec<f32>,
+    interface_height_agl_m: Vec<f32>,
+    level_pressure_pa: Vec<f32>,
+    terrain_asl_m: Vec<f32>,
+    height_asl_m: Vec<f32>,
+    height_agl_m: Vec<f32>,
+    vertical_velocity: Option<NormalizedVerticalMotion>,
+    provenance: VerticalTransformProvenance,
 }
 
 /// Explicit terrain-dependent release-height resolution for #28.
@@ -874,22 +891,9 @@ fn normalize_vertical_motion(
             VerticalStaggering::NotApplicable => unreachable!(),
         },
         NativeVerticalMotionKind::EtaCoordinateVelocity => {
-            if native_motion.vertical_staggering != VerticalStaggering::LevelCenter {
-                return Err(VerticalTransformError::InvalidNativeVerticalMotion {
-                    reason: "eta-dot must be supplied on model-level centers",
-                });
-            }
-            let omega_interfaces =
-                eta_dot_to_pressure_velocity_interfaces(snapshot, &native_motion.values, native_motion.sign)?;
-            let values_ms =
-                pressure_velocity_interfaces_to_geometric(snapshot, geometry, &omega_interfaces)?;
-            (
-                VerticalStaggering::LevelInterface,
-                values_ms,
-                "etadot_hybrid_to_omega_then_flexpart11_pinmconv_v1".to_string(),
-                "eta-dot[1/s] -> centered FLEXPART-ready pressure velocity on interfaces; omega[Pa/s] * FLEXPART-style pinmconv dz/dp -> geometric m/s positive upward"
-                    .to_string(),
-            )
+            return Err(VerticalTransformError::InvalidNativeVerticalMotion {
+                reason: "eta-dot preprocessing is disabled until an independent pinned reference validates eta-dot to pressure-velocity conversion",
+            });
         }
     };
 
@@ -1060,94 +1064,6 @@ fn pressure_velocity_interfaces_to_geometric(
     Ok(result)
 }
 
-fn eta_dot_to_pressure_velocity_interfaces(
-    snapshot: &Snapshot,
-    eta_dot_s: &[f32],
-    sign: NativeVerticalMotionSign,
-) -> Result<Vec<f32>, VerticalTransformError> {
-    let vertical = &snapshot.vertical_coordinate;
-    if vertical.kind != VerticalCoordinateKind::HybridSigmaPressure {
-        return Err(VerticalTransformError::UnsupportedVerticalCoordinate);
-    }
-    let a = vertical
-        .hybrid_a_interface_pa
-        .as_deref()
-        .ok_or(VerticalTransformError::UnsupportedVerticalCoordinate)?;
-    let b = vertical
-        .hybrid_b_interface
-        .as_deref()
-        .ok_or(VerticalTransformError::UnsupportedVerticalCoordinate)?;
-    let pref = vertical
-        .reference_surface_pressure_pa
-        .ok_or(VerticalTransformError::InvalidNativeVerticalMotion {
-            reason: "eta-dot conversion requires reference_surface_pressure_pa",
-        })?;
-    if !pref.is_finite() || pref <= 0.0 {
-        return Err(VerticalTransformError::InvalidNativeVerticalMotion {
-            reason: "eta-dot conversion requires positive reference_surface_pressure_pa",
-        });
-    }
-
-    let surface_pressure = field_values(snapshot, FieldId::SurfacePressure)?;
-    let nx = snapshot.horizontal_grid.nx;
-    let ny = snapshot.horizontal_grid.ny;
-    let nz = vertical.level_values.len();
-    let mut omega = vec![0.0_f32; nx * ny * (nz + 1)];
-
-    for y in 0..ny {
-        for x in 0..nx {
-            let ps = surface_pressure[surface_offset(x, y, nx)];
-            let mut previous_omega = 0.0_f32; // model-top boundary
-
-            for step in 0..nz {
-                let (level, upper_interface, lower_interface) =
-                    top_down_layer_indices(vertical.ordering, nz, step);
-                let d_a = a[lower_interface] - a[upper_interface];
-                let d_b = b[lower_interface] - b[upper_interface];
-                let reference_thickness = d_a / pref + d_b;
-                if !reference_thickness.is_finite()
-                    || reference_thickness.abs() <= f32::EPSILON
-                {
-                    return Err(VerticalTransformError::InvalidNativeVerticalMotion {
-                        reason: "eta-dot conversion encountered zero/invalid reference layer thickness",
-                    });
-                }
-
-                let local_scale =
-                    ps * (d_a / ps + d_b) / reference_thickness;
-                if !local_scale.is_finite() {
-                    return Err(VerticalTransformError::InvalidNativeVerticalMotion {
-                        reason: "eta-dot conversion produced invalid dp/deta scale",
-                    });
-                }
-
-                let eta_index = volume_offset(x, y, level, nx, ny);
-                let eta_increasing = match sign {
-                    NativeVerticalMotionSign::PositiveEtaIncreasing => eta_dot_s[eta_index],
-                    NativeVerticalMotionSign::PositiveEtaDecreasing => -eta_dot_s[eta_index],
-                    _ => unreachable!(),
-                };
-                // FLEXPART preprocessing maps the full-level eta tendency to
-                // half-level pressure velocity via the centered recurrence
-                // omega_lower + omega_upper = 2 * F(level).
-                let f_level = eta_increasing * local_scale;
-                let current_omega = 2.0 * f_level - previous_omega;
-                if !current_omega.is_finite() {
-                    return Err(VerticalTransformError::InvalidNativeVerticalMotionValue {
-                        index: eta_index,
-                        value: current_omega,
-                    });
-                }
-                let out_index =
-                    interface_offset(x, y, lower_interface, nx, ny);
-                omega[out_index] = current_omega;
-                previous_omega = current_omega;
-            }
-        }
-    }
-    Ok(omega)
-}
-
 #[inline]
 const fn derivative_pair(index: usize, count: usize) -> (usize, usize) {
     if index == 0 {
@@ -1156,21 +1072,6 @@ const fn derivative_pair(index: usize, count: usize) -> (usize, usize) {
         (count - 2, count - 1)
     } else {
         (index - 1, index + 1)
-    }
-}
-
-#[inline]
-const fn top_down_layer_indices(
-    ordering: VerticalOrdering,
-    nz: usize,
-    step: usize,
-) -> (usize, usize, usize) {
-    match ordering {
-        VerticalOrdering::Increasing => (step, step, step + 1),
-        VerticalOrdering::Decreasing => {
-            let level = nz - 1 - step;
-            (level, level + 1, level)
-        }
     }
 }
 
@@ -1921,55 +1822,32 @@ mod tests {
     }
 
     #[test]
-    fn eta_dot_centered_recurrence_reconstructs_interface_pressure_velocity() {
+    fn eta_dot_fails_closed_without_independent_reference() {
         let snapshot = geometry_snapshot(VerticalOrdering::Increasing);
-        let eta_dot = vec![-1.0e-5, 0.0, -3.0e-5, 0.0];
-
-        let omega = eta_dot_to_pressure_velocity_interfaces(
-            &snapshot,
-            &eta_dot,
+        for sign in [
             NativeVerticalMotionSign::PositiveEtaIncreasing,
-        )
-        .expect("eta-dot to omega");
+            NativeVerticalMotionSign::PositiveEtaDecreasing,
+        ] {
+            let native = NativeVerticalMotion {
+                kind: NativeVerticalMotionKind::EtaCoordinateVelocity,
+                unit: NativeVerticalMotionUnit::PerSecond,
+                sign,
+                vertical_staggering: VerticalStaggering::LevelCenter,
+                values: vec![1.0e-5, 0.0, 3.0e-5, 0.0],
+                provenance: NativeVerticalMotionProvenance {
+                    source_id: "unvalidated-etadot".to_string(),
+                },
+            };
 
-        assert_relative_eq!(omega[interface_offset(0, 0, 0, 2, 1)], 0.0, epsilon = 1.0e-7);
-        assert_relative_eq!(omega[interface_offset(0, 0, 1, 2, 1)], -2.0, epsilon = 2.0e-6);
-        assert_relative_eq!(omega[interface_offset(0, 0, 2, 2, 1)], -4.0, epsilon = 4.0e-6);
-        assert_eq!(omega[interface_offset(1, 0, 0, 2, 1)], 0.0);
-        assert_eq!(omega[interface_offset(1, 0, 1, 2, 1)], 0.0);
-        assert_eq!(omega[interface_offset(1, 0, 2, 2, 1)], 0.0);
-    }
-
-    #[test]
-    fn eta_dot_sign_is_explicit_and_normalizes_to_upward_positive_interfaces() {
-        let snapshot = geometry_snapshot(VerticalOrdering::Increasing);
-        let geometry = reconstruct_vertical_geometry(&snapshot).expect("geometry");
-        let native = NativeVerticalMotion {
-            kind: NativeVerticalMotionKind::EtaCoordinateVelocity,
-            unit: NativeVerticalMotionUnit::PerSecond,
-            sign: NativeVerticalMotionSign::PositiveEtaDecreasing,
-            vertical_staggering: VerticalStaggering::LevelCenter,
-            // Positive toward decreasing eta is the same physical motion as
-            // negative values in the ECMWF eta-increasing direction.
-            values: vec![1.0e-5, 0.0, 3.0e-5, 0.0],
-            provenance: NativeVerticalMotionProvenance {
-                source_id: "synthetic-etadot".to_string(),
-            },
-        };
-
-        let normalized =
-            normalize_vertical_motion(&snapshot, &geometry, &native).expect("normalize eta-dot");
-        assert_eq!(
-            normalized.vertical_staggering,
-            VerticalStaggering::LevelInterface
-        );
-        assert_relative_eq!(
-            normalized.values_ms[interface_offset(0, 0, 0, 2, 1)],
-            0.0,
-            epsilon = 1.0e-7
-        );
-        assert!(normalized.values_ms[interface_offset(0, 0, 1, 2, 1)] > 0.0);
-        assert!(normalized.values_ms[interface_offset(0, 0, 2, 2, 1)] > 0.0);
+            let error = reconstruct_vertical_geometry_with_motion(&snapshot, &native)
+                .expect_err("eta-dot must fail closed until independently validated");
+            assert!(matches!(
+                error,
+                VerticalTransformError::InvalidNativeVerticalMotion {
+                    reason: "eta-dot preprocessing is disabled until an independent pinned reference validates eta-dot to pressure-velocity conversion"
+                }
+            ));
+        }
     }
 
     #[test]
@@ -2173,6 +2051,24 @@ mod tests {
                 surface_pressure_pa,
             } if (interface_pressure_pa - 91_000.0).abs() < 0.1
                 && (surface_pressure_pa - 90_000.0).abs() < 0.1
+        ));
+    }
+
+    #[test]
+    fn runtime_view_rejects_internal_corrupt_derived_shape() {
+        let snapshot = geometry_snapshot(VerticalOrdering::Increasing);
+        let mut geometry = reconstruct_vertical_geometry(&snapshot).expect("geometry");
+        geometry.height_agl_m.pop();
+
+        let error = geometry
+            .runtime_view()
+            .expect_err("corrupt internal runtime shape must fail");
+        assert!(matches!(
+            error,
+            VerticalTransformError::RuntimeShapeMismatch {
+                field: "height_agl_m",
+                ..
+            }
         ));
     }
 

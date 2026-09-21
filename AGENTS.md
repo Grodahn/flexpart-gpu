@@ -2,11 +2,22 @@
 
 ## Project Overview
 
-FLEXPART-GPU is a Rust/WebGPU port of the FLEXPART Lagrangian particle dispersion model's
-compute kernels. The goal is real-time atmospheric dispersion simulation on commodity GPUs
-for emergency response (industrial accidents, Seveso sites).
+FLEXPART-GPU is a standalone Rust/WebGPU reimplementation of the FLEXPART Lagrangian
+particle dispersion model. The current development priority is to close the scientific and
+behavioral gap to a pinned FLEXPART 11.1 reference through reproducible, oracle-backed
+validation while retaining a GPU-oriented execution architecture.
+
+Scientific correctness and reproducibility take precedence over performance. Do not claim
+FLEXPART 11.1 parity, production readiness, or operational suitability from successful
+execution, isolated kernel tests, or benchmarks alone. Such claims require the explicitly
+defined production-path validation evidence and gates owned by the relevant issue.
+
+The project is independent and unofficial and is not affiliated with or endorsed by the
+official FLEXPART development team.
 
 **Stack**: Rust + wgpu + WGSL shaders
+
+**Maintainer**: Andre Schmitz (`andre_schmitz@web.de`)
 
 ---
 

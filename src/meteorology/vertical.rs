@@ -27,6 +27,9 @@ pub enum NativeVerticalMotionKind {
     /// Pressure velocity omega = dp/dt.
     PressureVelocityOmega,
     /// Native hybrid-coordinate tendency d(eta)/dt.
+    ///
+    /// Recognized at the boundary but currently rejected fail-closed until a
+    /// pinned independent flex_extract/calc_etadot reference is wired.
     EtaCoordinateVelocity,
 }
 
@@ -324,6 +327,11 @@ impl VerticalRuntimeView<'_> {
     #[must_use]
     pub fn vertical_velocity(&self) -> Option<&NormalizedVerticalMotion> {
         self.result.vertical_velocity.as_ref()
+    }
+
+    #[must_use]
+    pub const fn provenance(&self) -> &VerticalTransformProvenance {
+        &self.result.provenance
     }
 }
 
@@ -819,9 +827,9 @@ pub fn reconstruct_vertical_geometry_with_motion(
 /// Normalize native vertical motion to geometric m/s, positive upward.
 ///
 /// Pressure velocity follows FLEXPART's pinmconv concept: multiply omega
-/// [Pa/s] by dz/dp [m/Pa]. Eta-dot first becomes the FLEXPART-ready pressure
-/// vertical velocity using the centered half-level reconstruction used by
-/// FLEXPART preprocessing, then follows the same pressure-to-height step.
+/// [Pa/s] by dz/dp [m/Pa]. Raw eta-dot is recognized by the input contract but
+/// is rejected fail-closed until its preprocessing is independently validated
+/// against a pinned flex_extract/calc_etadot reference.
 fn normalize_vertical_motion(
     snapshot: &Snapshot,
     geometry: &VerticalTransformResult,

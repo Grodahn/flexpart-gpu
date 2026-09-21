@@ -17,7 +17,7 @@ Start from `fixtures/corpus/corpus.json` (versioned index) and
   with a verifiable dependency).
 - `cases/*.json`: canonical `schema_version` 2 validation-case manifests
   (Issue #51: meteorology/candidate domain, optional explicit comparison
-  `output_grid` (required for real-weather cases), release, wind, surface,
+  explicit `output_grid` (required for every v2 case), release, wind, surface,
   integration, physics switches, deposition forcing, stochastic identities,
   execution profile, explicit oracle-execution policy, stable oracle meteorology profile,
   oracle overrides, expected artifacts, and content-addressed species-physics

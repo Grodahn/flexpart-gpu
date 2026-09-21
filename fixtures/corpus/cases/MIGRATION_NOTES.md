@@ -229,7 +229,7 @@ Unchanged shapes and values; only representation notes:
 - `integration.dt_s` remains numeric; `integration.total_s` is contractually whole seconds in JSON Schema, Rust and Python because case/FLEXPART timestamps are second-resolution.
 - `release`: added derived `mass_kg_per_particle` (total/count) for readability. Synthetic case values are preserved; ETEX-MINI-013 is corrected to the existing real mini pipeline: 340 kg, 10,000 particles, (-2.0, 48.058), 5-15 m AGL, 16:00-03:40.
 - `domain`, `wind`, `surface`, `physics_switches`: synthetic values are preserved. ETEX-MINI-013 now mirrors `prepare_native_era5.py`: 65x41x16 meteorology at 0.25 deg from (-8,43), the exact 16 AGL levels, 900 s candidate timestep, and no invented static surface block because ERA5 supplies time-varying surface fields.
-- `output_grid`: optional for legacy synthetic cases but required by the semantic validator for real-weather cases. ETEX declares the distinct real 64x40x5 FLEXPART/candidate comparison grid with heights [100,500,1000,2000,5000] m.
+- `output_grid`: required for every v2 case. Synthetic cases now state explicitly the previously implicit domain-derived horizontal grid plus the former standard output heights [100,250,500,750,1000,1500,2000,2500,3000,5000] m. ETEX declares the distinct real 64x40x5 FLEXPART/candidate comparison grid with heights [100,500,1000,2000,5000] m.
 
 ## ETEX real-run alignment
 

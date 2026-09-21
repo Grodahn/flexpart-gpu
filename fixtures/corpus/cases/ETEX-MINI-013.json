@@ -289,5 +289,11 @@
       5000
     ],
     "heights_ref": "agl"
+  },
+  "oracle_execution": "required",
+  "oracle_meteorology_profile": {
+    "id": "real-weather-manifest-v1",
+    "version": 1,
+    "manifest_path": "reference/oracle-meteorology/real-weather-manifest-v1.json"
   }
 }

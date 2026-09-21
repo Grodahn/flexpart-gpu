@@ -1,5 +1,5 @@
 {
-  "case_file": "fixtures/corpus/cases/RESTART-010.json",
+  "case_file": "fixtures/corpus/cases/PBL-NEUTRAL-005.json",
   "release_lon_deg": 10.0,
   "release_lat_deg": 10.0,
   "release_z_m": 50.0,

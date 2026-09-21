@@ -1883,9 +1883,9 @@ def _load_case(case_id: str) -> tuple:
     """Load the schema-v2 case document and the source file name for it.
 
     RESTART-010 has no dedicated document: it reuses the neutral release/grid
-    shape from PBL-NEUTRAL-005 (oracle-only restart illustration) while the
-    recorded ``case_file`` name stays RESTART-010.json. No other missing
-    case may inherit that fallback.
+    shape from PBL-NEUTRAL-005 (oracle-only restart illustration). The returned
+    source path is the real manifest used for derivation. No other missing case
+    may inherit that fallback.
     """
     case_path = CASES / f"{case_id}.json"
     if case_path.is_file():
@@ -1898,7 +1898,7 @@ def _load_case(case_id: str) -> tuple:
             f"{case_id}: restart fallback manifest not found: {fallback_path}"
         )
     case = json.loads(fallback_path.read_text(encoding="utf-8"))
-    return case, case_path
+    return case, fallback_path
 
 
 def validate_and_normalize_case_for_generation(

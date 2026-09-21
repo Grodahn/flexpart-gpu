@@ -801,7 +801,7 @@ class PreflightFailClosedTest(unittest.TestCase):
         GEN.CASES = self.cases_dir
         case, case_path = GEN._load_case("RESTART-010")
         self.assertEqual(case["case_id"], "PBL-NEUTRAL-005")
-        self.assertEqual(case_path, self.cases_dir / "RESTART-010.json")
+        self.assertEqual(case_path, self.cases_dir / "PBL-NEUTRAL-005.json")
 
     def _run_main(self):
         argv = ["generate_fortran_fixtures.py", "--flexpart-dir", str(self.flexpart_root)]
@@ -1126,7 +1126,7 @@ class PreflightFailClosedTest(unittest.TestCase):
         )
         self.assertEqual(
             restart_provenance["case_file"],
-            "fixtures/corpus/cases/RESTART-010.json",
+            "fixtures/corpus/cases/PBL-NEUTRAL-005.json",
         )
 
 

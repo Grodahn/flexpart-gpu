@@ -541,48 +541,46 @@ fn compute_metrics(
 
 fn run_advective_case(
     case_id: &str,
-    case: &serde_json::Value,
+    manifest: &ValidationCaseManifest,
     out_dir: &Path,
     revision: &str,
 ) -> Result<(), String> {
-    let domain = &case["domain"];
-    let nx = domain["nx"].as_u64().unwrap_or(64) as usize;
-    let ny = domain["ny"].as_u64().unwrap_or(64) as usize;
-    let nz = domain["nz"].as_u64().unwrap_or(8) as usize;
-    let heights: Vec<f32> = domain["wind_heights_m"]
-        .as_array()
-        .map(|a| a.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect())
-        .unwrap_or_else(|| vec![0.0; nz]);
-    let release = &case["release"];
-    // Normalized point geometry; the isolated advection kernel has no
-    // box support, so non-point sources fail closed here.
-    let geometry = release.get("geometry").ok_or_else(|| {
-        format!("case {case_id}: missing release.geometry")
-    })?;
-    if geometry.get("kind").and_then(|v| v.as_str()) != Some("point") {
-        return Err(format!(
-            "case {case_id}: advective path requires a point release geometry"
-        ));
-    }
-    let start_lon = geometry.get("lon_deg").and_then(|v| v.as_f64()).ok_or_else(|| {
-        format!("case {case_id}: release.geometry.lon_deg missing or not a number")
-    })?;
-    let start_lat = geometry.get("lat_deg").and_then(|v| v.as_f64()).ok_or_else(|| {
-        format!("case {case_id}: release.geometry.lat_deg missing or not a number")
-    })?;
-    let start_z = geometry.get("z_m").and_then(|v| v.as_f64()).ok_or_else(|| {
-        format!("case {case_id}: release.geometry.z_m missing or not a number")
-    })? as f32;
-    let count = release["particle_count"].as_u64().ok_or_else(|| {
-        format!("case {case_id}: release.particle_count missing or not a number")
-    })? as usize;
-    let u = case["wind"]["u_m_s"].as_f64().unwrap_or(10.0) as f32;
-    let dt = case["integration"]["dt_s"].as_f64().unwrap_or(60.0) as f32;
-    let steps = case["integration"]["steps"].as_u64().unwrap_or(60) as usize;
-    let xlon0 = domain["xlon0_deg"].as_f64().unwrap_or(6.0);
-    let ylat0 = domain["ylat0_deg"].as_f64().unwrap_or(47.0);
-    let dx = domain["dx_deg"].as_f64().unwrap_or(0.1);
-    let dy = domain["dy_deg"].as_f64().unwrap_or(0.1);
+    let domain = &manifest.domain;
+    let nx = domain.nx as usize;
+    let ny = domain.ny as usize;
+    let nz = domain.nz as usize;
+    let heights = &domain.wind_heights_m;
+
+    // The isolated advection kernel supports only a point release and a
+    // uniform wind. Both are explicit schema-v2 contract choices; no raw-JSON
+    // parsing or physics-relevant fallback values are used here.
+    let (start_lon, start_lat, start_z) = match &manifest.release.geometry {
+        SourceGeometry::Point {
+            lon_deg,
+            lat_deg,
+            z_m,
+        } => (f64::from(*lon_deg), f64::from(*lat_deg), *z_m),
+        SourceGeometry::Box { .. } => {
+            return Err(format!(
+                "case {case_id}: advective path requires a point release geometry"
+            ));
+        }
+    };
+    let count = manifest.release.particle_count as usize;
+    let u = match &manifest.wind {
+        WindSpec::Uniform { u_m_s, .. } => *u_m_s,
+        _ => {
+            return Err(format!(
+                "case {case_id}: advective path requires a uniform wind profile"
+            ));
+        }
+    };
+    let dt = manifest.integration.dt_s;
+    let steps = manifest.integration.steps as usize;
+    let xlon0 = f64::from(domain.xlon0_deg);
+    let ylat0 = f64::from(domain.ylat0_deg);
+    let dx = f64::from(domain.dx_deg);
+    let dy = f64::from(domain.dy_deg);
 
     let context =
         pollster::block_on(GpuContext::new()).map_err(|e| format!("no WGSL adapter: {e}"))?;
@@ -979,12 +977,11 @@ fn main() {
         }
         let candidate_profile = CandidatePhysicsProfile::load(&manifest.candidate_physics_profile)
             .unwrap_or_else(|e| panic!("{}: {e}", manifest.case_id));
-        // ADV-ANA-001 still uses the isolated advection kernel; its raw JSON is
-        // parsed only for that legacy kernel adapter. Driver cases consume the
-        // typed manifest exclusively.
-        let case: serde_json::Value = serde_json::from_str(&text).expect("parse case fixture");
+        // ADV-ANA-001 still uses the isolated advection kernel, but its inputs
+        // now come exclusively from the same validated typed manifest.
         if case_id == "ADV-ANA-001" {
-            run_advective_case(case_id, &case, &out_dir, &revision).expect("advective case failed");
+            run_advective_case(case_id, &manifest, &out_dir, &revision)
+                .expect("advective case failed");
         } else {
             // Declared ensemble count is authoritative; --seeds may only
             // select a leading subset and is rejected before any GPU work.

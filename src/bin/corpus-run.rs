@@ -32,7 +32,8 @@ use flexpart_gpu::simulation::{
     ParticleForcingField,
 };
 use flexpart_gpu::validation::case::{
-    CandidatePhiloxDerivation, ReleaseTiming, SourceGeometry, ValidationCaseManifest, WindSpec,
+    CandidatePhiloxDerivation, ReleaseTiming, SimulationDirection, SourceGeometry,
+    ValidationCaseManifest, WindSpec,
 };
 use flexpart_gpu::wind::{SurfaceFields, WindField3D, WindFieldGrid};
 use ndarray::Array1;
@@ -422,7 +423,10 @@ fn build_surface(
     Ok(surface)
 }
 
-fn forcing_for_case(manifest: &ValidationCaseManifest) -> ForwardStepForcing {
+fn forcing_for_case(
+    manifest: &ValidationCaseManifest,
+    profile: &CandidatePhysicsProfile,
+) -> ForwardStepForcing {
     let (dry, wet_lambda, wet_frac) = manifest.deposition.as_ref().map_or(
         (0.0, 0.0, 0.0),
         |deposition| {
@@ -438,7 +442,7 @@ fn forcing_for_case(manifest: &ValidationCaseManifest) -> ForwardStepForcing {
         wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(wet_lambda)],
         wet_precipitating_fraction: ParticleForcingField::Uniform(wet_frac),
         decay_constant_s_inv: vec![0.0],
-        rho_grad_over_rho: 0.0,
+        rho_grad_over_rho: profile.langevin.rho_grad_over_rho,
     }
 }
 
@@ -700,6 +704,23 @@ fn run_advective_case(
     Ok(())
 }
 
+fn validate_candidate_runner_support(
+    case_id: &str,
+    manifest: &ValidationCaseManifest,
+) -> Result<(), String> {
+    if manifest.simulation_direction != SimulationDirection::Forward {
+        return Err(format!(
+            "case {case_id}: corpus-run candidate driver supports only simulation_direction=forward"
+        ));
+    }
+    if manifest.physics_switches.convection {
+        return Err(format!(
+            "case {case_id}: corpus-run candidate driver does not implement convection; refusing to run declared physics"
+        ));
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_lines)]
 fn run_driver_case(
     case_id: &str,
@@ -709,6 +730,8 @@ fn run_driver_case(
     out_dir: &Path,
     revision: &str,
 ) -> Result<(), String> {
+    validate_candidate_runner_support(case_id, manifest)?;
+
     let domain = &manifest.domain;
     let nx = usize::try_from(domain.nx).map_err(|_| format!("case {case_id}: domain.nx out of range"))?;
     let ny = usize::try_from(domain.ny).map_err(|_| format!("case {case_id}: domain.ny out of range"))?;
@@ -770,6 +793,8 @@ fn run_driver_case(
         velocity_to_grid_scale: velocity_scale(lat, dx, dy, &heights),
         pbl_options: profile.pbl_options(),
         dry_reference_height_m: candidate_dry_reference_height_m(manifest, profile)?,
+        langevin_vertical_substeps: profile.langevin.vertical_substeps_per_timestep,
+        langevin_min_height_m: profile.langevin.min_height_m,
         philox_key: key,
         initial_philox_counter: counter,
         spatial_sort: None,
@@ -813,7 +838,7 @@ fn run_driver_case(
         wind_t0: &wind, wind_t1: &wind, surface_t0: &surface, surface_t1: &surface,
         time_t0_seconds: start_secs, time_t1_seconds: end_secs,
     };
-    let forcing = forcing_for_case(manifest);
+    let forcing = forcing_for_case(manifest, profile);
     // Step the driver manually so per-process deposited reservoirs can be
     // accumulated from the reported per-slot removal probabilities. The
     // driver applies dry deposition before wet deposition within each step,
@@ -1080,6 +1105,33 @@ mod tests {
         assert_eq!(key0, [3737180555, 305419896]);
         let count = resolve_ensemble_count("REPEAT-009", &manifest, None).expect("count");
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn candidate_runner_rejects_unsupported_direction_and_convection() {
+        let mut manifest = load_manifest("WIND-UNI-002");
+        manifest.simulation_direction = SimulationDirection::Backward;
+        let err = validate_candidate_runner_support("WIND-UNI-002", &manifest)
+            .expect_err("backward must fail closed");
+        assert!(err.contains("simulation_direction=forward"), "unexpected: {err}");
+
+        let mut manifest = load_manifest("WIND-UNI-002");
+        manifest.physics_switches.convection = true;
+        let err = validate_candidate_runner_support("WIND-UNI-002", &manifest)
+            .expect_err("convection must fail closed");
+        assert!(err.contains("does not implement convection"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn candidate_profile_drives_langevin_runtime_values() {
+        let manifest = load_manifest("WIND-UNI-002");
+        let profile = CandidatePhysicsProfile::load(&manifest.candidate_physics_profile)
+            .expect("profile");
+        assert_eq!(profile.integration.dispatches_per_manifest_step, 1);
+        assert_eq!(profile.langevin.vertical_substeps_per_timestep, 4);
+        assert_eq!(profile.langevin.min_height_m, 0.01);
+        let forcing = forcing_for_case(&manifest, &profile);
+        assert_eq!(forcing.rho_grad_over_rho, profile.langevin.rho_grad_over_rho);
     }
 
     #[test]

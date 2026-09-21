@@ -78,6 +78,10 @@ pub struct ForwardTimeLoopConfig {
     pub pbl_options: PblComputationOptions,
     /// Dry-deposition reference height [m].
     pub dry_reference_height_m: f32,
+    /// Vertical Langevin turbulence substeps per simulation timestep.
+    pub langevin_vertical_substeps: u32,
+    /// Minimum reflected particle height [m] used by Langevin PBL reflection.
+    pub langevin_min_height_m: f32,
     /// Deterministic Philox RNG key for the Langevin update.
     pub philox_key: PhiloxKey,
     /// Initial Philox counter for the first timestep.
@@ -113,6 +117,8 @@ impl Default for ForwardTimeLoopConfig {
             velocity_to_grid_scale: VelocityToGridScale::IDENTITY,
             pbl_options: PblComputationOptions::default(),
             dry_reference_height_m: 15.0,
+            langevin_vertical_substeps: 4,
+            langevin_min_height_m: 0.01,
             philox_key: [0xDECA_FBAD, 0x1234_5678],
             initial_philox_counter: [0, 0, 0, 0],
             spatial_sort: None,
@@ -745,6 +751,12 @@ pub enum TimeLoopError {
         "invalid config dry_reference_height_m: {value} (must be finite and strictly positive)"
     )]
     InvalidDryReferenceHeight { value: f32 },
+    #[error("invalid config langevin_vertical_substeps: {value} (must be in 1..=4)")]
+    InvalidLangevinSubsteps { value: u32 },
+    #[error(
+        "invalid config langevin_min_height_m: {value} (must be finite and strictly positive)"
+    )]
+    InvalidLangevinMinHeight { value: f32 },
     #[error("forward time-loop has reached end time; no remaining steps")]
     SimulationComplete,
     #[error("forcing length mismatch for `{field}`: expected {expected}, got {actual}")]
@@ -1317,8 +1329,8 @@ impl ForwardTimeLoopDriver {
             let langevin_step = LangevinStep {
                 dt_seconds: step_dt_seconds,
                 rho_grad_over_rho: forcing.rho_grad_over_rho,
-                n_substeps: 4,
-                min_height_m: 0.01,
+                n_substeps: self.config.langevin_vertical_substeps,
+                min_height_m: self.config.langevin_min_height_m,
             };
 
             let next_philox_counter = if !self.validation_mode {
@@ -2186,6 +2198,16 @@ fn validate_config(config: &ForwardTimeLoopConfig) -> Result<(i64, i64), TimeLoo
     if !config.dry_reference_height_m.is_finite() || config.dry_reference_height_m <= 0.0 {
         return Err(TimeLoopError::InvalidDryReferenceHeight {
             value: config.dry_reference_height_m,
+        });
+    }
+    if !(1..=4).contains(&config.langevin_vertical_substeps) {
+        return Err(TimeLoopError::InvalidLangevinSubsteps {
+            value: config.langevin_vertical_substeps,
+        });
+    }
+    if !config.langevin_min_height_m.is_finite() || config.langevin_min_height_m <= 0.0 {
+        return Err(TimeLoopError::InvalidLangevinMinHeight {
+            value: config.langevin_min_height_m,
         });
     }
     if let Some(spatial_sort) = config.spatial_sort {

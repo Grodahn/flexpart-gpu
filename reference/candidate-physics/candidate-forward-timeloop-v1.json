@@ -4,7 +4,7 @@
   "description": "Pinned candidate-side validation runner physics/runtime settings. Values preserve the effective pre-contract corpus behavior while removing dependence on Rust Default implementations and runner literals.",
   "time_bounds_behavior": "clamp",
   "integration": {
-    "substeps_per_manifest_step": 1
+    "dispatches_per_manifest_step": 1
   },
   "pbl_computation_options": {
     "roughness_length_m": 0.1,
@@ -23,5 +23,10 @@
     "air_density_kg_m3": 1.2,
     "density_gradient_kg_m2": -0.0008
   },
-  "inactive_dry_reference_height_m": 15
+  "inactive_dry_reference_height_m": 15,
+  "langevin": {
+    "vertical_substeps_per_timestep": 4,
+    "min_height_m": 0.01,
+    "rho_grad_over_rho": 0
+  }
 }

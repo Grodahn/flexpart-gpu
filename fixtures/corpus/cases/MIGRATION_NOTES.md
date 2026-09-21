@@ -338,9 +338,11 @@ previous scattered v1 adapters are removed, not deprecated.
 Schema v2 cases now carry `candidate_physics_profile` pointing to
 `reference/candidate-physics/candidate-forward-timeloop-v1.json`. The profile
 pins candidate PBL computation options, the existing clamp meteorology time-bound behavior,
-one candidate integration dispatch per manifest timestep, the synthetic
-thermodynamic background used by the #6 corpus, and the inactive dry-deposition
-reference height. These values previously entered through
+one candidate integration dispatch per manifest timestep, the actual Langevin
+vertical substep policy (4 substeps per timestep), PBL-reflection minimum height
+(0.01 m), the explicit density-gradient drift input (currently 0.0 1/m), the
+synthetic thermodynamic background used by the #6 corpus, and the inactive
+dry-deposition reference height. These values previously entered through
 `ForwardTimeLoopConfig::default()` or runner literals.
 
 Synthetic `surface` blocks now also carry explicit `u10_m_s`/`v10_m_s`.

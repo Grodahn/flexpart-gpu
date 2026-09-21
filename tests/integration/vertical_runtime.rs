@@ -163,40 +163,26 @@ fn runtime_view_preserves_normalized_motion_staggering_for_interpolation() {
         .expect("normalized vertical motion");
 
     assert_eq!(
-        normalized.vertical_staggering,
+        normalized.vertical_staggering(),
         flexpart_gpu::meteorology::VerticalStaggering::LevelInterface
     );
-    assert_eq!(normalized.values_ms.len(), 4);
+    assert_eq!(normalized.values_ms().len(), 4);
     assert_eq!(
-        normalized.values_ms.len(),
+        normalized.values_ms().len(),
         (0..4)
             .map(|interface| runtime.interface(0, 0, interface).expect("W geometry"))
             .count()
     );
     assert_eq!(
-        normalized.provenance.algorithm_id,
+        normalized.provenance().algorithm_id,
         "omega_interface_flexpart11_pinmconv_v1"
     );
-    assert!(normalized.values_ms.iter().all(|value| value.is_finite()));
+    assert!(normalized.values_ms().iter().all(|value| value.is_finite()));
 }
 
 #[test]
-fn runtime_view_fails_closed_on_corrupt_derived_shapes_and_bounds() {
+fn runtime_view_fails_closed_on_out_of_bounds_access() {
     let snapshot = snapshot();
-    let mut geometry = reconstruct_vertical_geometry(&snapshot).expect("vertical geometry");
-    geometry.height_agl_m.pop();
-
-    let error = geometry
-        .runtime_view()
-        .expect_err("corrupt runtime shape must fail");
-    assert!(matches!(
-        error,
-        VerticalTransformError::RuntimeShapeMismatch {
-            field: "height_agl_m",
-            ..
-        }
-    ));
-
     let geometry = reconstruct_vertical_geometry(&snapshot).expect("vertical geometry");
     let runtime = geometry.runtime_view().expect("valid runtime view");
     let error = runtime

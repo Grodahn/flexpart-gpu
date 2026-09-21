@@ -37,6 +37,8 @@ REQUIRED_VERTTRANSFORM_SNIPPETS = (
 )
 
 REQUIRED_WINDFIELDS_SNIPPETS = (
+    "akm(nwz-i+1)=zsec2(numskip+i)",
+    "bkm(nwz-i+1)=zsec2(nlev_ec+1+numskip+i)",
     "akz(1)=0.",
     "bkz(1)=1.",
     "akz(i+1)=0.5*(akm(i+1)+akm(i))",
@@ -101,12 +103,13 @@ def read_oracle(path):
             raise ValueError("oracle output ended before all interface rows")
         parts = lines[position].split()
         position += 1
-        if len(parts) != 3 or int(parts[0]) != expected_index:
+        if len(parts) != 4 or int(parts[0]) != expected_index:
             raise ValueError(f"invalid oracle interface row {expected_index}")
         interfaces.append({
             "interface": expected_index,
-            "height_agl_m": float(parts[1]),
-            "height_asl_m": float(parts[2]),
+            "pressure_pa": float(parts[1]),
+            "height_agl_m": float(parts[2]),
+            "height_asl_m": float(parts[3]),
         })
 
     if position >= len(lines):
@@ -250,8 +253,11 @@ def main():
         overall = overall and all(item["pass"] for item in comparisons.values())
         rows.append({"level": level, "fields": comparisons})
 
+    candidate_interface_pressure = result.get("interface_pressure_pa")
     candidate_interface_agl = result.get("interface_height_agl_m")
     candidate_interface_asl = result.get("interface_height_asl_m")
+    if not isinstance(candidate_interface_pressure, list) or len(candidate_interface_pressure) != nz + 1:
+        raise ValueError("candidate interface pressure count mismatch")
     if not isinstance(candidate_interface_agl, list) or len(candidate_interface_agl) != nz + 1:
         raise ValueError("candidate interface AGL height count mismatch")
     if not isinstance(candidate_interface_asl, list) or len(candidate_interface_asl) != nz + 1:
@@ -260,6 +266,12 @@ def main():
     interface_rows = []
     for interface, expected in enumerate(oracle["interfaces"]):
         comparisons = {
+            "pressure_pa": compare_scalar(
+                candidate_interface_pressure[interface],
+                expected["pressure_pa"],
+                PRESSURE_ABS_TOL_PA,
+                PRESSURE_REL_TOL,
+            ),
             "height_agl_m": compare_scalar(
                 candidate_interface_agl[interface],
                 expected["height_agl_m"],
@@ -372,6 +384,7 @@ def main():
             "routine_provenance": oracle_provenance,
             "source_contract_snippets_verified": True,
             "hybrid_level_construction_verified": True,
+            "hybrid_interface_pressure_verified": True,
             "pinmconv_contract_verified": True,
             "wzlev_contract_verified": True,
             "note": (

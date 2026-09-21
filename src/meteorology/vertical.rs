@@ -2111,16 +2111,15 @@ mod tests {
 
     #[test]
     fn derived_asl_geometry_overflow_fails_closed() {
-        let mut snapshot = geometry_snapshot(VerticalOrdering::Increasing);
-        snapshot
-            .fields
-            .iter_mut()
-            .find(|field| field.id == FieldId::Orography)
-            .expect("orography")
-            .values[0] = f32::MAX;
-
         assert!(matches!(
-            reconstruct_vertical_geometry(&snapshot),
+            reconstruct_flexpart_w_heights(
+                VerticalOrdering::Increasing,
+                1,
+                1,
+                1,
+                &[f32::MAX],
+                &[f32::MAX],
+            ),
             Err(VerticalTransformError::InvalidAbsoluteHeight { x: 0, y: 0, .. })
         ));
     }

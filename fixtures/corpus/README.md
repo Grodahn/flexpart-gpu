@@ -19,7 +19,8 @@ Start from `fixtures/corpus/corpus.json` (versioned index) and
   (Issue #51: meteorology/candidate domain, optional explicit comparison
   `output_grid` (required for real-weather cases), release, wind, surface,
   integration, physics switches, deposition forcing, stochastic identities,
-  execution profile, oracle overrides, expected artifacts, and content-addressed species-physics
+  execution profile, explicit oracle-execution policy, stable oracle meteorology profile,
+  oracle overrides, expected artifacts, and content-addressed species-physics
   references under `reference/species-physics/`). Their checked-in machine-readable
   structural contract is `schemas/validation-case-v2.schema.json` (JSON Schema
   Draft 2020-12); cross-field scientific invariants remain enforced by

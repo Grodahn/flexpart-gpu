@@ -273,6 +273,21 @@ class PhiloxIdentityTest(unittest.TestCase):
             f"expected a Philox counter failure, got: {failures}",
         )
 
+    def test_fixture_semantic_failure_returns_without_unbound_specnum(self):
+        case = load_case("DRY-007")
+        case["physics_switches"]["dry_deposition"] = False
+        with tempfile.TemporaryDirectory() as tmp:
+            fort_dir = Path(tmp)
+            (fort_dir / "DRY-007").mkdir()
+            AUDIT.FAILURES.clear()
+            AUDIT.audit_fixture_case("DRY-007", case, fort_dir)
+            failures = list(AUDIT.FAILURES)
+            AUDIT.FAILURES.clear()
+        self.assertTrue(
+            any("fixture equals case JSON" in failure for failure in failures),
+            failures,
+        )
+
     def test_empty_seed_directory_reports_failure_without_exception(self):
         case = load_case("WIND-UNI-002")
         with tempfile.TemporaryDirectory() as tmp:

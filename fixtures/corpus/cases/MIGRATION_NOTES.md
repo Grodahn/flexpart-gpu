@@ -348,3 +348,21 @@ dry-deposition reference height. These values previously entered through
 Synthetic `surface` blocks now also carry explicit `u10_m_s`/`v10_m_s`.
 The migrated values preserve the runner's previous effective inputs, including
 WIND-SHEAR-003's historical 5 m/s / 0 m/s PBL surface wind.
+
+
+## Oracle execution and meteorology identity
+
+Schema v2 now makes oracle participation explicit with `oracle_execution`.
+Normal paired validation cases use `required`; the candidate-only
+`REPEAT-009` uses `not_applicable`. Oracle raw and decoded artifacts are
+therefore mandatory for every paired case, while the candidate-only repeat
+case cannot accidentally declare oracle artifacts.
+
+Every case also carries `oracle_meteorology_profile`. Synthetic cases pin
+`reference/oracle-meteorology/synthetic-grib-v1.json`, which versions the
+global synthetic GRIB grid, 3-hour cadence, simplified hybrid levels,
+upper-air thermodynamics, fixed surface fields and the exact subset mapped
+from the case. Real-weather cases pin
+`reference/oracle-meteorology/real-weather-manifest-v1.json`; their concrete
+dataset identity, digest and candidate/oracle transformations remain in the
+required `wind.meteorology` block.

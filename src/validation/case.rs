@@ -1430,7 +1430,7 @@ impl ValidationCaseManifest {
     }
 
     fn validate_oracle_meteorology_profile(&self) -> Result<(), ValidationCaseError> {
-        let (expected_id, expected_version, expected_path) = match self.wind {
+        let (expected_id, expected_version, expected_path) = match &self.wind {
             WindSpec::RealWeather { .. } => (
                 REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_ID,
                 REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_VERSION,
@@ -3194,6 +3194,12 @@ mod tests {
                 version: 1,
                 manifest_path: "reference/flexpart-11.1.json".to_string(),
             },
+            oracle_execution: OracleExecutionPolicy::Required,
+            oracle_meteorology_profile: OracleMeteorologyProfileRef {
+                id: SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_ID.to_string(),
+                version: SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_VERSION,
+                manifest_path: SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_PATH.to_string(),
+            },
             candidate_physics_profile: CandidatePhysicsProfileRef::canonical(),
             oracle_command_overrides: OracleCommandOverrides {
                 turbulence_formulation: OracleTurbulenceFormulation::AdaptiveWSigmaW,
@@ -3217,6 +3223,42 @@ mod tests {
             require_source_containment: true,
             notes: vec![],
         }
+    }
+
+    #[test]
+    fn oracle_execution_policy_controls_oracle_artifact_requirements() {
+        let mut required = make_minimal_manifest();
+        required.expected_artifacts.required.retain(|artifact| {
+            artifact.producer != ArtifactProducer::Oracle
+                || artifact.class != ArtifactClass::DecodedModelOutput
+        });
+        let err = required.validate().expect_err("required oracle decoded artifact must not be optional");
+        assert!(err.to_string().contains("oracle/decoded_model_output"));
+
+        let repeat_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures/corpus/cases/REPEAT-009.json");
+        let repeat = ValidationCaseManifest::load_from_file(&repeat_path)
+            .expect("REPEAT-009 candidate-only case must validate");
+        assert_eq!(repeat.oracle_execution, OracleExecutionPolicy::NotApplicable);
+        assert!(repeat.stochastic.oracle_seed.is_none());
+        assert!(repeat.expected_artifacts.required.iter().all(|artifact| {
+            artifact.producer != ArtifactProducer::Oracle
+        }));
+    }
+
+    #[test]
+    fn oracle_meteorology_profile_is_required_and_matches_wind_kind() {
+        let mut raw = minimal_manifest_json();
+        raw.as_object_mut().expect("manifest").remove("oracle_meteorology_profile");
+        assert!(parse_json_value(&raw).is_err());
+
+        let mut manifest = make_minimal_manifest();
+        manifest.oracle_meteorology_profile.id =
+            REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_ID.to_string();
+        manifest.oracle_meteorology_profile.manifest_path =
+            REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_PATH.to_string();
+        let err = manifest.validate().expect_err("synthetic wind must use synthetic oracle meteo profile");
+        assert!(err.to_string().contains("oracle_meteorology_profile"));
     }
 
     #[test]

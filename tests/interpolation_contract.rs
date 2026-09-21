@@ -1,0 +1,460 @@
+//! Issue #71: validation of the frozen FLEXPART 11.1 interpolation oracle contract.
+//!
+//! `fixtures/interpolation/contract-v1.json` embeds inputs and the golden outputs of
+//! the direct interpolation oracle driver (`scripts/interpolation/
+//! direct_interpolation_oracle.f90`), which calls the real pinned routines
+//! (find_grid_indices, find_grid_distances, find_z_level_meters, find_vert_vars,
+//! hor_interpol_4d, temporal_interpolation, vert_interpol, interpol_rain).
+//!
+//! These tests (a) check the artifact/provenance metadata is frozen, and (b) verify
+//! that every golden value satisfies the documented FLEXPART closed-form equations.
+//! The independent closed-form re-check is the contract: any future implementation
+//! that reproduces the goldens necessarily reproduces the pinned formulas.
+
+use serde::Deserialize;
+
+pub const FLEXPART_PINNED_COMMIT: &str = "c70586c2b7f5258850705325881c61f557ea9bd8";
+pub const ORACLE_OUTPUT_VERSION: &str = "FLEXPART_INTERPOLATION_ROUTINE_ORACLE_V1";
+
+const REL_TOL: f64 = 1.0e-4;
+const ABS_TOL: f64 = 1.0e-6;
+
+fn assert_close(actual: f64, expected: f64, what: &str) {
+    let diff = (actual - expected).abs();
+    let scale = expected.abs().max(1.0) * REL_TOL;
+    assert!(
+        diff <= scale + ABS_TOL,
+        "{what}: golden {expected} != closed form {actual} (diff {diff})"
+    );
+}
+
+fn as_f64(value: &serde_json::Value) -> f64 {
+    value.as_f64().expect("golden value must be a number")
+}
+
+fn parse_f64(token: &str, what: &str) -> f64 {
+    token
+        .trim()
+        .parse::<f64>()
+        .unwrap_or_else(|_| panic!("invalid f64 in {what}: {token:?}"))
+}
+
+/// Split one driver input line into whitespace-separated tokens.
+fn tokens(line: &str) -> Vec<String> {
+    line.split_whitespace().map(str::to_string).collect()
+}
+
+/// x-fastest column look-up on the FLEXPART grid with the wrapped duplicate column.
+fn field_ref(field: &[f64], nx: usize, ny: usize, ix: usize, jy: usize, nxmax: usize) -> f64 {
+    debug_assert!(ix < nxmax && jy < ny);
+    // Column canon_nx is the wrapped duplicate of column 0 (periodic grids).
+    let x = if ix == nx { 0 } else { ix };
+    field[x + nx * jy]
+}
+
+/// Freeze of `find_grid_indices` (interpol_mod.f90:128-166, mother-grid path).
+fn flexpart_indices(xt: f64, yt: f64, nxmax: usize, nymax: usize) -> (usize, usize, usize, usize) {
+    let ix = xt as usize;
+    let jy = yt as usize;
+    let ixp = ix + 1;
+    let mut jyp = jy + 1;
+    if jyp >= nymax {
+        jyp -= 1;
+    }
+    let ixp = if ixp >= nxmax { ixp - nxmax } else { ixp };
+    (ix, jy, ixp, jyp)
+}
+
+/// Freeze of `find_grid_distances` (interpol_mod.f90:168-188).
+fn flexpart_weights(xt: f64, yt: f64, ix: usize, jy: usize) -> [f64; 4] {
+    let ddx = xt - ix as f64;
+    let ddy = yt - jy as f64;
+    let rddx = 1.0 - ddx;
+    let rddy = 1.0 - ddy;
+    [rddx * rddy, ddx * rddy, rddx * ddy, ddx * ddy]
+}
+
+/// Closed-form horizontal sampling (hor_interpol_4d, interpol_mod.f90:481-492).
+fn horizontal_value(field: &[f64], nx: usize, ny: usize, xt: f64, yt: f64, periodic: bool) -> f64 {
+    let nxmax = if periodic { nx + 1 } else { nx };
+    let (ix, jy, ixp, jyp) = flexpart_indices(xt, yt, nxmax, ny);
+    let weights = flexpart_weights(xt, yt, ix, jy);
+    weights[0] * field_ref(field, nx, ny, ix, jy, nxmax)
+        + weights[1] * field_ref(field, nx, ny, ixp, jy, nxmax)
+        + weights[2] * field_ref(field, nx, ny, ix, jyp, nxmax)
+        + weights[3] * field_ref(field, nx, ny, ixp, jyp, nxmax)
+}
+
+/// Freeze of `find_z_level_meters` + `find_vert_vars_lin`
+/// (interpol_mod.f90:215-242, 406-430). Returns 1-based (indz, indzp),
+/// the lin-interpolation weights (dz1, dz2) and the bound flags.
+fn vertical_levels(heights: &[f64], zt: f64) -> (usize, usize, f64, f64, [bool; 2]) {
+    let nz = heights.len();
+    if zt <= heights[0] {
+        return (1, 2, 0.0, 1.0, [true, false]);
+    }
+    if zt >= heights[nz - 1] {
+        return (nz - 1, nz, 1.0, 0.0, [false, true]);
+    }
+    for upper in 1..nz {
+        if heights[upper] > zt {
+            let dz = 1.0 / (heights[upper] - heights[upper - 1]);
+            return (
+                upper,
+                upper + 1,
+                (zt - heights[upper - 1]) * dz,
+                (heights[upper] - zt) * dz,
+                [false, false],
+            );
+        }
+    }
+    unreachable!("zt in (heights[0], heights[last]) must land in a layer")
+}
+
+/// Freeze of `temporal_interpolation` (interpol_mod.f90:531-537).
+fn temporal_value(memtime: [f64; 2], itime: f64, time1: f64, time2: f64) -> f64 {
+    let dt1 = itime - memtime[0];
+    let dt2 = memtime[1] - itime;
+    let dtt = 1.0 / (dt1 + dt2);
+    (time1 * dt2 + time2 * dt1) * dtt
+}
+
+fn read_reals(input: &[String], cursor: &mut usize, count: usize, what: &str) -> Vec<f64> {
+    let start = *cursor;
+    *cursor += count;
+    assert!(
+        *cursor <= input.len(),
+        "input truncated reading {count} values of {what}"
+    );
+    input[start..*cursor]
+        .iter()
+        .map(|line| parse_f64(line, what))
+        .collect()
+}
+
+fn golden_queries(case: &FixtureCase, nquery: usize) -> &[serde_json::Value] {
+    let queries = case.golden["queries"]
+        .as_array()
+        .expect("golden.queries must be an array");
+    assert_eq!(queries.len(), nquery, "golden query count matches input");
+    queries
+}
+
+fn run_horizontal_check(case: &FixtureCase) {
+    let input = &case.input;
+    let nx = tokens(&input[1])[0].parse::<usize>().unwrap();
+    let ny = tokens(&input[1])[1].parse::<usize>().unwrap();
+    let periodic = tokens(&input[3])[0].parse::<usize>().unwrap() != 0;
+    let mut cursor = 4;
+    let field = read_reals(input, &mut cursor, nx * ny, "horizontal field");
+    let nquery = input[cursor].parse::<usize>().unwrap();
+    cursor += 1;
+
+    for (index, query) in golden_queries(case, nquery).iter().enumerate() {
+        let query_tokens = tokens(&input[cursor + index]);
+        let xt = parse_f64(&query_tokens[0], "xt");
+        let yt = parse_f64(&query_tokens[1], "yt");
+        let expected = horizontal_value(&field, nx, ny, xt, yt, periodic);
+        assert_close(
+            as_f64(&query["VALUE"][0]),
+            expected,
+            &format!("{} query {index}", case.id),
+        );
+    }
+}
+
+fn run_vertical_check(case: &FixtureCase) {
+    let input = &case.input;
+    let mut cursor = 1;
+    let nz = input[cursor].parse::<usize>().unwrap();
+    cursor += 1;
+    let heights = read_reals(input, &mut cursor, nz, "vertical heights");
+    let nvalues = input[cursor].parse::<usize>().unwrap();
+    cursor += 1;
+    let values = read_reals(input, &mut cursor, nvalues, "vertical values");
+    let nquery = input[cursor].parse::<usize>().unwrap();
+    cursor += 1;
+    assert_eq!(nvalues, nz, "one value per level");
+
+    for (index, query) in golden_queries(case, nquery).iter().enumerate() {
+        let query_tokens = tokens(&input[cursor + index]);
+        let zt = parse_f64(&query_tokens[1], "zt");
+        let (indz, indzp, dz1, dz2, _bounds) = vertical_levels(&heights, zt);
+        let expected = values[indz - 1] * dz2 + values[indzp - 1] * dz1;
+        assert_close(
+            as_f64(&query["VALUE"][0]),
+            expected,
+            &format!("{} query {index}", case.id),
+        );
+        assert_eq!(query["LEVELS"][0].as_f64(), Some(indz as f64));
+        assert_eq!(query["LEVELS"][1].as_f64(), Some(indzp as f64));
+    }
+}
+
+fn run_temporal_check(case: &FixtureCase) {
+    let input = &case.input;
+    let mem_tokens = tokens(&input[1]);
+    let memtime = [
+        parse_f64(&mem_tokens[0], "memtime[0]"),
+        parse_f64(&mem_tokens[1], "memtime[1]"),
+    ];
+    let nquery = input[2].parse::<usize>().unwrap();
+
+    for (index, query) in golden_queries(case, nquery).iter().enumerate() {
+        let query_tokens = tokens(&input[3 + index]);
+        let itime = parse_f64(&query_tokens[0], "itime");
+        let time1 = parse_f64(&query_tokens[1], "time1");
+        let time2 = parse_f64(&query_tokens[2], "time2");
+        let expected = temporal_value(memtime, itime, time1, time2);
+        assert_close(
+            as_f64(&query["VALUE"][0]),
+            expected,
+            &format!("{} query {index}", case.id),
+        );
+    }
+}
+
+fn run_rain_check(case: &FixtureCase) {
+    let input = &case.input;
+    let grid_tokens = tokens(&input[1]);
+    let nx = grid_tokens[0].parse::<usize>().unwrap();
+    let ny = grid_tokens[1].parse::<usize>().unwrap();
+    let periodic = tokens(&input[3])[0].parse::<usize>().unwrap() != 0;
+    let mem_tokens = tokens(&input[4]);
+    let memtime = [
+        parse_f64(&mem_tokens[0], "memtime[0]"),
+        parse_f64(&mem_tokens[1], "memtime[1]"),
+    ];
+
+    let mut cursor = 5;
+    let lsp_t1 = read_reals(input, &mut cursor, nx * ny, "lsp t1");
+    let lsp_t2 = read_reals(input, &mut cursor, nx * ny, "lsp t2");
+    let cp_t1 = read_reals(input, &mut cursor, nx * ny, "cp t1");
+    let cp_t2 = read_reals(input, &mut cursor, nx * ny, "cp t2");
+    let tcc_t1 = read_reals(input, &mut cursor, nx * ny, "tcc t1");
+    let tcc_t2 = read_reals(input, &mut cursor, nx * ny, "tcc t2");
+    let tt_t1 = read_reals(input, &mut cursor, nx * ny, "tt t1");
+    let tt_t2 = read_reals(input, &mut cursor, nx * ny, "tt t2");
+    let ctwc_t1 = read_reals(input, &mut cursor, nx * ny, "ctwc t1");
+    let ctwc_t2 = read_reals(input, &mut cursor, nx * ny, "ctwc t2");
+    let nquery = input[cursor].parse::<usize>().unwrap();
+    cursor += 1;
+
+    for (index, query) in golden_queries(case, nquery).iter().enumerate() {
+        let query_tokens = tokens(&input[cursor + index]);
+        let xt = parse_f64(&query_tokens[0], "xt");
+        let yt = parse_f64(&query_tokens[1], "yt");
+        let itime = parse_f64(&query_tokens[2], "itime");
+
+        let bilinear = |field: &[f64]| horizontal_value(field, nx, ny, xt, yt, periodic);
+
+        let dt1 = itime - memtime[0];
+        let dt2 = memtime[1] - itime;
+        let dt = memtime[1] - memtime[0];
+        // Frozen quirk (interpol_mod.f90:1309): dtt = dt/3 even for numpf=1.
+        let dtt = dt / 3.0;
+
+        let lsp_expected = (bilinear(&lsp_t1) * dt2 + bilinear(&lsp_t2) * dt1) / dtt;
+        let cp_expected = (bilinear(&cp_t1) * dt2 + bilinear(&cp_t2) * dt1) / dtt;
+        let tcc_expected = (bilinear(&tcc_t1) * dt2 + bilinear(&tcc_t2) * dt1) / dt;
+        let tt_expected = (bilinear(&tt_t1) * dt2 + bilinear(&tt_t2) * dt1) / dt;
+        let ctwc_expected = (bilinear(&ctwc_t1) * dt2 + bilinear(&ctwc_t2) * dt1) / dt;
+
+        assert_close(
+            as_f64(&query["LSP"][0]),
+            lsp_expected,
+            &format!("{} LSP", case.id),
+        );
+        assert_close(
+            as_f64(&query["CP"][0]),
+            cp_expected,
+            &format!("{} CP", case.id),
+        );
+        assert_close(
+            as_f64(&query["TCC"][0]),
+            tcc_expected,
+            &format!("{} TCC", case.id),
+        );
+        assert_close(
+            as_f64(&query["TT"][0]),
+            tt_expected,
+            &format!("{} TT", case.id),
+        );
+        assert_close(
+            as_f64(&query["CTWC"][0]),
+            ctwc_expected,
+            &format!("{} CTWC", case.id),
+        );
+
+        // All four interpolation corners carry icmv (-9999), so the masked cloud
+        // average collapses to icmv (interpol_mod.f90:1400-1414, 1568-1573).
+        assert_eq!(query["CLOUD"][0].as_f64(), Some(-9999.0));
+        assert_eq!(query["CLOUD"][1].as_f64(), Some(-9999.0));
+    }
+}
+
+#[test]
+fn contract_fixture_metadata_is_frozen() {
+    let source = include_str!("../fixtures/interpolation/contract-v1.json");
+    let contract: ContractFixture =
+        serde_json::from_str(source).expect("parse interpolation contract");
+
+    assert_eq!(contract.schema.id, "flexpart-gpu.interpolation-contract");
+    assert_eq!(contract.schema.version, 1);
+    assert_eq!(contract.oracle_output_version, ORACLE_OUTPUT_VERSION);
+    assert_eq!(
+        contract.pinned_flexpart.pinned_commit, FLEXPART_PINNED_COMMIT,
+        "contract must pin the same FLEXPART revision as reference/flexpart-11.1.json"
+    );
+    assert_eq!(
+        contract.pinned_flexpart.version, "11.1",
+        "contract must reference FLEXPART 11.1"
+    );
+}
+
+#[test]
+fn contract_provenance_matches_fixture() {
+    let provenance_source = include_str!("../fixtures/interpolation/contract-v1.provenance.json");
+    let provenance: ContractProvenance = serde_json::from_str(provenance_source)
+        .expect("interpolation provenance must be well-formed");
+    assert_eq!(
+        provenance.schema,
+        "flexpart-gpu.interpolation-contract-provenance.v1"
+    );
+    assert_eq!(provenance.pinned_commit, FLEXPART_PINNED_COMMIT);
+    assert!(provenance.checkout_clean, "oracle checkout must be clean");
+    assert!(provenance.binary_entrypoint_present);
+
+    // The linked objects must name every module the oracle driver calls.
+    let source_files: Vec<&str> = provenance
+        .linked_flexpart
+        .objects
+        .iter()
+        .map(|object| object.file.as_str())
+        .collect();
+    for expected in [
+        "src/com_mod.f90",
+        "src/par_mod.f90",
+        "src/windfields_mod.f90",
+        "src/interpol_mod.f90",
+    ] {
+        assert!(
+            source_files.contains(&expected),
+            "provenance must record {expected}"
+        );
+    }
+    let obligations: Vec<&str> = vec![
+        "find_grid_indices",
+        "find_grid_distances",
+        "find_time_vars",
+        "find_z_level_meters",
+        "find_vert_vars",
+        "hor_interpol_4d",
+        "hor_interpol_2d",
+        "temporal_interpolation",
+        "vert_interpol",
+        "interpol_rain",
+    ];
+    for routine in obligations {
+        assert!(
+            provenance
+                .linked_flexpart
+                .routines
+                .contains(&routine.to_string()),
+            "provenance must name the frozen routine {routine}"
+        );
+    }
+    let golden_files: Vec<&str> = provenance.cases.keys().map(String::as_str).collect();
+    for name in [
+        "horizontal-interior",
+        "horizontal-periodic-wrap",
+        "vertical-model-levels",
+        "temporal-bilinear",
+        "rain-layer-fields",
+    ] {
+        assert!(
+            golden_files.contains(&name),
+            "provenance must record golden case {name}"
+        );
+    }
+}
+
+#[test]
+fn goldens_satisfy_flexpart_closed_forms() {
+    let source = include_str!("../fixtures/interpolation/contract-v1.json");
+    let contract: ContractFixture =
+        serde_json::from_str(source).expect("parse interpolation contract");
+
+    let mut seen = std::collections::HashSet::new();
+    for case in &contract.cases {
+        assert!(
+            seen.insert(case.id.as_str()),
+            "duplicate case id {}",
+            case.id
+        );
+        match case.mode.as_str() {
+            "horizontal" => run_horizontal_check(case),
+            "vertical" => run_vertical_check(case),
+            "temporal" => run_temporal_check(case),
+            "rain" => run_rain_check(case),
+            other => panic!("unknown oracle case mode {other}"),
+        }
+    }
+    // Every frozen sampling mode must be covered by at least one case.
+    for mode in ["horizontal", "vertical", "temporal", "rain"] {
+        assert!(
+            contract.cases.iter().any(|case| case.mode == mode),
+            "contract must contain at least one {mode} case"
+        );
+    }
+}
+
+#[derive(Deserialize)]
+struct ContractFixture {
+    schema: ContractSchema,
+    pinned_flexpart: PinnedFlexpart,
+    oracle_output_version: String,
+    cases: Vec<FixtureCase>,
+}
+
+#[derive(Deserialize)]
+struct ContractSchema {
+    id: String,
+    version: u32,
+}
+
+#[derive(Deserialize)]
+struct PinnedFlexpart {
+    version: String,
+    pinned_commit: String,
+}
+
+#[derive(Deserialize)]
+struct FixtureCase {
+    id: String,
+    mode: String,
+    input: Vec<String>,
+    golden: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct ContractProvenance {
+    schema: String,
+    pinned_commit: String,
+    checkout_clean: bool,
+    #[serde(rename = "entrypoint_present")]
+    binary_entrypoint_present: bool,
+    linked_flexpart: LinkedFlexpart,
+    cases: std::collections::HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct LinkedFlexpart {
+    objects: Vec<LinkedObject>,
+    routines: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct LinkedObject {
+    file: String,
+}

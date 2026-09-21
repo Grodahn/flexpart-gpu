@@ -49,6 +49,15 @@ Fail-closed steps:
 2. Build `flexpart-fortran:latest` and compile `FLEXPART` with
    `make -f makefile_gfortran eta=no arch=x86-64`; require the executable,
    hash it, and require the checkout to stay clean (`gitversion.txt` removed).
+2b. Regenerate and verify the vertical-coordinate oracle column comparisons
+    (#30): direct routine oracle plus conformance harness on synthetic and real
+    ERA5/ETEX columns.
+2c. Regenerate and verify the interpolation oracle contract fixture (#71):
+    re-run `scripts/interpolation/direct_oracle.sh` for all five sampling cases
+    in the pinned container, re-pack `fixtures/interpolation/contract-v1.json`
+    (+ provenance), require the regenerated goldens, output hashes and object
+    hashes to match the committed pack, and re-verify the goldens analytically
+    via `cargo test --test interpolation_contract`.
 3. Run `gpu-preflight --software`; require `software adapter: true` and
    `smoke test: PASS` (a skipped smoke test fails).
 4. Run `SW-WGPU-ADVECTION-001` with `--exact`; require `test result: ok`,

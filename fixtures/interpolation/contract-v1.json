@@ -1,0 +1,656 @@
+{
+  "schema": {
+    "id": "flexpart-gpu.interpolation-contract",
+    "version": 1
+  },
+  "pinned_flexpart": {
+    "name": "FLEXPART",
+    "version": "11.1",
+    "role": "Normative scientific and functional oracle for all flexpart-gpu validation comparisons.",
+    "upstream_repository": "https://gitlab.phaidra.org/flexpart/flexpart",
+    "pinned_tag": "v11.1",
+    "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+    "execution_profile": {
+      "id": "flexpart-11.1-single-thread",
+      "version": 1,
+      "runtime_environment": {
+        "OMP_NUM_THREADS": "1",
+        "OMP_THREAD_LIMIT": "1",
+        "OMP_DYNAMIC": "FALSE",
+        "OMP_NESTED": "FALSE",
+        "OMP_MAX_ACTIVE_LEVELS": "1",
+        "OMP_SCHEDULE": "static",
+        "OMP_PROC_BIND": "FALSE",
+        "OMP_WAIT_POLICY": "PASSIVE"
+      },
+      "build": {
+        "makefile": "src/makefile_gfortran",
+        "make_arguments": "eta=no arch=x86-64",
+        "fortran_compiler": "gfortran",
+        "optimization": "-O3",
+        "openmp_flag": "-fopenmp",
+        "arch_flag": "-march=x86-64",
+        "eta": "no",
+        "netcdf": "enabled (USE_NCF)"
+      },
+      "docker": {
+        "image": "flexpart-fortran:latest",
+        "dockerfile": "docker/Dockerfile.fortran",
+        "compose_file": "docker/docker-compose.fortran.yml",
+        "base_image": "ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7",
+        "ubuntu_snapshot": "20260910T000000Z"
+      },
+      "required_inputs": [
+        "COMMAND",
+        "RELEASES",
+        "OUTGRID",
+        "AGECLASSES",
+        "RECEPTORS",
+        "SPECIES/SPECIES_*",
+        "METEO_ARGS.txt",
+        "generated GRIB meteorology and AVAILABLE"
+      ],
+      "external_seed_control": "unavailable",
+      "repeatability_cases": {
+        "ADV-ANA-001": "deterministic",
+        "WIND-UNI-002": "stochastic"
+      },
+      "minimum_repetitions": 5
+    },
+    "license": "GPL-3.0-or-later",
+    "license_url": "https://gitlab.phaidra.org/flexpart/flexpart/-/blob/v11.1/LICENSE",
+    "source_requirement": "Reference checkouts must be unmodified upstream sources at exactly the pinned commit. Any deviation (different commit, dirty work tree) fails verification.",
+    "notes": [
+      "The v11.1 tag still writes 'Version 11.0 (2023-07-11)' into its run banner. Reproducibility is anchored to the pinned tag and full commit hash, not to the banner string.",
+      "This manifest is the single source of truth for the oracle revision. Comparison scripts and harnesses must read the pinned commit from here instead of hard-coding it."
+    ]
+  },
+  "oracle_output_version": "FLEXPART_INTERPOLATION_ROUTINE_ORACLE_V1",
+  "cases": [
+    {
+      "id": "horizontal-interior",
+      "mode": "horizontal",
+      "input": [
+        "horizontal",
+        "4 3 1",
+        "0.0 0.0 1.0 1.0",
+        "0",
+        "100.0",
+        "200.0",
+        "300.0",
+        "400.0",
+        "110.0",
+        "210.0",
+        "310.0",
+        "410.0",
+        "120.0",
+        "220.0",
+        "320.0",
+        "420.0",
+        "2",
+        "1.25 0.5 1",
+        "3.1 2.0 1"
+      ],
+      "golden": {
+        "MODE": "horizontal",
+        "CANONICAL_NX": 4.0,
+        "CANONICAL_NY": 3.0,
+        "FLEXPART_NXMAX": 4.0,
+        "FLEXPART_NYMAX": 3.0,
+        "PERIODIC": 0.0,
+        "NQUERY": 2.0,
+        "queries": [
+          {
+            "XY": [
+              1.25,
+              0.5,
+              1.0
+            ],
+            "INDICES": [
+              1.0,
+              0.0,
+              2.0,
+              1.0
+            ],
+            "WEIGHTS": [
+              0.375,
+              0.125,
+              0.375,
+              0.125
+            ],
+            "VALUE": [
+              230.0
+            ]
+          },
+          {
+            "XY": [
+              3.0999999046325684,
+              2.0,
+              1.0
+            ],
+            "INDICES": [
+              3.0,
+              2.0,
+              0.0,
+              2.0
+            ],
+            "WEIGHTS": [
+              0.9000000953674316,
+              0.09999990463256836,
+              0.0,
+              0.0
+            ],
+            "VALUE": [
+              390.0000305175781
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "horizontal-periodic-wrap",
+      "mode": "horizontal",
+      "input": [
+        "horizontal",
+        "4 3 1",
+        "0.0 0.0 1.0 1.0",
+        "1",
+        "100.0",
+        "200.0",
+        "300.0",
+        "400.0",
+        "110.0",
+        "210.0",
+        "310.0",
+        "410.0",
+        "120.0",
+        "220.0",
+        "320.0",
+        "420.0",
+        "3",
+        "3.2 1.5 1",
+        "3.9 0.5 1",
+        "0.4 2.3 1"
+      ],
+      "golden": {
+        "MODE": "horizontal",
+        "CANONICAL_NX": 4.0,
+        "CANONICAL_NY": 3.0,
+        "FLEXPART_NXMAX": 5.0,
+        "FLEXPART_NYMAX": 3.0,
+        "PERIODIC": 1.0,
+        "NQUERY": 3.0,
+        "queries": [
+          {
+            "XY": [
+              3.200000047683716,
+              1.5,
+              1.0
+            ],
+            "INDICES": [
+              3.0,
+              1.0,
+              4.0,
+              2.0
+            ],
+            "WEIGHTS": [
+              0.3999999761581421,
+              0.10000002384185791,
+              0.3999999761581421,
+              0.10000002384185791
+            ],
+            "VALUE": [
+              354.9999694824219
+            ]
+          },
+          {
+            "XY": [
+              3.9000000953674316,
+              0.5,
+              1.0
+            ],
+            "INDICES": [
+              3.0,
+              0.0,
+              4.0,
+              1.0
+            ],
+            "WEIGHTS": [
+              0.04999995231628418,
+              0.4500000476837158,
+              0.04999995231628418,
+              0.4500000476837158
+            ],
+            "VALUE": [
+              134.99996948242188
+            ]
+          },
+          {
+            "XY": [
+              0.4000000059604645,
+              2.299999952316284,
+              1.0
+            ],
+            "INDICES": [
+              0.0,
+              2.0,
+              1.0,
+              2.0
+            ],
+            "WEIGHTS": [
+              0.4200000464916229,
+              0.2800000309944153,
+              0.17999997735023499,
+              0.11999998241662979
+            ],
+            "VALUE": [
+              160.0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "vertical-model-levels",
+      "mode": "vertical",
+      "input": [
+        "vertical",
+        "3",
+        "10.0",
+        "100.0",
+        "1000.0",
+        "3",
+        "1.0",
+        "2.0",
+        "3.0",
+        "6",
+        "0 5.0",
+        "0 50.0",
+        "0 100.0",
+        "0 1000.0",
+        "0 2000.0",
+        "1 500.0"
+      ],
+      "golden": {
+        "MODE": "vertical",
+        "NLEVEL": 3.0,
+        "NQUERY": 6.0,
+        "queries": [
+          {
+            "COORD_ZT": [
+              0.0,
+              5.0
+            ],
+            "LEVELS": [
+              1.0,
+              2.0
+            ],
+            "BOUNDS": [
+              "T",
+              "F"
+            ],
+            "DZ": [
+              0.0,
+              1.0
+            ],
+            "VALUE": [
+              1.0
+            ]
+          },
+          {
+            "COORD_ZT": [
+              0.0,
+              50.0
+            ],
+            "LEVELS": [
+              1.0,
+              2.0
+            ],
+            "BOUNDS": [
+              "F",
+              "F"
+            ],
+            "DZ": [
+              0.4444444477558136,
+              0.5555555820465088
+            ],
+            "VALUE": [
+              1.4444444179534912
+            ]
+          },
+          {
+            "COORD_ZT": [
+              0.0,
+              100.0
+            ],
+            "LEVELS": [
+              2.0,
+              3.0
+            ],
+            "BOUNDS": [
+              "F",
+              "F"
+            ],
+            "DZ": [
+              0.0,
+              1.0
+            ],
+            "VALUE": [
+              2.0
+            ]
+          },
+          {
+            "COORD_ZT": [
+              0.0,
+              1000.0
+            ],
+            "LEVELS": [
+              2.0,
+              3.0
+            ],
+            "BOUNDS": [
+              "F",
+              "T"
+            ],
+            "DZ": [
+              1.0,
+              0.0
+            ],
+            "VALUE": [
+              3.0
+            ]
+          },
+          {
+            "COORD_ZT": [
+              0.0,
+              2000.0
+            ],
+            "LEVELS": [
+              2.0,
+              3.0
+            ],
+            "BOUNDS": [
+              "F",
+              "T"
+            ],
+            "DZ": [
+              1.0,
+              0.0
+            ],
+            "VALUE": [
+              3.0
+            ]
+          },
+          {
+            "COORD_ZT": [
+              1.0,
+              500.0
+            ],
+            "LEVELS": [
+              2.0,
+              3.0
+            ],
+            "BOUNDS": [
+              "F",
+              "F"
+            ],
+            "DZ": [
+              0.4444444477558136,
+              0.5555555820465088
+            ],
+            "VALUE": [
+              2.4444446563720703
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "temporal-bilinear",
+      "mode": "temporal",
+      "input": [
+        "temporal",
+        "0 3600",
+        "3",
+        "0 10.0 20.0",
+        "1800 10.0 20.0",
+        "3600 10.0 20.0"
+      ],
+      "golden": {
+        "MODE": "temporal",
+        "MEMTIME": [
+          0.0,
+          3600.0
+        ],
+        "NQUERY": 3.0,
+        "queries": [
+          {
+            "ITIME": [
+              0.0
+            ],
+            "INPUTS": [
+              10.0,
+              20.0
+            ],
+            "DTS": [
+              0.0,
+              3600.0,
+              0.00027777778450399637
+            ],
+            "VALUE": [
+              10.0
+            ]
+          },
+          {
+            "ITIME": [
+              1800.0
+            ],
+            "INPUTS": [
+              10.0,
+              20.0
+            ],
+            "DTS": [
+              1800.0,
+              1800.0,
+              0.00027777778450399637
+            ],
+            "VALUE": [
+              15.0
+            ]
+          },
+          {
+            "ITIME": [
+              3600.0
+            ],
+            "INPUTS": [
+              10.0,
+              20.0
+            ],
+            "DTS": [
+              3600.0,
+              0.0,
+              0.00027777778450399637
+            ],
+            "VALUE": [
+              20.0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rain-layer-fields",
+      "mode": "rain",
+      "input": [
+        "rain",
+        "4 3",
+        "0.0 0.0 1.0 1.0",
+        "0",
+        "0 3600",
+        "0.0",
+        "1.0",
+        "2.0",
+        "3.0",
+        "4.0",
+        "5.0",
+        "6.0",
+        "7.0",
+        "8.0",
+        "9.0",
+        "10.0",
+        "11.0",
+        "100.0",
+        "101.0",
+        "102.0",
+        "103.0",
+        "104.0",
+        "105.0",
+        "106.0",
+        "107.0",
+        "108.0",
+        "109.0",
+        "110.0",
+        "111.0",
+        "0.5",
+        "0.5",
+        "0.5",
+        "0.5",
+        "0.5",
+        "0.5",
+        "0.5",
+        "0.5",
+        "0.5",
+        "0.5",
+        "0.5",
+        "0.5",
+        "1.5",
+        "1.5",
+        "1.5",
+        "1.5",
+        "1.5",
+        "1.5",
+        "1.5",
+        "1.5",
+        "1.5",
+        "1.5",
+        "1.5",
+        "1.5",
+        "0.2",
+        "0.2",
+        "0.2",
+        "0.2",
+        "0.2",
+        "0.2",
+        "0.2",
+        "0.2",
+        "0.2",
+        "0.2",
+        "0.2",
+        "0.2",
+        "0.6",
+        "0.6",
+        "0.6",
+        "0.6",
+        "0.6",
+        "0.6",
+        "0.6",
+        "0.6",
+        "0.6",
+        "0.6",
+        "0.6",
+        "0.6",
+        "280.0",
+        "280.0",
+        "280.0",
+        "280.0",
+        "280.0",
+        "280.0",
+        "280.0",
+        "280.0",
+        "280.0",
+        "280.0",
+        "280.0",
+        "280.0",
+        "290.0",
+        "290.0",
+        "290.0",
+        "290.0",
+        "290.0",
+        "290.0",
+        "290.0",
+        "290.0",
+        "290.0",
+        "290.0",
+        "290.0",
+        "290.0",
+        "0.001",
+        "0.001",
+        "0.001",
+        "0.001",
+        "0.001",
+        "0.001",
+        "0.001",
+        "0.001",
+        "0.001",
+        "0.001",
+        "0.001",
+        "0.001",
+        "0.004",
+        "0.004",
+        "0.004",
+        "0.004",
+        "0.004",
+        "0.004",
+        "0.004",
+        "0.004",
+        "0.004",
+        "0.004",
+        "0.004",
+        "0.004",
+        "1",
+        "1.25 0.5 1800 1"
+      ],
+      "golden": {
+        "MODE": "rain",
+        "NUMPF": 1.0,
+        "FLEXPART_NXMAX": 4.0,
+        "FLEXPART_NYMAX": 3.0,
+        "NQUERY": 1.0,
+        "queries": [
+          {
+            "XY_ITIME_KZ": [
+              1.25,
+              0.5,
+              1800.0,
+              1.0
+            ],
+            "DTS": [
+              1800.0,
+              1800.0,
+              1200.0
+            ],
+            "LSP": [
+              159.75
+            ],
+            "CP": [
+              3.0
+            ],
+            "TCC": [
+              0.4000000059604645
+            ],
+            "TT": [
+              285.0
+            ],
+            "CTWC": [
+              0.0024999999441206455
+            ],
+            "CLOUD": [
+              -9999.0,
+              -9999.0
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "schema": "flexpart-gpu.interpolation-contract-provenance.v1",
+  "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+  "checkout_clean": true,
+  "entrypoint_present": true,
+  "oracle": {
+    "name": "FLEXPART",
+    "version": "11.1",
+    "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8"
+  },
+  "binary": {
+    "path": "/workspace/target/interpolation/oracle-build/interpolation-oracle",
+    "sha256": "0c6594d035c7d6e9d36a172887b31325fb2733cdbdb10c93c8efb1bff3aac84d"
+  },
+  "driver_source": {
+    "path": "scripts/interpolation/direct_interpolation_oracle.f90",
+    "sha256": "772bf7b925fabb40ebde70944b39d2a45e34d5aa6ae6e3c50b5ff7de20179c76"
+  },
+  "linked_flexpart": {
+    "objects": [
+      {
+        "file": "src/com_mod.f90",
+        "object": "src/com_mod.o",
+        "source_sha256": "b954ef4a0fde94c2b04ba649233f571614ae496e90de4dba5850a12e0810642d",
+        "object_sha256": "1ef1b5ce24937f282ae66e3fc5d4c31335d80590217b144a3f32bee015830e10"
+      },
+      {
+        "file": "src/par_mod.f90",
+        "object": "src/par_mod.o",
+        "source_sha256": "422a6d58f0367039c45d960c02909904b2bb80bef2a0190915ec1be0e3b5cdf2",
+        "object_sha256": "00f941155f6dd16c90c6e7d16f8306cd9328f6e873ee132316fc4a6cf249c3c8"
+      },
+      {
+        "file": "src/windfields_mod.f90",
+        "object": "src/windfields_mod.o",
+        "source_sha256": "d3c732a74884c6218ba09a36d6d99beef6340b4c99423313c868a2689fece81a",
+        "object_sha256": "156efe7bbb4fb3632b6162ef872a90f502f249f65b8056f46ff7171e279f2c9d"
+      },
+      {
+        "file": "src/interpol_mod.f90",
+        "object": "src/interpol_mod.o",
+        "source_sha256": "08727268302a79a20eee51826f4c7090966e0c585b215565a3ad0366b6934b41",
+        "object_sha256": "cd68b5c7ccb31634a93fbcbfaf472fe9e7062720dd7d2f1aba3f92422d93be62"
+      }
+    ],
+    "routines": [
+      "find_grid_indices",
+      "find_grid_distances",
+      "find_time_vars",
+      "find_z_level_meters",
+      "find_vert_vars",
+      "hor_interpol_4d",
+      "hor_interpol_2d",
+      "temporal_interpolation",
+      "vert_interpol",
+      "interpol_rain"
+    ]
+  },
+  "cases": {
+    "horizontal-interior": "3eaa131a904a874e5fff07eb832f265ebbe1859ba959e06ac63fecff2104229d",
+    "horizontal-periodic-wrap": "c91f73034789b690848c7266ff12cd7653cdef2c98f9fd7924032d785b293b9c",
+    "vertical-model-levels": "8c65e3b0afe88ba6a85837d4f419fd26d0b8cdb4f9f0f8f0e3d00d04758ca667",
+    "temporal-bilinear": "ae44f1e5dba664011bb51029d2a58693d39f5aa975a00214baf6aa9cb5f92085",
+    "rain-layer-fields": "a0182f4ad823f67971a14304be7814021a09e52d93d21fc044308684508451d0"
+  },
+  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules and calls find_grid_indices/find_grid_distances/find_z_level_meters/find_vert_vars/hor_interpol_4d/temporal_interpolation/vert_interpol/interpol_rain directly on canonical synthetic grids. Golden values in contract-v1.json are the direct oracle outputs."
+}

@@ -1,0 +1,284 @@
+# FLEXPART 11.1 Interpolation Oracle Contract
+
+Status: frozen reference for issues #72 (horizontal), #73 (vertical), #74 (temporal),
+and #75 (accumulated fields / wet deposition forcing).
+
+This document freezes the *normative* interpolation behavior that the downstream
+interpolation implementation issues must reproduce or explicitly diverge from.
+It is the machine- and human-readable contract accompanying
+`scripts/interpolation/direct_interpolation_oracle.f90` and the fixtures in
+`fixtures/interpolation/`.
+
+## 1. Normative reference
+
+| Aspect | Frozen value |
+| --- | --- |
+| Software | FLEXPART 11.1 |
+| Pinned revision | `c70586c2b7f5258850705325881c61f557ea9bd8` (tag `v11.1`) |
+| Reference manifest | `reference/flexpart-11.1.json` |
+| Build | `-cpp -mcmodel=large -UETA` (METRE mode, `eta=no`), gfortran, x86-64 |
+| Oracle driver | `scripts/interpolation/direct_interpolation_oracle.f90` |
+| Oracle harness | `scripts/interpolation/direct_oracle.sh` (container build + run) |
+| Fixture pack | `fixtures/interpolation/` (+ per-case golden outputs) |
+
+The oracle links the pristine `src/com_mod.o`, `src/par_mod.o`, `src/windfields_mod.o`,
+`src/interpol_mod.o` and calls the real pinned routines directly. The driver's output
+is the only oracle evidence; no reimplementation is used as evidence.
+
+## 2. Horizontal grid conventions
+
+FLEXPART reads grids with cell-center samples. The canonical convention frozen here is
+cell-center anchored:
+
+```
+X_can      = (lon_deg - xlon0_deg) / dx_deg_x        [grid units]
+xlon0_deg  = longitude of the X=0 cell-center sample
+dx_deg_x   = equiangular zonal step
+```
+
+FLEXPART computes the zonal step from the stored first/last longitudes
+(`gridcheck_ecmwf`, `windfields_mod.f90:572-718`):
+
+```
+dx = (xaux2 - xaux1) / (nxfield - 1)
+```
+
+For exactly-global grids `nx = nxfield + 1`: the `nxfield+1`-th column is the wrapped
+duplicate of column 0, and `nxmax = nxfield + 1`. Non-global grids have `nx = nxfield`,
+`nxmax = nxfield`.
+
+The pinned default `nxshift = 359` (`FLEXPART.f90:259`) rotates the ECMWF grid origin to
+`-1°`. This is a **grid-loading** concern that does not affect interpolation shape. The
+oracle fixture convention is `nxshift = 0` equivalent (`xlon0_deg` = first stored cell
+center) so that `X_can = (lon_deg - xlon0_deg)/dx_deg_x` is the canonical mapping.
+`nxshift` normalization is deferred to ingestion (#32).
+
+### Sampling
+
+`find_grid_indices` (`interpol_mod.f90:128-166`, mother grid path `147-153`):
+
+```
+ix   = int(xt)
+jy   = int(yt)
+ixp  = ix + 1    ; if (ixp >= nxmax) ixp = ixp - nxmax   ["wraparound", :161-164]
+jyp  = jy + 1    ; if (jyp >= nymax) jyp = jyp - 1       ["temporary fix", :156-159]
+```
+
+- The east wrap sets `ixp` to `ix + 1 - nxmax`, which maps the wrapped duplicate column
+  back to column 0 for global grids (and is applied with a warning for regional grids).
+- The north clamp keeps `jyp` inside `[0, nymax-1]`; there is **no** south clamp and no
+  west wrap. A particle with `xt < 0` or `yt < 0` is out of contract and must be
+  rejected or flagged by the caller.
+
+`find_grid_distances` (`interpol_mod.f90:168-188`):
+
+```
+ddx  = xt - real(ix)
+ddy  = yt - real(jy)
+rddx = 1 - ddx ; rddy = 1 - ddy
+p1 = rddx*rddy      ! (ix  , jy )
+p2 = ddx *rddy      ! (ixp , jy )
+p3 = rddx*ddy       ! (ix  , jyp)
+p4 = ddx *ddy       ! (ixp , jyp)
+```
+
+`hor_interpol_4d` / `hor_interpol_2d` (`interpol_mod.f90:481-504`):
+
+```
+output = p1*f(ix ,jy ) + p2*f(ixp,jy ) + p3*f(ix ,jyp) + p4*f(ixp,jyp)
+```
+
+### Verified golden (interior)
+
+Grid `nx=4, ny=3, dx=dy=1, xlon0=ylat0=0`, `f(x,y) = 100 + 10*y + 100*x`,
+query `(xt,yt) = (1.25, 0.5)`, `kz=1`:
+
+```
+ix, jy, ixp, jyp = 1, 0, 2, 1
+p1..p4           = 0.375, 0.125, 0.375, 0.125
+value            = 230.0
+```
+
+### Verified golden (periodic wrap)
+
+Same grid with `periodic=1` (canonical `nx=4`, FLEXPART `nxmax=5`), query
+`(xt,yt) = (3.2, 1.5)`, `kz=1`:
+
+```
+ix, jy, ixp, jyp = 3, 1, 4, 2
+value            = 355.0        (ixp=4 wraps to column 0)
+```
+
+## 3. Vertical conventions (METRE mode)
+
+METRE mode (`eta=no`, `-UETA`) uses the single shared metric height array `height`
+(`windfields_mod.f90:210-211`; `find_z_level_meters`, `interpol_mod.f90:215-242`):
+
+```
+indz  = nz-1 ; indzp = nz
+zt <= height(1)                      -> indz=1, indzp=2, lbounds(1)=T
+zt >= height(nz)                     -> indz=nz-1, indzp=nz, lbounds(2)=T
+first i with height(i) > zt          -> indz=i-1, indzp=i
+```
+
+`find_vert_vars` (`interpol_mod.f90:315-404`) delegates to the **linear** path
+`find_vert_vars_lin` (`interpol_mod.f90:406-430`) because `log_interpol=.false.` in the
+pinned build:
+
+```
+bounds(1)=T  -> dz1=0, dz2=1
+bounds(2)=T  -> dz1=1, dz2=0
+otherwise    -> dz1=(zpos - vl(zl))/(vl(zl+1)-vl(zl))
+                dz2=(vl(zl+1) - zpos)/(vl(zl+1)-vl(zl))
+```
+
+`vert_interpol` (`interpol_mod.f90:539-547`) is linear:
+
+```
+output = input1*dz2 + input2*dz1
+```
+
+`(input1, dz1)` belong to the lower (closer-to-ground) level.
+
+### Verified golden
+
+`height = [10, 100, 1000]`, values `[1, 2, 3]`:
+
+| zt | indz/indzp | dz1, dz2 | value |
+| --- | --- | --- | --- |
+| 5 | 1/2 | 0, 1 | 1.0 |
+| 50 | 1/2 | 0.44444448, 0.55555558 | 1.44444442 |
+| 100 | 2/3 | 0, 1 | 2.0 |
+| 1000 | 2/3 | 1, 0 | 3.0 |
+| 2000 | 2/3 | 1, 0 | 3.0 |
+| 500 (interface coord) | 2/3 | 0.44444448, 0.55555558 | 2.44444466 |
+
+## 4. Temporal conventions
+
+Two in-memory members `memtime(1) <= itime <= memtime(2)`. `find_time_vars`
+(`interpol_mod.f90:190-198`):
+
+```
+dt1 = itime - memtime(1)
+dt2 = memtime(2) - itime
+dtt = 1 / (dt1 + dt2)          ! undefined outside [memtime(1), memtime(2)]
+```
+
+`temporal_interpolation` (`interpol_mod.f90:531-537`):
+
+```
+output = (time1*dt2 + time2*dt1) * dtt
+```
+
+### Verified golden
+
+`memtime = [0, 3600]`, `time1=10, time2=20`:
+
+| itime | dt1, dt2 | output |
+| --- | --- | --- |
+| 0 | 0, 3600 | 10.0 |
+| 1800 | 1800, 1800 | 15.0 |
+| 3600 | 3600, 0 | 20.0 |
+
+## 5. 2-D layer / accumulated-field sampling (`interpol_rain`)
+
+`interpol_rain` (`interpol_mod.f90:1209-1582`) samples seven surface/layer quantities
+with the same horizontal bilinear seed `(ix,jy,ixp,jyp,p1..p4)` and the same two
+in-memory members:
+
+- `lsprec` (large-scale precipitation) and `convprec` (convective) use the
+  `mp/ip/dtp1/dtp2` pair selection;
+- `tcc`, `ctwc`, `tt`, and the cloud-bottom/top `ip`-masked averages use `dt1/dt2/dt`.
+
+Input units (pinned build): precipitation fields are stored as **mm/h rates**; ECMWF
+data is read without conversion (accumulation -> rate conversion is owned by the
+pre-processing pipeline such as flex_extract), GFS data is multiplied by 3600 at read
+(`windfields_mod.f90`). FLEXPART performs **no** accumulation deconvolution.
+
+### Frozen quirk: unconditional `dtt = dt/3` (`interpol_mod.f90:1302-1316, 1549-1550`)
+
+```
+dt  = memtime(2) - memtime(1)
+dtt = dt/3
+numpf == 1  -> mp=[1,2], ip=[1,1], dtp1=dt1, dtp2=dt2   (default build, par_mod.f90:190)
+yint1 = (y1(1)*dtp2 + y1(2)*dtp1) / dtt        ! lsp
+yint2 = (y2(1)*dtp2 + y2(2)*dtp1) / dtt        ! cp
+```
+
+For `numpf=1` the denominator is `dt/3` while `dtp1+dtp2 = dt`, so the interpolated
+precipitation is **3 × the linear blend**. This is the actual pinned behavior and is
+frozen here. Issue #75 must reproduce it or explicitly diverge.
+
+`tcc`, `ctwc`, `tt`, and cloud masking use the plain denominator `dt`:
+
+```
+yint3 = (y3(1)*dt2 + y3(2)*dt1) / dt           ! tcc            (:1552)
+yint4 = (y4(1)*dt2 + y4(2)*dt1) / dt           ! ctwc (if lcw)  (:1553)
+ytint = (ytt(1)*dt2 + ytt(2)*dt1) / dt         ! tt             (:1554)
+intiy1/intiy2   = int(blend)                   ! cloud bot/top  (:1559-1579)
+```
+
+Cloud cloud-bottom/top fields are `icmv`-masked (`par_mod.f90:306`,
+`icmv = -9999`). A grid point whose value equals `icmv` contributes weight 0 and the
+masked sum is renormalized by `ipsum` (`interpol_mod.f90:1378-1444`); if `ipsum == 0`
+the interpolated cloud value is `icmv` and both `intiy1/intiy2` collapse to `icmv`
+(`:1568-1573`).
+
+### Verified golden
+
+`nx=4, ny=3, dx=dy=1`, `memtime=[0,3600]`, query `(xt,yt,itime,kz) = (1.25,0.5,1800,1)`
+(see `smoke-rain` fixture for the full field listing):
+
+```
+lsprec t1: linear-in-x field 0..11 ; t2: 100..111
+convprec t1 = 0.5 ; t2 = 1.5
+tcc t1 = 0.2 ; t2 = 0.6 ; tt t1 = 280 ; t2 = 290
+ctwc t1 = 0.001 ; t2 = 0.004  (lcw = .true.)
+
+dt1 = 1800, dt2 = 1800, dt = 3600, dtt (post) = 1200
+yint1 (lsp)  = 159.75      ( = 3/2 * (3.25 + 103.25) )
+yint2 (cp)   = 3.0
+yint3 (tcc)  = 0.4
+ytint (tt)   = 285.0
+yint4 (ctwc) = 0.0025
+intiy1/intiy2 = -9999, -9999   (all four corners icmv -> CLOUD -9999 -9999)
+```
+
+## 6. Interface-staggered vertical sampling (METRE mode)
+
+Model-level sampling (`level_center`) is normative and proven by
+`find_z_level_meters` + `find_vert_vars` + `vert_interpol`.
+
+Interface-staggered sampling (`level_interface` for `w` in ETA mode) has **no direct
+execution path in the pinned METRE build**: `interpol_wind_meter`
+(`interpol_mod.f90:1651-1706`) samples all of `u/v/w/tt` on the shared `height`
+coordinate. This is recorded as an **unresolved/unsupported** semantic and blocks #73
+from claiming interface-staggered parity without a dedicated ETA-mode oracle build.
+
+## 7. Out-of-contract semantics (fail closed)
+
+The following are deliberately **not** frozen by #71; issue authors must treat them as
+unresolved and must not invent behavior:
+
+- `numpf = 3` temporally-equidistant precipitation scheme
+  (`interpol_mod.f90:1317-1340`): dead in the pinned `numpf=1` build. Freezing it
+  requires a separate `numpf=3` oracle build.
+- ETA-mode interface staggering (`wzlev`/`wheight`, `interpol_wind_eta`,
+  `interpol_mod.f90:1590-1650`): excluded by `-UETA`.
+- Logarithmic vertical interpolation (`log_interpol=.true.`): not active in the pinned
+  build; `find_vert_vars` (`interpol_mod.f90:364-392`) is documented but unreachable.
+- Nesting (`ngrid > 0`), polar-overshoot pole handling (`find_ngrid_sp/dp`), and
+  `nxshift` non-zero grid rotation.
+
+Any candidate implementation that needs these must open a follow-up oracle issue rather
+than extending this contract.
+
+## 8. Artifacts
+
+- `scripts/interpolation/direct_interpolation_oracle.f90` — modes `horizontal`,
+  `vertical`, `temporal`, `rain`; calls the pinned routines; versioned output header
+  `FLEXPART_INTERPOLATION_ROUTINE_ORACLE_V1`.
+- `scripts/interpolation/direct_oracle.sh` — container build + run harness.
+- `fixtures/interpolation/*.json` — canonical sampling cases (schema
+  `flexpart-gpu.interpolation-contract.v1`) with embedded golden values and provenance.
+- `reference/flexpart-11.1.json` — pinned reference manifest.

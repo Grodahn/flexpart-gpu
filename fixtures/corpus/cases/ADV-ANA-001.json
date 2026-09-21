@@ -79,6 +79,18 @@
     "sampling_interval_s": 300,
     "quantity": "time_averaged_mass_concentration_kg_m3"
   },
+  "output_grid": {
+    "nx": 64,
+    "ny": 64,
+    "nz": 10,
+    "dx_deg": 0.1,
+    "dy_deg": 0.1,
+    "xlon0_deg": 6,
+    "ylat0_deg": 47,
+    "horizontal_ref": "geographic_lon_lat_degrees",
+    "heights_m": [100, 250, 500, 750, 1000, 1500, 2000, 2500, 3000, 5000],
+    "heights_ref": "agl"
+  },
   "units": {
     "wind": "m/s",
     "displacement": "m",

@@ -1,12 +1,12 @@
 {
   "case_file": "fixtures/corpus/cases/DRY-007.json",
-  "release_lon_deg": 10,
-  "release_lat_deg": 10,
-  "release_z_m": 50,
+  "release_lon_deg": 10.0,
+  "release_lat_deg": 10.0,
+  "release_z_m": 50.0,
   "particle_count": 500,
-  "candidate_mass_kg": 1,
+  "candidate_mass_kg": 1.0,
   "mass_conversion": "MASS_g = mass_kg * 1000 (FLEXPART MASS is in grams)",
-  "oracle_mass_g": 1000,
+  "oracle_mass_g": 1000.0,
   "oracle_meteorology_profile": {
     "id": "flexpart-synthetic-grib-v1",
     "version": 1,

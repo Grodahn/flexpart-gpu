@@ -209,7 +209,7 @@
   "representation_differences": {
     "notes": [
       "Candidate: 8 fixed AGL levels, Philox RNG, fused Hanna/Langevin kernel.",
-      "Oracle: 137 native hybrid levels, Knuth subtractive RNG, separate turbulence/convection modules.",
+      "Oracle synthetic meteorology: 12 pinned simplified hybrid-eta levels from flexpart-synthetic-grib-v1, Knuth subtractive RNG, separate turbulence/convection modules.",
       "Vertical coordinate differs (AGL vs hybrid); RNG namespaces are separate per #50 contract."
     ],
     "horizontal_grid": "Candidate uses the local case domain; Oracle synthetic meteorology uses the global regular_ll 32x32 grid pinned by flexpart-synthetic-grib-v1. Concentration OUTGRID remains separately case-defined.",

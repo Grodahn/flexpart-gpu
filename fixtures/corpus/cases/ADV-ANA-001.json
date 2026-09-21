@@ -166,7 +166,7 @@
   },
   "representation_differences": {
     "notes": [
-      "Analytic case: no RNG consumed, no representation differences."
+      "Analytic case: no RNG is consumed. Candidate/oracle meteorology representation differences are declared explicitly below."
     ],
     "horizontal_grid": "Candidate uses the local case domain; Oracle synthetic meteorology uses the global regular_ll 32x32 grid pinned by flexpart-synthetic-grib-v1. Concentration OUTGRID remains separately case-defined.",
     "vertical_coordinate": "Candidate uses fixed AGL wind levels; Oracle synthetic meteorology uses the pinned 12-level simplified hybrid-eta coordinate from flexpart-synthetic-grib-v1.",

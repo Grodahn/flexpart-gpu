@@ -211,11 +211,21 @@
       "Candidate: 8 fixed AGL levels, Philox RNG, fused Hanna/Langevin kernel.",
       "Oracle: 137 native hybrid levels, Knuth subtractive RNG, separate turbulence/convection modules.",
       "Vertical coordinate differs (AGL vs hybrid); RNG namespaces are separate per #50 contract."
-    ]
+    ],
+    "horizontal_grid": "Candidate uses the local case domain; Oracle synthetic meteorology uses the global regular_ll 32x32 grid pinned by flexpart-synthetic-grib-v1. Concentration OUTGRID remains separately case-defined.",
+    "vertical_coordinate": "Candidate uses fixed AGL wind levels; Oracle synthetic meteorology uses the pinned 12-level simplified hybrid-eta coordinate from flexpart-synthetic-grib-v1.",
+    "temporal_resolution": "Oracle synthetic meteorology is emitted at the pinned 10800 s cadence and covers the simulation window by rounding duration up to that cadence.",
+    "pbl_diagnostics": "Candidate consumes the complete case surface block plus candidate-forward-timeloop-v1 thermodynamics. Oracle synthetic GRIB maps wind, sensible heat flux, BLH and precipitation from the case while its remaining surface/upper-air fields are explicitly pinned by flexpart-synthetic-grib-v1."
   },
   "notes": [
     "Stochastic case: 10 independent Philox seeds for candidate; 5 repetitions of seedable oracle with FLEXPART_VALIDATION_SEED=1.",
     "Expected: COM advects east/south with 5/-3 m/s wind; plume spreads in x/y/z; all particles in [0, BLH]; mass conserved."
   ],
-  "require_source_containment": true
+  "require_source_containment": true,
+  "oracle_execution": "required",
+  "oracle_meteorology_profile": {
+    "id": "flexpart-synthetic-grib-v1",
+    "version": 1,
+    "manifest_path": "reference/oracle-meteorology/synthetic-grib-v1.json"
+  }
 }

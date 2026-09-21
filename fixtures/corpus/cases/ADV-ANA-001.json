@@ -167,12 +167,21 @@
   "representation_differences": {
     "notes": [
       "Analytic case: no RNG consumed, no representation differences."
-    ]
+    ],
+    "horizontal_grid": "Candidate uses the local case domain; Oracle synthetic meteorology uses the global regular_ll 32x32 grid pinned by flexpart-synthetic-grib-v1. Concentration OUTGRID remains separately case-defined.",
+    "vertical_coordinate": "Candidate uses fixed AGL wind levels; Oracle synthetic meteorology uses the pinned 12-level simplified hybrid-eta coordinate from flexpart-synthetic-grib-v1.",
+    "temporal_resolution": "Oracle synthetic meteorology is emitted at the pinned 10800 s cadence and covers the simulation window by rounding duration up to that cadence."
   },
   "notes": [
     "Deterministic case: no stochastic identity needed.",
     "Candidate uses isolated advection kernel; oracle runs with LTURBULENCE=0, LCONVECTION=0.",
     "Expected: 10 m/s * 3600 s = 36000 m eastward displacement; no spread; mass conserved."
   ],
-  "require_source_containment": true
+  "require_source_containment": true,
+  "oracle_execution": "required",
+  "oracle_meteorology_profile": {
+    "id": "flexpart-synthetic-grib-v1",
+    "version": 1,
+    "manifest_path": "reference/oracle-meteorology/synthetic-grib-v1.json"
+  }
 }

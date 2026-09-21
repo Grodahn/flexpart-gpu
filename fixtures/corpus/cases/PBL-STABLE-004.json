@@ -209,10 +209,20 @@
   "representation_differences": {
     "notes": [
       "Suppressed vertical mixing: vertical standard deviation remains small; mean height stays near 50 m release."
-    ]
+    ],
+    "horizontal_grid": "Candidate uses the local case domain; Oracle synthetic meteorology uses the global regular_ll 32x32 grid pinned by flexpart-synthetic-grib-v1. Concentration OUTGRID remains separately case-defined.",
+    "vertical_coordinate": "Candidate uses fixed AGL wind levels; Oracle synthetic meteorology uses the pinned 12-level simplified hybrid-eta coordinate from flexpart-synthetic-grib-v1.",
+    "temporal_resolution": "Oracle synthetic meteorology is emitted at the pinned 10800 s cadence and covers the simulation window by rounding duration up to that cadence.",
+    "pbl_diagnostics": "Candidate consumes the complete case surface block plus candidate-forward-timeloop-v1 thermodynamics. Oracle synthetic GRIB maps wind, sensible heat flux, BLH and precipitation from the case while its remaining surface/upper-air fields are explicitly pinned by flexpart-synthetic-grib-v1."
   },
   "notes": [
     "Migrated from v1 without scientific change: expected_property moved to representation_differences."
   ],
-  "require_source_containment": true
+  "require_source_containment": true,
+  "oracle_execution": "required",
+  "oracle_meteorology_profile": {
+    "id": "flexpart-synthetic-grib-v1",
+    "version": 1,
+    "manifest_path": "reference/oracle-meteorology/synthetic-grib-v1.json"
+  }
 }

@@ -1,7 +1,7 @@
 program vertical_direct_oracle
   use verttransform_mod, only: verttransform_ecmwf_heights
   use windfields_mod, only: nuvz, nwz, nz, nuvzmax, nwzmax, nzmax, &
-    akz, bkz, aknew, bknew
+    akm, bkm, akz, bkz, aknew, bknew
   implicit none
 
   integer :: native_nz, k, j, level, physical_k
@@ -62,14 +62,27 @@ program vertical_direct_oracle
   nwz = native_nz + 1
   nz = native_nz + 1
 
+  if (allocated(akm)) deallocate(akm)
+  if (allocated(bkm)) deallocate(bkm)
   if (allocated(akz)) deallocate(akz)
   if (allocated(bkz)) deallocate(bkz)
   if (allocated(aknew)) deallocate(aknew)
   if (allocated(bknew)) deallocate(bknew)
+  allocate(akm(nwzmax), bkm(nwzmax))
   allocate(akz(nuvzmax), bkz(nuvzmax), aknew(nzmax), bknew(nzmax))
 
-  ! Canonical input is top -> surface. FLEXPART stores the artificial surface
-  ! level first and then real model-level centers bottom -> top.
+  ! Canonical input is top -> surface. FLEXPART stores native half-level
+  ! coefficients bottom -> top in akm/bkm and the artificial surface model
+  ! level first in akz/bkz.
+  akm = 0.0
+  bkm = 0.0
+  do k=1,native_nz+1
+    level = native_nz + 2 - k
+    akm(k) = a(level)
+    bkm(k) = b(level)
+  enddo
+
+  ! Real model-level centers are bottom -> top after the artificial surface.
   akz = 0.0
   bkz = 0.0
   aknew = 0.0
@@ -125,8 +138,9 @@ program vertical_direct_oracle
   write(output_unit,'(A,1X,I0)') "INTERFACES", native_nz+1
   do j=1,native_nz+1
     physical_k = native_nz + 2 - j
-    write(output_unit,'(I0,1X,ES24.16E3,1X,ES24.16E3)') &
-      j-1, wzlev(0,0,physical_k), wzlev(0,0,physical_k) + terrain
+    write(output_unit,'(I0,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') &
+      j-1, akm(physical_k) + bkm(physical_k) * ps, &
+      wzlev(0,0,physical_k), wzlev(0,0,physical_k) + terrain
   enddo
 
   write(output_unit,'(A,1X,I0)') "MOTION", has_motion

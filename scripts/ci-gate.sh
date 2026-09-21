@@ -243,6 +243,185 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 2b. Vertical-coordinate oracle column (#30).
+# ---------------------------------------------------------------------------
+if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
+  log_info "Step 2b/6: direct FLEXPART-11.1 vertical routine oracle comparison..."
+  VERTICAL_DIR="${OUTPUT_DIR}/vertical-column"
+  VERTICAL_BUILD_DIR="${VERTICAL_DIR}/oracle-build"
+  mkdir -p "${VERTICAL_DIR}" "${VERTICAL_BUILD_DIR}"
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/prepare_oracle_column.py" \
+    --snapshot "${PROJECT_ROOT}/fixtures/vertical/synthetic-column-v1.json" \
+    --motion "${PROJECT_ROOT}/fixtures/vertical/synthetic-omega-interface-v1.json" \
+    --output "${VERTICAL_DIR}/oracle-input.txt"; then
+    fail "Preparing the #30 vertical oracle input failed"
+  fi
+
+  if ! cargo run --quiet --bin vertical-column-report -- \
+    "${PROJECT_ROOT}/fixtures/vertical/synthetic-column-v1.json" \
+    "${VERTICAL_DIR}/candidate.json" \
+    "${PROJECT_ROOT}/fixtures/vertical/synthetic-omega-interface-v1.json"; then
+    fail "Candidate #30 vertical-column transform failed"
+  fi
+
+  # FLEXPART was compiled in Step 2. Link the focused driver against those exact
+  # pristine objects. Exclude only FLEXPART.o because it defines the model's
+  # main program; verttransform_mod.o, windfields_mod.o and all transitive module
+  # dependencies are the objects produced by the pinned full FLEXPART build.
+  if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
+    ${DOCKER_USER_ARGS} \
+    flexpart-fortran bash -c "
+      set -euo pipefail
+      build=/workspace/target/ci-gate/vertical-column/oracle-build
+      oracle_src=/workspace/flexpart/src
+      mkdir -p \"\$build\"
+      cd \"\$build\"
+
+      objects=\$(find \"\$oracle_src\" -maxdepth 1 -type f -name '*.o' ! -name 'FLEXPART.o' -print | sort | tr '\\n' ' ')
+      test -n \"\$objects\"
+      test -f \"\$oracle_src/verttransform_mod.o\"
+      test -f \"\$oracle_src/windfields_mod.o\"
+
+      gfortran -O0 -I\"\$oracle_src\" -fopenmp -mcmodel=large \
+        /workspace/flexpart-gpu/scripts/vertical/direct_oracle_driver.f90 \
+        \$objects \
+        -L/usr/lib/x86_64-linux-gnu -Wl,-rpath=/usr/lib/x86_64-linux-gnu \
+        -leccodes -leccodes_f90 -lm -lnetcdff \
+        -o \"\$build/flexpart-vertical-routine-oracle\"
+
+      nm \"\$build/flexpart-vertical-routine-oracle\" \
+        | grep -q '__verttransform_mod_MOD_verttransform_ecmwf_heights'
+      sha256sum \"\$oracle_src/verttransform_mod.o\" > \"\$build/verttransform_mod.o.sha256\"
+      sha256sum \"\$oracle_src/windfields_mod.o\" > \"\$build/windfields_mod.o.sha256\"
+
+      gfortran -O0 -J\"\$build\" -I\"\$build\" \
+        \"\$oracle_src/par_mod.f90\" \
+        \"\$oracle_src/qvsat_mod.f90\" \
+        /workspace/flexpart-gpu/scripts/vertical/oracle_column.f90 \
+        -o \"\$build/vertical-conformance-harness\"
+
+      \"\$build/flexpart-vertical-routine-oracle\" \
+        /workspace/target/ci-gate/vertical-column/oracle-input.txt \
+        /workspace/target/ci-gate/vertical-column/routine-oracle-output.txt
+
+      \"\$build/vertical-conformance-harness\" \
+        /workspace/target/ci-gate/vertical-column/oracle-input.txt \
+        /workspace/target/ci-gate/vertical-column/conformance-output.txt
+    " 2>&1 | tee "${VERTICAL_DIR}/oracle-build-run.log"; then
+    fail "Direct pinned FLEXPART #30 vertical routine oracle build/run failed"
+  fi
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/write_direct_oracle_provenance.py" \
+    --binary "${VERTICAL_BUILD_DIR}/flexpart-vertical-routine-oracle" \
+    --driver-source "${PROJECT_ROOT}/scripts/vertical/direct_oracle_driver.f90" \
+    --oracle-checkout "${ORACLE_CHECKOUT}" \
+    --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+    --output "${VERTICAL_DIR}/routine-oracle-provenance.json"; then
+    fail "Writing direct FLEXPART routine-oracle provenance failed"
+  fi
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/compare_oracle_column.py" \
+    --candidate "${VERTICAL_DIR}/candidate.json" \
+    --oracle "${VERTICAL_DIR}/routine-oracle-output.txt" \
+    --oracle-checkout "${ORACLE_CHECKOUT}" \
+    --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+    --source-snapshot "${PROJECT_ROOT}/fixtures/vertical/synthetic-column-v1.json" \
+    --source-motion "${PROJECT_ROOT}/fixtures/vertical/synthetic-omega-interface-v1.json" \
+    --expect-execution-mode pinned_routine \
+    --oracle-provenance "${VERTICAL_DIR}/routine-oracle-provenance.json" \
+    --output "${VERTICAL_DIR}/comparison-report.json"; then
+    fail "FLEXPART-11.1 direct-routine synthetic vertical comparison failed"
+  fi
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/compare_oracle_column.py" \
+    --candidate "${VERTICAL_DIR}/candidate.json" \
+    --oracle "${VERTICAL_DIR}/conformance-output.txt" \
+    --oracle-checkout "${ORACLE_CHECKOUT}" \
+    --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+    --source-snapshot "${PROJECT_ROOT}/fixtures/vertical/synthetic-column-v1.json" \
+    --source-motion "${PROJECT_ROOT}/fixtures/vertical/synthetic-omega-interface-v1.json" \
+    --expect-execution-mode conformance_harness \
+    --output "${VERTICAL_DIR}/conformance-comparison-report.json"; then
+    fail "Secondary #30 vertical conformance comparison failed"
+  fi
+
+  test -s "${VERTICAL_DIR}/comparison-report.json" \
+    || fail "Normative vertical-column comparison report is missing"
+  test -s "${VERTICAL_DIR}/routine-oracle-provenance.json" \
+    || fail "Direct FLEXPART routine provenance is missing"
+
+  # Repeat the same two checks on one real 137-level ERA5/ETEX column.
+  if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
+    ${DOCKER_USER_ARGS} \
+    flexpart-fortran python3 /workspace/flexpart-gpu/scripts/vertical/extract_real_etex_column.py \
+      --canonical /workspace/flexpart-gpu/fixtures/meteorology/era5-etex-native-v1.json \
+      --canonical-provenance /workspace/flexpart-gpu/fixtures/meteorology/era5-etex-native-v1.provenance.json \
+      --surface-archive /workspace/flexpart-gpu/fixtures/etex/native-mini/era5-surface-19941023-24.npz \
+      --output /workspace/target/ci-gate/vertical-column/real-column-snapshot.json \
+      --provenance-output /workspace/target/ci-gate/vertical-column/real-column-fixture-provenance.json \
+      2>&1 | tee "${VERTICAL_DIR}/real-column-extract.log"; then
+    fail "Extracting the real #30 ERA5/ETEX vertical column failed"
+  fi
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/prepare_oracle_column.py" \
+    --snapshot "${VERTICAL_DIR}/real-column-snapshot.json" \
+    --output "${VERTICAL_DIR}/real-oracle-input.txt"; then
+    fail "Preparing the real #30 vertical oracle input failed"
+  fi
+
+  if ! cargo run --quiet --bin vertical-column-report -- \
+    "${VERTICAL_DIR}/real-column-snapshot.json" \
+    "${VERTICAL_DIR}/real-candidate.json"; then
+    fail "Candidate real #30 vertical-column transform failed"
+  fi
+
+  if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
+    ${DOCKER_USER_ARGS} \
+    flexpart-fortran bash -c "
+      set -euo pipefail
+      build=/workspace/target/ci-gate/vertical-column/oracle-build
+      \"\$build/flexpart-vertical-routine-oracle\" \
+        /workspace/target/ci-gate/vertical-column/real-oracle-input.txt \
+        /workspace/target/ci-gate/vertical-column/real-routine-oracle-output.txt
+      \"\$build/vertical-conformance-harness\" \
+        /workspace/target/ci-gate/vertical-column/real-oracle-input.txt \
+        /workspace/target/ci-gate/vertical-column/real-conformance-output.txt
+    " 2>&1 | tee "${VERTICAL_DIR}/real-oracle-run.log"; then
+    fail "Direct pinned FLEXPART real #30 vertical routine oracle failed"
+  fi
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/compare_oracle_column.py" \
+    --candidate "${VERTICAL_DIR}/real-candidate.json" \
+    --oracle "${VERTICAL_DIR}/real-routine-oracle-output.txt" \
+    --oracle-checkout "${ORACLE_CHECKOUT}" \
+    --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+    --source-snapshot "${VERTICAL_DIR}/real-column-snapshot.json" \
+    --expect-execution-mode pinned_routine \
+    --oracle-provenance "${VERTICAL_DIR}/routine-oracle-provenance.json" \
+    --output "${VERTICAL_DIR}/real-comparison-report.json"; then
+    fail "FLEXPART-11.1 direct-routine real vertical-column comparison failed"
+  fi
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/compare_oracle_column.py" \
+    --candidate "${VERTICAL_DIR}/real-candidate.json" \
+    --oracle "${VERTICAL_DIR}/real-conformance-output.txt" \
+    --oracle-checkout "${ORACLE_CHECKOUT}" \
+    --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+    --source-snapshot "${VERTICAL_DIR}/real-column-snapshot.json" \
+    --expect-execution-mode conformance_harness \
+    --output "${VERTICAL_DIR}/real-conformance-comparison-report.json"; then
+    fail "Secondary real #30 vertical conformance comparison failed"
+  fi
+
+  test -s "${VERTICAL_DIR}/real-comparison-report.json" \
+    || fail "Real normative vertical-column comparison report is missing"
+  test -s "${VERTICAL_DIR}/real-column-fixture-provenance.json" \
+    || fail "Real vertical-column fixture provenance is missing"
+
+  log_info "Direct pinned FLEXPART-11.1 synthetic/real vertical routine comparisons and secondary conformance checks passed."
+fi
+# ---------------------------------------------------------------------------
 # 3. Prove a real software-WGPU adapter (fail-closed, no skip allowed).
 # ---------------------------------------------------------------------------
 log_info "Step 3/6: gpu-preflight on the software adapter..."
@@ -365,7 +544,13 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${CANDIDATE_OUTPUT}" \
     --artifact "${CANDIDATE_LOG}" \
     --artifact "${OUTPUT_DIR}/sw-wgpu-advection.log" \
-    --artifact "${OUTPUT_DIR}/gpu-preflight.log" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
+    --artifact "${OUTPUT_DIR}/gpu-preflight.log" \
+    --artifact "${OUTPUT_DIR}/vertical-column/comparison-report.json" \
+    --artifact "${OUTPUT_DIR}/vertical-column/conformance-comparison-report.json" \
+    --artifact "${OUTPUT_DIR}/vertical-column/routine-oracle-provenance.json" \
+    --artifact "${OUTPUT_DIR}/vertical-column/real-comparison-report.json" \
+    --artifact "${OUTPUT_DIR}/vertical-column/real-conformance-comparison-report.json" \
+    --artifact "${OUTPUT_DIR}/vertical-column/real-column-fixture-provenance.json" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
     fail "Provenance manifest generation failed (missing artifact or unpinned oracle)"
   fi
   test -s "${OUTPUT_DIR}/run-manifest.json" || fail "Provenance manifest missing: ${OUTPUT_DIR}/run-manifest.json"

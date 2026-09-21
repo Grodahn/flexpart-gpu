@@ -786,6 +786,23 @@ class PreflightFailClosedTest(unittest.TestCase):
         GEN.CASES, GEN.FORTRAN_OUT = self._saved
         self._tmp.cleanup()
 
+    def test_missing_non_restart_case_fails_closed(self):
+        GEN.CASES = self.cases_dir
+        missing = self.cases_dir / "WIND-UNI-002.json"
+        missing.unlink()
+        with self.assertRaises(SystemExit) as ctx:
+            GEN._load_case("WIND-UNI-002")
+        rendered = str(ctx.exception)
+        self.assertIn("WIND-UNI-002", rendered)
+        self.assertIn("case manifest not found", rendered)
+        self.assertIn(str(missing), rendered)
+
+    def test_restart_case_keeps_explicit_neutral_fallback(self):
+        GEN.CASES = self.cases_dir
+        case, case_path = GEN._load_case("RESTART-010")
+        self.assertEqual(case["case_id"], "PBL-NEUTRAL-005")
+        self.assertEqual(case_path, self.cases_dir / "RESTART-010.json")
+
     def _run_main(self):
         argv = ["generate_fortran_fixtures.py", "--flexpart-dir", str(self.flexpart_root)]
         old_argv = sys.argv[:]

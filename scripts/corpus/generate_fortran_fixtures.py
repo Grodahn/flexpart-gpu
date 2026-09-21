@@ -1884,12 +1884,20 @@ def _load_case(case_id: str) -> tuple:
 
     RESTART-010 has no dedicated document: it reuses the neutral release/grid
     shape from PBL-NEUTRAL-005 (oracle-only restart illustration) while the
-    recorded ``case_file`` name stays RESTART-010.json.
+    recorded ``case_file`` name stays RESTART-010.json. No other missing
+    case may inherit that fallback.
     """
     case_path = CASES / f"{case_id}.json"
     if case_path.is_file():
         return json.loads(case_path.read_text(encoding="utf-8")), case_path
-    case = json.loads((CASES / "PBL-NEUTRAL-005.json").read_text(encoding="utf-8"))
+    if case_id != "RESTART-010":
+        raise SystemExit(f"{case_id}: case manifest not found: {case_path}")
+    fallback_path = CASES / "PBL-NEUTRAL-005.json"
+    if not fallback_path.is_file():
+        raise SystemExit(
+            f"{case_id}: restart fallback manifest not found: {fallback_path}"
+        )
+    case = json.loads(fallback_path.read_text(encoding="utf-8"))
     return case, case_path
 
 

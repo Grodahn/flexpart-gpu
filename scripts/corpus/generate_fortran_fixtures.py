@@ -57,6 +57,13 @@ ORACLE_EXECUTION_PROFILE_ID = "flexpart-11.1-single-thread"
 ORACLE_EXECUTION_PROFILE_VERSION = 1
 ORACLE_EXECUTION_PROFILE_PATH = "reference/flexpart-11.1.json"
 
+SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_ID = "flexpart-synthetic-grib-v1"
+SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_VERSION = 1
+SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_PATH = "reference/oracle-meteorology/synthetic-grib-v1.json"
+REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_ID = "real-weather-manifest-v1"
+REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_VERSION = 1
+REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_PATH = "reference/oracle-meteorology/real-weather-manifest-v1.json"
+
 ORACLE_STOCHASTIC_STRATEGY_ID = "flexpart-oracle-validation-seed-offset"
 ORACLE_STOCHASTIC_STRATEGY_VERSION = 1
 ORACLE_STOCHASTIC_CONTRACT_PATH = "reference/oracle-stochastic-identity.json"
@@ -1495,6 +1502,45 @@ def ageclass_text(case_id: str, case: dict) -> str:
     return f"&AGECLASS\n NAGECLASS= 1,\n LAGE= {integration['total_s']},\n /\n"
 
 
+def _required_oracle_meteorology_profile(case_id: str, case: dict) -> dict:
+    ref = case.get("oracle_meteorology_profile")
+    if not isinstance(ref, dict):
+        raise SystemExit(
+            f"{case_id}: oracle_meteorology_profile must be an explicit object"
+        )
+    wind = _required_wind(case_id, case)
+    if wind["profile"] == "real_weather":
+        expected = (
+            REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_ID,
+            REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_VERSION,
+            REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_PATH,
+        )
+    else:
+        expected = (
+            SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_ID,
+            SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_VERSION,
+            SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_PATH,
+        )
+    actual = (ref.get("id"), ref.get("version"), ref.get("manifest_path"))
+    if actual != expected:
+        raise SystemExit(
+            f"{case_id}: oracle_meteorology_profile must reference "
+            f"{expected[0]} v{expected[1]} at {expected[2]}, got {actual!r}"
+        )
+    profile_path = REPO / expected[2]
+    try:
+        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(
+            f"{case_id}: cannot load oracle meteorology profile {profile_path}: {exc}"
+        ) from exc
+    if profile.get("id") != expected[0] or profile.get("version") != expected[1]:
+        raise SystemExit(
+            f"{case_id}: oracle meteorology profile file identity does not match case reference"
+        )
+    return profile
+
+
 def meteo_args(case_id: str, case: dict) -> str:
     """Exact synthetic-GRIB generator flags derived from case wind/surface.
 
@@ -1518,6 +1564,7 @@ def meteo_args(case_id: str, case: dict) -> str:
     """
     wind = _required_wind(case_id, case)
     profile = wind["profile"]
+    oracle_meteo = _required_oracle_meteorology_profile(case_id, case)
     if profile == "real_weather":
         return ""
     if profile == "uniform":
@@ -1557,10 +1604,29 @@ def meteo_args(case_id: str, case: dict) -> str:
             surface.get("precip_convective_mm_h"), case_id, "surface.precip_convective_mm_h"
         )
 
+    grid = oracle_meteo.get("grid")
+    temporal = oracle_meteo.get("temporal")
+    if not isinstance(grid, dict) or not isinstance(temporal, dict):
+        raise SystemExit(f"{case_id}: synthetic oracle meteorology profile lacks grid/temporal")
+    integration = _required_integration(case_id, case)
+    start = integration["start"]
+    if temporal.get("start_time_policy") == "simulation_start_date_midnight" and start[8:] != "000000":
+        raise SystemExit(
+            f"{case_id}: synthetic meteorology profile requires midnight simulation start, got {start}"
+        )
+    cadence_s = temporal.get("cadence_s")
+    if not isinstance(cadence_s, int) or cadence_s <= 0 or cadence_s % 3600 != 0:
+        raise SystemExit(f"{case_id}: oracle meteorology cadence_s must be a positive whole hour")
+    total_s = int(integration["total_s"])
+    coverage_s = ((total_s + cadence_s - 1) // cadence_s) * cadence_s
+    hours = coverage_s // 3600
+    ref_path = case["oracle_meteorology_profile"]["manifest_path"]
     return (
-        f"--nx 32 --ny 32 --nz 12 --u-wind {u} --v-wind {v} --w-wind {w} "
+        f"--profile {ref_path} "
+        f"--nx {int(grid['nx'])} --ny {int(grid['ny'])} --nz {int(grid['nz'])} "
+        f"--u-wind {u} --v-wind {v} --w-wind {w} "
         f"--u-shear-per-m {shear} --sshf {sshf} --blh {blh} "
-        f"--lsp {lsp} --cp {cp} --start-date 20240101 --hours 3"
+        f"--lsp {lsp} --cp {cp} --start-date {start[:8]} --hours {hours}"
     )
 
 
@@ -1715,6 +1781,10 @@ def verify_rendered_case(case_id: str, case: dict, files: dict, specnum: int) ->
     check("OUTGRID DXOUT", float(namelist_value(outgrid, "DXOUT")), float(output_grid["dx_deg"]), 1e-9)
     check("OUTGRID DYOUT", float(namelist_value(outgrid, "DYOUT")), float(output_grid["dy_deg"]), 1e-9)
 
+    expected_meteo_args = meteo_args(case_id, case)
+    actual_meteo_args = files.get("METEO_ARGS.txt", "").strip()
+    check("METEO_ARGS", actual_meteo_args, expected_meteo_args)
+
     command = files["COMMAND"]
     overrides = normalize_oracle_overrides(case_id, case)
     check("COMMAND LTURBULENCE", int(namelist_value(command, "LTURBULENCE")), int(overrides["lturbulence"]))
@@ -1770,6 +1840,7 @@ def verify_case(case_id: str, case: dict, outdir: Path, specnum: int) -> None:
         "COMMAND": (outdir / "COMMAND").read_text(encoding="utf-8"),
         "RELEASES": (outdir / "RELEASES").read_text(encoding="utf-8"),
         "OUTGRID": (outdir / "OUTGRID").read_text(encoding="utf-8"),
+        "METEO_ARGS.txt": (outdir / "METEO_ARGS.txt").read_text(encoding="utf-8"),
         "SPECIES": species_path.read_text(encoding="utf-8"),
         "SPECIES_PROVENANCE": (
             provenance_path.read_text(encoding="utf-8")
@@ -1849,6 +1920,7 @@ def validate_and_normalize_case_for_generation(
 
     wind = _required_wind(case_id, case)
     profile = wind["profile"]
+    oracle_meteorology = _required_oracle_meteorology_profile(case_id, case)
     meteorology = (
         _required_meteorology(case_id, wind, integration)
         if profile == "real_weather"
@@ -1907,6 +1979,7 @@ def validate_and_normalize_case_for_generation(
         "candidate_mass_kg": mass_kg,
         "mass_conversion": "MASS_g = mass_kg * 1000 (FLEXPART MASS is in grams)",
         "oracle_mass_g": mass_kg * KG_TO_G,
+        "oracle_meteorology_profile": copy.deepcopy(case["oracle_meteorology_profile"]),
         "output_grid": (
             {
                 key: output_grid[key]
@@ -1957,6 +2030,7 @@ def validate_and_normalize_case_for_generation(
         "oracle": oracle,
         "physics": physics,
         "wind_profile": profile,
+        "oracle_meteorology": oracle_meteorology,
         "meteorology": meteorology,
         "files": files,
     }

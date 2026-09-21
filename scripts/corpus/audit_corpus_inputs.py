@@ -94,6 +94,7 @@ def audit_fixture_case(case_id: str, case: dict, fort_dir: Path) -> None:
         check(f"{case_id} fixture equals case JSON", True)
     except SystemExit as exc:
         check(f"{case_id} fixture equals case JSON", False, str(exc))
+        return
     species = outdir / "SPECIES" / f"SPECIES_{specnum:03d}"
     check(f"{case_id} SPECIES_{specnum:03d} present", species.is_file())
     if species.is_file():

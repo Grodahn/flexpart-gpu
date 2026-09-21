@@ -888,6 +888,22 @@ class PreflightFailClosedTest(unittest.TestCase):
             case.pop("require_source_containment", None)
         self._assert_aborts_before_writes(mutate, "require_source_containment")
 
+    def test_oracle_meteorology_profile_is_required_and_pinned(self):
+        def missing(case):
+            case.pop("oracle_meteorology_profile", None)
+        self._assert_aborts_before_writes(missing, "oracle_meteorology_profile")
+
+        def drift(case):
+            case["oracle_meteorology_profile"]["manifest_path"] = "reference/oracle-meteorology/other.json"
+        self._assert_aborts_before_writes(drift, "oracle_meteorology_profile")
+
+    def test_meteo_args_are_derived_from_versioned_profile_and_case_window(self):
+        case = load_case("WIND-UNI-002")
+        rendered = GEN.meteo_args("WIND-UNI-002", case)
+        self.assertIn("--profile reference/oracle-meteorology/synthetic-grib-v1.json", rendered)
+        self.assertIn("--nx 32 --ny 32 --nz 12", rendered)
+        self.assertIn("--start-date 20240101 --hours 3", rendered)
+
     def test_execution_profile_drift_aborts_before_any_write(self):
         def mutate(case):
             case["execution_profile"]["manifest_path"] = "reference/other.json"

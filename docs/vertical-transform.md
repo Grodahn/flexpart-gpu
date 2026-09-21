@@ -143,8 +143,8 @@ FLEXPART's bottom-to-top module state is separately guarded against the pinned
 
 `scripts/vertical/oracle_column.f90` remains as an independent, small scalar
 replay of the relevant equations. It is useful for diagnostics and catches
-unexpected disagreement between the Rust implementation, the extracted real
-routine, and our interpretation of the source. It is **not** the normative
+unexpected disagreement between the Rust implementation, the directly linked
+real FLEXPART routine, and our interpretation of the source. It is **not** the normative
 oracle and its output is explicitly labelled
 `FLEXPART_VERTICAL_CONFORMANCE_HARNESS_V1`.
 
@@ -252,6 +252,7 @@ evidence for itself.
 Eta-dot support may only be enabled after a pinned independent preprocessing
 reference (for example the matching `flex_extract calc_etadot` implementation
 or golden outputs produced by it) is added and compared against the candidate.
+Follow-up #70 owns that work.
 Until then, the supported FLEXPART parity boundary is preprocessed pressure
 velocity / omega in `Pa/s`.
 
@@ -287,7 +288,10 @@ AGL/ASL from legacy configuration.
 ### Runtime geometry consumed by #31
 
 `VerticalTransformResult::runtime_view()` is the provider-independent runtime
-boundary for interpolation/sampling. Construction validates all derived array
+boundary for interpolation/sampling. `VerticalTransformResult` and
+`NormalizedVerticalMotion` are opaque, serialize-only derived types: external
+callers cannot construct, deserialize, or mutate them to recombine geometry and
+motion from different Snapshots. Construction validates all derived array
 shapes, including normalized vertical-motion staggering, before exposing data.
 
 The borrowed `VerticalRuntimeView` provides:

@@ -391,8 +391,8 @@ pub struct DomainSpec {
 ///
 /// This is deliberately separate from the meteorological/candidate domain:
 /// ETEX uses a 65x41x16 meteorological grid but a 64x40x5 concentration
-/// output grid. Synthetic corpus cases may omit this block until their
-/// legacy shared output-grid policy is migrated into the v2 contract.
+/// output grid. Every schema-v2 case declares this block explicitly; no
+/// synthetic fallback to the meteorological domain is permitted.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OutputGridSpec {
@@ -2823,7 +2823,8 @@ impl ValidationCaseManifest {
     ///
     /// # Errors
     /// Returns [`ValidationCaseError::InvalidStochasticIdentity`] if
-    /// `stochastic.candidate_philox` is missing.
+    /// `stochastic.candidate_philox` is missing or `seed_index` is outside
+    /// the declared candidate ensemble.
     pub fn candidate_seed_identity(
         &self,
         seed_index: u32,
@@ -2836,6 +2837,14 @@ impl ValidationCaseManifest {
                 ),
             });
         };
+        if seed_index >= candidate.count {
+            return Err(ValidationCaseError::InvalidStochasticIdentity {
+                message: format!(
+                    "case {} candidate seed_index {} outside declared ensemble [0, {})",
+                    self.case_id, seed_index, candidate.count
+                ),
+            });
+        }
         Ok((
             candidate.key_for_seed_index(seed_index),
             candidate.counter_for_seed_index(seed_index),
@@ -4124,6 +4133,26 @@ mod tests {
     }
 
     #[test]
+    fn output_grid_null_is_rejected_by_schema_and_rust() {
+        let schema = load_validation_case_schema();
+        let mut raw = minimal_manifest_json();
+        raw["output_grid"] = serde_json::Value::Null;
+
+        let schema_err = validate_json_schema_subset(&schema, &schema, &raw, "$")
+            .expect_err("JSON Schema must reject output_grid=null");
+        assert!(
+            schema_err.contains("output_grid") || schema_err.contains("object"),
+            "unexpected schema error: {schema_err}"
+        );
+
+        let err = parse_json_value(&raw).expect_err("Rust must reject output_grid=null");
+        assert!(
+            err.to_string().contains("output_grid"),
+            "unexpected Rust error: {err}"
+        );
+    }
+
+    #[test]
     fn domain_requires_two_horizontal_grid_points() {
         let mut manifest = make_minimal_manifest();
         manifest.domain.nx = 1;
@@ -4215,6 +4244,29 @@ mod tests {
             .expect("seed 0 resolves");
         assert_eq!(key0, [3737180555, 305419896]);
         assert_eq!(counter0, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn candidate_seed_identity_rejects_index_outside_declared_count() {
+        let mut manifest = make_minimal_manifest();
+        let candidate = manifest
+            .stochastic
+            .candidate_philox
+            .as_mut()
+            .expect("candidate identity");
+        candidate.count = 2;
+
+        manifest
+            .candidate_seed_identity(1)
+            .expect("last declared seed index resolves");
+        let err = manifest
+            .candidate_seed_identity(2)
+            .expect_err("first index outside declared count must fail");
+        let rendered = err.to_string();
+        assert!(
+            rendered.contains("seed_index 2") && rendered.contains("[0, 2)"),
+            "unexpected: {rendered}"
+        );
     }
 
     #[test]

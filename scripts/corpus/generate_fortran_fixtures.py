@@ -126,11 +126,6 @@ CANONICAL_UNIT_VALUES = {
 # Standard concentration output levels [m] shared by all synthetic corpus
 # cases. The output grid is independent of the wind-field levels; one fixed
 # set keeps oracle comparison grids identical across cases.
-STANDARD_OUTHEIGHTS = [
-    100.0, 250.0, 500.0, 750.0, 1000.0,
-    1500.0, 2000.0, 2500.0, 3000.0, 5000.0,
-]
-
 RECEPTORS_ZERO = """*******************************************************************************
 *                                                                             *
 *  Input file for the Lagrangian particle dispersion model FLEXPART           *
@@ -1985,28 +1980,13 @@ def validate_and_normalize_case_for_generation(
         "mass_conversion": "MASS_g = mass_kg * 1000 (FLEXPART MASS is in grams)",
         "oracle_mass_g": mass_kg * KG_TO_G,
         "oracle_meteorology_profile": copy.deepcopy(case["oracle_meteorology_profile"]),
-        "output_grid": (
-            {
-                key: output_grid[key]
-                for key in (
-                    "xlon0_deg", "ylat0_deg", "nx", "ny", "nz",
-                    "dx_deg", "dy_deg", "heights_m", "heights_ref"
-                )
-            }
-            if output_grid is not None
-            else {
-                "xlon0_deg": domain["xlon0_deg"],
-                "ylat0_deg": domain["ylat0_deg"],
-                "nx": domain["nx"],
-                "ny": domain["ny"],
-                "nz": len(STANDARD_OUTHEIGHTS),
-                "dx_deg": domain["dx_deg"],
-                "dy_deg": domain["dy_deg"],
-                "heights_m": STANDARD_OUTHEIGHTS,
-                "heights_ref": "agl",
-                "policy": "legacy synthetic shared output grid",
-            }
-        ),
+        "output_grid": {
+            key: output_grid[key]
+            for key in (
+                "xlon0_deg", "ylat0_deg", "nx", "ny", "nz",
+                "dx_deg", "dy_deg", "heights_m", "heights_ref"
+            )
+        },
     }
     files = {
         "COMMAND": command_text(case_id, case),

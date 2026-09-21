@@ -85,14 +85,7 @@
       }
     },
     "output_grid": {
-      "oneOf": [
-        {
-          "$ref": "#/$defs/output_grid"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "$ref": "#/$defs/output_grid"
     },
     "candidate_physics_profile": {
       "$ref": "#/$defs/candidate_physics_profile"

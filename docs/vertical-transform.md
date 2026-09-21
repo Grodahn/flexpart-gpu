@@ -152,7 +152,7 @@ oracle and its output is explicitly labelled
 
 `fixtures/vertical/synthetic-column-v1.json` is a 1x1x3 hybrid column with
 non-zero A and B coefficients. The Rust candidate is compared field-by-field
-against the extracted pinned routine. Interface omega is multiplied by the
+against the directly linked pinned FLEXPART routine. Interface omega is multiplied by the
 `pinmconv` produced by that real FLEXPART routine, preserving the exact
 FLEXPART pressure-to-height derivative in the comparison.
 
@@ -183,7 +183,7 @@ Both normative comparisons use predeclared tolerances:
 - height: max(0.02 m absolute, 1e-5 relative);
 - geometric vertical velocity: max(2e-5 m/s absolute, 1e-5 relative).
 
-A missing artifact, dirty/wrong oracle checkout, extraction/provenance mismatch,
+A missing artifact, dirty/wrong oracle checkout, oracle/provenance mismatch,
 changed source contract, level-count mismatch, wrong execution-mode header, or
 field outside tolerance fails the technical gate.
 
@@ -228,42 +228,32 @@ them onto another vertical grid; #31 owns interpolation/sampling.
 
 The synthetic column oracle supplies explicit interface omega values to the
 Rust candidate and the pinned-routine driver. The oracle-side geometric values
-use the `pinmconv` produced by the actual extracted FLEXPART
+use the `pinmconv` produced by the actual directly linked FLEXPART
 `verttransform_ecmwf_heights` routine and are compared interface by interface.
 
 ### Raw eta-dot
 
-Raw ECMWF eta-coordinate velocity is `dη/dt [1/s]`. FLEXPART core does not use
-that raw quantity as `wwh`; FLEXPART preprocessing normally multiplies eta-dot
-by the hybrid-coordinate `dp/dη` factor to produce the FLEXPART-ready pressure
-vertical velocity in `Pa/s`.
+Raw ECMWF eta-coordinate velocity (`dη/dt`) is represented by the native
+contract so provider adapters can identify it explicitly, but **#30 does not
+currently normalize it in production**.
 
-For a hybrid layer bounded by native half-level coefficients:
+The FLEXPART-facing reference is clear about the boundary: FLEXPART consumes a
+pressure vertical velocity in `Pa/s`; ECMWF parameter 77 (`dη/dt`) is
+preprocessed by `flex_extract` / `calc_etadot`, including multiplication by
+`dp/dη`, before it becomes FLEXPART-ready input. What is not yet pinned in
+this repository is an independent executable/golden reference for the complete
+full-level-to-half-level preprocessing and its indexing/sign semantics.
 
-```
-dA = A_lower - A_upper
-dB = B_lower - B_upper
-pref = reference_surface_pressure
-scale = ps * (dA/ps + dB) / (dA/pref + dB)
-```
+Therefore `NativeVerticalMotionKind::EtaCoordinateVelocity` fails closed with
+`InvalidNativeVerticalMotion` even when its unit/sign/staggering metadata are
+otherwise valid. No candidate-side recurrence is accepted as scientific
+evidence for itself.
 
-The full-level eta-dot value is mapped to bounding interface pressure velocity
-with the centered recurrence used by the preprocessing path. The model-top
-pressure-velocity boundary is explicitly zero; the reconstructed interface
-omega profile is then passed through the exact same omega→geometric-W
-normalization described above.
-
-Eta direction is explicit in the native contract (`positive_eta_increasing` or
-`positive_eta_decreasing`) and is normalized before the recurrence. The
-conversion provenance therefore distinguishes:
-
-1. raw eta-dot input;
-2. eta-dot → FLEXPART-ready pressure velocity;
-3. pressure velocity → geometric `m/s`, positive upward.
-
-The eta-dot preprocessing stage is validated independently from the FLEXPART
-core oracle because the pristine FLEXPART 11.1 executable expects the
-preprocessed pressure-velocity quantity, not raw eta-dot.
+Eta-dot support may only be enabled after a pinned independent preprocessing
+reference (for example the matching `flex_extract calc_etadot` implementation
+or golden outputs produced by it) is added and compared against the candidate.
+Until then, the supported FLEXPART parity boundary is preprocessed pressure
+velocity / omega in `Pa/s`.
 
 ## Integration boundaries for #28 and #31
 

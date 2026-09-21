@@ -8,6 +8,7 @@
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::constants::{GA, R_AIR};
@@ -100,6 +101,9 @@ impl NormalizedVerticalMotion {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NormalizedVerticalMotionProvenance {
     pub source_id: String,
+    /// SHA-256 of the compact serde representation of the complete native
+    /// motion contract supplied to this transform.
+    pub source_native_motion_sha256: String,
     pub source_kind: NativeVerticalMotionKind,
     pub source_unit: NativeVerticalMotionUnit,
     pub source_sign: NativeVerticalMotionSign,
@@ -340,6 +344,9 @@ impl VerticalRuntimeView<'_> {
 pub struct VerticalTransformProvenance {
     pub source_schema_id: String,
     pub source_schema_version: u32,
+    /// SHA-256 of the compact serde representation of the complete canonical
+    /// Snapshot used to derive this runtime geometry.
+    pub source_snapshot_sha256: String,
     pub source_vertical_ordering: VerticalOrdering,
     pub source_level_count: usize,
     pub pressure_algorithm_id: String,
@@ -352,10 +359,11 @@ pub struct VerticalTransformProvenance {
 }
 
 impl VerticalTransformProvenance {
-    fn from_snapshot(snapshot: &Snapshot) -> Self {
-        Self {
+    fn from_snapshot(snapshot: &Snapshot) -> Result<Self, VerticalTransformError> {
+        Ok(Self {
             source_schema_id: SCHEMA_ID.to_string(),
             source_schema_version: SCHEMA_VERSION,
+            source_snapshot_sha256: sha256_serialized(snapshot, "canonical_snapshot")?,
             source_vertical_ordering: snapshot.vertical_coordinate.ordering,
             source_level_count: snapshot.vertical_coordinate.level_values.len(),
             pressure_algorithm_id: "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1".to_string(),
@@ -365,7 +373,7 @@ impl VerticalTransformProvenance {
             pressure_reconstruction: "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)".to_string(),
             height_reconstruction: "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q".to_string(),
             height_reference: "agl_integrated_from_local_surface; asl=agl+orography_asl".to_string(),
-        }
+        })
     }
 }
 
@@ -461,6 +469,8 @@ pub enum VerticalTransformError {
     InvalidNativeVerticalMotion { reason: &'static str },
     #[error("invalid native vertical-motion value at index {index}: {value}")]
     InvalidNativeVerticalMotionValue { index: usize, value: f32 },
+    #[error("failed to serialize {input} for provenance hashing")]
+    ProvenanceSerialization { input: &'static str },
     #[error("vertical-motion conversion requires at least two model levels")]
     InsufficientVerticalLevels,
     #[error("invalid dz/dp conversion at (x={x}, y={y}, z={z})")]
@@ -800,7 +810,7 @@ pub fn reconstruct_vertical_geometry(
         height_asl_m,
         height_agl_m,
         vertical_velocity: None,
-        provenance: VerticalTransformProvenance::from_snapshot(snapshot),
+        provenance: VerticalTransformProvenance::from_snapshot(snapshot)?,
     })
 }
 
@@ -878,13 +888,11 @@ fn normalize_vertical_motion(
             "identity: already geometric m/s positive upward".to_string(),
         ),
         NativeVerticalMotionKind::PressureVelocityOmega => match native_motion.vertical_staggering {
-            VerticalStaggering::LevelCenter => (
-                VerticalStaggering::LevelCenter,
-                pressure_velocity_centers_to_geometric(snapshot, geometry, &native_motion.values)?,
-                "omega_center_dzdp_v1".to_string(),
-                "omega[Pa/s] * dz/dp on model centers -> geometric m/s positive upward"
-                    .to_string(),
-            ),
+            VerticalStaggering::LevelCenter => {
+                return Err(VerticalTransformError::InvalidNativeVerticalMotion {
+                    reason: "center-staggered pressure velocity is not enabled without a pinned FLEXPART 11.1 oracle; supply interface/W-staggered omega instead",
+                });
+            }
             VerticalStaggering::LevelInterface => (
                 VerticalStaggering::LevelInterface,
                 pressure_velocity_interfaces_to_geometric(
@@ -910,6 +918,10 @@ fn normalize_vertical_motion(
         values_ms,
         provenance: NormalizedVerticalMotionProvenance {
             source_id: native_motion.provenance.source_id.clone(),
+            source_native_motion_sha256: sha256_serialized(
+                native_motion,
+                "native_vertical_motion",
+            )?,
             source_kind: native_motion.kind,
             source_unit: native_motion.unit,
             source_sign: native_motion.sign,
@@ -932,6 +944,7 @@ fn validate_native_motion_semantics(
         NativeVerticalMotionKind::PressureVelocityOmega => {
             motion.unit == NativeVerticalMotionUnit::PascalPerSecond
                 && motion.sign == NativeVerticalMotionSign::PositivePressureIncreasing
+                && motion.vertical_staggering == VerticalStaggering::LevelInterface
         }
         NativeVerticalMotionKind::EtaCoordinateVelocity => {
             motion.unit == NativeVerticalMotionUnit::PerSecond
@@ -963,47 +976,6 @@ fn validate_geometry_identity(
         });
     }
     Ok(())
-}
-
-fn pressure_velocity_centers_to_geometric(
-    snapshot: &Snapshot,
-    geometry: &VerticalTransformResult,
-    omega_pa_s: &[f32],
-) -> Result<Vec<f32>, VerticalTransformError> {
-    let nx = geometry.nx;
-    let ny = geometry.ny;
-    let nz = geometry.nz;
-    if nz < 2 {
-        return Err(VerticalTransformError::InsufficientVerticalLevels);
-    }
-    let mut result = vec![0.0_f32; omega_pa_s.len()];
-
-    for y in 0..ny {
-        for x in 0..nx {
-            for z in 0..nz {
-                let (za, zb) = derivative_pair(z, nz);
-                let ia = volume_offset(x, y, za, nx, ny);
-                let ib = volume_offset(x, y, zb, nx, ny);
-                let dz = geometry.height_agl_m[ib] - geometry.height_agl_m[ia];
-                let dp = geometry.level_pressure_pa[ib] - geometry.level_pressure_pa[ia];
-                let dzdp = dz / dp;
-                if !dzdp.is_finite() || dzdp >= 0.0 {
-                    return Err(VerticalTransformError::InvalidPressureToHeightDerivative {
-                        x,
-                        y,
-                        z,
-                    });
-                }
-                let index = volume_offset(x, y, z, nx, ny);
-                result[index] = omega_pa_s[index] * dzdp;
-            }
-        }
-    }
-
-    // Ordering is already encoded in signed dz/dp. This explicit read prevents
-    // accidental future code from treating one array direction as normative.
-    let _ordering = snapshot.vertical_coordinate.ordering;
-    Ok(result)
 }
 
 fn pressure_velocity_interfaces_to_geometric(
@@ -1143,6 +1115,16 @@ fn reconstruct_flexpart_w_heights(
     }
 
     Ok((interface_agl, interface_asl))
+}
+
+fn sha256_serialized<T: Serialize>(
+    value: &T,
+    input: &'static str,
+) -> Result<String, VerticalTransformError> {
+    let encoded = serde_json::to_vec(value)
+        .map_err(|_| VerticalTransformError::ProvenanceSerialization { input })?;
+    let digest = Sha256::digest(encoded);
+    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 fn field_values(
@@ -1353,6 +1335,14 @@ pub fn resolve_release_height(
         }
     };
 
+    if !height_agl_m.is_finite() || !height_asl_m.is_finite() {
+        return Err(VerticalTransformError::InvalidReleaseHeight {
+            height_m,
+            reference,
+            terrain_asl_m,
+        });
+    }
+
     Ok(ResolvedReleaseHeight {
         input_m: height_m,
         input_reference: reference,
@@ -1427,7 +1417,12 @@ pub fn height_asl_to_agl(
                 let index = volume_offset(x, y, z, nx, ny);
                 let terrain = terrain_asl_m[surface_offset(x, y, nx)];
                 let height = height_asl_m[index];
-                if !height.is_finite() || !terrain.is_finite() || height < terrain {
+                let agl = height - terrain;
+                if !height.is_finite()
+                    || !terrain.is_finite()
+                    || height < terrain
+                    || !agl.is_finite()
+                {
                     return Err(VerticalTransformError::HeightBelowTerrain {
                         x,
                         y,
@@ -1436,7 +1431,7 @@ pub fn height_asl_to_agl(
                         terrain_asl_m: terrain,
                     });
                 }
-                result.push(height - terrain);
+                result.push(agl);
             }
         }
     }
@@ -1460,16 +1455,21 @@ pub fn height_agl_to_asl(
                 let index = volume_offset(x, y, z, nx, ny);
                 let terrain = terrain_asl_m[surface_offset(x, y, nx)];
                 let height = height_agl_m[index];
-                if !height.is_finite() || !terrain.is_finite() || height < 0.0 {
+                let asl = height + terrain;
+                if !height.is_finite()
+                    || !terrain.is_finite()
+                    || height < 0.0
+                    || !asl.is_finite()
+                {
                     return Err(VerticalTransformError::HeightBelowTerrain {
                         x,
                         y,
                         z,
-                        height_asl_m: height + terrain,
+                        height_asl_m: asl,
                         terrain_asl_m: terrain,
                     });
                 }
-                result.push(height + terrain);
+                result.push(asl);
             }
         }
     }
@@ -1806,9 +1806,8 @@ mod tests {
     }
 
     #[test]
-    fn omega_negative_pressure_velocity_becomes_positive_upward_geometric_velocity() {
+    fn center_staggered_omega_fails_closed_without_flexpart_oracle() {
         let snapshot = geometry_snapshot(VerticalOrdering::Increasing);
-        let geometry = reconstruct_vertical_geometry(&snapshot).expect("geometry");
         let native = NativeVerticalMotion {
             kind: NativeVerticalMotionKind::PressureVelocityOmega,
             unit: NativeVerticalMotionUnit::PascalPerSecond,
@@ -1816,17 +1815,18 @@ mod tests {
             vertical_staggering: VerticalStaggering::LevelCenter,
             values: vec![-1.0, 0.0, -2.0, 0.0],
             provenance: NativeVerticalMotionProvenance {
-                source_id: "synthetic-omega".to_string(),
+                source_id: "unvalidated-center-omega".to_string(),
             },
         };
 
-        let normalized =
-            normalize_vertical_motion(&snapshot, &geometry, &native).expect("normalize omega");
-        assert_eq!(normalized.vertical_staggering, VerticalStaggering::LevelCenter);
-        assert!(normalized.values_ms[volume_offset(0, 0, 0, 2, 1)] > 0.0);
-        assert!(normalized.values_ms[volume_offset(0, 0, 1, 2, 1)] > 0.0);
-        assert_eq!(normalized.values_ms[volume_offset(1, 0, 0, 2, 1)], 0.0);
-        assert_eq!(normalized.values_ms[volume_offset(1, 0, 1, 2, 1)], 0.0);
+        let error = reconstruct_vertical_geometry_with_motion(&snapshot, &native)
+            .expect_err("center-staggered omega must fail until independently validated");
+        assert!(matches!(
+            error,
+            VerticalTransformError::InvalidNativeVerticalMotion {
+                reason: "kind/unit/sign combination is not canonical for the declared representation"
+            }
+        ));
     }
 
     #[test]
@@ -2006,6 +2006,19 @@ mod tests {
             normalized.provenance.algorithm_id,
             "omega_interface_flexpart11_pinmconv_v1"
         );
+        assert_eq!(normalized.provenance.source_native_motion_sha256.len(), 64);
+        assert!(normalized
+            .provenance
+            .source_native_motion_sha256
+            .chars()
+            .all(|character| character.is_ascii_hexdigit()));
+
+        assert_eq!(geometry.provenance.source_snapshot_sha256.len(), 64);
+        assert!(geometry
+            .provenance
+            .source_snapshot_sha256
+            .chars()
+            .all(|character| character.is_ascii_hexdigit()));
     }
 
     #[test]
@@ -2016,6 +2029,28 @@ mod tests {
         assert_eq!(asl, vec![100.0, -20.0, 600.0, 480.0]);
         let roundtrip = height_asl_to_agl(2, 1, 2, &asl, &terrain).expect("ASL to AGL");
         assert_eq!(roundtrip, agl);
+    }
+
+    #[test]
+    fn release_and_height_reference_arithmetic_overflow_fails_closed() {
+        assert!(matches!(
+            resolve_release_height(
+                f32::MAX,
+                VerticalReference::AboveGroundLevel,
+                f32::MAX,
+            ),
+            Err(VerticalTransformError::InvalidReleaseHeight { .. })
+        ));
+
+        assert!(matches!(
+            height_agl_to_asl(1, 1, 1, &[f32::MAX], &[f32::MAX]),
+            Err(VerticalTransformError::HeightBelowTerrain { .. })
+        ));
+
+        assert!(matches!(
+            height_asl_to_agl(1, 1, 1, &[f32::MAX], &[-f32::MAX]),
+            Err(VerticalTransformError::HeightBelowTerrain { .. })
+        ));
     }
 
     #[test]

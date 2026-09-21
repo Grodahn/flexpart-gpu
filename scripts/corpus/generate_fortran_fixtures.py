@@ -5,8 +5,8 @@ Every oracle release/grid setting is derived from the matching candidate
 case JSON under fixtures/corpus/cases/*.json so that both programs start
 from demonstrably equal inputs:
 
-- OUTGRID (OUTLON0/OUTLAT0/NUMXGRID/NUMYGRID/DXOUT/DYOUT) mirrors the case
-  ``domain`` exactly.
+- OUTGRID (OUTLON0/OUTLAT0/NUMXGRID/NUMYGRID/DXOUT/DYOUT/OUTHEIGHTS) is
+  driven exclusively by the case ``output_grid`` contract.
 - RELEASES (LON/LAT/Z/PARTS) mirrors the case ``release`` exactly.
 - RELEASES MASS is the case total mass converted from kilograms (candidate
   unit) to grams (FLEXPART unit): ``MASS_g = mass_kg * 1000``.
@@ -437,21 +437,27 @@ def _validate_release_contract(case_id: str, case: dict, domain: dict) -> dict:
             _finite_number(v, case_id, "domain.wind_heights_m") for v in heights
         ]
         lon_min = float(domain["xlon0_deg"])
-        lon_max = lon_min + int(domain["nx"]) * float(domain["dx_deg"])
         lat_min = float(domain["ylat0_deg"])
-        lat_max = lat_min + int(domain["ny"]) * float(domain["dy_deg"])
+        dx = float(domain["dx_deg"])
+        dy = float(domain["dy_deg"])
+        max_grid_x_exclusive = int(domain["nx"]) - 1
+        max_grid_y_exclusive = int(domain["ny"]) - 1
+        lon_max_exclusive = lon_min + max_grid_x_exclusive * dx
+        lat_max_exclusive = lat_min + max_grid_y_exclusive * dy
         height_min, height_max = height_values[0], height_values[-1]
         eps = 1e-6
         for label, lon, lat, z in (("min", lon1, lat1, z1), ("max", lon2, lat2, z2)):
-            if not lon_min - eps <= lon <= lon_max + eps:
+            grid_x = (lon - lon_min) / dx
+            if grid_x < 0 or grid_x >= max_grid_x_exclusive:
                 raise SystemExit(
-                    f"{case_id}: release geometry {label} longitude {lon} outside domain "
-                    f"[{lon_min}, {lon_max}]"
+                    f"{case_id}: release geometry {label} longitude {lon} outside runtime "
+                    f"domain [{lon_min}, {lon_max_exclusive})"
                 )
-            if not lat_min - eps <= lat <= lat_max + eps:
+            grid_y = (lat - lat_min) / dy
+            if grid_y < 0 or grid_y >= max_grid_y_exclusive:
                 raise SystemExit(
-                    f"{case_id}: release geometry {label} latitude {lat} outside domain "
-                    f"[{lat_min}, {lat_max}]"
+                    f"{case_id}: release geometry {label} latitude {lat} outside runtime "
+                    f"domain [{lat_min}, {lat_max_exclusive})"
                 )
             if not height_min - eps <= z <= height_max + eps:
                 raise SystemExit(
@@ -468,21 +474,15 @@ def sim_end_date(start: str, total_s: int) -> tuple:
     return int(end_dt.strftime("%Y%m%d")), int(end_dt.strftime("%H%M%S"))
 
 
-def _required_output_grid(case_id: str, case: dict, *, required: bool):
-    """Validate an explicit concentration/comparison grid.
+def _required_output_grid(case_id: str, case: dict):
+    """Validate the explicit concentration/comparison grid.
 
-    Real-weather cases require this block because their meteorological point
-    grid and concentration output grid are distinct. Synthetic cases retain
-    the legacy shared output-grid policy until that policy is migrated
-    separately.
+    Every v2 case declares this block. No synthetic fallback to ``domain`` or
+    process-local output-height list is permitted.
     """
     grid = case.get("output_grid")
     if grid is None:
-        if required:
-            raise SystemExit(
-                f"{case_id}: output_grid is required for real_weather cases"
-            )
-        return None
+        raise SystemExit(f"{case_id}: output_grid is required explicitly")
     if not isinstance(grid, dict):
         raise SystemExit(f"{case_id}: output_grid must be an object, got {grid!r}")
     for field in ("nx", "ny", "nz"):
@@ -519,13 +519,11 @@ def _required_output_grid(case_id: str, case: dict, *, required: bool):
 
 
 def outgrid_text(case: dict) -> str:
-    """Render FLEXPART OUTGRID from explicit output_grid when present."""
+    """Render FLEXPART OUTGRID exclusively from explicit output_grid."""
     grid = case.get("output_grid")
-    if grid is None:
-        grid = case["domain"]
-        heights_values = STANDARD_OUTHEIGHTS
-    else:
-        heights_values = grid["heights_m"]
+    if not isinstance(grid, dict):
+        raise SystemExit("output_grid is required explicitly before rendering OUTGRID")
+    heights_values = grid["heights_m"]
     heights = ", ".join(f"{h:6.1f}" for h in heights_values) + ","
     return (
         "&OUTGRID\n"
@@ -1132,12 +1130,17 @@ def _required_domain(case_id: str, case: dict) -> dict:
         raise SystemExit(f"{case_id}: domain must be an object, got {domain!r}")
     for field in ("xlon0_deg", "ylat0_deg", "dx_deg", "dy_deg"):
         _finite_number(domain.get(field), case_id, f"domain.{field}")
-    for field in ("nx", "ny", "nz"):
+    for field in ("nx", "ny"):
         value = domain.get(field)
-        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 2:
             raise SystemExit(
-                f"{case_id}: domain.{field} must be a positive integer, got {value!r}"
+                f"{case_id}: domain.{field} must be an integer >= 2, got {value!r}"
             )
+    value = domain.get("nz")
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise SystemExit(
+            f"{case_id}: domain.nz must be a positive integer, got {value!r}"
+        )
     heights = domain.get("wind_heights_m")
     if not isinstance(heights, list) or len(heights) != domain["nz"]:
         raise SystemExit(f"{case_id}: domain.wind_heights_m length must equal domain.nz")
@@ -1926,9 +1929,7 @@ def validate_and_normalize_case_for_generation(
         if profile == "real_weather"
         else None
     )
-    output_grid = _required_output_grid(
-        case_id, case, required=(profile == "real_weather")
-    )
+    output_grid = _required_output_grid(case_id, case)
 
     physics = mandatory_physics_switches(case_id, case)
     species_profile = _validate_species_physics_contract(case_id, case, physics)

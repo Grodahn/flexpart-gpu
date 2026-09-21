@@ -374,14 +374,14 @@ class OracleOverrideTest(unittest.TestCase):
                 msg=f"ETEX COMMAND {key}",
             )
 
-    def test_real_weather_requires_explicit_output_grid(self):
-        case = copy.deepcopy(load_case("ETEX-MINI-013"))
+    def test_every_case_requires_explicit_output_grid(self):
+        case = copy.deepcopy(load_case("WIND-UNI-002"))
         del case["output_grid"]
         with self.assertRaises(SystemExit) as ctx:
             GEN.validate_and_normalize_case_for_generation(
-                "ETEX-MINI-013",
+                "WIND-UNI-002",
                 case,
-                case_file="fixtures/corpus/cases/ETEX-MINI-013.json",
+                case_file="fixtures/corpus/cases/WIND-UNI-002.json",
                 tracer=Path(__file__),
                 aerosol=None,
             )
@@ -860,7 +860,20 @@ class PreflightFailClosedTest(unittest.TestCase):
     def test_release_outside_domain_aborts_before_any_write(self):
         def mutate(case):
             case["release"]["geometry"]["lon_deg"] = 20.0
-        self._assert_aborts_before_writes(mutate, "outside domain")
+        self._assert_aborts_before_writes(mutate, "outside runtime domain")
+
+    def test_release_at_runtime_upper_grid_boundary_aborts_before_any_write(self):
+        def mutate(case):
+            domain = case["domain"]
+            case["release"]["geometry"]["lon_deg"] = (
+                domain["xlon0_deg"] + (domain["nx"] - 1) * domain["dx_deg"]
+            )
+        self._assert_aborts_before_writes(mutate, "outside runtime domain")
+
+    def test_domain_requires_at_least_two_horizontal_points(self):
+        def mutate(case):
+            case["domain"]["nx"] = 1
+        self._assert_aborts_before_writes(mutate, "domain.nx")
 
     def test_malformed_physics_switches_aborts_before_any_write(self):
         def mutate(case):
@@ -965,7 +978,7 @@ class PreflightFailClosedTest(unittest.TestCase):
 
     def test_outgrid_rounding_mismatch_aborts_before_any_write(self):
         def mutate(case):
-            case["domain"]["dx_deg"] = 0.251
+            case["output_grid"]["dx_deg"] = 0.251
 
         self._assert_aborts_before_writes(mutate, "OUTGRID DXOUT")
 

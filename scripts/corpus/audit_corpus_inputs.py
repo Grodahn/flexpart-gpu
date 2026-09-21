@@ -3,7 +3,7 @@
 
 Checks, for every implemented synthetic case with a case JSON:
 
-- Fortran OUTGRID mirrors the case ``domain`` (origin, size, spacing).
+- Fortran OUTGRID mirrors the explicit case ``output_grid`` contract.
 - Fortran RELEASES mirrors the case ``release`` (position, particle count)
   with MASS converted kg -> g (``MASS_g = mass_kg * 1000``).
 - Fortran COMMAND switches mirror ``oracle_command_overrides``.

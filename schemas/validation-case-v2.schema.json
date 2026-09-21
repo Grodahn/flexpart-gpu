@@ -174,10 +174,7 @@
           }
         },
         "wind_heights_ref": {
-          "enum": [
-            "agl",
-            "asl"
-          ]
+          "const": "agl"
         }
       },
       "required": [
@@ -360,10 +357,7 @@
           "$ref": "#/$defs/source_geometry"
         },
         "vertical_ref": {
-          "enum": [
-            "agl",
-            "asl"
-          ]
+          "const": "agl"
         },
         "timing": {
           "$ref": "#/$defs/release_timing"
@@ -1336,10 +1330,7 @@
           }
         },
         "heights_ref": {
-          "enum": [
-            "agl",
-            "asl"
-          ]
+          "const": "agl"
         }
       },
       "required": [

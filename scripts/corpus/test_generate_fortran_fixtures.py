@@ -857,6 +857,19 @@ class PreflightFailClosedTest(unittest.TestCase):
             case["release"]["geometry"]["z_m"] = -1
         self._assert_aborts_before_writes(mutate, ">= 0")
 
+    def test_asl_vertical_references_abort_before_any_write(self):
+        def release_asl(case):
+            case["release"]["vertical_ref"] = "asl"
+        self._assert_aborts_before_writes(release_asl, "vertical_ref")
+
+        def domain_asl(case):
+            case["domain"]["wind_heights_ref"] = "asl"
+        self._assert_aborts_before_writes(domain_asl, "wind_heights_ref")
+
+        def output_asl(case):
+            case["output_grid"]["heights_ref"] = "asl"
+        self._assert_aborts_before_writes(output_asl, "output_grid.heights_ref")
+
     def test_release_outside_domain_aborts_before_any_write(self):
         def mutate(case):
             case["release"]["geometry"]["lon_deg"] = 20.0

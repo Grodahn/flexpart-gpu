@@ -501,9 +501,9 @@ def _required_output_grid(case_id: str, case: dict):
         raise SystemExit(
             f"{case_id}: output_grid.horizontal_ref must be 'geographic_lon_lat_degrees'"
         )
-    if grid.get("heights_ref") not in ("agl", "asl"):
+    if grid.get("heights_ref") != "agl":
         raise SystemExit(
-            f"{case_id}: output_grid.heights_ref must be 'agl' or 'asl'"
+            f"{case_id}: output_grid.heights_ref must be 'agl' in schema v2; ASL conversion is not implemented"
         )
     heights = grid.get("heights_m")
     if not isinstance(heights, list) or len(heights) != grid["nz"]:
@@ -1140,6 +1140,10 @@ def _required_domain(case_id: str, case: dict) -> dict:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise SystemExit(
             f"{case_id}: domain.nz must be a positive integer, got {value!r}"
+        )
+    if domain.get("wind_heights_ref") != "agl":
+        raise SystemExit(
+            f"{case_id}: domain.wind_heights_ref must be 'agl' in schema v2; ASL conversion is not implemented"
         )
     heights = domain.get("wind_heights_m")
     if not isinstance(heights, list) or len(heights) != domain["nz"]:

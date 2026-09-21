@@ -1288,6 +1288,12 @@ impl ValidationCaseManifest {
                 ),
             });
         }
+        if self.domain.wind_heights_ref != VerticalRef::Agl {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "domain.wind_heights_ref",
+                message: "schema v2 currently supports only AGL domain wind heights; ASL conversion semantics are not implemented".to_string(),
+            });
+        }
         if self.domain.wind_heights_m.len() != self.domain.nz as usize {
             return Err(ValidationCaseError::AmbiguousField {
                 field: "domain.wind_heights_m",
@@ -1652,6 +1658,12 @@ impl ValidationCaseManifest {
                 field: "output_grid",
             });
         };
+        if grid.heights_ref != VerticalRef::Agl {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "output_grid.heights_ref",
+                message: "schema v2 currently supports only AGL output heights; ASL conversion semantics are not implemented".to_string(),
+            });
+        }
 
         if grid.nx == 0 || grid.ny == 0 || grid.nz == 0 {
             return Err(ValidationCaseError::InvalidPhysicsSwitches {
@@ -1933,6 +1945,12 @@ impl ValidationCaseManifest {
 
     fn validate_release(&self) -> Result<(), ValidationCaseError> {
         let release = &self.release;
+        if release.vertical_ref != VerticalRef::Agl {
+            return Err(ValidationCaseError::AmbiguousField {
+                field: "release.vertical_ref",
+                message: "schema v2 currently supports only AGL releases; ASL-to-AGL conversion semantics are not implemented".to_string(),
+            });
+        }
         if release.particle_count == 0 {
             return Err(ValidationCaseError::InvalidPhysicsSwitches {
                 message: "release.particle_count must be > 0".to_string(),
@@ -5225,6 +5243,35 @@ mod tests {
             err.to_string().contains("wind_heights_ref"),
             "error must name the missing reference: {err}"
         );
+    }
+
+    #[test]
+    fn schema_v2_rejects_asl_vertical_references_fail_closed() {
+        let schema = load_validation_case_schema();
+
+        let mut raw = minimal_manifest_json();
+        raw["release"]["vertical_ref"] = serde_json::json!("asl");
+        let schema_err = validate_json_schema_subset(&schema, &schema, &raw, "$")
+            .expect_err("schema must reject ASL release");
+        assert!(schema_err.contains("release") || schema_err.contains("const"), "{schema_err}");
+        let err = parse_json_value(&raw).expect_err("Rust must reject ASL release");
+        assert!(err.to_string().contains("release.vertical_ref"), "unexpected: {err}");
+
+        let mut raw = minimal_manifest_json();
+        raw["domain"]["wind_heights_ref"] = serde_json::json!("asl");
+        let schema_err = validate_json_schema_subset(&schema, &schema, &raw, "$")
+            .expect_err("schema must reject ASL domain heights");
+        assert!(schema_err.contains("domain") || schema_err.contains("const"), "{schema_err}");
+        let err = parse_json_value(&raw).expect_err("Rust must reject ASL domain heights");
+        assert!(err.to_string().contains("domain.wind_heights_ref"), "unexpected: {err}");
+
+        let mut raw = minimal_manifest_json();
+        raw["output_grid"]["heights_ref"] = serde_json::json!("asl");
+        let schema_err = validate_json_schema_subset(&schema, &schema, &raw, "$")
+            .expect_err("schema must reject ASL output heights");
+        assert!(schema_err.contains("output_grid") || schema_err.contains("const"), "{schema_err}");
+        let err = parse_json_value(&raw).expect_err("Rust must reject ASL output heights");
+        assert!(err.to_string().contains("output_grid.heights_ref"), "unexpected: {err}");
     }
 
     #[test]

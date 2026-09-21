@@ -2022,6 +2022,46 @@ mod tests {
     }
 
     #[test]
+    fn provenance_hashes_change_when_transform_inputs_change() {
+        let snapshot = geometry_snapshot(VerticalOrdering::Increasing);
+        let geometry = reconstruct_vertical_geometry(&snapshot).expect("geometry");
+
+        let mut changed_snapshot = snapshot.clone();
+        changed_snapshot
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::Temperature2m)
+            .expect("temperature2m")
+            .values[0] += 0.25;
+        let changed_geometry =
+            reconstruct_vertical_geometry(&changed_snapshot).expect("changed geometry");
+        assert_ne!(
+            geometry.provenance.source_snapshot_sha256,
+            changed_geometry.provenance.source_snapshot_sha256
+        );
+
+        let native = NativeVerticalMotion {
+            kind: NativeVerticalMotionKind::PressureVelocityOmega,
+            unit: NativeVerticalMotionUnit::PascalPerSecond,
+            sign: NativeVerticalMotionSign::PositivePressureIncreasing,
+            vertical_staggering: VerticalStaggering::LevelInterface,
+            values: vec![0.0, 0.0, -1.0, 0.0, -2.0, 0.0],
+            provenance: NativeVerticalMotionProvenance {
+                source_id: "hash-binding".to_string(),
+            },
+        };
+        let first = normalize_vertical_motion(&snapshot, &geometry, &native).expect("normalize");
+        let mut changed_native = native.clone();
+        changed_native.values[2] = -1.25;
+        let second =
+            normalize_vertical_motion(&snapshot, &geometry, &changed_native).expect("normalize");
+        assert_ne!(
+            first.provenance.source_native_motion_sha256,
+            second.provenance.source_native_motion_sha256
+        );
+    }
+
+    #[test]
     fn agl_asl_conversion_is_column_local_and_handles_below_sea_level_terrain() {
         let terrain = vec![100.0, -20.0];
         let agl = vec![0.0, 0.0, 500.0, 500.0];

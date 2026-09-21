@@ -150,8 +150,8 @@ program vertical_column_oracle
   write(output_unit,'(A,1X,I0)') "INTERFACES", nz+1
   do j=1,nz+1
     physical_k=nz+2-j
-    write(output_unit,'(I0,1X,ES24.16E3,1X,ES24.16E3)') &
-      j-1, w_height(physical_k), w_height(physical_k)+terrain
+    write(output_unit,'(I0,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') &
+      j-1, a(j)+b(j)*ps, w_height(physical_k), w_height(physical_k)+terrain
   enddo
 
   write(output_unit,'(A,1X,I0)') "MOTION", has_motion

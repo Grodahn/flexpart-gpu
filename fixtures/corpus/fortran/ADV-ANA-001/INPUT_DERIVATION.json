@@ -7,30 +7,31 @@
   "candidate_mass_kg": 1024,
   "mass_conversion": "MASS_g = mass_kg * 1000 (FLEXPART MASS is in grams)",
   "oracle_mass_g": 1024000,
-  "outgrid_from_domain": {
-    "xlon0_deg": 6,
-    "ylat0_deg": 47,
-    "nx": 64,
-    "ny": 64,
-    "dx_deg": 0.1,
-    "dy_deg": 0.1
-  },
-  "outheights_m": [
-    100,
-    250,
-    500,
-    750,
-    1000,
-    1500,
-    2000,
-    2500,
-    3000,
-    5000
-  ],
-  "outheights_note": "Standard concentration output levels shared by all synthetic cases; independent of wind-field levels.",
   "oracle_meteorology_profile": {
     "id": "flexpart-synthetic-grib-v1",
     "version": 1,
     "manifest_path": "reference/oracle-meteorology/synthetic-grib-v1.json"
+  },
+  "output_grid": {
+    "xlon0_deg": 6,
+    "ylat0_deg": 47,
+    "nx": 64,
+    "ny": 64,
+    "nz": 10,
+    "dx_deg": 0.1,
+    "dy_deg": 0.1,
+    "heights_m": [
+      100,
+      250,
+      500,
+      750,
+      1000,
+      1500,
+      2000,
+      2500,
+      3000,
+      5000
+    ],
+    "heights_ref": "agl"
   }
 }

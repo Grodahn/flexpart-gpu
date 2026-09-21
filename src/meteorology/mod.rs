@@ -3,6 +3,8 @@
 //! Provider/file adapters normalize into these types. Physics must not depend on
 //! GRIB ids, NetCDF variable names, provider naming, or implicit unit/sign rules.
 
+pub mod vertical;
+
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};

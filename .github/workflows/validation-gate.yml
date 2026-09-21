@@ -33,6 +33,8 @@ jobs:
           set -euo pipefail
           cd flexpart-gpu
           cargo test --lib meteorology::tests
+          cargo test --lib meteorology::vertical::tests
+          cargo test --test integration vertical_runtime
           cargo test --test meteorology_contract
           python3 scripts/test_oracle_run_manifest.py
 

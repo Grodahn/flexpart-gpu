@@ -22,6 +22,11 @@ The derived runtime state contains, per horizontal column:
 - normalized upward-positive geometric vertical velocity when #30 vertical-motion
   normalization is available.
 
+The derived transform provenance also binds the runtime geometry to the exact
+canonical Snapshot using a SHA-256 of its compact serialized representation.
+When native vertical motion is normalized, its complete provider-independent
+contract is bound independently by SHA-256 as well.
+
 ## Hybrid pressure and FLEXPART level mapping
 
 Schema v1 preserves the provider/native half-level coefficients `A_half` [Pa]
@@ -132,12 +137,16 @@ records SHA-256 hashes for the driver binary, `verttransform_mod.f90`,
 `windfields_mod.f90`, `verttransform_mod.o`, and `windfields_mod.o`.
 The sibling FLEXPART checkout remains clean and unmodified throughout.
 
-This gives #30 a direct execution oracle for FLEXPART's pressure,
+This gives #30 a direct execution oracle for FLEXPART's model-level pressure,
 hypsometric-height, `wzlev`, and `pinmconv` calculations while avoiding a
 full meteorological file/model run for each column test. The small amount of
 driver plumbing that maps canonical top-to-bottom half-level A/B metadata into
 FLEXPART's bottom-to-top module state is separately guarded against the pinned
-`windfields_mod` source contract.
+`windfields_mod` source contract. The driver also populates the real
+`windfields_mod::akm/bkm` half-level arrays using that pinned mapping and emits
+the resulting local interface pressure `akm + bkm * ps`; the comparison gate
+checks every candidate interface pressure with the same pressure tolerances as
+the model levels.
 
 ### Secondary source-conformance harness
 
@@ -214,6 +223,12 @@ describes its W input as Pa/s and converts it to geometric vertical velocity by
 multiplying by `pinmconv = dz/dp`. Since pressure decreases with height,
 `dz/dp < 0`; therefore negative omega (rising air) becomes positive geometric
 `w`.
+
+Only the native interface/W representation is enabled for pressure velocity.
+Center-staggered omega fails closed because FLEXPART 11.1's validated W path is
+interface-staggered and #30 has no independent pinned oracle for a center-grid
+omega conversion. #30 does not invent a center-to-interface interpolation;
+that would belong to #31 if a future validated input contract requires it.
 
 For the native interface/W representation, #30 reproduces FLEXPART's
 `pinmconv` discretization on the physical bottom-to-top column, including the

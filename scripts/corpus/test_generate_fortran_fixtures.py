@@ -797,6 +797,12 @@ class PreflightFailClosedTest(unittest.TestCase):
         self.assertIn("case manifest not found", rendered)
         self.assertIn(str(missing), rendered)
 
+    def test_manifest_case_id_must_match_requested_case(self):
+        def mutate(case):
+            case["case_id"] = "PBL-NEUTRAL-005"
+
+        self._assert_aborts_before_writes(mutate, "manifest case_id")
+
     def test_restart_case_keeps_explicit_neutral_fallback(self):
         GEN.CASES = self.cases_dir
         case, case_path = GEN._load_case("RESTART-010")

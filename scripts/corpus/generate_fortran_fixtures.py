@@ -1934,6 +1934,18 @@ def validate_and_normalize_case_for_generation(
             f"version={case.get('version')!r} (v1 frozen, see MIGRATION_NOTES.md)"
         )
 
+    declared_case_id = case.get("case_id")
+    if declared_case_id != case_id and case_id != "RESTART-010":
+        raise SystemExit(
+            f"{case_id}: manifest case_id {declared_case_id!r} does not match "
+            f"requested corpus case id {case_id!r}"
+        )
+    if case_id == "RESTART-010" and declared_case_id != "PBL-NEUTRAL-005":
+        raise SystemExit(
+            f"{case_id}: restart fallback must derive from manifest case_id "
+            f"'PBL-NEUTRAL-005', got {declared_case_id!r}"
+        )
+
     oracle = normalize_oracle_overrides(case_id, case)
     _required_execution_profile(case_id, case)
 

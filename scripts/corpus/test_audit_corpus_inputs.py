@@ -77,6 +77,17 @@ class PhiloxIdentityTest(unittest.TestCase):
         )
         self.assertEqual(key, [0, 1])
 
+    def test_audit_rejects_manifest_case_id_mismatch(self):
+        case = load_case("WIND-UNI-002")
+        case["case_id"] = "PBL-NEUTRAL-005"
+        AUDIT.FAILURES.clear()
+        valid = AUDIT._case_schema_valid("WIND-UNI-002", case)
+        failures = list(AUDIT.FAILURES)
+        AUDIT.FAILURES.clear()
+        self.assertFalse(valid)
+        self.assertTrue(any("manifest identity" in failure for failure in failures))
+        self.assertTrue(any("PBL-NEUTRAL-005" in failure for failure in failures))
+
     def test_unknown_derivation_fails_closed(self):
         case = load_case("WIND-UNI-002")
         case["stochastic"]["candidate_philox"]["derivation"] = "typo_or_future_mode"

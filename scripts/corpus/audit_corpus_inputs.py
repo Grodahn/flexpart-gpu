@@ -74,6 +74,14 @@ def _case_schema_valid(case_id: str, case: dict) -> bool:
     except ValidationCaseSchemaError as exc:
         check(f"{case_id} validation-case-v2 schema", False, str(exc))
         return False
+    declared_case_id = case.get("case_id")
+    if declared_case_id != case_id:
+        check(
+            f"{case_id} manifest identity",
+            False,
+            f"case_id {declared_case_id!r} does not match corpus id {case_id!r}",
+        )
+        return False
     check(f"{case_id} validation-case-v2 schema", True)
     return True
 

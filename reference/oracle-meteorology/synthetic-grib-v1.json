@@ -1,0 +1,76 @@
+{
+  "id": "flexpart-synthetic-grib-v1",
+  "version": 1,
+  "description": "Pinned synthetic meteorology representation used by the FLEXPART 11.1 oracle corpus. It makes the generator grid, cadence, hybrid vertical coordinate, upper-air thermodynamics, fixed surface fields, and case-mapped fields explicit.",
+  "generator_path": "scripts/generate_synthetic_grib.py",
+  "grid": {
+    "grid_type": "regular_ll_global",
+    "nx": 32,
+    "ny": 32,
+    "nz": 12,
+    "longitude_first_deg": 0,
+    "latitude_first_deg": 90,
+    "latitude_last_deg": -90
+  },
+  "temporal": {
+    "cadence_s": 10800,
+    "start_time_policy": "simulation_start_date_midnight",
+    "coverage_policy": "round_simulation_duration_up_to_cadence"
+  },
+  "hybrid_half_level_a_pa": [
+    0,
+    2000,
+    5000,
+    10000,
+    15000,
+    20000,
+    22000,
+    18000,
+    12000,
+    6000,
+    2000,
+    500,
+    0
+  ],
+  "hybrid_half_level_b": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0.05,
+    0.15,
+    0.3,
+    0.5,
+    0.7,
+    0.85,
+    1
+  ],
+  "upper_air_profile": {
+    "temperature_base_k": 220,
+    "temperature_level_increment_k": 6.5,
+    "temperature_floor_k": 200,
+    "specific_humidity_base": 0.001,
+    "specific_humidity_span": 0.009
+  },
+  "fixed_surface_fields": {
+    "surface_pressure_pa": 101325,
+    "temperature_2m_k": 289,
+    "dewpoint_2m_k": 284,
+    "solar_radiation_w_m2": 220,
+    "eastward_surface_stress_n_m2": 0.1,
+    "northward_surface_stress_n_m2": 0.1
+  },
+  "case_mapped_fields": [
+    "wind.u/v/w or linear shear",
+    "surface.sensible_heat_flux_w_m2",
+    "surface.mixing_height_m",
+    "surface.precip_large_scale_mm_h",
+    "surface.precip_convective_mm_h"
+  ],
+  "known_representation_differences": [
+    "The candidate uses its case domain and fixed AGL wind levels; the oracle meteorology uses this global 12-level hybrid grid.",
+    "The candidate consumes the complete case surface block. The oracle synthetic GRIB maps only the listed case fields; remaining surface and upper-air fields are pinned by this profile."
+  ]
+}

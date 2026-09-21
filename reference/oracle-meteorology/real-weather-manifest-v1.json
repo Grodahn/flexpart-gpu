@@ -1,0 +1,18 @@
+{
+  "id": "real-weather-manifest-v1",
+  "version": 1,
+  "description": "Oracle meteorology identity is carried directly by validation-case wind.meteorology. The case must provide dataset/source/digest, temporal coverage, required fields, and separate candidate/oracle transformation chains.",
+  "identity_source": "validation_case.wind.meteorology",
+  "required_identity_fields": [
+    "dataset_id",
+    "version",
+    "source_path",
+    "digest",
+    "temporal_coverage",
+    "horizontal_coord",
+    "vertical_coord",
+    "required_fields",
+    "candidate_transformation",
+    "oracle_transformation"
+  ]
+}

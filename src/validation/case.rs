@@ -36,6 +36,16 @@ pub const CANDIDATE_PHYSICS_PROFILE_VERSION: u32 = 1;
 pub const CANDIDATE_PHYSICS_PROFILE_PATH: &str =
     "reference/candidate-physics/candidate-forward-timeloop-v1.json";
 
+/// Stable Oracle meteorology identities used by schema-v2 validation cases.
+pub const SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_ID: &str = "flexpart-synthetic-grib-v1";
+pub const SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_VERSION: u32 = 1;
+pub const SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_PATH: &str =
+    "reference/oracle-meteorology/synthetic-grib-v1.json";
+pub const REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_ID: &str = "real-weather-manifest-v1";
+pub const REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_VERSION: u32 = 1;
+pub const REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_PATH: &str =
+    "reference/oracle-meteorology/real-weather-manifest-v1.json";
+
 /// Stable identity of the completed #50 oracle stochastic-identity contract.
 /// Case manifests reference this contract and never duplicate its
 /// requested-identity -> FLEXPART RNG-state mapping.
@@ -58,6 +68,23 @@ pub const SPECIES_040_WET_CONTRACT_PATH: &str =
     "reference/species-physics/species-040-wet-aerosol-v1.json";
 pub const SPECIES_040_WET_CONTRACT_BLOB: &str =
     "4f55d23294f320f0050581cfad14800b22bf141d";
+
+/// Whether this case actually executes the FLEXPART oracle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OracleExecutionPolicy {
+    Required,
+    NotApplicable,
+}
+
+/// Stable reference to the meteorology representation/source used by the oracle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OracleMeteorologyProfileRef {
+    pub id: String,
+    pub version: u32,
+    pub manifest_path: String,
+}
 
 /// Oracle kind as defined in issue #50 stochastic identity contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -995,6 +1022,10 @@ pub struct ValidationCaseManifest {
     pub stochastic: StochasticIdentitySpec,
     /// Execution profile reference (frozen #49).
     pub execution_profile: ExecutionProfileRef,
+    /// Explicitly declares whether this case executes an oracle run.
+    pub oracle_execution: OracleExecutionPolicy,
+    /// Stable identity/source of the oracle meteorology representation.
+    pub oracle_meteorology_profile: OracleMeteorologyProfileRef,
     /// Candidate-side versioned physics/runtime profile. Required so shared
     /// PBL/integration settings never come from executable defaults.
     pub candidate_physics_profile: CandidatePhysicsProfileRef,
@@ -1371,6 +1402,8 @@ impl ValidationCaseManifest {
             });
         }
 
+        self.validate_oracle_meteorology_profile()?;
+
         if self.candidate_physics_profile.id != CANDIDATE_PHYSICS_PROFILE_ID
             || self.candidate_physics_profile.version != CANDIDATE_PHYSICS_PROFILE_VERSION
             || self.candidate_physics_profile.manifest_path != CANDIDATE_PHYSICS_PROFILE_PATH
@@ -1393,6 +1426,34 @@ impl ValidationCaseManifest {
         self.validate_representation_differences()?;
         self.validate_expected_artifacts()?;
 
+        Ok(())
+    }
+
+    fn validate_oracle_meteorology_profile(&self) -> Result<(), ValidationCaseError> {
+        let (expected_id, expected_version, expected_path) = match self.wind {
+            WindSpec::RealWeather { .. } => (
+                REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_ID,
+                REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_VERSION,
+                REAL_WEATHER_ORACLE_METEOROLOGY_PROFILE_PATH,
+            ),
+            _ => (
+                SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_ID,
+                SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_VERSION,
+                SYNTHETIC_ORACLE_METEOROLOGY_PROFILE_PATH,
+            ),
+        };
+        let actual = &self.oracle_meteorology_profile;
+        if actual.id != expected_id
+            || actual.version != expected_version
+            || actual.manifest_path != expected_path
+        {
+            return Err(ValidationCaseError::InvalidExecutionProfile {
+                message: format!(
+                    "oracle_meteorology_profile must reference {expected_id} v{expected_version} at {expected_path}, got {} v{} at {}",
+                    actual.id, actual.version, actual.manifest_path
+                ),
+            });
+        }
         Ok(())
     }
 
@@ -1433,12 +1494,38 @@ impl ValidationCaseManifest {
         for (present, label) in [
             (candidate_raw, "candidate/raw_model_output"),
             (candidate_decoded, "candidate/decoded_model_output"),
-            (oracle_raw, "oracle/raw_model_output"),
-            (oracle_decoded, "oracle/decoded_model_output"),
             (comparison_report, "validation_pipeline/comparison_report"),
             (run_manifest, "validation_pipeline/run_manifest"),
         ] {
             if !present { return Err(ValidationCaseError::AmbiguousField { field: "expected_artifacts.required", message: format!("missing required artifact class {label}") }); }
+        }
+        match self.oracle_execution {
+            OracleExecutionPolicy::Required => {
+                for (present, label) in [
+                    (oracle_raw, "oracle/raw_model_output"),
+                    (oracle_decoded, "oracle/decoded_model_output"),
+                ] {
+                    if !present {
+                        return Err(ValidationCaseError::AmbiguousField {
+                            field: "expected_artifacts.required",
+                            message: format!("missing required artifact class {label}"),
+                        });
+                    }
+                }
+            }
+            OracleExecutionPolicy::NotApplicable => {
+                if oracle_raw || oracle_decoded {
+                    return Err(ValidationCaseError::AmbiguousField {
+                        field: "expected_artifacts.required",
+                        message: "oracle_execution=not_applicable forbids oracle raw/decoded artifacts".to_string(),
+                    });
+                }
+                if self.stochastic.oracle_seed.is_some() {
+                    return Err(ValidationCaseError::InvalidStochasticIdentity {
+                        message: "oracle_execution=not_applicable requires stochastic.oracle_seed=null".to_string(),
+                    });
+                }
+            }
         }
         Ok(())
     }

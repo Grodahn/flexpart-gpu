@@ -96,6 +96,15 @@
     },
     "candidate_physics_profile": {
       "$ref": "#/$defs/candidate_physics_profile"
+    },
+    "oracle_execution": {
+      "enum": [
+        "required",
+        "not_applicable"
+      ]
+    },
+    "oracle_meteorology_profile": {
+      "$ref": "#/$defs/oracle_meteorology_profile"
     }
   },
   "required": [
@@ -113,6 +122,8 @@
     "validation_definition_refs",
     "stochastic",
     "execution_profile",
+    "oracle_execution",
+    "oracle_meteorology_profile",
     "candidate_physics_profile",
     "oracle_command_overrides",
     "expected_artifacts",
@@ -1361,6 +1372,50 @@
         "id",
         "version",
         "manifest_path"
+      ]
+    },
+    "oracle_meteorology_profile": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "const": "flexpart-synthetic-grib-v1"
+            },
+            "version": {
+              "const": 1
+            },
+            "manifest_path": {
+              "const": "reference/oracle-meteorology/synthetic-grib-v1.json"
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "manifest_path"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "const": "real-weather-manifest-v1"
+            },
+            "version": {
+              "const": 1
+            },
+            "manifest_path": {
+              "const": "reference/oracle-meteorology/real-weather-manifest-v1.json"
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "manifest_path"
+          ]
+        }
       ]
     }
   }

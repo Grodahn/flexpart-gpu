@@ -1279,6 +1279,32 @@ class DirectionOutputSemanticsTest(unittest.TestCase):
                 f"hard-coded {key} default remains in the generator path",
             )
 
+    def test_verify_case_detects_outheights_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            flex = tmp / "flexpart"
+            flex.mkdir()
+            tracer, aerosol = make_upstream_species(flex)
+            case = load_case("WIND-UNI-002")
+            out_root = tmp / "fortran"
+            out_root.mkdir()
+            prepared = GEN.validate_and_normalize_case_for_generation(
+                "WIND-UNI-002",
+                case,
+                case_file=str(REAL_CASES / "WIND-UNI-002.json"),
+                tracer=tracer,
+                aerosol=aerosol,
+            )
+            GEN.write_case_fixtures(prepared, out_root)
+            outgrid_path = out_root / "WIND-UNI-002" / "OUTGRID"
+            original = outgrid_path.read_text(encoding="utf-8")
+            tampered = original.replace(" OUTHEIGHTS=   100.0,", " OUTHEIGHTS=   101.0,", 1)
+            self.assertNotEqual(original, tampered)
+            outgrid_path.write_text(tampered, encoding="utf-8")
+            with self.assertRaises(SystemExit) as ctx:
+                GEN.verify_case("WIND-UNI-002", case, out_root / "WIND-UNI-002", 24)
+            self.assertIn("OUTHEIGHTS", str(ctx.exception))
+
     def test_verify_case_detects_direction_drift(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)

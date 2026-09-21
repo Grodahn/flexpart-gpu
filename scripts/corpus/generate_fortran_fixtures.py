@@ -1727,7 +1727,7 @@ def species_for_case(case_id: str, profile: str, tracer: Path, aerosol: Path) ->
 
 
 def namelist_value(text: str, key: str) -> str:
-    """Extract one raw value for KEY from namelist text (comments stripped)."""
+    """Extract one raw scalar value for KEY from namelist text (comments stripped)."""
     stripped = re.sub(r"!.*", "", text)
     match = re.search(
         rf"\b{re.escape(key)}\s*=\s*([^,/\n]+)", stripped, re.IGNORECASE
@@ -1735,6 +1735,21 @@ def namelist_value(text: str, key: str) -> str:
     if not match:
         raise ValueError(f"key {key} not found in namelist")
     return match.group(1).strip().strip("\"'")
+
+
+def namelist_values(text: str, key: str) -> list[str]:
+    """Extract a comma-separated namelist value list from one logical line."""
+    stripped = re.sub(r"!.*", "", text)
+    match = re.search(
+        rf"\b{re.escape(key)}\s*=\s*([^/\n]+)", stripped, re.IGNORECASE
+    )
+    if not match:
+        raise ValueError(f"key {key} not found in namelist")
+    return [
+        value.strip().strip("\"'")
+        for value in match.group(1).split(",")
+        if value.strip()
+    ]
 
 
 def verify_rendered_case(case_id: str, case: dict, files: dict, specnum: int) -> None:
@@ -1775,13 +1790,19 @@ def verify_rendered_case(case_id: str, case: dict, files: dict, specnum: int) ->
     check("RELEASES MASS_g", actual_g, expected_g, 1e-4 * expected_g)
 
     outgrid = files["OUTGRID"]
-    output_grid = case.get("output_grid") or domain
+    output_grid = _required_output_grid(case_id, case)
     check("OUTGRID OUTLON0", float(namelist_value(outgrid, "OUTLON0")), float(output_grid["xlon0_deg"]), 1e-9)
     check("OUTGRID OUTLAT0", float(namelist_value(outgrid, "OUTLAT0")), float(output_grid["ylat0_deg"]), 1e-9)
     check("OUTGRID NUMXGRID", int(namelist_value(outgrid, "NUMXGRID")), int(output_grid["nx"]))
     check("OUTGRID NUMYGRID", int(namelist_value(outgrid, "NUMYGRID")), int(output_grid["ny"]))
     check("OUTGRID DXOUT", float(namelist_value(outgrid, "DXOUT")), float(output_grid["dx_deg"]), 1e-9)
     check("OUTGRID DYOUT", float(namelist_value(outgrid, "DYOUT")), float(output_grid["dy_deg"]), 1e-9)
+    actual_heights = [
+        float(value.replace("D", "E"))
+        for value in namelist_values(outgrid, "OUTHEIGHTS")
+    ]
+    expected_heights = [float(value) for value in output_grid["heights_m"]]
+    check("OUTGRID OUTHEIGHTS", actual_heights, expected_heights)
 
     expected_meteo_args = meteo_args(case_id, case)
     actual_meteo_args = files.get("METEO_ARGS.txt", "").strip()

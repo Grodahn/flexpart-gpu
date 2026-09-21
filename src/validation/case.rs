@@ -1040,8 +1040,8 @@ pub struct ValidationCaseManifest {
     /// Required explicitly: synthetic corpus cases use true; ETEX-MINI-013
     /// explicitly waives containment pending #52 input-equivalence work.
     pub require_source_containment: bool,
-    /// Additional notes.
-    #[serde(default)]
+    /// Additional notes. Required explicitly by schema v2; use an empty array
+    /// when no notes apply so omission cannot carry hidden compatibility semantics.
     pub notes: Vec<String>,
 }
 
@@ -4902,6 +4902,20 @@ mod tests {
         assert!(
             rendered.contains("nx_typo"),
             "error must name the unknown nested field: {rendered}"
+        );
+    }
+
+    #[test]
+    fn direct_serde_requires_notes_like_json_schema() {
+        let mut raw = minimal_manifest_json();
+        raw.as_object_mut()
+            .expect("manifest object")
+            .remove("notes");
+        let err = serde_json::from_value::<ValidationCaseManifest>(raw)
+            .expect_err("direct serde must reject omitted required notes");
+        assert!(
+            err.to_string().contains("notes"),
+            "direct serde error must name omitted notes: {err}"
         );
     }
 

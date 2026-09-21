@@ -192,15 +192,14 @@ v2 introduces typed enums and structures so runners never guess:
 | v1 | v2 | Note |
 |----|----|------|
 | (none) | `domain.horizontal_ref` | Required: `GeographicLonLatDegrees`. |
-| (none) | `domain.wind_heights_ref` | Required: `agl` (all checked-in cases). |
-| (none) | `release.vertical_ref` | Required: `agl` (all checked-in cases). |
+| (none) | `domain.wind_heights_ref` | Required: `agl`. Schema v2 is deliberately AGL-only; ASL conversion semantics are not implemented. |
+| (none) | `release.vertical_ref` | Required: `agl`. Schema v2 is deliberately AGL-only; ASL conversion semantics are not implemented. |
 | `release.lon_deg`/`lat_deg`/`z_m` | `release.geometry` (Point/Box) | Typed; `kind` disambiguates. |
-| (none) | `release.geometry.vertical_ref` | AGL (checked-in cases). |
 | `release` (implicit instant) | `release.timing` | Explicit: `Instant { at: "YYYYMMDDHHMMSS" }` equals integration start. |
 | (none) | `release.species` | Required: `SPECIES_<NNN>` mapping to FLEXPART `SPECNUM_REL`. |
 | `release.mass_kg_total` | `release.inventory` | Typed: `quantity_kg` + `unit` (`kg`). |
 | `release.mass_kg_per_particle` | `release.mass_kg_per_particle` | Kept; validated consistent with `quantity_kg / particle_count` within 1e-6. |
-| (none) | `domain.wind_heights_ref` | Required: `agl` (all checked-in cases). |
+| (none) | `output_grid.heights_ref` | Required: `agl`. Schema v2 is deliberately AGL-only; ASL output-grid conversion semantics are not implemented. |
 | `domain`/`release` (implicit) | `require_source_containment` | Required explicit boolean: synthetic cases declare `true`; ETEX-MINI-013 declares `false` with rationale. No containment default remains. |
 
 Synthetic checked-in cases use `SourceGeometry::Point` with `VerticalRef::Agl`

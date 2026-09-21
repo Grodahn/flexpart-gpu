@@ -475,6 +475,14 @@ pub enum VerticalTransformError {
     InsufficientVerticalLevels,
     #[error("invalid dz/dp conversion at (x={x}, y={y}, z={z})")]
     InvalidPressureToHeightDerivative { x: usize, y: usize, z: usize },
+    #[error("invalid ASL height at (x={x}, y={y}, z={z}): ASL={height_asl_m} m, terrain={terrain_asl_m} m")]
+    InvalidAbsoluteHeight {
+        x: usize,
+        y: usize,
+        z: usize,
+        height_asl_m: f32,
+        terrain_asl_m: f32,
+    },
     #[error("height at (x={x}, y={y}, z={z}) lies below terrain: ASL={height_asl_m} m, terrain={terrain_asl_m} m")]
     HeightBelowTerrain {
         x: usize,
@@ -778,8 +786,18 @@ pub fn reconstruct_vertical_geometry(
                     });
                 }
 
+                let current_height_asl_m = current_height_agl_m + terrain_m;
+                if !current_height_asl_m.is_finite() {
+                    return Err(VerticalTransformError::InvalidAbsoluteHeight {
+                        x,
+                        y,
+                        z,
+                        height_asl_m: current_height_asl_m,
+                        terrain_asl_m: terrain_m,
+                    });
+                }
                 height_agl_m[index] = current_height_agl_m;
-                height_asl_m[index] = current_height_agl_m + terrain_m;
+                height_asl_m[index] = current_height_asl_m;
 
                 previous_pressure_pa = current_pressure_pa;
                 previous_virtual_temperature_k = current_virtual_temperature_k;
@@ -1108,8 +1126,18 @@ fn reconstruct_flexpart_w_heights(
                     VerticalOrdering::Decreasing => interface,
                 };
                 let index = interface_offset(x, y, interface, nx, ny);
+                let height_asl_m = w_bottom_up[physical_index] + terrain;
+                if !height_asl_m.is_finite() {
+                    return Err(VerticalTransformError::InvalidAbsoluteHeight {
+                        x,
+                        y,
+                        z: interface,
+                        height_asl_m,
+                        terrain_asl_m: terrain,
+                    });
+                }
                 interface_agl[index] = w_bottom_up[physical_index];
-                interface_asl[index] = w_bottom_up[physical_index] + terrain;
+                interface_asl[index] = height_asl_m;
             }
         }
     }
@@ -1418,11 +1446,16 @@ pub fn height_asl_to_agl(
                 let terrain = terrain_asl_m[surface_offset(x, y, nx)];
                 let height = height_asl_m[index];
                 let agl = height - terrain;
-                if !height.is_finite()
-                    || !terrain.is_finite()
-                    || height < terrain
-                    || !agl.is_finite()
-                {
+                if !height.is_finite() || !terrain.is_finite() || !agl.is_finite() {
+                    return Err(VerticalTransformError::InvalidAbsoluteHeight {
+                        x,
+                        y,
+                        z,
+                        height_asl_m: height,
+                        terrain_asl_m: terrain,
+                    });
+                }
+                if height < terrain {
                     return Err(VerticalTransformError::HeightBelowTerrain {
                         x,
                         y,
@@ -1456,11 +1489,16 @@ pub fn height_agl_to_asl(
                 let terrain = terrain_asl_m[surface_offset(x, y, nx)];
                 let height = height_agl_m[index];
                 let asl = height + terrain;
-                if !height.is_finite()
-                    || !terrain.is_finite()
-                    || height < 0.0
-                    || !asl.is_finite()
-                {
+                if !height.is_finite() || !terrain.is_finite() || !asl.is_finite() {
+                    return Err(VerticalTransformError::InvalidAbsoluteHeight {
+                        x,
+                        y,
+                        z,
+                        height_asl_m: asl,
+                        terrain_asl_m: terrain,
+                    });
+                }
+                if height < 0.0 {
                     return Err(VerticalTransformError::HeightBelowTerrain {
                         x,
                         y,
@@ -2072,6 +2110,22 @@ mod tests {
     }
 
     #[test]
+    fn derived_asl_geometry_overflow_fails_closed() {
+        let mut snapshot = geometry_snapshot(VerticalOrdering::Increasing);
+        snapshot
+            .fields
+            .iter_mut()
+            .find(|field| field.id == FieldId::Orography)
+            .expect("orography")
+            .values[0] = f32::MAX;
+
+        assert!(matches!(
+            reconstruct_vertical_geometry(&snapshot),
+            Err(VerticalTransformError::InvalidAbsoluteHeight { x: 0, y: 0, .. })
+        ));
+    }
+
+    #[test]
     fn release_and_height_reference_arithmetic_overflow_fails_closed() {
         assert!(matches!(
             resolve_release_height(
@@ -2084,12 +2138,12 @@ mod tests {
 
         assert!(matches!(
             height_agl_to_asl(1, 1, 1, &[f32::MAX], &[f32::MAX]),
-            Err(VerticalTransformError::HeightBelowTerrain { .. })
+            Err(VerticalTransformError::InvalidAbsoluteHeight { .. })
         ));
 
         assert!(matches!(
             height_asl_to_agl(1, 1, 1, &[f32::MAX], &[-f32::MAX]),
-            Err(VerticalTransformError::HeightBelowTerrain { .. })
+            Err(VerticalTransformError::InvalidAbsoluteHeight { .. })
         ));
     }
 

@@ -229,7 +229,6 @@ else
   rm -f "${ORACLE_CHECKOUT}/src/gitversion.txt"
   # The build must leave the oracle checkout clean.
   ORACLE_POST_STATUS="$(git -C "${ORACLE_CHECKOUT}" status --porcelain 2>/dev/null || true)"
-  ORACLE_POST_STATUS="$(git -C "${ORACLE_CHECKOUT}" status --porcelain 2>/dev/null || true)"
   if [ -n "${ORACLE_POST_STATUS}" ]; then
     log_error "Oracle status after build:"
     echo "${ORACLE_POST_STATUS}" | head -20
@@ -370,6 +369,20 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     fail "Provenance manifest generation failed (missing artifact or unpinned oracle)"
   fi
   test -s "${OUTPUT_DIR}/run-manifest.json" || fail "Provenance manifest missing: ${OUTPUT_DIR}/run-manifest.json"
+  if ! "${HOST_PYTHON}" -c '
+import json, sys
+data = json.load(open(sys.argv[1]))
+contract = data["meteorology_contract"]
+assert contract["schema_id"] == "flexpart-gpu.canonical-meteorology"
+assert contract["schema_version"] == 1
+assert len(contract["identity_source_sha256"]) == 64
+binding = data["meteorology_input"]
+assert binding["status"] == "NOT_BOUND_TO_RUN"
+assert binding["inputs"] == {}
+print("meteorology contract provenance: OK (no canonical runtime input for this smoke)")
+' "${OUTPUT_DIR}/run-manifest.json" 2>&1 | tee "${OUTPUT_DIR}/meteorology-provenance-check.log"; then
+    fail "Run manifest lacks valid canonical meteorology schema provenance"
+  fi
 else
   echo "oracle build skipped; run-manifest not generated" > "${OUTPUT_DIR}/run-manifest.log"
 fi

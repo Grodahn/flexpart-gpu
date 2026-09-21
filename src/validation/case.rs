@@ -1004,9 +1004,9 @@ pub struct ValidationCaseManifest {
     pub simulation_direction: SimulationDirection,
     /// Output timing and scientific semantics (required, never defaulted).
     pub output: OutputSpec,
-    /// Explicit concentration/comparison output grid. Required for
-    /// real-weather cases; synthetic cases still use the legacy shared grid
-    /// until that policy is migrated separately.
+    /// Explicit concentration/comparison output grid. Required for every
+    /// validation case. The optional Rust representation is retained only so
+    /// missing documents receive a field-specific fail-closed validation error.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_grid: Option<OutputGridSpec>,
     /// Driver deposition forcing. `None` when deposition is off.
@@ -1247,9 +1247,9 @@ impl ValidationCaseManifest {
         }
 
         // Validate domain
-        if self.domain.nx == 0 || self.domain.ny == 0 || self.domain.nz == 0 {
+        if self.domain.nx < 2 || self.domain.ny < 2 || self.domain.nz == 0 {
             return Err(ValidationCaseError::InvalidPhysicsSwitches {
-                message: "domain dimensions must be > 0".to_string(),
+                message: "domain nx/ny must be >= 2 and nz must be > 0".to_string(),
             });
         }
         for (name, spacing) in [
@@ -1647,14 +1647,10 @@ impl ValidationCaseManifest {
     }
 
     fn validate_output_grid(&self) -> Result<(), ValidationCaseError> {
-        let real_weather = matches!(self.wind, WindSpec::RealWeather { .. });
         let Some(grid) = &self.output_grid else {
-            if real_weather {
-                return Err(ValidationCaseError::MissingField {
-                    field: "output_grid",
-                });
-            }
-            return Ok(());
+            return Err(ValidationCaseError::MissingField {
+                field: "output_grid",
+            });
         };
 
         if grid.nx == 0 || grid.ny == 0 || grid.nz == 0 {
@@ -2089,27 +2085,33 @@ impl ValidationCaseManifest {
     fn validate_source_containment(&self) -> Result<(), ValidationCaseError> {
         let domain = &self.domain;
         let lon_min = f64::from(domain.xlon0_deg);
-        let lon_max = lon_min + f64::from(domain.nx) * f64::from(domain.dx_deg);
         let lat_min = f64::from(domain.ylat0_deg);
-        let lat_max = lat_min + f64::from(domain.ny) * f64::from(domain.dy_deg);
+        let dx = f64::from(domain.dx_deg);
+        let dy = f64::from(domain.dy_deg);
+        let max_grid_x_exclusive = f64::from(domain.nx - 1);
+        let max_grid_y_exclusive = f64::from(domain.ny - 1);
+        let lon_max_exclusive = lon_min + max_grid_x_exclusive * dx;
+        let lat_max_exclusive = lat_min + max_grid_y_exclusive * dy;
         let height_min = f64::from(*domain.wind_heights_m.first().unwrap_or(&0.0));
         let height_max = f64::from(*domain.wind_heights_m.last().unwrap_or(&0.0));
         let epsilon = 1e-6;
         let mut check_point =
             |name: &'static str, lon: f64, lat: f64, z: f64| -> Result<(), ValidationCaseError> {
-                if lon < lon_min - epsilon || lon > lon_max + epsilon {
+                let grid_x = (lon - lon_min) / dx;
+                if grid_x < 0.0 || grid_x >= max_grid_x_exclusive {
                     return Err(ValidationCaseError::AmbiguousField {
                         field: "release.geometry",
                         message: format!(
-                            "{name} lon {lon} outside domain [{lon_min}, {lon_max}]"
+                            "{name} lon {lon} outside runtime domain [{lon_min}, {lon_max_exclusive})"
                         ),
                     });
                 }
-                if lat < lat_min - epsilon || lat > lat_max + epsilon {
+                let grid_y = (lat - lat_min) / dy;
+                if grid_y < 0.0 || grid_y >= max_grid_y_exclusive {
                     return Err(ValidationCaseError::AmbiguousField {
                         field: "release.geometry",
                         message: format!(
-                            "{name} lat {lat} outside domain [{lat_min}, {lat_max}]"
+                            "{name} lat {lat} outside runtime domain [{lat_min}, {lat_max_exclusive})"
                         ),
                     });
                 }
@@ -3138,7 +3140,18 @@ mod tests {
                 sampling_interval_s: 300,
                 quantity: OutputQuantity::TimeAveragedMassConcentrationKgM3,
             },
-            output_grid: None,
+            output_grid: Some(OutputGridSpec {
+                nx: 32,
+                ny: 32,
+                nz: 1,
+                dx_deg: 0.1,
+                dy_deg: 0.1,
+                xlon0_deg: 9.5,
+                ylat0_deg: 8.5,
+                horizontal_ref: HorizontalCoordRef::GeographicLonLatDegrees,
+                heights_m: vec![100.0],
+                heights_ref: VerticalRef::Agl,
+            }),
             deposition: None,
             units: UnitsSpec {
                 wind: "m/s".to_string(),
@@ -4072,21 +4085,63 @@ mod tests {
     }
 
     #[test]
-    fn real_weather_case_requires_explicit_output_grid() {
+    fn every_case_requires_explicit_output_grid() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("fixtures")
             .join("corpus")
             .join("cases")
-            .join("ETEX-MINI-013.json");
-        let text = std::fs::read_to_string(&path).expect("read ETEX case");
-        let mut raw: serde_json::Value = serde_json::from_str(&text).expect("parse ETEX JSON");
+            .join("WIND-UNI-002.json");
+        let text = std::fs::read_to_string(&path).expect("read synthetic case");
+        let mut raw: serde_json::Value =
+            serde_json::from_str(&text).expect("parse synthetic case JSON");
         raw.as_object_mut()
-            .expect("ETEX object")
+            .expect("case object")
             .remove("output_grid");
         let err = parse_json_value(&raw)
-            .expect_err("real-weather case without output_grid must fail");
+            .expect_err("case without output_grid must fail");
         assert!(
             err.to_string().contains("output_grid"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn domain_requires_two_horizontal_grid_points() {
+        let mut manifest = make_minimal_manifest();
+        manifest.domain.nx = 1;
+        let err = manifest.validate().expect_err("nx=1 must fail");
+        assert!(
+            err.to_string().contains("nx/ny must be >= 2"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn source_containment_matches_runtime_half_open_horizontal_domain() {
+        let mut manifest = make_minimal_manifest();
+        manifest.domain.xlon0_deg = 0.0;
+        manifest.domain.ylat0_deg = 0.0;
+        manifest.domain.dx_deg = 1.0;
+        manifest.domain.dy_deg = 1.0;
+        manifest.domain.nx = 3;
+        manifest.domain.ny = 3;
+        manifest.release.geometry = SourceGeometry::Point {
+            lon_deg: 1.999,
+            lat_deg: 1.0,
+            z_m: 50.0,
+        };
+        manifest.validate().expect("point just inside runtime domain");
+
+        manifest.release.geometry = SourceGeometry::Point {
+            lon_deg: 2.0,
+            lat_deg: 1.0,
+            z_m: 50.0,
+        };
+        let err = manifest
+            .validate()
+            .expect_err("runtime upper grid boundary is exclusive");
+        assert!(
+            err.to_string().contains("runtime domain"),
             "unexpected: {err}"
         );
     }

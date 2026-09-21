@@ -79,6 +79,57 @@ If each claim can fail independently, prefer separate issues with explicit depen
 A large child issue that contains several such tracks should be treated as a sub-epic,
 not as one implementation task.
 
+### Issue-authoring hard rules
+
+The following rules are intended to prevent review-driven scope expansion and long
+implementation/correction loops:
+
+1. **One issue owns one fachlich coherent contract.**
+   Define one behavioral or scientific contract that can be implemented and verified as
+   a unit. If the issue needs several independently provable contracts, split it or make
+   it a sub-epic with child issues.
+
+2. **Separate contract definition, data migration, and consumer adoption.**
+   Defining a schema/API, migrating existing fixtures/data, updating all consumers, and
+   removing compatibility fallbacks are different verification boundaries. Do not bundle
+   them into one implementation issue unless they are genuinely inseparable and the issue
+   names the exact combined proof obligation.
+
+3. **Do not use open-ended negative acceptance criteria.**
+   Requirements such as "no hidden defaults", "all ambiguity removed", or "fully
+   equivalent" are not finite unless the issue enumerates the concrete defaults,
+   ambiguities, or fields in scope. Treat newly discovered semantics outside that list as
+   follow-up work unless they invalidate the current issue's stated claim.
+
+4. **Make normative references executable and unambiguous.**
+   When parity with FLEXPART or another oracle is required, state exactly what counts as
+   the normative reference: pinned revision, routine/binary/artifact, invocation path,
+   inputs, and comparison. A reimplementation of the same equations is not an independent
+   oracle unless the issue explicitly says that it is sufficient.
+
+5. **Specify downstream handoff surfaces concretely.**
+   Avoid wording such as "usable by #N" without defining what #N receives. Name the
+   required API/artifact fields, ownership of interpolation/conversion/validation,
+   mutability/lifetime expectations where relevant, and fail-closed behavior. Downstream
+   code should not need to reconstruct semantics that this issue owns.
+
+6. **Resolve scientific or architectural unknowns before implementation.**
+   If a required conversion, reference behavior, data provenance, or oracle semantics are
+   not independently known, create a prerequisite research/decision/oracle issue first.
+   The implementation issue may explicitly fail closed on the unresolved path rather than
+   inventing behavior during coding.
+
+7. **Give implementation agents an explicit stop rule.**
+   If implementation discovers that satisfying the issue would require a new
+   physics-relevant semantic, a previously unnamed runtime consumer, a new external data
+   source/reference, or ownership of another issue's contract, stop expanding the current
+   scope. Record the dependency or create a follow-up issue. Expand the current issue only
+   when the newly discovered work is necessary to make its original claim correct.
+
+These rules favor **decision and proof boundaries** over line-count or component boundaries.
+A small diff can still contain several independent claims; a larger diff can be acceptable
+when it proves one tightly bounded contract.
+
 ### Every acceptance criterion needs a proof obligation
 
 For each acceptance criterion, define how completion is demonstrated. Prefer an explicit

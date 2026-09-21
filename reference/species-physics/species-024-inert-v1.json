@@ -1,0 +1,27 @@
+{
+  "contract_version": 1,
+  "contract_id": "species-024-inert-v1",
+  "species_id": "SPECIES_024",
+  "candidate_physics": {
+    "dry_deposition": false,
+    "wet_deposition": false,
+    "decay": false
+  },
+  "oracle_physics": {
+    "dry_deposition": false,
+    "wet_deposition": false,
+    "decay": false
+  },
+  "oracle_species_source": {
+    "oracle_reference": "reference/flexpart-11.1.json",
+    "path": "examples/Tracer/SPECIES/SPECIES_024",
+    "sha256": "aabf59fdd1f51192a4843272b1b5b5d67a9d15cef05663d5fb4fca94a904f723"
+  },
+  "checked_in_fixture": {
+    "path": "fixtures/corpus/fortran/WIND-UNI-002/SPECIES/SPECIES_024",
+    "git_blob_sha": "051755a530c03a096113859e2eb7d49bb55294a0"
+  },
+  "derivation": {
+    "kind": "verbatim_upstream"
+  }
+}

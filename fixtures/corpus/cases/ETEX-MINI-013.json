@@ -1,0 +1,299 @@
+{
+  "schema_version": 2,
+  "case_id": "ETEX-MINI-013",
+  "description": "Real-weather ETEX-1 mini run from ERA5 native model levels. Candidate uses the prepared 65x41x16 regular lat/lon meteorology with 16 fixed AGL levels and omega-derived w; pristine FLEXPART 11.1 uses 137 native hybrid levels with etadot.",
+  "domain": {
+    "nx": 65,
+    "ny": 41,
+    "nz": 16,
+    "dx_deg": 0.25,
+    "dy_deg": 0.25,
+    "xlon0_deg": -8,
+    "ylat0_deg": 43,
+    "horizontal_ref": "geographic_lon_lat_degrees",
+    "wind_heights_m": [
+      10,
+      50,
+      100,
+      200,
+      400,
+      600,
+      900,
+      1300,
+      1800,
+      2500,
+      3500,
+      5000,
+      7000,
+      10000,
+      14000,
+      20000
+    ],
+    "wind_heights_ref": "agl"
+  },
+  "release": {
+    "geometry": {
+      "kind": "box",
+      "lon_min_deg": -2,
+      "lon_max_deg": -2,
+      "lat_min_deg": 48.058,
+      "lat_max_deg": 48.058,
+      "z_min_m": 5,
+      "z_max_m": 15
+    },
+    "vertical_ref": "agl",
+    "timing": {
+      "kind": "window",
+      "start": "19941023160000",
+      "end": "19941024034000"
+    },
+    "species": {
+      "id": "SPECIES_024",
+      "physics_contract": {
+        "profile": "species_024_inert_v1",
+        "id": "species-024-inert-v1",
+        "version": 1,
+        "path": "reference/species-physics/species-024-inert-v1.json",
+        "git_blob_sha": "21dd5ccd2b616642be9e3989e9b7444774d97fd9"
+      }
+    },
+    "inventory": {
+      "quantity_kg": 340,
+      "unit": "kg"
+    },
+    "particle_count": 10000,
+    "mass_kg_per_particle": 0.034
+  },
+  "wind": {
+    "profile": "real_weather",
+    "meteorology": {
+      "dataset_id": "era5-native-mini-19941023-24",
+      "version": "2024-09-19",
+      "source_path": "fixtures/etex/native-mini/",
+      "digest": "manifest:fixtures/etex/native-mini/DIGESTS.json",
+      "temporal_coverage": [
+        "19941023150000",
+        "19941024060000"
+      ],
+      "horizontal_coord": "geographic_lon_lat_degrees",
+      "vertical_coord": "era5_native_hybrid_137_levels",
+      "required_fields": [
+        "u",
+        "v",
+        "omega",
+        "temperature",
+        "specific_humidity",
+        "pressure",
+        "geopotential",
+        "etadot",
+        "surface_pressure",
+        "2m_temperature",
+        "2m_dewpoint_temperature",
+        "10m_u_component_of_wind",
+        "10m_v_component_of_wind",
+        "surface_sensible_heat_flux",
+        "surface_net_solar_radiation",
+        "large_scale_precipitation",
+        "convective_precipitation",
+        "boundary_layer_height",
+        "mean_eastward_turbulent_surface_stress",
+        "mean_northward_turbulent_surface_stress",
+        "forecast_surface_roughness",
+        "geopotential_at_surface",
+        "land_sea_mask"
+      ],
+      "candidate_transformation": {
+        "description": "ERA5 native 137 hybrid levels -> 16 fixed AGL levels (10-20000m); omega-derived w (Pa/s -> m/s); 0.25 deg regular lat/lon preparation; temporal interpolation by etex-run across the six prepared snapshots with a 900s candidate timestep",
+        "script": "scripts/etex/prepare_native_era5.py",
+        "version": "2024-09-19"
+      },
+      "oracle_transformation": {
+        "description": "ERA5 native 137 hybrid levels retained for pristine FLEXPART 11.1; native etadot vertical velocity on the 0.25 deg regular lat/lon grid; fixed-sync Oracle integration with LSYNCTIME=900s",
+        "script": "scripts/etex/prepare_native_era5.py (oracle GRIB output path)",
+        "version": "2024-09-19"
+      },
+      "note": "Source ERA5 native model levels downloaded 2024-09-10; fixtures/etex/native-mini/ contains 6 snapshots (1994-10-23 15:00, 18:00, 21:00; 1994-10-24 00:00, 03:00, 06:00). DIGESTS.json in fixtures/etex/native-mini/ records SHA-256 of each GRIB file."
+    }
+  },
+  "surface": null,
+  "integration": {
+    "start": "19941023160000",
+    "dt_s": 900,
+    "steps": 48,
+    "total_s": 43200
+  },
+  "physics_switches": {
+    "turbulence": true,
+    "convection": false,
+    "dry_deposition": false,
+    "wet_deposition": false,
+    "decay": false
+  },
+  "simulation_direction": "forward",
+  "output": {
+    "interval_s": 10800,
+    "averaging_window_s": 10800,
+    "sampling_interval_s": 900,
+    "quantity": "time_averaged_mass_concentration_kg_m3"
+  },
+  "units": {
+    "wind": "m/s",
+    "pressure": "Pa",
+    "temperature": "K",
+    "heat_flux": "W/m2",
+    "height": "m",
+    "mass": "kg",
+    "time": "s",
+    "concentration": "kg/m3",
+    "inv_obukhov": "1/m"
+  },
+  "validation_definition_refs": {
+    "metric_contracts": [
+      {
+        "id": "evaluation-metrics",
+        "version": "report-schema-1.0.0",
+        "path": "scripts/evaluate/metrics.py"
+      }
+    ],
+    "threshold_contracts": [
+      {
+        "id": "scientific-thresholds",
+        "version": "v1",
+        "path": "evaluation/thresholds/scientific-thresholds-v1.json"
+      },
+      {
+        "id": "corpus-thresholds",
+        "version": "1",
+        "path": "fixtures/corpus/thresholds.json"
+      }
+    ]
+  },
+  "stochastic": {
+    "candidate_philox": {
+      "base_key": [
+        3737844653,
+        305419896
+      ],
+      "base_counter": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "count": 1,
+      "derivation": "reuse_base_identity_v1"
+    },
+    "oracle_seed": {
+      "kind": "pristine-oracle",
+      "repetitions": 1,
+      "strategy": null,
+      "mode": "default",
+      "seed": null
+    }
+  },
+  "execution_profile": {
+    "id": "flexpart-11.1-single-thread",
+    "version": 1,
+    "manifest_path": "reference/flexpart-11.1.json"
+  },
+  "candidate_physics_profile": {
+    "id": "candidate-forward-timeloop-v1",
+    "version": 1,
+    "manifest_path": "reference/candidate-physics/candidate-forward-timeloop-v1.json"
+  },
+  "oracle_command_overrides": {
+    "turbulence_formulation": "fixed_sync_w",
+    "lturbulence": 1,
+    "ctl": -5,
+    "ifine": 4,
+    "lconvection": 0,
+    "lsynctime_s": 900
+  },
+  "expected_artifacts": {
+    "required": [
+      {
+        "id": "candidate.raw",
+        "producer": "candidate",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "candidate.decoded",
+        "producer": "candidate",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "oracle.raw",
+        "producer": "oracle",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "oracle.decoded",
+        "producer": "oracle",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "comparison.report",
+        "producer": "validation_pipeline",
+        "class": "comparison_report"
+      },
+      {
+        "id": "run.manifest",
+        "producer": "validation_pipeline",
+        "class": "run_manifest"
+      }
+    ]
+  },
+  "representation_differences": {
+    "vertical_coordinate": "Candidate meteorology: 16 fixed AGL levels [10,50,100,200,400,600,900,1300,1800,2500,3500,5000,7000,10000,14000,20000] m; Oracle meteorology: 137 native ERA5 hybrid model levels.",
+    "horizontal_grid": "Candidate meteorology and Oracle GRIB use the same 0.25 deg regular lat/lon source grid (65x41 points, -8..8 deg lon and 43..53 deg lat). Concentration comparison uses the separate 64x40 OUTGRID declared in output_grid.",
+    "temporal_resolution": "Candidate uses a fixed 900s integration timestep. Oracle uses fixed_sync_w (CTL=-5) with LSYNCTIME=900s; the raw COMMAND contains IFINE=4 but FLEXPART forces effective IFINE=1 for the w formulation.",
+    "wind_components": "Candidate uses omega-derived w (pressure velocity converted to m/s); Oracle uses native etadot (eta-coordinate velocity).",
+    "pbl_diagnostics": "Candidate uses surface/PBL fields prepared from ERA5 and the GPU PBL path; Oracle uses FLEXPART's native PBL diagnostics. The input-equivalence audit treats this as an unresolved scientific representation difference.",
+    "notes": [
+      "INPUT_EQUIVALENCE_NOT_DEMONSTRATED per fixtures/etex/mini/README.md.",
+      "Release, meteorology domain, simulation timestep and concentration output grid mirror the existing scripts/run-etex.sh mini pipeline.",
+      "These are structural representation differences, not an input-equivalence verdict.",
+      "Input equivalence audit in target/etex/mini/input_equivalence_report.json.",
+      "ETEX uses the pinned inert SPECIES_024 contract; dry/wet removal is disabled on candidate and oracle paths."
+    ],
+    "known_input_equivalence_limitations": [
+      {
+        "code": "INPUT_EQUIVALENCE_NOT_DEMONSTRATED",
+        "description": "Existing ETEX evidence has not demonstrated candidate/oracle input equivalence; #52 must emit the authoritative gate verdict before parity scoring."
+      }
+    ]
+  },
+  "require_source_containment": false,
+  "notes": [
+    "Real ETEX-1 release and run geometry are mirrored from fixtures/etex/mini/config/RELEASES and scripts/etex/prepare_native_era5.py.",
+    "Horizontal release containment is inside the prepared 65x41 meteorology domain; strict 3D containment remains waived because the release spans 5-15m AGL while the candidate meteorology starts at the first sampled AGL level of 10m.",
+    "Real-weather surface fields are supplied by the ERA5 preparation pipeline; no static representative surface block is substituted.",
+    "Normal scripts/run-etex.sh mini uses the pristine unmodified FLEXPART 11.1 oracle; the #50 seedable validation oracle is a separate WIND-UNI-002 evidence lane.",
+    "No scientific parity claimed: INPUT_EQUIVALENCE_NOT_DEMONSTRATED remains authoritative until #52.",
+    "Oracle COMMAND preserves historical fixed-timestep semantics: CTL=-5 selects method=0/mintime=LSYNCTIME, LSYNCTIME=900s; FLEXPART selects the w formulation and forces effective IFINE=1 internally although the raw COMMAND contains IFINE=4."
+  ],
+  "output_grid": {
+    "nx": 64,
+    "ny": 40,
+    "nz": 5,
+    "dx_deg": 0.25,
+    "dy_deg": 0.25,
+    "xlon0_deg": -8,
+    "ylat0_deg": 43,
+    "horizontal_ref": "geographic_lon_lat_degrees",
+    "heights_m": [
+      100,
+      500,
+      1000,
+      2000,
+      5000
+    ],
+    "heights_ref": "agl"
+  },
+  "oracle_execution": "required",
+  "oracle_meteorology_profile": {
+    "id": "real-weather-manifest-v1",
+    "version": 1,
+    "manifest_path": "reference/oracle-meteorology/real-weather-manifest-v1.json"
+  }
+}

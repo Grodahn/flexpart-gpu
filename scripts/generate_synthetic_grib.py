@@ -17,8 +17,10 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import sys
+from pathlib import Path
 
 try:
     import numpy as np
@@ -31,6 +33,23 @@ try:
 except ImportError:
     print("Missing eccodes. Install: pip install eccodes-python", file=sys.stderr)
     sys.exit(1)
+
+REPO = Path(__file__).resolve().parents[1]
+DEFAULT_PROFILE = "reference/oracle-meteorology/synthetic-grib-v1.json"
+PROFILE_ID = "flexpart-synthetic-grib-v1"
+PROFILE_VERSION = 1
+
+UPPER_TEMPERATURE_BASE_K = 220.0
+UPPER_TEMPERATURE_LEVEL_INCREMENT_K = 6.5
+UPPER_TEMPERATURE_FLOOR_K = 200.0
+SPECIFIC_HUMIDITY_BASE = 0.001
+SPECIFIC_HUMIDITY_SPAN = 0.009
+SURFACE_PRESSURE_PA = 101325.0
+TEMPERATURE_2M_K = 289.0
+DEWPOINT_2M_K = 284.0
+SOLAR_RADIATION_W_M2 = 220.0
+EASTWARD_SURFACE_STRESS_N_M2 = 0.1
+NORTHWARD_SURFACE_STRESS_N_M2 = 0.1
 
 # Simplified 12-level hybrid eta coefficients (13 half-level boundaries).
 # Pressure at half-level k: p(k) = A(k) + B(k) * ps
@@ -92,6 +111,46 @@ def write_grib1_message(fout, param_id: int, level_type: int, level: int,
     eccodes.codes_release(msgid)
 
 
+def load_profile(path_text: str) -> dict:
+    path = Path(path_text)
+    if not path.is_absolute():
+        path = REPO / path
+    profile = json.loads(path.read_text(encoding="utf-8"))
+    if profile.get("id") != PROFILE_ID or profile.get("version") != PROFILE_VERSION:
+        raise SystemExit(
+            f"unsupported synthetic meteorology profile {profile.get('id')!r} "
+            f"v{profile.get('version')!r}; expected {PROFILE_ID} v{PROFILE_VERSION}"
+        )
+    expected_a = np.asarray(profile.get("hybrid_half_level_a_pa"), dtype=np.float64)
+    expected_b = np.asarray(profile.get("hybrid_half_level_b"), dtype=np.float64)
+    if not np.array_equal(expected_a, HALF_LEVEL_A) or not np.array_equal(expected_b, HALF_LEVEL_B):
+        raise SystemExit("synthetic meteorology hybrid-level constants drift from versioned profile")
+    upper = profile.get("upper_air_profile") or {}
+    fixed = profile.get("fixed_surface_fields") or {}
+    checks = {
+        "temperature_base_k": UPPER_TEMPERATURE_BASE_K,
+        "temperature_level_increment_k": UPPER_TEMPERATURE_LEVEL_INCREMENT_K,
+        "temperature_floor_k": UPPER_TEMPERATURE_FLOOR_K,
+        "specific_humidity_base": SPECIFIC_HUMIDITY_BASE,
+        "specific_humidity_span": SPECIFIC_HUMIDITY_SPAN,
+    }
+    for key, expected in checks.items():
+        if float(upper.get(key, float("nan"))) != expected:
+            raise SystemExit(f"synthetic meteorology upper-air constant {key} drifted from profile")
+    fixed_checks = {
+        "surface_pressure_pa": SURFACE_PRESSURE_PA,
+        "temperature_2m_k": TEMPERATURE_2M_K,
+        "dewpoint_2m_k": DEWPOINT_2M_K,
+        "solar_radiation_w_m2": SOLAR_RADIATION_W_M2,
+        "eastward_surface_stress_n_m2": EASTWARD_SURFACE_STRESS_N_M2,
+        "northward_surface_stress_n_m2": NORTHWARD_SURFACE_STRESS_N_M2,
+    }
+    for key, expected in fixed_checks.items():
+        if float(fixed.get(key, float("nan"))) != expected:
+            raise SystemExit(f"synthetic meteorology surface constant {key} drifted from profile")
+    return profile
+
+
 LEVEL_SURFACE = 1
 LEVEL_HYBRID = 109
 
@@ -140,22 +199,22 @@ def generate_one_timestep(output_path: str, nx: int, ny: int, nz: int,
                                 uniform(v_wind), date, time, nz)
             write_grib1_message(fout, PARAM_W, LEVEL_HYBRID, k, nx, ny,
                                 uniform(w_wind), date, time, nz)
-            temp_k = max(220.0 + 6.5 * (nz - k), 200.0)
+            temp_k = max(UPPER_TEMPERATURE_BASE_K + UPPER_TEMPERATURE_LEVEL_INCREMENT_K * (nz - k), UPPER_TEMPERATURE_FLOOR_K)
             write_grib1_message(fout, PARAM_T, LEVEL_HYBRID, k, nx, ny,
                                 uniform(temp_k), date, time, nz)
-            qv = 0.001 + 0.009 * (k / nz)
+            qv = SPECIFIC_HUMIDITY_BASE + SPECIFIC_HUMIDITY_SPAN * (k / nz)
             write_grib1_message(fout, PARAM_Q, LEVEL_HYBRID, k, nx, ny,
                                 uniform(qv), date, time, nz)
 
         # Surface fields
         write_grib1_message(fout, PARAM_SP, LEVEL_SURFACE, 0, nx, ny,
-                            uniform(101325.0), date, time, nz)
+                            uniform(SURFACE_PRESSURE_PA), date, time, nz)
         write_grib1_message(fout, PARAM_LNSP, LEVEL_SURFACE, 1, nx, ny,
-                            uniform(np.log(101325.0)), date, time, nz)
+                            uniform(np.log(SURFACE_PRESSURE_PA)), date, time, nz)
         write_grib1_message(fout, PARAM_T2M, LEVEL_SURFACE, 0, nx, ny,
-                            uniform(289.0), date, time, nz)
+                            uniform(TEMPERATURE_2M_K), date, time, nz)
         write_grib1_message(fout, PARAM_TD2M, LEVEL_SURFACE, 0, nx, ny,
-                            uniform(284.0), date, time, nz)
+                            uniform(DEWPOINT_2M_K), date, time, nz)
         write_grib1_message(fout, PARAM_U10M, LEVEL_SURFACE, 0, nx, ny,
                             uniform(u_wind), date, time, nz)
         write_grib1_message(fout, PARAM_V10M, LEVEL_SURFACE, 0, nx, ny,
@@ -163,11 +222,11 @@ def generate_one_timestep(output_path: str, nx: int, ny: int, nz: int,
         write_grib1_message(fout, PARAM_SSHF, LEVEL_SURFACE, 0, nx, ny,
                             uniform(sshf), date, time, nz)
         write_grib1_message(fout, PARAM_SSR, LEVEL_SURFACE, 0, nx, ny,
-                            uniform(220.0), date, time, nz)
+                            uniform(SOLAR_RADIATION_W_M2), date, time, nz)
         write_grib1_message(fout, PARAM_EWSS, LEVEL_SURFACE, 0, nx, ny,
-                            uniform(0.1), date, time, nz)
+                            uniform(EASTWARD_SURFACE_STRESS_N_M2), date, time, nz)
         write_grib1_message(fout, PARAM_NSSS, LEVEL_SURFACE, 0, nx, ny,
-                            uniform(0.1), date, time, nz)
+                            uniform(NORTHWARD_SURFACE_STRESS_N_M2), date, time, nz)
         write_grib1_message(fout, PARAM_LSP, LEVEL_SURFACE, 0, nx, ny,
                             uniform(lsp), date, time, nz)
         write_grib1_message(fout, PARAM_CP, LEVEL_SURFACE, 0, nx, ny,
@@ -177,14 +236,22 @@ def generate_one_timestep(output_path: str, nx: int, ny: int, nz: int,
 
 
 def main():
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--profile", default=DEFAULT_PROFILE)
+    known, _ = pre.parse_known_args()
+    profile = load_profile(known.profile)
+    grid = profile.get("grid") or {}
+    temporal = profile.get("temporal") or {}
+
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    parser.add_argument("--profile", default=known.profile)
     parser.add_argument("--output-dir", required=True)
-    parser.add_argument("--nx", type=int, default=32)
-    parser.add_argument("--ny", type=int, default=32)
-    parser.add_argument("--nz", type=int, default=12)
+    parser.add_argument("--nx", type=int, default=int(grid["nx"]))
+    parser.add_argument("--ny", type=int, default=int(grid["ny"]))
+    parser.add_argument("--nz", type=int, default=int(grid["nz"]))
     parser.add_argument("--u-wind", type=float, default=0.5)
     parser.add_argument("--v-wind", type=float, default=-0.3)
     parser.add_argument("--w-wind", type=float, default=0.0)
@@ -202,10 +269,24 @@ def main():
     parser.add_argument("--hours", type=int, default=6)
     args = parser.parse_args()
 
+    if (args.nx, args.ny, args.nz) != (int(grid["nx"]), int(grid["ny"]), int(grid["nz"])):
+        raise SystemExit(
+            "synthetic meteorology grid arguments must match versioned profile "
+            f"{grid['nx']}x{grid['ny']}x{grid['nz']}"
+        )
+    cadence_s = temporal.get("cadence_s")
+    if not isinstance(cadence_s, int) or cadence_s <= 0 or cadence_s % 3600 != 0:
+        raise SystemExit("profile temporal.cadence_s must be a positive whole hour")
+    cadence_hours = cadence_s // 3600
+    if args.hours < cadence_hours or args.hours % cadence_hours != 0:
+        raise SystemExit(
+            f"--hours must be a positive multiple of profile cadence ({cadence_hours} h)"
+        )
+
     os.makedirs(args.output_dir, exist_ok=True)
 
     date = int(args.start_date)
-    for hour in range(0, args.hours + 1, 3):
+    for hour in range(0, args.hours + 1, cadence_hours):
         time_hhmmss = hour * 10000
         filename = f"EN{args.start_date}{hour:02d}"
         output_path = os.path.join(args.output_dir, filename)
@@ -227,12 +308,12 @@ def main():
         f.write("DATE      TIME     FILENAME     SPECIFICATIONS\n")
         f.write("YYYYMMDD  HHMMSS\n")
         f.write("________ ________ __________ __________\n")
-        for hour in range(0, args.hours + 1, 3):
+        for hour in range(0, args.hours + 1, cadence_hours):
             fname = f"EN{args.start_date}{hour:02d}"
             f.write(f"{args.start_date} {hour * 10000:06d}      "
                     f"{fname}      ON DISC\n")
 
-    count = args.hours // 3 + 1
+    count = args.hours // cadence_hours + 1
     print(f"\nGenerated {count} GRIB1 files + AVAILABLE in {args.output_dir}/")
 
 

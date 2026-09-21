@@ -10,6 +10,7 @@
  ITSPLIT=        99999999,
  LSYNCTIME=           900,
  CTL=          -5.0000000,
+ LTURBULENCE=           1,
  IFINE=                 4,
  IOUT=                  1,
  IPOUT=                 2,

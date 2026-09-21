@@ -1,0 +1,370 @@
+#!/usr/bin/env python3
+"""Regression tests for the Philox-aware corpus input audit.
+
+Parser/unit-level only: no GPU or model execution.
+"""
+
+import importlib.util
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "scripts" / "corpus"))
+
+
+def load_audit():
+    spec = importlib.util.spec_from_file_location(
+        "audit_corpus_inputs",
+        REPO / "scripts" / "corpus" / "audit_corpus_inputs.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+AUDIT = load_audit()
+
+
+def load_case(case_id: str) -> dict:
+    path = REPO / "fixtures" / "corpus" / "cases" / f"{case_id}.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+class PhiloxIdentityTest(unittest.TestCase):
+    def test_wind_uni_002_seed_zero_matches_manifest(self):
+        case = load_case("WIND-UNI-002")
+        base_key, base_counter, count, deterministic, derivation, error = (
+            AUDIT.candidate_philox_identity("WIND-UNI-002", case)
+        )
+        self.assertIsNone(error)
+        self.assertFalse(deterministic)
+        self.assertEqual(base_key, [3737180555, 305419896])
+        self.assertEqual(base_counter, [0, 0, 0, 0])
+        self.assertEqual(count, 10)
+        self.assertEqual(
+            derivation, AUDIT.PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1
+        )
+        key, counter = AUDIT.expected_philox_for_seed(
+            "WIND-UNI-002", base_key, base_counter, 0, derivation
+        )
+        self.assertEqual(key, [3737180555, 305419896])
+        self.assertEqual(counter, [0, 0, 0, 0])
+
+    def test_seed_n_uses_wrapping_derivation(self):
+        case = load_case("WIND-UNI-002")
+        base_key, base_counter, _, _, derivation, error = AUDIT.candidate_philox_identity(
+            "WIND-UNI-002", case
+        )
+        self.assertIsNone(error)
+        self.assertEqual(
+            derivation, AUDIT.PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1
+        )
+        key, _ = AUDIT.expected_philox_for_seed(
+            "WIND-UNI-002", base_key, base_counter, 7, derivation
+        )
+        self.assertEqual(key, [(3737180555 + 7) % 2**32, 305419896])
+        # Wrapping past u32::MAX.
+        key, _ = AUDIT.expected_philox_for_seed(
+            "WIND-UNI-002",
+            [2**32 - 1, 1],
+            [0, 0, 0, 0],
+            1,
+            AUDIT.PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1,
+        )
+        self.assertEqual(key, [0, 1])
+
+    def test_audit_rejects_manifest_case_id_mismatch(self):
+        case = load_case("WIND-UNI-002")
+        case["case_id"] = "PBL-NEUTRAL-005"
+        AUDIT.FAILURES.clear()
+        valid = AUDIT._case_schema_valid("WIND-UNI-002", case)
+        failures = list(AUDIT.FAILURES)
+        AUDIT.FAILURES.clear()
+        self.assertFalse(valid)
+        self.assertTrue(any("manifest identity" in failure for failure in failures))
+        self.assertTrue(any("PBL-NEUTRAL-005" in failure for failure in failures))
+
+    def test_unknown_derivation_fails_closed(self):
+        case = load_case("WIND-UNI-002")
+        case["stochastic"]["candidate_philox"]["derivation"] = "typo_or_future_mode"
+        _, _, _, _, _, error = AUDIT.candidate_philox_identity("WIND-UNI-002", case)
+        self.assertIsNotNone(error)
+        self.assertIn("unsupported", error)
+        self.assertIn("derivation", error)
+
+    def test_legacy_identical_repeats_flag_is_rejected(self):
+        case = load_case("REPEAT-009")
+        case["stochastic"]["candidate_philox"]["identical_repeats"] = True
+        _, _, _, _, _, error = AUDIT.candidate_philox_identity("REPEAT-009", case)
+        self.assertIsNotNone(error)
+        self.assertIn("identical_repeats", error)
+    def test_missing_stochastic_namespace_field_fails(self):
+        for field in ("candidate_philox", "oracle_seed"):
+            case = load_case("WIND-UNI-002")
+            del case["stochastic"][field]
+            with self.subTest(field=field):
+                _, _, _, _, _, error = AUDIT.candidate_philox_identity(
+                    "WIND-UNI-002", case
+                )
+                self.assertIsNotNone(error)
+                self.assertIn(f"stochastic.{field}", error)
+                self.assertIn("required explicitly", error)
+
+    def test_stochastic_case_without_identity_fails(self):
+        case = load_case("WIND-UNI-002")
+        case["stochastic"] = {"candidate_philox": None, "oracle_seed": None}
+        _, _, _, _, _, error = AUDIT.candidate_philox_identity("WIND-UNI-002", case)
+        self.assertIsNotNone(error)
+        self.assertIn("no default key", error)
+
+    def test_legacy_v1_document_rejected(self):
+        case = {"version": 1, "case_id": "WIND-UNI-002"}
+        _, _, _, _, _, error = AUDIT.candidate_philox_identity("WIND-UNI-002", case)
+        self.assertIsNotNone(error)
+        self.assertIn("schema_version 2", error)
+
+    def test_repeat_009_reuses_identical_key(self):
+        case = load_case("REPEAT-009")
+        base_key, base_counter, count, deterministic, derivation, error = (
+            AUDIT.candidate_philox_identity("REPEAT-009", case)
+        )
+        self.assertIsNone(error)
+        self.assertEqual(
+            derivation, AUDIT.PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1
+        )
+        self.assertEqual(count, 2)
+        key0, _ = AUDIT.expected_philox_for_seed(
+            "REPEAT-009", base_key, base_counter, 0, derivation
+        )
+        key1, _ = AUDIT.expected_philox_for_seed(
+            "REPEAT-009", base_key, base_counter, 1, derivation
+        )
+        self.assertEqual(key0, key1)
+        self.assertEqual(key0, [3737180555, 305419896])
+
+    def test_adv_ana_001_valid_without_identity(self):
+        case = load_case("ADV-ANA-001")
+        base_key, base_counter, count, deterministic, derivation, error = (
+            AUDIT.candidate_philox_identity("ADV-ANA-001", case)
+        )
+        self.assertIsNone(error)
+        self.assertTrue(deterministic)
+        self.assertIsNone(derivation)
+        self.assertIsNone(base_key)
+        self.assertEqual(count, 1)
+
+    def test_deterministic_policy_is_not_case_id_specific(self):
+        case = load_case("ADV-ANA-001")
+        case["case_id"] = "ARBITRARY-DETERMINISTIC-123"
+        base_key, base_counter, count, deterministic, derivation, error = (
+            AUDIT.candidate_philox_identity("ARBITRARY-DETERMINISTIC-123", case)
+        )
+        self.assertIsNone(error)
+        self.assertTrue(deterministic)
+        self.assertEqual(count, 1)
+        self.assertIsNone(base_key)
+        self.assertIsNone(base_counter)
+        self.assertIsNone(derivation)
+
+    def test_reuse_policy_and_count_are_not_case_id_specific(self):
+        case = load_case("REPEAT-009")
+        case["case_id"] = "ARBITRARY-REPEAT-123"
+        case["stochastic"]["candidate_philox"]["count"] = 3
+        base_key = list(case["stochastic"]["candidate_philox"]["base_key"])
+        base_counter = list(case["stochastic"]["candidate_philox"]["base_counter"])
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            for index in range(3):
+                seed = {
+                    "particle_count": int(case["release"]["particle_count"]),
+                    "metrics": {
+                        "initial_mass_kg": float(
+                            case["release"]["inventory"]["quantity_kg"]
+                        )
+                    },
+                    "seed_index": index,
+                    "philox_key": base_key,
+                    "philox_counter": base_counter,
+                    "adapter": "test-adapter",
+                }
+                (case_dir / f"seed_{index:03d}.json").write_text(
+                    json.dumps(seed), encoding="utf-8"
+                )
+            AUDIT.FAILURES.clear()
+            AUDIT.audit_candidate_case(
+                "ARBITRARY-REPEAT-123", case, case_dir
+            )
+            failures = list(AUDIT.FAILURES)
+            AUDIT.FAILURES.clear()
+        self.assertEqual([], failures)
+
+    def test_declared_candidate_count_is_exact(self):
+        case = load_case("REPEAT-009")
+        case["case_id"] = "ARBITRARY-REPEAT-123"
+        case["stochastic"]["candidate_philox"]["count"] = 3
+        base_key = list(case["stochastic"]["candidate_philox"]["base_key"])
+        base_counter = list(case["stochastic"]["candidate_philox"]["base_counter"])
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            for index in range(2):
+                seed = {
+                    "particle_count": int(case["release"]["particle_count"]),
+                    "metrics": {
+                        "initial_mass_kg": float(
+                            case["release"]["inventory"]["quantity_kg"]
+                        )
+                    },
+                    "seed_index": index,
+                    "philox_key": base_key,
+                    "philox_counter": base_counter,
+                    "adapter": "test-adapter",
+                }
+                (case_dir / f"seed_{index:03d}.json").write_text(
+                    json.dumps(seed), encoding="utf-8"
+                )
+            AUDIT.FAILURES.clear()
+            AUDIT.audit_candidate_case(
+                "ARBITRARY-REPEAT-123", case, case_dir
+            )
+            failures = list(AUDIT.FAILURES)
+            AUDIT.FAILURES.clear()
+        self.assertTrue(
+            any("artifact count matches manifest" in item for item in failures),
+            failures,
+        )
+
+    def test_audit_fails_for_wrong_key(self):
+        case = load_case("WIND-UNI-002")
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            seed = {
+                "particle_count": int(case["release"]["particle_count"]),
+                "metrics": {"initial_mass_kg": float(case["release"]["inventory"]["quantity_kg"])},
+                "seed_index": 0,
+                "philox_key": [1, 2],
+                "philox_counter": [0, 0, 0, 0],
+                "adapter": "test-adapter",
+            }
+            (case_dir / "seed_000.json").write_text(json.dumps(seed), encoding="utf-8")
+            AUDIT.FAILURES.clear()
+            AUDIT.audit_candidate_case("WIND-UNI-002", case, case_dir)
+            failures = list(AUDIT.FAILURES)
+            AUDIT.FAILURES.clear()
+        self.assertTrue(
+            any("Philox derivation" in f for f in failures),
+            f"expected a Philox derivation failure, got: {failures}",
+        )
+
+    def test_audit_fails_for_wrong_counter(self):
+        case = load_case("WIND-UNI-002")
+        base_key, base_counter, _, _, _, _ = AUDIT.candidate_philox_identity(
+            "WIND-UNI-002", case
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            seed = {
+                "particle_count": int(case["release"]["particle_count"]),
+                "metrics": {"initial_mass_kg": float(case["release"]["inventory"]["quantity_kg"])},
+                "seed_index": 0,
+                "philox_key": list(base_key),
+                "philox_counter": [9, 9, 9, 9],
+                "adapter": "test-adapter",
+            }
+            (case_dir / "seed_000.json").write_text(json.dumps(seed), encoding="utf-8")
+            AUDIT.FAILURES.clear()
+            AUDIT.audit_candidate_case("WIND-UNI-002", case, case_dir)
+            failures = list(AUDIT.FAILURES)
+            AUDIT.FAILURES.clear()
+        self.assertTrue(
+            any("Philox counter" in f for f in failures),
+            f"expected a Philox counter failure, got: {failures}",
+        )
+
+    def test_fixture_semantic_failure_returns_without_unbound_specnum(self):
+        case = load_case("DRY-007")
+        case["physics_switches"]["dry_deposition"] = False
+        with tempfile.TemporaryDirectory() as tmp:
+            fort_dir = Path(tmp)
+            (fort_dir / "DRY-007").mkdir()
+            AUDIT.FAILURES.clear()
+            AUDIT.audit_fixture_case("DRY-007", case, fort_dir)
+            failures = list(AUDIT.FAILURES)
+            AUDIT.FAILURES.clear()
+        self.assertTrue(
+            any("fixture equals case JSON" in failure for failure in failures),
+            failures,
+        )
+
+    def test_empty_seed_directory_reports_failure_without_exception(self):
+        case = load_case("WIND-UNI-002")
+        with tempfile.TemporaryDirectory() as tmp:
+            AUDIT.FAILURES.clear()
+            AUDIT.audit_candidate_case("WIND-UNI-002", case, Path(tmp))
+            failures = list(AUDIT.FAILURES)
+            AUDIT.FAILURES.clear()
+        self.assertTrue(
+            any("artifact count matches manifest" in failure for failure in failures),
+            failures,
+        )
+
+    def test_adapter_is_checked_for_every_seed(self):
+        case = load_case("REPEAT-009")
+        base_key = list(case["stochastic"]["candidate_philox"]["base_key"])
+        base_counter = list(case["stochastic"]["candidate_philox"]["base_counter"])
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            for index in range(2):
+                seed = {
+                    "particle_count": int(case["release"]["particle_count"]),
+                    "metrics": {
+                        "initial_mass_kg": float(
+                            case["release"]["inventory"]["quantity_kg"]
+                        )
+                    },
+                    "seed_index": index,
+                    "philox_key": base_key,
+                    "philox_counter": base_counter,
+                    "adapter": "test-adapter" if index == 1 else "",
+                }
+                (case_dir / f"seed_{index:03d}.json").write_text(
+                    json.dumps(seed), encoding="utf-8"
+                )
+            AUDIT.FAILURES.clear()
+            AUDIT.audit_candidate_case("REPEAT-009", case, case_dir)
+            failures = list(AUDIT.FAILURES)
+            AUDIT.FAILURES.clear()
+        self.assertTrue(
+            any("seed_000.json adapter recorded" in failure for failure in failures),
+            failures,
+        )
+
+    def test_audit_rejects_missing_identity(self):
+        case = load_case("WIND-UNI-002")
+        case["stochastic"] = {"candidate_philox": None, "oracle_seed": None}
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            seed = {
+                "particle_count": int(case["release"]["particle_count"]),
+                "metrics": {"initial_mass_kg": float(case["release"]["inventory"]["quantity_kg"])},
+                "seed_index": 0,
+                "philox_key": [3737180555, 305419896],
+                "philox_counter": [0, 0, 0, 0],
+                "adapter": "test-adapter",
+            }
+            (case_dir / "seed_000.json").write_text(json.dumps(seed), encoding="utf-8")
+            AUDIT.FAILURES.clear()
+            AUDIT.audit_candidate_case("WIND-UNI-002", case, case_dir)
+            failures = list(AUDIT.FAILURES)
+            AUDIT.FAILURES.clear()
+        self.assertTrue(
+            any("Philox identity declared" in f for f in failures),
+            f"expected an identity failure, got: {failures}",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

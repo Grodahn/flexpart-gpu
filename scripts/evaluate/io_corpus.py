@@ -17,6 +17,14 @@ raise instead of being interpolated.
 """
 
 import json
+import sys
+from pathlib import Path
+
+CORPUS_SCRIPTS = Path(__file__).resolve().parents[1] / "corpus"
+if str(CORPUS_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(CORPUS_SCRIPTS))
+
+from validation_case_schema import ValidationCaseSchemaError, validate_case_document
 
 M2_PER_KM2 = 1e6
 
@@ -52,9 +60,15 @@ def seed_particles(seed_data):
 
 
 def read_case_definition(path):
-    """Read a versioned corpus case input (``fixtures/corpus/cases/*.json``)."""
+    """Read a canonical v2 corpus case input (``fixtures/corpus/cases/*.json``).
+
+    Only ``schema_version`` 2 is accepted; legacy v1 (``seeds``/``version``)
+    is frozen and rejected (see ``fixtures/corpus/cases/MIGRATION_NOTES.md``).
+    """
     with open(path, encoding="utf-8") as stream:
         data = json.load(stream)
-    _require_keys(data, ("case_id", "release", "physics_switches", "seeds", "domain"),
-                  f"corpus case {path}")
+    try:
+        validate_case_document(data, source=str(path))
+    except ValidationCaseSchemaError as exc:
+        raise ValueError(f"corpus case violates validation-case-v2 schema: {exc}") from None
     return data

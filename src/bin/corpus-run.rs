@@ -24,12 +24,16 @@ use flexpart_gpu::gpu::{
     advect_particles_gpu_with_sampling, GpuContext, ParticleBuffers, WindBuffers,
     WindSamplingOptions,
 };
-use flexpart_gpu::io::TimeBoundsBehavior;
+use flexpart_gpu::validation::candidate_physics::CandidatePhysicsProfile;
 use flexpart_gpu::particles::{Particle, ParticleInit};
 use flexpart_gpu::physics::VelocityToGridScale;
 use flexpart_gpu::simulation::{
     ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket,
     ParticleForcingField,
+};
+use flexpart_gpu::validation::case::{
+    CandidatePhiloxDerivation, ReleaseTiming, SimulationDirection, SourceGeometry,
+    ValidationCaseManifest, WindSpec,
 };
 use flexpart_gpu::wind::{SurfaceFields, WindField3D, WindFieldGrid};
 use ndarray::Array1;
@@ -116,10 +120,10 @@ struct CandidateMetrics {
     z_std_m: f64,
 }
 
-fn parse_args() -> (Vec<String>, usize, PathBuf, PathBuf) {
+fn parse_args() -> (Vec<String>, Option<usize>, PathBuf, PathBuf) {
     let mut cases: Vec<String> = Vec::new();
     let mut all = false;
-    let mut seeds: usize = 10;
+    let mut seeds: Option<usize> = None;
     let mut out_dir = PathBuf::from("target/corpus/candidate");
     let mut fixtures = PathBuf::from("fixtures/corpus/cases");
     let mut args = std::env::args().skip(1).peekable();
@@ -132,7 +136,8 @@ fn parse_args() -> (Vec<String>, usize, PathBuf, PathBuf) {
             "--all" => all = true,
             "--seeds" => {
                 let value = args.next().expect("--seeds needs a value");
-                seeds = value.parse().expect("seeds must be a number");
+                let parsed: usize = value.parse().expect("seeds must be a number");
+                seeds = Some(parsed);
             }
             "--out-dir" => {
                 out_dir = PathBuf::from(args.next().expect("--out-dir needs a value"));
@@ -163,22 +168,162 @@ fn candidate_revision() -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-fn end_timestamp(start: &str, total_s: i64) -> String {
-    // Corpus fixtures start at 2024-01-01 00:00:00; all totals are whole hours.
-    assert_eq!(
-        start, "20240101000000",
-        "corpus start must be 20240101000000"
-    );
-    let hours = total_s / 3600;
-    let mins = (total_s % 3600) / 60;
-    let secs = total_s % 60;
-    format!("20240101{hours:02}{mins:02}{secs:02}")
+/// Load the canonical v2 manifest.
+///
+/// Only `schema_version` 2 is accepted. Legacy v1 documents are frozen and
+/// unsupported (see `fixtures/corpus/cases/MIGRATION_NOTES.md`); they are
+/// rejected fail-closed with a version error, never silently adapted.
+fn load_case_manifest(fixture_path: &Path, text: &str) -> Result<ValidationCaseManifest, String> {
+    ValidationCaseManifest::parse(text, fixture_path)
+        .map_err(|e| format!("invalid case manifest {}: {e}", fixture_path.display()))
 }
 
-fn velocity_scale(lat_deg: f64, heights: &[f32]) -> VelocityToGridScale {
+/// Resolve the candidate Philox key/counter for one seed.
+///
+/// The canonical typed manifest is the only source. Stochastic cases without
+/// an identity are rejected before any GPU execution. No default key is ever
+/// substituted. Seed/repeat semantics come from the manifest's typed,
+/// versioned `candidate_philox.derivation`, never from hard-coded case IDs.
+fn resolve_candidate_seed(
+    case_id: &str,
+    manifest: &ValidationCaseManifest,
+    seed_index: u32,
+) -> Result<([u32; 2], [u32; 4]), String> {
+    manifest
+        .candidate_seed_identity(seed_index)
+        .map_err(|e| format!("case {case_id}: {e}"))
+}
+
+/// Resolve how many seeds to run.
+///
+/// The declared manifest count is authoritative. An explicit `--seeds N`
+/// selects a leading subset (`N <= declared`) for quick checks; it can
+/// never silently expand the ensemble or override the derivation.
+fn resolve_ensemble_count(
+    case_id: &str,
+    manifest: &ValidationCaseManifest,
+    cli_seeds: Option<usize>,
+) -> Result<usize, String> {
+    let declared = if let Some(candidate) = &manifest.stochastic.candidate_philox {
+        usize::try_from(candidate.count)
+            .map_err(|_| format!("case {case_id}: candidate_philox.count out of range"))?
+    } else if manifest.physics_switches.turbulence {
+        return Err(format!(
+            "case {case_id}: physics_switches.turbulence=true requires stochastic.candidate_philox"
+        ));
+    } else {
+        1
+    };
+    if declared == 0 {
+        return Err(format!("case {case_id}: declared ensemble count must be > 0"));
+    }
+    match cli_seeds {
+        None => Ok(declared),
+        Some(0) => Err(format!("case {case_id}: --seeds must be > 0")),
+        Some(requested) if requested > declared => Err(format!(
+            "case {case_id}: --seeds {requested} exceeds declared ensemble count {declared}; refusing to invent seeds"
+        )),
+        Some(requested) => Ok(requested),
+    }
+}
+
+fn end_timestamp(start: &str, total_s: i64) -> Result<String, String> {
+    let start_seconds = parse_timestamp_seconds(start)?;
+    format_timestamp_seconds(
+        start_seconds
+            .checked_add(total_s)
+            .ok_or_else(|| format!("timestamp overflow for {start} + {total_s}s"))?,
+    )
+}
+
+fn parse_timestamp_seconds(value: &str) -> Result<i64, String> {
+    if value.len() != 14 || !value.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(format!("{value:?} must be YYYYMMDDHHMMSS"));
+    }
+    let part = |start: usize, end: usize| -> Result<u32, String> {
+        value[start..end]
+            .parse::<u32>()
+            .map_err(|_| format!("invalid timestamp component in {value:?}"))
+    };
+    let year = part(0, 4)?;
+    let month = part(4, 6)?;
+    let day = part(6, 8)?;
+    let hour = part(8, 10)?;
+    let minute = part(10, 12)?;
+    let second = part(12, 14)?;
+    let leap = |y: u32| y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    if year == 0 || !(1..=12).contains(&month) || hour > 23 || minute > 59 || second > 59 {
+        return Err(format!("invalid Gregorian timestamp {value:?}"));
+    }
+    let month_days = [
+        31_u32,
+        if leap(year) { 29 } else { 28 },
+        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+    ];
+    if day == 0 || day > month_days[(month - 1) as usize] {
+        return Err(format!("invalid Gregorian timestamp {value:?}"));
+    }
+    Ok(days_from_civil(year as i32, month, day) * 86_400
+        + i64::from(hour) * 3_600
+        + i64::from(minute) * 60
+        + i64::from(second))
+}
+
+fn format_timestamp_seconds(seconds: i64) -> Result<String, String> {
+    let days = seconds.div_euclid(86_400);
+    let sod = seconds.rem_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    if !(1..=9999).contains(&year) {
+        return Err(format!("timestamp out of range: {seconds}"));
+    }
+    let hour = sod / 3_600;
+    let minute = (sod % 3_600) / 60;
+    let second = sod % 60;
+    Ok(format!(
+        "{year:04}{month:02}{day:02}{hour:02}{minute:02}{second:02}"
+    ))
+}
+
+fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
+    let mut y = i64::from(year);
+    let m = i64::from(month);
+    let d = i64::from(day);
+    if m <= 2 {
+        y -= 1;
+    }
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = m + if m > 2 { -3 } else { 9 };
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+fn civil_from_days(days_since_epoch: i64) -> (i32, u32, u32) {
+    let z = days_since_epoch + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let mut y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = mp + if mp < 10 { 3 } else { -9 };
+    if m <= 2 {
+        y += 1;
+    }
+    (y as i32, m as u32, d as u32)
+}
+
+fn velocity_scale(
+    lat_deg: f64,
+    dx_deg: f64,
+    dy_deg: f64,
+    heights: &[f32],
+) -> VelocityToGridScale {
     let lat_rad = lat_deg * std::f64::consts::PI / 180.0;
-    let dx_m = R_EARTH_M * lat_rad.cos() * (0.1 * std::f64::consts::PI / 180.0);
-    let dy_m = R_EARTH_M * (0.1 * std::f64::consts::PI / 180.0);
+    let dx_m = R_EARTH_M * lat_rad.cos() * (dx_deg * std::f64::consts::PI / 180.0);
+    let dy_m = R_EARTH_M * (dy_deg * std::f64::consts::PI / 180.0);
     let mut level_heights_m = [0.0_f32; 16];
     for (i, h) in heights.iter().take(16).enumerate() {
         level_heights_m[i] = *h;
@@ -191,127 +336,133 @@ fn velocity_scale(lat_deg: f64, heights: &[f32]) -> VelocityToGridScale {
     }
 }
 
-fn build_wind(nx: usize, ny: usize, nz: usize, case: &serde_json::Value) -> WindField3D {
+fn build_wind(
+    nx: usize,
+    ny: usize,
+    nz: usize,
+    manifest: &ValidationCaseManifest,
+    profile: &CandidatePhysicsProfile,
+) -> Result<WindField3D, String> {
     let mut field = WindField3D::zeros(nx, ny, nz);
-    let wind = &case["wind"];
-    let profile = wind
-        .get("profile")
-        .and_then(|v| v.as_str())
-        .unwrap_or("uniform");
-    let heights: Vec<f32> = case["domain"]["wind_heights_m"]
-        .as_array()
-        .map(|a| a.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect())
-        .unwrap_or_else(|| vec![0.0; nz]);
-    if profile == "linear_shear" {
-        let u0 = wind.get("u0_m_s").and_then(|v| v.as_f64()).unwrap_or(2.0) as f32;
-        let shear = wind
-            .get("u_shear_per_s")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.004) as f32;
-        for k in 0..nz {
-            let z = heights.get(k).copied().unwrap_or(0.0);
-            let u = u0 + shear * z;
-            for i in 0..nx {
-                for j in 0..ny {
-                    field.u_ms[[i, j, k]] = u;
+    match &manifest.wind {
+        WindSpec::Uniform { u_m_s, v_m_s, w_m_s } => {
+            field.u_ms.fill(*u_m_s);
+            field.v_ms.fill(*v_m_s);
+            field.w_ms.fill(*w_m_s);
+        }
+        WindSpec::LinearShear {
+            u0_m_s,
+            u_shear_per_s,
+            v_m_s,
+            w_m_s,
+        } => {
+            for k in 0..nz {
+                let z = manifest
+                    .domain
+                    .wind_heights_m
+                    .get(k)
+                    .copied()
+                    .ok_or_else(|| format!("case {}: missing wind height {k}", manifest.case_id))?;
+                let u = *u0_m_s + *u_shear_per_s * z;
+                for i in 0..nx {
+                    for j in 0..ny {
+                        field.u_ms[[i, j, k]] = u;
+                        field.v_ms[[i, j, k]] = *v_m_s;
+                        field.w_ms[[i, j, k]] = *w_m_s;
+                    }
                 }
             }
         }
-    } else {
-        let u = wind.get("u_m_s").and_then(|v| v.as_f64()).unwrap_or(5.0) as f32;
-        let v = wind.get("v_m_s").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-        let w = wind.get("w_m_s").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-        field.u_ms.fill(u);
-        field.v_ms.fill(v);
-        field.w_ms.fill(w);
+        WindSpec::RealWeather { .. } => {
+            return Err(format!(
+                "case {}: real-weather cases are not executed by corpus-run",
+                manifest.case_id
+            ));
+        }
     }
-    field.temperature_k.fill(285.0);
-    field.specific_humidity.fill(0.005);
-    field.pressure_pa.fill(100_000.0);
-    field.air_density_kg_m3.fill(1.2);
-    field.density_gradient_kg_m2.fill(-0.0008);
-    field
+    let met = profile.synthetic_meteorology;
+    field.temperature_k.fill(met.temperature_k);
+    field.specific_humidity.fill(met.specific_humidity);
+    field.pressure_pa.fill(met.pressure_pa);
+    field.air_density_kg_m3.fill(met.air_density_kg_m3);
+    field.density_gradient_kg_m2.fill(met.density_gradient_kg_m2);
+    Ok(field)
 }
 
-fn build_surface(nx: usize, ny: usize, case: &serde_json::Value) -> SurfaceFields {
+fn build_surface(
+    nx: usize,
+    ny: usize,
+    manifest: &ValidationCaseManifest,
+) -> Result<SurfaceFields, String> {
+    let spec = manifest.surface.as_ref().ok_or_else(|| {
+        format!(
+            "case {}: synthetic driver requires explicit surface fields",
+            manifest.case_id
+        )
+    })?;
     let mut surface = SurfaceFields::zeros(nx, ny);
-    let s = &case["surface"];
-    let get = |key: &str, default: f32| {
-        s.get(key)
-            .and_then(|v| v.as_f64())
-            .unwrap_or(default as f64) as f32
-    };
-    surface
-        .surface_pressure_pa
-        .fill(get("surface_pressure_pa", 101_325.0));
-    surface.u10_ms.fill(
-        case["wind"]
-            .get("u_m_s")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(5.0) as f32,
-    );
-    surface.v10_ms.fill(
-        case["wind"]
-            .get("v_m_s")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0) as f32,
-    );
-    surface
-        .temperature_2m_k
-        .fill(get("temperature_2m_k", 289.0));
-    surface.dewpoint_2m_k.fill(get("dewpoint_2m_k", 284.0));
-    surface
-        .precip_large_scale_mm_h
-        .fill(get("precip_large_scale_mm_h", 0.0));
-    surface
-        .precip_convective_mm_h
-        .fill(get("precip_convective_mm_h", 0.0));
-    surface
-        .sensible_heat_flux_w_m2
-        .fill(get("sensible_heat_flux_w_m2", 0.0));
-    surface
-        .solar_radiation_w_m2
-        .fill(get("solar_radiation_w_m2", 120.0));
-    surface
-        .surface_stress_n_m2
-        .fill(get("surface_stress_n_m2", 0.2));
-    surface
-        .friction_velocity_ms
-        .fill(get("friction_velocity_m_s", 0.35));
+    surface.surface_pressure_pa.fill(spec.surface_pressure_pa);
+    surface.u10_ms.fill(spec.u10_m_s);
+    surface.v10_ms.fill(spec.v10_m_s);
+    surface.temperature_2m_k.fill(spec.temperature_2m_k);
+    surface.dewpoint_2m_k.fill(spec.dewpoint_2m_k);
+    surface.precip_large_scale_mm_h.fill(spec.precip_large_scale_mm_h);
+    surface.precip_convective_mm_h.fill(spec.precip_convective_mm_h);
+    surface.sensible_heat_flux_w_m2.fill(spec.sensible_heat_flux_w_m2);
+    surface.solar_radiation_w_m2.fill(spec.solar_radiation_w_m2);
+    surface.surface_stress_n_m2.fill(spec.surface_stress_n_m2);
+    surface.friction_velocity_ms.fill(spec.friction_velocity_m_s);
     surface
         .convective_velocity_scale_ms
-        .fill(get("convective_velocity_scale_m_s", 0.0));
-    surface.mixing_height_m.fill(get("mixing_height_m", 1500.0));
-    surface
-        .tropopause_height_m
-        .fill(get("tropopause_height_m", 10_000.0));
+        .fill(spec.convective_velocity_scale_m_s);
+    surface.mixing_height_m.fill(spec.mixing_height_m);
+    surface.tropopause_height_m.fill(spec.tropopause_height_m);
     surface
         .inv_obukhov_length_per_m
-        .fill(get("inv_obukhov_length_per_m", 0.0));
-    surface
+        .fill(spec.inv_obukhov_length_per_m);
+    Ok(surface)
 }
 
-fn forcing_for_case(case: &serde_json::Value) -> ForwardStepForcing {
-    let deposition = &case["deposition"];
-    let dry = deposition
-        .get("dry_deposition_velocity_m_s")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0) as f32;
-    let wet_lambda = deposition
-        .get("wet_scavenging_coefficient_s_inv")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0) as f32;
-    let wet_frac = deposition
-        .get("wet_precipitating_fraction")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0) as f32;
+fn forcing_for_case(
+    manifest: &ValidationCaseManifest,
+    profile: &CandidatePhysicsProfile,
+) -> ForwardStepForcing {
+    let (dry, wet_lambda, wet_frac) = manifest.deposition.as_ref().map_or(
+        (0.0, 0.0, 0.0),
+        |deposition| {
+            (
+                deposition.dry_deposition_velocity_m_s,
+                deposition.wet_scavenging_coefficient_s_inv,
+                deposition.wet_precipitating_fraction,
+            )
+        },
+    );
     ForwardStepForcing {
         dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(dry)],
         wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(wet_lambda)],
         wet_precipitating_fraction: ParticleForcingField::Uniform(wet_frac),
         decay_constant_s_inv: vec![0.0],
-        rho_grad_over_rho: 0.0,
+        rho_grad_over_rho: profile.langevin.rho_grad_over_rho,
     }
+}
+
+fn candidate_dry_reference_height_m(
+    manifest: &ValidationCaseManifest,
+    profile: &CandidatePhysicsProfile,
+) -> Result<f32, String> {
+    if manifest.physics_switches.dry_deposition {
+        return manifest
+            .deposition
+            .as_ref()
+            .and_then(|d| d.dry_reference_height_m)
+            .ok_or_else(|| {
+                format!(
+                    "case {}: dry deposition requires deposition.dry_reference_height_m",
+                    manifest.case_id
+                )
+            });
+    }
+    Ok(profile.inactive_dry_reference_height_m)
 }
 
 fn compute_metrics(
@@ -390,30 +541,46 @@ fn compute_metrics(
 
 fn run_advective_case(
     case_id: &str,
-    case: &serde_json::Value,
+    manifest: &ValidationCaseManifest,
     out_dir: &Path,
     revision: &str,
 ) -> Result<(), String> {
-    let domain = &case["domain"];
-    let nx = domain["nx"].as_u64().unwrap_or(64) as usize;
-    let ny = domain["ny"].as_u64().unwrap_or(64) as usize;
-    let nz = domain["nz"].as_u64().unwrap_or(8) as usize;
-    let heights: Vec<f32> = domain["wind_heights_m"]
-        .as_array()
-        .map(|a| a.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect())
-        .unwrap_or_else(|| vec![0.0; nz]);
-    let release = &case["release"];
-    let start_lon = release["lon_deg"].as_f64().unwrap_or(10.0);
-    let start_lat = release["lat_deg"].as_f64().unwrap_or(50.0);
-    let start_z = release["z_m"].as_f64().unwrap_or(100.0) as f32;
-    let count = release["particle_count"].as_u64().unwrap_or(1024) as usize;
-    let u = case["wind"]["u_m_s"].as_f64().unwrap_or(10.0) as f32;
-    let dt = case["integration"]["dt_s"].as_f64().unwrap_or(60.0) as f32;
-    let steps = case["integration"]["steps"].as_u64().unwrap_or(60) as usize;
-    let xlon0 = domain["xlon0_deg"].as_f64().unwrap_or(6.0);
-    let ylat0 = domain["ylat0_deg"].as_f64().unwrap_or(47.0);
-    let dx = domain["dx_deg"].as_f64().unwrap_or(0.1);
-    let dy = domain["dy_deg"].as_f64().unwrap_or(0.1);
+    let domain = &manifest.domain;
+    let nx = domain.nx as usize;
+    let ny = domain.ny as usize;
+    let nz = domain.nz as usize;
+    let heights = &domain.wind_heights_m;
+
+    // The isolated advection kernel supports only a point release and a
+    // uniform wind. Both are explicit schema-v2 contract choices; no raw-JSON
+    // parsing or physics-relevant fallback values are used here.
+    let (start_lon, start_lat, start_z) = match &manifest.release.geometry {
+        SourceGeometry::Point {
+            lon_deg,
+            lat_deg,
+            z_m,
+        } => (f64::from(*lon_deg), f64::from(*lat_deg), *z_m),
+        SourceGeometry::Box { .. } => {
+            return Err(format!(
+                "case {case_id}: advective path requires a point release geometry"
+            ));
+        }
+    };
+    let count = manifest.release.particle_count as usize;
+    let u = match &manifest.wind {
+        WindSpec::Uniform { u_m_s, .. } => *u_m_s,
+        _ => {
+            return Err(format!(
+                "case {case_id}: advective path requires a uniform wind profile"
+            ));
+        }
+    };
+    let dt = manifest.integration.dt_s;
+    let steps = manifest.integration.steps as usize;
+    let xlon0 = f64::from(domain.xlon0_deg);
+    let ylat0 = f64::from(domain.ylat0_deg);
+    let dx = f64::from(domain.dx_deg);
+    let dy = f64::from(domain.dy_deg);
 
     let context =
         pollster::block_on(GpuContext::new()).map_err(|e| format!("no WGSL adapter: {e}"))?;
@@ -535,85 +702,82 @@ fn run_advective_case(
     Ok(())
 }
 
+fn validate_candidate_runner_support(
+    case_id: &str,
+    manifest: &ValidationCaseManifest,
+) -> Result<(), String> {
+    if manifest.simulation_direction != SimulationDirection::Forward {
+        return Err(format!(
+            "case {case_id}: corpus-run candidate driver supports only simulation_direction=forward"
+        ));
+    }
+    if manifest.physics_switches.convection {
+        return Err(format!(
+            "case {case_id}: corpus-run candidate driver does not implement convection; refusing to run declared physics"
+        ));
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_lines)]
 fn run_driver_case(
     case_id: &str,
-    case: &serde_json::Value,
+    manifest: &ValidationCaseManifest,
+    profile: &CandidatePhysicsProfile,
     seed_index: u32,
     out_dir: &Path,
     revision: &str,
 ) -> Result<(), String> {
-    let domain = &case["domain"];
-    let nx = domain["nx"].as_u64().unwrap_or(32) as usize;
-    let ny = domain["ny"].as_u64().unwrap_or(32) as usize;
-    let nz = domain["nz"].as_u64().unwrap_or(8) as usize;
-    let heights: Vec<f32> = domain["wind_heights_m"]
-        .as_array()
-        .map(|a| a.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect())
-        .unwrap_or_else(|| vec![0.0; nz]);
-    let release = &case["release"];
-    let lon = release["lon_deg"].as_f64().unwrap_or(10.0);
-    let lat = release["lat_deg"].as_f64().unwrap_or(10.0);
-    let z = release["z_m"].as_f64().unwrap_or(50.0);
-    let count = release["particle_count"].as_u64().unwrap_or(500);
-    let mass_total = release
-        .get("mass_kg_total")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(1.0);
-    let integration = &case["integration"];
-    let start = integration
-        .get("start")
-        .and_then(|v| v.as_str())
-        .unwrap_or("20240101000000");
-    let dt = integration
-        .get("dt_s")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(300);
-    let steps = integration
-        .get("steps")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(12) as i64;
-    let total_s = dt * steps;
-    let end = end_timestamp(start, total_s);
-    let xlon0 = domain["xlon0_deg"].as_f64().unwrap_or(9.5);
-    let ylat0 = domain["ylat0_deg"].as_f64().unwrap_or(8.5);
-    let dx = domain["dx_deg"].as_f64().unwrap_or(0.1);
-    let dy = domain["dy_deg"].as_f64().unwrap_or(0.1);
+    validate_candidate_runner_support(case_id, manifest)?;
 
-    let seeds = &case["seeds"];
-    let base_key = if let Some(arr) = seeds.get("base_philox_key").and_then(|v| v.as_array()) {
-        [
-            arr[0].as_u64().unwrap_or(0) as u32,
-            arr[1].as_u64().unwrap_or(0) as u32,
-        ]
-    } else {
-        [0xDECA_FBAD, 0x1234_5678]
+    let domain = &manifest.domain;
+    let nx = usize::try_from(domain.nx).map_err(|_| format!("case {case_id}: domain.nx out of range"))?;
+    let ny = usize::try_from(domain.ny).map_err(|_| format!("case {case_id}: domain.ny out of range"))?;
+    let nz = usize::try_from(domain.nz).map_err(|_| format!("case {case_id}: domain.nz out of range"))?;
+    let heights = domain.wind_heights_m.clone();
+    let release = &manifest.release;
+    let (lon, lat, z_min, z_max) = match &release.geometry {
+        SourceGeometry::Point { lon_deg, lat_deg, z_m } => (
+            f64::from(*lon_deg), f64::from(*lat_deg), f64::from(*z_m), f64::from(*z_m)),
+        SourceGeometry::Box { lon_min_deg, lon_max_deg, lat_min_deg, lat_max_deg, z_min_m, z_max_m } => {
+            if lon_min_deg != lon_max_deg || lat_min_deg != lat_max_deg {
+                return Err(format!("case {case_id}: box lon/lat ranges are not supported by the candidate ReleaseConfig (only vertical ranges)"));
+            }
+            (*lon_min_deg, *lat_min_deg, f64::from(*z_min_m), f64::from(*z_max_m))
+        }
     };
-    // REPEAT-009 reruns the identical Philox key twice to prove deterministic
-    // reruns are bit-identical; all other driver cases derive independent keys
-    // per seed for the 10-member stochastic ensemble.
-    let key = if case_id == "REPEAT-009" {
-        base_key
-    } else {
-        [base_key[0].wrapping_add(seed_index), base_key[1]]
-    };
+    let count = u64::from(release.particle_count);
+    let mass_total = f64::from(release.inventory.quantity_kg);
+    let integration = &manifest.integration;
+    let start = integration.start.as_str();
+    if integration.dt_s.fract() != 0.0 || integration.total_s.fract() != 0.0 {
+        return Err(format!("case {case_id}: integration dt_s/total_s must be whole integer seconds"));
+    }
+    let dt = integration.dt_s as i64;
+    let total_s = integration.total_s as i64;
+    let end = end_timestamp(start, total_s)?;
+    let xlon0 = f64::from(domain.xlon0_deg);
+    let ylat0 = f64::from(domain.ylat0_deg);
+    let dx = f64::from(domain.dx_deg);
+    let dy = f64::from(domain.dy_deg);
 
-    let release_grid = GridDomain {
-        xlon0,
-        ylat0,
-        dx,
-        dy,
-        nx,
-        ny,
+    // Fail-closed Philox resolution happens before any GPU work below.
+    // Identical-repeat semantics come from the manifest flag, never from
+    // hard-coded case IDs.
+    let (key, counter) = resolve_candidate_seed(case_id, manifest, seed_index)?;
+
+    let release_grid = GridDomain { xlon0, ylat0, dx, dy, nx, ny };
+    let release_at = match &release.timing {
+        ReleaseTiming::Instant { at } => at.as_str(),
+        ReleaseTiming::Window { .. } => {
+            return Err(format!("case {case_id}: corpus-run candidate driver supports only instant releases"));
+        }
     };
     let releases = vec![ReleaseConfig {
         name: case_id.to_string(),
-        start_time: start.to_string(),
-        end_time: start.to_string(),
-        lon,
-        lat,
-        z_min: z,
-        z_max: z,
+        start_time: release_at.to_string(),
+        end_time: release_at.to_string(),
+        lon, lat, z_min, z_max,
         mass_kg: mass_total,
         particle_count: count,
         species_masses_kg: None,
@@ -623,13 +787,17 @@ fn run_driver_case(
         start_timestamp: start.to_string(),
         end_timestamp: end.clone(),
         timestep_seconds: dt,
-        time_bounds_behavior: TimeBoundsBehavior::Clamp,
-        velocity_to_grid_scale: velocity_scale(lat, &heights),
+        time_bounds_behavior: profile.time_bounds_behavior(),
+        velocity_to_grid_scale: velocity_scale(lat, dx, dy, &heights),
+        pbl_options: profile.pbl_options(),
+        dry_reference_height_m: candidate_dry_reference_height_m(manifest, profile)?,
+        langevin_vertical_substeps: profile.langevin.vertical_substeps_per_timestep,
+        langevin_min_height_m: profile.langevin.min_height_m,
         philox_key: key,
-        initial_philox_counter: [0, 0, 0, 0],
+        initial_philox_counter: counter,
+        spatial_sort: None,
         sync_particle_store_each_step: true,
         collect_deposition_probabilities_each_step: true,
-        ..ForwardTimeLoopConfig::default()
     };
     // Probe the adapter that the driver will select (same env-driven
     // selection as ForwardTimeLoopDriver::new). The driver owns its context
@@ -652,31 +820,23 @@ fn run_driver_case(
     ))
     .map_err(|e| format!("driver init: {e}"))?;
 
-    let wind = build_wind(nx, ny, nz, case);
-    let surface = build_surface(nx, ny, case);
+    let wind = build_wind(nx, ny, nz, manifest, profile)?;
+    let surface = build_surface(nx, ny, manifest)?;
     let grid = WindFieldGrid::new(
-        nx,
-        ny,
-        nz,
-        nz,
-        nz,
-        dx as f32,
-        dy as f32,
-        xlon0 as f32,
-        ylat0 as f32,
+        nx, ny, nz, nz, nz, dx as f32, dy as f32, xlon0 as f32, ylat0 as f32,
         Array1::from_vec(heights.clone()),
     );
     let _ = grid;
-    let start_secs = 1_704_067_200_i64;
+    let start_secs = driver.current_time_seconds();
+    let end_secs = driver.end_time_seconds();
+    if end_secs <= start_secs {
+        return Err(format!("case {case_id}: candidate met bracket requires end > start, got {start_secs}..{end_secs}"));
+    }
     let met = MetTimeBracket {
-        wind_t0: &wind,
-        wind_t1: &wind,
-        surface_t0: &surface,
-        surface_t1: &surface,
-        time_t0_seconds: start_secs,
-        time_t1_seconds: start_secs + total_s,
+        wind_t0: &wind, wind_t1: &wind, surface_t0: &surface, surface_t1: &surface,
+        time_t0_seconds: start_secs, time_t1_seconds: end_secs,
     };
-    let forcing = forcing_for_case(case);
+    let forcing = forcing_for_case(manifest, profile);
     // Step the driver manually so per-process deposited reservoirs can be
     // accumulated from the reported per-slot removal probabilities. The
     // driver applies dry deposition before wet deposition within each step,
@@ -767,7 +927,7 @@ fn run_driver_case(
         case_id: case_id.to_string(),
         seed_index,
         philox_key: key,
-        philox_counter: [0, 0, 0, 0],
+        philox_counter: counter,
         adapter: adapter.clone(),
         is_software_adapter: software,
         candidate_revision: revision.to_string(),
@@ -798,26 +958,39 @@ fn run_driver_case(
 
 fn main() {
     env_logger::init();
-    let (cases, seeds, out_dir, fixtures) = parse_args();
+    let (cases, cli_seeds, out_dir, fixtures) = parse_args();
     let revision = candidate_revision();
     fs::create_dir_all(&out_dir).expect("create output directory");
     for case_id in &cases {
         let fixture_path = fixtures.join(format!("{case_id}.json"));
         let text = fs::read_to_string(&fixture_path)
             .unwrap_or_else(|_| panic!("read fixture {}", fixture_path.display()));
-        let case: serde_json::Value = serde_json::from_str(&text).expect("parse case fixture");
+        // Canonical v2 manifest first: legacy v1 is rejected fail-closed.
+        let manifest = load_case_manifest(&fixture_path, &text)
+            .unwrap_or_else(|e| panic!("{e}"));
+        if manifest.case_id != *case_id {
+            panic!(
+                "fixture {} declares case_id {}, expected {case_id}",
+                fixture_path.display(),
+                manifest.case_id
+            );
+        }
+        let candidate_profile = CandidatePhysicsProfile::load(&manifest.candidate_physics_profile)
+            .unwrap_or_else(|e| panic!("{}: {e}", manifest.case_id));
+        // ADV-ANA-001 still uses the isolated advection kernel, but its inputs
+        // now come exclusively from the same validated typed manifest.
         if case_id == "ADV-ANA-001" {
-            run_advective_case(case_id, &case, &out_dir, &revision).expect("advective case failed");
+            run_advective_case(case_id, &manifest, &out_dir, &revision)
+                .expect("advective case failed");
         } else {
-            let count = if case_id == "REPEAT-009" { 2 } else { seeds };
-            // REPEAT-009 always runs its two identical repeats regardless of --seeds.
-            let run_seeds = if case_id == "REPEAT-009" {
-                2
-            } else {
-                count.min(10)
-            };
+            // Declared ensemble count is authoritative; --seeds may only
+            // select a leading subset and is rejected before any GPU work.
+            let run_seeds = resolve_ensemble_count(case_id, &manifest, cli_seeds)
+                .unwrap_or_else(|e| panic!("{e}"));
             for seed in 0..run_seeds as u32 {
-                run_driver_case(case_id, &case, seed, &out_dir, &revision)
+                run_driver_case(
+                    case_id, &manifest, &candidate_profile, seed, &out_dir, &revision,
+                )
                     .unwrap_or_else(|e| panic!("{case_id} seed {seed} failed: {e}"));
             }
         }
@@ -827,4 +1000,200 @@ fn main() {
         cases.len(),
         out_dir.display()
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn fixture_path(case_id: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("corpus")
+            .join("cases")
+            .join(format!("{case_id}.json"))
+    }
+
+    fn load_manifest(case_id: &str) -> ValidationCaseManifest {
+        let path = fixture_path(case_id);
+        let text = fs::read_to_string(&path).expect("read fixture");
+        load_case_manifest(&path, &text).expect("v2 manifest")
+    }
+
+    #[test]
+    fn wind_uni_002_seed_zero_uses_declared_key() {
+        let manifest = load_manifest("WIND-UNI-002");
+        let candidate = manifest
+            .stochastic
+            .candidate_philox
+            .as_ref()
+            .expect("declared identity");
+        assert_eq!(candidate.base_key, [3737180555, 305419896]);
+        let (key, counter) =
+            resolve_candidate_seed("WIND-UNI-002", &manifest, 0).expect("seed 0");
+        assert_eq!(key, [3737180555, 305419896]);
+        assert_eq!(counter, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn wind_uni_002_seed_n_uses_wrapping_derivation() {
+        let manifest = load_manifest("WIND-UNI-002");
+        let (key, _) =
+            resolve_candidate_seed("WIND-UNI-002", &manifest, 7).expect("seed 7");
+        assert_eq!(key, [3737180555u32.wrapping_add(7), 305419896]);
+    }
+
+    #[test]
+    fn runner_uses_declared_derivation_policy() {
+        let mut manifest = load_manifest("WIND-UNI-002");
+        let candidate = manifest
+            .stochastic
+            .candidate_philox
+            .as_mut()
+            .expect("declared identity");
+        candidate.derivation = CandidatePhiloxDerivation::ReuseBaseIdentityV1;
+        let a = resolve_candidate_seed("WIND-UNI-002", &manifest, 0).expect("seed 0");
+        let b = resolve_candidate_seed("WIND-UNI-002", &manifest, 7).expect("seed 7");
+        assert_eq!(a, b, "runner must execute the declared derivation policy");
+    }
+
+    #[test]
+    fn stochastic_case_without_identity_is_rejected_before_execution() {
+        let manifest = load_manifest("WIND-UNI-002");
+        let mut hacked = manifest.clone();
+        hacked.stochastic.candidate_philox = None;
+        hacked.stochastic.oracle_seed = None;
+        let err = resolve_candidate_seed("WIND-UNI-002", &hacked, 0).expect_err("must fail");
+        assert!(err.contains("no stochastic"), "unexpected: {err}");
+        let err = resolve_ensemble_count("WIND-UNI-002", &hacked, None).expect_err("must fail");
+        assert!(err.contains("candidate_philox"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn deterministic_ensemble_count_is_not_case_id_specific() {
+        let mut manifest = load_manifest("ADV-ANA-001");
+        manifest.case_id = "ARBITRARY-DETERMINISTIC-123".to_string();
+        assert!(manifest.stochastic.candidate_philox.is_none());
+        assert!(!manifest.physics_switches.turbulence);
+        assert_eq!(
+            resolve_ensemble_count("ARBITRARY-DETERMINISTIC-123", &manifest, None)
+                .expect("deterministic case"),
+            1
+        );
+    }
+
+    #[test]
+    fn repeat_009_reuses_identical_key() {
+        let manifest = load_manifest("REPEAT-009");
+        let candidate = manifest
+            .stochastic
+            .candidate_philox
+            .as_ref()
+            .expect("REPEAT-009 declares an identity");
+        assert_eq!(
+            candidate.derivation,
+            CandidatePhiloxDerivation::ReuseBaseIdentityV1
+        );
+        assert_eq!(candidate.count, 2);
+        let (key0, _) = resolve_candidate_seed("REPEAT-009", &manifest, 0).expect("seed 0");
+        let (key1, _) = resolve_candidate_seed("REPEAT-009", &manifest, 1).expect("seed 1");
+        assert_eq!(key0, key1);
+        assert_eq!(key0, [3737180555, 305419896]);
+        let count = resolve_ensemble_count("REPEAT-009", &manifest, None).expect("count");
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn candidate_runner_rejects_unsupported_direction_and_convection() {
+        let mut manifest = load_manifest("WIND-UNI-002");
+        manifest.simulation_direction = SimulationDirection::Backward;
+        let err = validate_candidate_runner_support("WIND-UNI-002", &manifest)
+            .expect_err("backward must fail closed");
+        assert!(err.contains("simulation_direction=forward"), "unexpected: {err}");
+
+        let mut manifest = load_manifest("WIND-UNI-002");
+        manifest.physics_switches.convection = true;
+        let err = validate_candidate_runner_support("WIND-UNI-002", &manifest)
+            .expect_err("convection must fail closed");
+        assert!(err.contains("does not implement convection"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn candidate_profile_drives_langevin_runtime_values() {
+        let manifest = load_manifest("WIND-UNI-002");
+        let profile = CandidatePhysicsProfile::load(&manifest.candidate_physics_profile)
+            .expect("profile");
+        assert_eq!(profile.integration.dispatches_per_manifest_step, 1);
+        assert_eq!(profile.langevin.vertical_substeps_per_timestep, 4);
+        assert_eq!(profile.langevin.min_height_m, 0.01);
+        let forcing = forcing_for_case(&manifest, &profile);
+        assert_eq!(forcing.rho_grad_over_rho, profile.langevin.rho_grad_over_rho);
+    }
+
+    #[test]
+    fn candidate_runner_uses_manifest_dry_reference_height() {
+        let mut manifest = load_manifest("DRY-007");
+        let profile = CandidatePhysicsProfile::load(&manifest.candidate_physics_profile).expect("profile");
+        manifest.deposition.as_mut().expect("dry deposition").dry_reference_height_m = Some(23.0);
+        assert_eq!(candidate_dry_reference_height_m(&manifest, &profile).expect("href"), 23.0);
+    }
+
+    #[test]
+    fn velocity_scale_uses_declared_grid_spacing() {
+        let heights = [0.0_f32, 100.0];
+        let fine = velocity_scale(50.0, 0.1, 0.1, &heights);
+        let coarse = velocity_scale(50.0, 0.2, 0.25, &heights);
+        assert!(coarse.x_grid_per_meter < fine.x_grid_per_meter);
+        assert!(coarse.y_grid_per_meter < fine.y_grid_per_meter);
+    }
+
+    #[test]
+    fn end_timestamp_is_not_hard_coded_to_2024_01_01() {
+        assert_eq!(end_timestamp("20240228235900", 120).expect("timestamp"), "20240229000100");
+    }
+
+    #[test]
+    fn shear_surface_wind_is_explicit_and_preserved() {
+        let manifest = load_manifest("WIND-SHEAR-003");
+        let surface = manifest.surface.as_ref().expect("surface");
+        assert_eq!(surface.u10_m_s, 5.0);
+        assert_eq!(surface.v10_m_s, 0.0);
+    }
+
+    #[test]
+    fn legacy_v1_document_is_rejected() {
+        let path = fixture_path("WIND-UNI-002");
+        let legacy = r#"{"version": 1, "case_id": "WIND-UNI-002"}"#;
+        let err = load_case_manifest(&path, legacy).expect_err("v1 must fail");
+        assert!(err.contains("SchemaVersionMismatch") || err.contains("schema"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn cli_seeds_cannot_exceed_declared_ensemble() {
+        let manifest = load_manifest("WIND-UNI-002");
+        // Declared count is 10.
+        let full = resolve_ensemble_count("WIND-UNI-002", &manifest, None)
+            .expect("declared");
+        assert_eq!(full, 10);
+        // Explicit subset is allowed.
+        let subset =
+            resolve_ensemble_count("WIND-UNI-002", &manifest, Some(2))
+                .expect("subset");
+        assert_eq!(subset, 2);
+        // Silent expansion is rejected.
+        let err = resolve_ensemble_count("WIND-UNI-002", &manifest, Some(11))
+            .expect_err("must fail");
+        assert!(err.contains("exceeds declared"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn adv_ana_001_needs_no_rng_identity() {
+        let manifest = load_manifest("ADV-ANA-001");
+        assert!(manifest.stochastic.candidate_philox.is_none());
+        manifest.validate().expect("ADV-ANA-001 stays valid");
+        let err = resolve_candidate_seed("ADV-ANA-001", &manifest, 0)
+            .expect_err("deterministic case must not resolve a seed");
+        assert!(err.contains("no stochastic"), "unexpected: {err}");
+    }
 }

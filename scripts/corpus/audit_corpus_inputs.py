@@ -3,7 +3,7 @@
 
 Checks, for every implemented synthetic case with a case JSON:
 
-- Fortran OUTGRID mirrors the case ``domain`` (origin, size, spacing).
+- Fortran OUTGRID mirrors the explicit case ``output_grid`` contract.
 - Fortran RELEASES mirrors the case ``release`` (position, particle count)
   with MASS converted kg -> g (``MASS_g = mass_kg * 1000``).
 - Fortran COMMAND switches mirror ``oracle_command_overrides``.
@@ -50,7 +50,16 @@ def load_generator():
 
 GEN = load_generator()
 
+from validation_case_schema import ValidationCaseSchemaError, validate_case_document
+
 FAILURES: list = []
+
+PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1 = "wrapping_add_key0_v1"
+PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1 = "reuse_base_identity_v1"
+SUPPORTED_PHILOX_DERIVATIONS = {
+    PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1,
+    PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1,
+}
 
 
 def check(name: str, ok: bool, detail: str = "") -> None:
@@ -59,17 +68,41 @@ def check(name: str, ok: bool, detail: str = "") -> None:
         FAILURES.append(name + (f": {detail}" if detail else ""))
 
 
+def _case_schema_valid(case_id: str, case: dict) -> bool:
+    try:
+        validate_case_document(case, source=f"{case_id}.json")
+    except ValidationCaseSchemaError as exc:
+        check(f"{case_id} validation-case-v2 schema", False, str(exc))
+        return False
+    declared_case_id = case.get("case_id")
+    if declared_case_id != case_id:
+        check(
+            f"{case_id} manifest identity",
+            False,
+            f"case_id {declared_case_id!r} does not match corpus id {case_id!r}",
+        )
+        return False
+    check(f"{case_id} validation-case-v2 schema", True)
+    return True
+
+
 def audit_fixture_case(case_id: str, case: dict, fort_dir: Path) -> None:
+    if not _case_schema_valid(case_id, case):
+        return
     outdir = fort_dir / case_id
     if not outdir.is_dir():
         check(f"{case_id} fortran fixture present", False, f"missing {outdir}")
         return
     try:
-        specnum = 40 if case_id in ("DRY-007", "WET-008") else 24
+        physics = GEN.mandatory_physics_switches(case_id, case)
+        GEN._validate_species_physics_contract(case_id, case, physics)
+        GEN._validate_deposition_contract(case_id, case, physics)
+        specnum = GEN.species_number_for_case(case_id, case)
         GEN.verify_case(case_id, case, outdir, specnum)
         check(f"{case_id} fixture equals case JSON", True)
     except SystemExit as exc:
         check(f"{case_id} fixture equals case JSON", False, str(exc))
+        return
     species = outdir / "SPECIES" / f"SPECIES_{specnum:03d}"
     check(f"{case_id} SPECIES_{specnum:03d} present", species.is_file())
     if species.is_file():
@@ -98,24 +131,120 @@ def audit_fixture_case(case_id: str, case: dict, fort_dir: Path) -> None:
     check(f"{case_id} INPUT_DERIVATION.json present", (outdir / "INPUT_DERIVATION.json").is_file())
 
 
+def _as_u32_list(value, length: int):
+    if not isinstance(value, list) or len(value) != length:
+        return None
+    out = []
+    for item in value:
+        if not isinstance(item, int) or item < 0 or item >= 2**32:
+            return None
+        out.append(item)
+    return out
+
+
+def candidate_philox_identity(case_id: str, case: dict):
+    """Canonical v2 Philox identity reader (no silent fallback, no v1).
+
+    Returns (base_key, base_counter, count, deterministic, derivation, error).
+    derivation is one of the versioned executable contract values.
+    Unknown or missing derivations fail closed.
+    """
+    if case.get("schema_version") != 2 or "version" in case:
+        return None, None, None, False, None, (
+            f"case {case_id}: unsupported schema version; only schema_version 2 "
+            "is accepted (v1 is frozen, see MIGRATION_NOTES.md)"
+        )
+    stochastic = case.get("stochastic")
+    if not isinstance(stochastic, dict):
+        return None, None, None, False, None, (
+            f"case {case_id}: stochastic must be an object"
+        )
+    for field in ("candidate_philox", "oracle_seed"):
+        if field not in stochastic:
+            return None, None, None, False, None, (
+                f"case {case_id}: stochastic.{field} is required explicitly; "
+                "use null when that model has no stochastic identity"
+            )
+    cand = stochastic["candidate_philox"]
+    if cand is None:
+        physics = case.get("physics_switches")
+        if not isinstance(physics, dict) or not isinstance(physics.get("turbulence"), bool):
+            return None, None, None, False, None, (
+                f"case {case_id}: physics_switches.turbulence must be an explicit boolean"
+            )
+        if physics["turbulence"]:
+            return None, None, None, False, None, (
+                f"case {case_id}: turbulence requires stochastic.candidate_philox; "
+                "no default key substituted"
+            )
+        return None, None, 1, True, None, None
+    base_key = _as_u32_list(cand.get("base_key"), 2)
+    base_counter = _as_u32_list(cand.get("base_counter"), 4)
+    count = cand.get("count")
+    derivation = cand.get("derivation")
+    if base_key is None:
+        return None, None, None, False, None, (
+            f"case {case_id}: stochastic.candidate_philox.base_key malformed"
+        )
+    if base_counter is None:
+        return None, None, None, False, None, (
+            f"case {case_id}: stochastic.candidate_philox.base_counter malformed"
+        )
+    if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+        return None, None, None, False, None, (
+            f"case {case_id}: stochastic.candidate_philox.count must be > 0"
+        )
+    if derivation not in SUPPORTED_PHILOX_DERIVATIONS:
+        return None, None, None, False, None, (
+            f"case {case_id}: unsupported stochastic.candidate_philox.derivation "
+            f"{derivation!r}; supported={sorted(SUPPORTED_PHILOX_DERIVATIONS)}"
+        )
+    if "identical_repeats" in cand:
+        return None, None, None, False, None, (
+            f"case {case_id}: legacy stochastic.candidate_philox.identical_repeats "
+            "is forbidden; encode semantics in derivation"
+        )
+    return base_key, base_counter, count, False, derivation, None
+
+
+def expected_philox_for_seed(case_id: str, base_key, base_counter, seed_index: int,
+                             derivation: str):
+    """Derive one key/counter exactly from the declared versioned policy."""
+    if derivation == PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1:
+        return list(base_key), list(base_counter)
+    if derivation == PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1:
+        return [(base_key[0] + seed_index) % 2**32, base_key[1]], list(base_counter)
+    raise ValueError(
+        f"case {case_id}: unsupported Philox derivation {derivation!r}"
+    )
+
+
 def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
+    if not _case_schema_valid(case_id, case):
+        return
     seeds = sorted(case_dir.glob("seed_*.json"))
     release = case["release"]
     expected_count = int(release["particle_count"])
-    expected_mass = GEN.case_total_mass_kg(case)
-    base_key = None
-    if isinstance(case.get("seeds"), dict):
-        base_key = case["seeds"].get("base_philox_key")
-    if case_id == "ADV-ANA-001":
-        check(f"{case_id} exactly one deterministic seed", len(seeds) == 1, f"found {len(seeds)}")
-    elif case_id == "REPEAT-009":
-        check(f"{case_id} exactly two repeat seeds", len(seeds) == 2, f"found {len(seeds)}")
-        if len(seeds) == 2:
-            a = json.loads(seeds[0].read_text(encoding="utf-8"))
-            b = json.loads(seeds[1].read_text(encoding="utf-8"))
-            check(f"{case_id} repeats share one Philox key", a.get("philox_key") == b.get("philox_key"))
+    expected_mass = GEN.case_total_mass_kg(case_id, case)
+    base_key, base_counter, ensemble_count, deterministic, derivation, identity_error = (
+        candidate_philox_identity(case_id, case)
+    )
+    if identity_error is not None:
+        check(f"{case_id} Philox identity declared", False, identity_error)
+    else:
+        check(f"{case_id} Philox identity declared", True)
+    if identity_error is None:
+        expected_seed_files = 1 if deterministic else ensemble_count
+        check(
+            f"{case_id} candidate artifact count matches manifest",
+            len(seeds) == expected_seed_files,
+            f"found {len(seeds)}, expected {expected_seed_files}",
+        )
     else:
         check(f"{case_id} seed files present", len(seeds) >= 1, "no seed_*.json")
+
+    seen_indices = set()
+    seen_identities = set()
     for path in seeds:
         seed = json.loads(path.read_text(encoding="utf-8"))
         stem = f"{case_id}/{path.name}"
@@ -124,14 +253,51 @@ def audit_candidate_case(case_id: str, case: dict, case_dir: Path) -> None:
         initial = seed.get("metrics", {}).get("initial_mass_kg")
         check(f"{stem} initial mass", initial is not None and math.isclose(initial, expected_mass, rel_tol=1e-12),
               f"{initial} vs {expected_mass}")
-        if base_key is not None and case_id != "REPEAT-009":
-            idx = seed.get("seed_index", 0)
-            expected_key = [(base_key[0] + idx) % 2**32, base_key[1]]
-            check(f"{stem} Philox derivation", seed.get("philox_key") == expected_key,
-                  f"{seed.get('philox_key')} vs {expected_key}")
         check(f"{stem} adapter recorded", bool(seed.get("adapter")))
+        if deterministic:
+            pass
+        elif identity_error is not None:
+            check(f"{stem} Philox derivation", False, identity_error)
+        else:
+            idx = seed.get("seed_index")
+            if not isinstance(idx, int) or isinstance(idx, bool) or idx < 0 or idx >= ensemble_count:
+                check(f"{stem} seed_index in declared ensemble", False,
+                      f"seed_index {seed.get('seed_index')} outside [0, {ensemble_count})")
+            elif idx in seen_indices:
+                check(f"{stem} seed_index unique", False, f"duplicate seed_index {idx}")
+            else:
+                seen_indices.add(idx)
+                expected_key, expected_counter = expected_philox_for_seed(
+                    case_id, base_key, base_counter, idx, derivation
+                )
+                check(f"{stem} Philox derivation", seed.get("philox_key") == expected_key,
+                      f"{seed.get('philox_key')} vs {expected_key}")
+                check(f"{stem} Philox counter", seed.get("philox_counter") == expected_counter,
+                      f"{seed.get('philox_counter')} vs {expected_counter}")
+                identity = (
+                    tuple(seed.get("philox_key") or ()),
+                    tuple(seed.get("philox_counter") or ()),
+                )
+                seen_identities.add(identity)
 
-
+    if identity_error is None and not deterministic:
+        check(
+            f"{case_id} seed indices cover declared ensemble",
+            seen_indices == set(range(ensemble_count)),
+            f"found {sorted(seen_indices)}, expected {list(range(ensemble_count))}",
+        )
+        if derivation == PHILOX_DERIVATION_REUSE_BASE_IDENTITY_V1:
+            check(
+                f"{case_id} reuse derivation shares one Philox identity",
+                len(seen_identities) == 1,
+                f"found {len(seen_identities)} identities",
+            )
+        elif derivation == PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1:
+            check(
+                f"{case_id} wrapping derivation uses distinct Philox identities",
+                len(seen_identities) == ensemble_count,
+                f"found {len(seen_identities)}, expected {ensemble_count}",
+            )
 def audit_oracle_case(case_id: str, fort_dir: Path, oracle_dir: Path, require: bool) -> None:
     summary = oracle_dir / case_id / "oracle_summary.json"
     if not summary.is_file():

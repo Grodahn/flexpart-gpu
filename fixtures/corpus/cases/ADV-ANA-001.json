@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "schema_version": 2,
   "case_id": "ADV-ANA-001",
   "description": "Analytic advection without turbulence. Isolated production WGSL advection kernel; turbulence, convection and deposition disabled by construction.",
   "domain": {
@@ -8,27 +8,62 @@
     "nz": 8,
     "dx_deg": 0.1,
     "dy_deg": 0.1,
-    "xlon0_deg": 6.0,
-    "ylat0_deg": 47.0,
-    "wind_heights_m": [0.0, 50.0, 100.0, 200.0, 500.0, 1500.0, 3000.0, 5000.0]
+    "xlon0_deg": 6,
+    "ylat0_deg": 47,
+    "horizontal_ref": "geographic_lon_lat_degrees",
+    "wind_heights_m": [
+      0,
+      50,
+      100,
+      200,
+      500,
+      1500,
+      3000,
+      5000
+    ],
+    "wind_heights_ref": "agl"
   },
   "release": {
-    "lon_deg": 10.0,
-    "lat_deg": 50.0,
-    "z_m": 100.0,
+    "geometry": {
+      "kind": "point",
+      "lon_deg": 10,
+      "lat_deg": 50,
+      "z_m": 100
+    },
+    "vertical_ref": "agl",
+    "timing": {
+      "kind": "instant",
+      "at": "20240101000000"
+    },
+    "species": {
+      "id": "SPECIES_024",
+      "physics_contract": {
+        "profile": "species_024_inert_v1",
+        "id": "species-024-inert-v1",
+        "version": 1,
+        "path": "reference/species-physics/species-024-inert-v1.json",
+        "git_blob_sha": "21dd5ccd2b616642be9e3989e9b7444774d97fd9"
+      }
+    },
+    "inventory": {
+      "quantity_kg": 1024,
+      "unit": "kg"
+    },
     "particle_count": 1024,
-    "mass_kg_per_particle": 1.0
+    "mass_kg_per_particle": 1
   },
   "wind": {
-    "u_m_s": 10.0,
-    "v_m_s": 0.0,
-    "w_m_s": 0.0,
-    "profile": "uniform"
+    "profile": "uniform",
+    "u_m_s": 10,
+    "v_m_s": 0,
+    "w_m_s": 0
   },
+  "surface": null,
   "integration": {
-    "dt_s": 60.0,
+    "start": "20240101000000",
+    "dt_s": 60,
     "steps": 60,
-    "total_s": 3600.0
+    "total_s": 3600
   },
   "physics_switches": {
     "turbulence": false,
@@ -37,23 +72,128 @@
     "wet_deposition": false,
     "decay": false
   },
-  "analytic_expectation": {
-    "east_displacement_m": 36000.0,
-    "north_displacement_m": 0.0,
-    "vertical_displacement_m": 0.0,
-    "plume_spread": "zero (identical wind for all particles)"
+  "simulation_direction": "forward",
+  "output": {
+    "interval_s": 1800,
+    "averaging_window_s": 1800,
+    "sampling_interval_s": 300,
+    "quantity": "time_averaged_mass_concentration_kg_m3"
+  },
+  "output_grid": {
+    "nx": 64,
+    "ny": 64,
+    "nz": 10,
+    "dx_deg": 0.1,
+    "dy_deg": 0.1,
+    "xlon0_deg": 6,
+    "ylat0_deg": 47,
+    "horizontal_ref": "geographic_lon_lat_degrees",
+    "heights_m": [100, 250, 500, 750, 1000, 1500, 2000, 2500, 3000, 5000],
+    "heights_ref": "agl"
   },
   "units": {
     "wind": "m/s",
     "displacement": "m",
     "mass": "kg",
-    "time": "s"
+    "time": "s",
+    "height": "m",
+    "concentration": "kg/m3"
   },
-  "seeds": "deterministic (no RNG consumed)",
+  "validation_definition_refs": {
+    "metric_contracts": [
+      {
+        "id": "evaluation-metrics",
+        "version": "report-schema-1.0.0",
+        "path": "scripts/evaluate/metrics.py"
+      }
+    ],
+    "threshold_contracts": [
+      {
+        "id": "scientific-thresholds",
+        "version": "v1",
+        "path": "evaluation/thresholds/scientific-thresholds-v1.json"
+      },
+      {
+        "id": "corpus-thresholds",
+        "version": "1",
+        "path": "fixtures/corpus/thresholds.json"
+      }
+    ]
+  },
+  "stochastic": {
+    "candidate_philox": null,
+    "oracle_seed": null
+  },
+  "execution_profile": {
+    "id": "flexpart-11.1-single-thread",
+    "version": 1,
+    "manifest_path": "reference/flexpart-11.1.json"
+  },
+  "candidate_physics_profile": {
+    "id": "candidate-forward-timeloop-v1",
+    "version": 1,
+    "manifest_path": "reference/candidate-physics/candidate-forward-timeloop-v1.json"
+  },
   "oracle_command_overrides": {
-    "LTURBULENCE": 0,
-    "LCONVECTION": 0,
-    "CTL": 5.0,
-    "IFINE": 4
+    "turbulence_formulation": "adaptive_w_sigw",
+    "lturbulence": 0,
+    "lconvection": 0,
+    "ctl": 5,
+    "ifine": 4,
+    "lsynctime_s": 300
+  },
+  "expected_artifacts": {
+    "required": [
+      {
+        "id": "candidate.raw",
+        "producer": "candidate",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "candidate.decoded",
+        "producer": "candidate",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "oracle.raw",
+        "producer": "oracle",
+        "class": "raw_model_output"
+      },
+      {
+        "id": "oracle.decoded",
+        "producer": "oracle",
+        "class": "decoded_model_output"
+      },
+      {
+        "id": "comparison.report",
+        "producer": "validation_pipeline",
+        "class": "comparison_report"
+      },
+      {
+        "id": "run.manifest",
+        "producer": "validation_pipeline",
+        "class": "run_manifest"
+      }
+    ]
+  },
+  "representation_differences": {
+    "notes": [
+      "Analytic case: no RNG is consumed. Candidate/oracle meteorology representation differences are declared explicitly below."
+    ],
+    "horizontal_grid": "Candidate uses the local case domain; Oracle synthetic meteorology uses the global regular_ll 32x32 grid pinned by flexpart-synthetic-grib-v1. Concentration OUTGRID remains separately case-defined.",
+    "vertical_coordinate": "Candidate uses fixed AGL wind levels; Oracle synthetic meteorology uses the pinned 12-level simplified hybrid-eta coordinate from flexpart-synthetic-grib-v1.",
+    "temporal_resolution": "Oracle synthetic meteorology is emitted at the pinned 10800 s cadence and covers the simulation window by rounding duration up to that cadence."
+  },
+  "notes": [
+    "Deterministic case: no stochastic identity needed.",
+    "Candidate uses isolated advection kernel; oracle runs with LTURBULENCE=0, LCONVECTION=0.",
+    "Expected: 10 m/s * 3600 s = 36000 m eastward displacement; no spread; mass conserved."
+  ],
+  "require_source_containment": true,
+  "oracle_execution": "required",
+  "oracle_meteorology_profile": {
+    "id": "flexpart-synthetic-grib-v1",
+    "version": 1,
+    "manifest_path": "reference/oracle-meteorology/synthetic-grib-v1.json"
   }
 }

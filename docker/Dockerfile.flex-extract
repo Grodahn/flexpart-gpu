@@ -1,0 +1,29 @@
+# flex_extract calc_etadot oracle image (#70).
+#
+# Extends the flexpart-fortran oracle image with the EMOSLIB and OpenJPEG
+# packages required to link and run the pinned flex_extract 7.1.2
+# calc_etadot (see reference/flex-extract.json; -lemosR64 resolves the
+# spectral routines set90/set99/fft99, libopenjp2 is a static-link
+# dependency of eccodes). The flex_extract sources themselves are provided
+# at run time via a bind mount and are never copied into the image.
+#
+# Build (after building flexpart-fortran:latest):
+#   docker compose -f docker/docker-compose.fortran.yml build flex-extract
+FROM flexpart-fortran:latest
+
+# The base image pinned its apt sources to the 20260910T000000Z snapshot,
+# so these packages resolve deterministically from the same archive snapshot.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  libemos-dev \
+  libemos-bin \
+  libemos-data \
+  libopenjp2-7-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+WORKDIR /workspace/flex_extract/Source/Fortran
+
+CMD ["bash"]

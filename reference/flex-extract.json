@@ -1,0 +1,71 @@
+{
+  "name": "flex_extract",
+  "version": "7.1.2",
+  "role": "Normative oracle for the preprocessing of the ECMWF eta-coordinate vertical velocity (deta/dt, GRIB parameter 77) into the pressure vertical velocity in Pa/s consumed by FLEXPART as omega (flex_extract calc_etadot, regular-grid META=1, METADIFF=0, MOMEGA=0, MDPDETA=1 configuration).",
+  "upstream_repository": "https://gitlab.phaidra.org/flexpart/flex_extract",
+  "pinned_tag": "7.1.2",
+  "pinned_commit": "e0005c99ac81d12faa45a8ff799debbd592b0dc0",
+  "execution_profile": {
+    "id": "flex-extract-7.1.2-calc-etadot",
+    "version": 1,
+    "runtime_environment": {
+      "OMP_NUM_THREADS": "1",
+      "OMP_THREAD_LIMIT": "1",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_NESTED": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_SCHEDULE": "static",
+      "OMP_PROC_BIND": "FALSE",
+      "OMP_WAIT_POLICY": "PASSIVE"
+    },
+    "build": {
+      "makefile": "Source/Fortran/makefile_fast",
+      "make_arguments": "LIB='-Bstatic -leccodes_f90_static -leccodes_static -Bdynamic -lemosR64 -lm -lpng -laec -lopenjp2' (overrides the makefile_fast default -Bstatic -leccodes_f90 -leccodes because the flexpart-fortran container ships the ecCodes static archives under the postfixed names libeccodes_f90_static.a / libeccodes_static.a; -lemosR64 stays in the link because calc_etadot calls the EMOSLIB spectral routines set90/set99/jsspol/fft99 via grphreal/phgrreal/ftrafo; -lopenjp2 -laec -lpng supply the transitive static-link dependencies of eccodes and jasper)",
+      "fortran_compiler": "gfortran",
+      "optimization": "-O3",
+      "fdefault_real_8": "enabled (-fdefault-real-8: oracle arithmetic in 64-bit real)",
+      "endianness": "big-endian (-fconvert=big-endian)",
+      "openmp_flag": "-fopenmp",
+      "verified_in_container": "flexpart-fortran:latest (gfortran 11.4.0, Ubuntu 22.04) + apt packages libemos-dev libemos-bin libemos-data libopenjp2-7-dev; calc_etadot_fast.out links and the official Calc_etadot installation example runs to 'STOP SUCCESSFULLY FINISHED'"
+    },
+    "docker": {
+      "image": "flexpart-fortran:latest",
+      "dockerfile": "docker/Dockerfile.fortran",
+      "compose_file": "docker/docker-compose.fortran.yml",
+      "base_image": "ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7",
+      "ubuntu_snapshot": "20260910T000000Z",
+      "orbit_extra_apt": ["libemos-dev", "libemos-bin", "libemos-data", "libopenjp2-7-dev"]
+    },
+    "required_inputs": {
+      "fort.4": "NAMGEN namelist; oracle configuration META=1, METADIFF=0, MOMEGA=0, MDPDETA=1, MOMEGADIFF=0",
+      "fort.10": "horizontal wind components u (GRIB parameter 131) and v (132) on model levels (required by the shared read path; not used by the META=1/MDPDETA=1 transform)",
+      "fort.11": "temperature (GRIB parameter 130) on model levels; also the GRIB message that the fort.15 output is modeled on",
+      "fort.12": "logarithm of surface pressure ln(ps) (GRIB parameter 152) in spectral (SH) representation plus the vertical coordinate coefficients pv (A/B half levels)",
+      "fort.17": "specific humidity (GRIB parameter 133) on model levels",
+      "fort.21": "raw eta-coordinate vertical velocity deta/dt (GRIB parameter 77) on model levels"
+    },
+    "optional_inputs": {
+      "fort.13": "divergence D (GRIB parameter 155); NOT read in the META=1/METADIFF=0 oracle configuration",
+      "fort.16/18/19/22": "omega/smoothing auxiliary files used only by other configurations"
+    },
+    "outputs": {
+      "fort.15": "FLEXPART-ready GRIB containing the transformed pressure vertical velocity parameter 77 (read as 135 by FLEXPART) on MLEVELIST half-level boundaries"
+    },
+    "external_seed_control": "unavailable",
+    "repeatability_cases": {
+      "MOE-SYN-001": "deterministic",
+      "MOE-REAL-001": "deterministic"
+    },
+    "minimum_repetitions": 1
+  },
+  "license": "CC-BY-4.0",
+  "license_url": "https://gitlab.phaidra.org/flexpart/flex_extract/-/blob/7.1.2/LICENSE.md",
+  "source_requirement": "Reference checkouts must be unmodified upstream sources at exactly the pinned commit. Any deviation (different commit, dirty work tree) fails verification.",
+  "notes": [
+    "calc_etadot.f90 at v7.1.2 is byte-identical to master; the pinned file (git blob 741eba91eab049df23a560219d0f2656a6cc9881) hashes to sha256 07ED3522F8C1B35065965D01AF828F7532605A3AA9BE44D48FB9CA3F2ED976FF. Comparison harnesses cross-check this hash plus the source-snippet contract of the ETAR transform block (calc_etadot.f90 lines 541-557).",
+    "Vertical coordinate convention: AK=BK come from fort.12 pv, top-of-atmosphere half level first (ECMWF ordering); candidates express the same coefficients in canonical interface order index 0 = top.",
+    "The makefile_fast link line and include path target a machine with emoslib and a gfortran-15 module directory; the container environment overrides LIB (ecCodes static archives are postfixed _static in this image and EMOSLIB provides the spectral transforms) and pins INC to the container eccodes Fortran module directory (/usr/lib/x86_64-linux-gnu/fortran/gfortran-mod-15, which exists in flexpart-fortran:latest). The extra apt packages libemos-dev/libemos-bin/libemos-data/libopenjp2-7-dev must be installed in the running container (libemosR64.a ships with libemos-dev, variant R64.D64.I32).",
+    "fort.15 output field for the pressure vertical velocity carries parameter METAPAR (default 77); FLEXPART 11.1 readwind_ecmwf maps parameter 77 to 135 and feeds it as omega into wwh before the pinmconv geometric transform.",
+    "The official Testing/Installation/Calc_etadot example (MLEVEL 91, MLEVELIST 88/to/91, 6x6 regular_ll, lat 50..40 N, lon 30..40 E) was run with the verified container build through fe_build (Ubuntu 22.04, gfortran 11.4). It stops with 'STOP SUCCESSFULLY FINISHED calc_etadot', fort.15 = 21987 bytes (messages 77/134/130 on levels 88-91 plus 130 level 1), fort.21 carries the raw param-77 field, fort.12 the 184-element pv (92 A + 92 B). The end-to-end candidate (eta_dot_to_pressure_velocity, mdpdeta=1) matches the oracle field over all 36 grid points x 4 levels with worst relative error 1.03e-05 (f32 vs -fdefault-real-8 rounding) and worst absolute error 2.5e-08 Pa/s."
+  ]
+}

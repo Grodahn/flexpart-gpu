@@ -4,21 +4,22 @@ use anyhow::{anyhow, Result};
 use flexpart_gpu::reference::{verify_checkout, ReferenceManifest};
 
 const USAGE: &str = "\
-FLEXPART oracle reference checkout verification.
+Oracle reference checkout verification (FLEXPART 11.1 or flex_extract 7.1.2).
 
 Usage:
   cargo run --bin reference-check -- verify --checkout <dir> [--manifest <file>]
-  cargo run --bin reference-check -- show
+  cargo run --bin reference-check -- show [--manifest <file>]
   cargo run --bin reference-check -- --help
 
 Commands:
   verify             Fail-closed check that <dir> is an unmodified upstream
-                     tree at the pinned FLEXPART 11.1 commit.
-  show               Print the bundled oracle manifest (JSON).
+                     tree at the pinned oracle commit (default: FLEXPART 11.1).
+  show               Print the oracle manifest (JSON).
 
 Options:
   --checkout <dir>   Reference checkout directory to verify.
-  --manifest <file>  Manifest file (default: bundled reference/flexpart-11.1.json).
+  --manifest <file>  Manifest file (default: bundled reference/flexpart-11.1.json;
+                     use reference/flex-extract.json for the flex_extract oracle).
   -h, --help         Show this help
 ";
 
@@ -29,9 +30,14 @@ struct VerifyOptions {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct ShowOptions {
+    manifest: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum CliCommand {
     Help,
-    Show,
+    Show(ShowOptions),
     Verify(VerifyOptions),
 }
 
@@ -47,7 +53,28 @@ where
         return Ok(CliCommand::Help);
     }
     match collected[0].as_str() {
-        "show" => Ok(CliCommand::Show),
+        "show" => {
+            let mut manifest: Option<PathBuf> = None;
+            let mut iter = collected.iter().skip(1);
+            while let Some(argument) = iter.next() {
+                match argument.as_str() {
+                    "--manifest" => {
+                        let value = iter
+                            .next()
+                            .ok_or_else(|| anyhow!("missing value after --manifest"))?;
+                        manifest = Some(PathBuf::from(value));
+                    }
+                    _ if argument.starts_with("--manifest=") => {
+                        let (_, value) = argument
+                            .split_once('=')
+                            .ok_or_else(|| anyhow!("invalid --manifest argument"))?;
+                        manifest = Some(PathBuf::from(value));
+                    }
+                    _ => return Err(anyhow!("unknown argument: {argument}")),
+                }
+            }
+            Ok(CliCommand::Show(ShowOptions { manifest }))
+        }
         "verify" => {
             let mut checkout: Option<PathBuf> = None;
             let mut manifest: Option<PathBuf> = None;
@@ -95,8 +122,11 @@ fn run() -> Result<()> {
             println!("{USAGE}");
             Ok(())
         }
-        CliCommand::Show => {
-            let manifest = ReferenceManifest::bundled()?;
+        CliCommand::Show(options) => {
+            let manifest = match &options.manifest {
+                Some(path) => ReferenceManifest::load(path)?,
+                None => ReferenceManifest::bundled()?,
+            };
             println!("{}", serde_json::to_string_pretty(&manifest)?);
             Ok(())
         }
@@ -136,7 +166,23 @@ mod tests {
     #[test]
     fn test_parse_cli_args_show() {
         let parsed = parse_cli_args(vec!["show".to_string()]).expect("show should parse");
-        assert_eq!(parsed, CliCommand::Show);
+        assert_eq!(parsed, CliCommand::Show(ShowOptions { manifest: None }));
+    }
+
+    #[test]
+    fn test_parse_cli_args_show_with_manifest() {
+        let parsed = parse_cli_args(vec![
+            "show".to_string(),
+            "--manifest".to_string(),
+            "reference/flex-extract.json".to_string(),
+        ])
+        .expect("show should parse");
+        assert_eq!(
+            parsed,
+            CliCommand::Show(ShowOptions {
+                manifest: Some(PathBuf::from("reference/flex-extract.json")),
+            })
+        );
     }
 
     #[test]

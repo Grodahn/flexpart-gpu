@@ -49,6 +49,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 OUTPUT_DIR="${PROJECT_ROOT}/target/ci-gate"
 PARTICLES="1000"
 ORACLE_CHECKOUT="${PROJECT_ROOT}/../flexpart"
+FLEXEXTRACT_CHECKOUT="${PROJECT_ROOT}/../flex_extract"
 SKIP_ORACLE_BUILD="0"
 CI_CASE_ALLOWLIST="SW-WGPU-ADVECTION-001 SYNTHETIC-UNIFORM-WIND-SMOKE"
 
@@ -70,12 +71,17 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/ci-gate.sh [--output-dir <dir>] [--particles <n>]
-                     [--oracle-checkout <dir>] [--skip-oracle-build]
+                     [--oracle-checkout <dir>] [--flex-extract-checkout <dir>]
+                     [--skip-oracle-build]
 
 Options:
   --output-dir <dir>       Output directory (default: target/ci-gate).
   --particles <n>          Candidate smoke particle count (default: 1000).
   --oracle-checkout <dir>  Pinned FLEXPART checkout (default: ../flexpart).
+  --flex-extract-checkout <dir>
+                           Pinned flex_extract checkout for the calc_etadot
+                           oracle tier (default: ../flex_extract; Step 2c runs
+                           only when the checkout exists).
   --skip-oracle-build      Skip Docker oracle build (local iteration only;
                            the gate then reports INCOMPLETE and fails).
   -h, --help               Show this help.
@@ -87,6 +93,7 @@ while [ $# -gt 0 ]; do
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --particles) PARTICLES="$2"; shift 2 ;;
     --oracle-checkout) ORACLE_CHECKOUT="$2"; shift 2 ;;
+    --flex-extract-checkout) FLEXEXTRACT_CHECKOUT="$2"; shift 2 ;;
     --skip-oracle-build) SKIP_ORACLE_BUILD="1"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) log_error "Unknown argument: $1"; usage; exit 2 ;;
@@ -102,6 +109,7 @@ log_info "Project root: ${PROJECT_ROOT}"
 log_info "Output dir: ${OUTPUT_DIR}"
 log_info "Particles: ${PARTICLES}"
 log_info "Oracle checkout: ${ORACLE_CHECKOUT}"
+log_info "flex_extract checkout: ${FLEXEXTRACT_CHECKOUT}"
 log_info "Allow-listed CI cases: ${CI_CASE_ALLOWLIST}"
 
 fail() {
@@ -111,6 +119,7 @@ fail() {
     --project-root "${PROJECT_ROOT}" \
     --output-dir "${OUTPUT_DIR}" \
     --oracle-checkout "${ORACLE_CHECKOUT}" \
+    --flex-extract-checkout "${FLEXEXTRACT_CHECKOUT}" \
     --status "TECHNICAL_FAIL" \
     --failure "$*" || true
   log_error "CI gate: TECHNICAL_FAIL"
@@ -421,6 +430,30 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
 
   log_info "Direct pinned FLEXPART-11.1 synthetic/real vertical routine comparisons and secondary conformance checks passed."
 fi
+
+# ---------------------------------------------------------------------------
+# 2c. calc_etadot preprocessing oracle (#70).
+# ---------------------------------------------------------------------------
+# Runs only when the pinned flex_extract checkout exists (default
+# ../flex_extract); otherwise the tier is reported as NOT_WIRED below. It
+# builds/runs in scratch dirs and leaves the checkout pristine.
+FLEXEXTRACT_ORACLE_STATUS="NOT_WIRED"
+if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
+  if [ -d "${FLEXEXTRACT_CHECKOUT}" ]; then
+    log_info "Step 2c/6: pinned flex_extract calc_etadot oracle comparison..."
+    if ! "${PROJECT_ROOT}/scripts/vertical/flex_extract_etadot_oracle.sh" \
+      --flex-extract-checkout "${FLEXEXTRACT_CHECKOUT}" \
+      --output-dir "${OUTPUT_DIR}/flex-extract-oracle" 2>&1 \
+      | tee "${OUTPUT_DIR}/flex-extract-etadot.log"; then
+      fail "calc_etadot oracle tier failed (#70)"
+    fi
+    FLEXEXTRACT_ORACLE_STATUS="PASS"
+  else
+    log_warn "flex_extract checkout not found at ${FLEXEXTRACT_CHECKOUT}; calc_etadot oracle tier is NOT_WIRED"
+  fi
+else
+  FLEXEXTRACT_ORACLE_STATUS="NOT_RUN"
+fi
 # ---------------------------------------------------------------------------
 # 3. Prove a real software-WGPU adapter (fail-closed, no skip allowed).
 # ---------------------------------------------------------------------------
@@ -550,7 +583,10 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${OUTPUT_DIR}/vertical-column/routine-oracle-provenance.json" \
     --artifact "${OUTPUT_DIR}/vertical-column/real-comparison-report.json" \
     --artifact "${OUTPUT_DIR}/vertical-column/real-conformance-comparison-report.json" \
-    --artifact "${OUTPUT_DIR}/vertical-column/real-column-fixture-provenance.json" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
+    --artifact "${OUTPUT_DIR}/vertical-column/real-column-fixture-provenance.json" \
+    --input "${PROJECT_ROOT}/reference/flex-extract.json" \
+    --artifact "${OUTPUT_DIR}/flex-extract-etadot.log" \
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/comparison-report.json" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
     fail "Provenance manifest generation failed (missing artifact or unpinned oracle)"
   fi
   test -s "${OUTPUT_DIR}/run-manifest.json" || fail "Provenance manifest missing: ${OUTPUT_DIR}/run-manifest.json"
@@ -578,6 +614,7 @@ if ! "${HOST_PYTHON}" "${SCRIPT_DIR}/ci-gate-report.py" \
   --project-root "${PROJECT_ROOT}" \
   --output-dir "${OUTPUT_DIR}" \
   --oracle-checkout "${ORACLE_CHECKOUT}" \
+  --flex-extract-checkout "${FLEXEXTRACT_CHECKOUT}" \
   --status "${REPORT_STATUS}" \
   --particles "${PARTICLES}" \
   --allowlist "${CI_CASE_ALLOWLIST}" 2>&1 | tee "${OUTPUT_DIR}/ci-gate-report.log"; then

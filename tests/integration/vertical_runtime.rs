@@ -1,8 +1,8 @@
 use flexpart_gpu::meteorology::{
     vertical::{
         reconstruct_vertical_geometry, reconstruct_vertical_geometry_with_motion,
-        resolve_release_height_at_column,
-        resolve_release_height_range_at_column, NativeVerticalMotion, VerticalTransformError,
+        resolve_release_height_at_column, resolve_release_height_range_at_column,
+        NativeVerticalMotion, VerticalTransformError,
     },
     Snapshot, VerticalReference,
 };
@@ -22,14 +22,9 @@ fn release_height_agl_and_asl_share_the_same_nonzero_terrain_transform() {
     assert_eq!(runtime.dimensions(), (1, 1, 3));
     assert_eq!(runtime.terrain_asl_m(0, 0).expect("terrain"), 250.0);
 
-    let from_agl = resolve_release_height_at_column(
-        runtime,
-        0,
-        0,
-        100.0,
-        VerticalReference::AboveGroundLevel,
-    )
-    .expect("100 m AGL over 250 m terrain");
+    let from_agl =
+        resolve_release_height_at_column(runtime, 0, 0, 100.0, VerticalReference::AboveGroundLevel)
+            .expect("100 m AGL over 250 m terrain");
     assert_eq!(from_agl.height_agl_m, 100.0);
     assert_eq!(from_agl.height_asl_m, 350.0);
 
@@ -87,14 +82,9 @@ fn release_height_reference_is_never_inferred() {
     let geometry = reconstruct_vertical_geometry(&snapshot).expect("vertical geometry");
     let runtime = geometry.runtime_view().expect("valid runtime view");
 
-    let error = resolve_release_height_at_column(
-        runtime,
-        0,
-        0,
-        100.0,
-        VerticalReference::ModelNative,
-    )
-    .expect_err("model-native release height must be rejected");
+    let error =
+        resolve_release_height_at_column(runtime, 0, 0, 100.0, VerticalReference::ModelNative)
+            .expect_err("model-native release height must be rejected");
     assert!(matches!(
         error,
         VerticalTransformError::UnsupportedReleaseHeightReference {

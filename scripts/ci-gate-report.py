@@ -112,6 +112,7 @@ def main():
     parser.add_argument("--project-root", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--oracle-checkout", required=True)
+    parser.add_argument("--flex-extract-checkout", default=None)
     parser.add_argument("--status", required=True,
                         choices=["TECHNICAL_PASS", "TECHNICAL_FAIL"])
     parser.add_argument("--particles", default="1000")
@@ -182,6 +183,40 @@ def main():
 
     oracle_executable = Path(args.oracle_checkout) / "src" / "FLEXPART"
     oracle_executable_sha = hash_if_exists(oracle_executable)
+
+    etadot_oracle = None
+    if args.flex_extract_checkout:
+        flex_extract_manifest = project_root / "reference" / "flex-extract.json"
+        flex_extract_commit = None
+        flex_extract_dirty = None
+        if flex_extract_manifest.is_file():
+            pinned = json.loads(
+                flex_extract_manifest.read_text(encoding="utf-8")
+            )["pinned_commit"]
+        else:
+            pinned = None
+        if Path(args.flex_extract_checkout).is_dir():
+            revision = git_revision(args.flex_extract_checkout)
+            flex_extract_commit = revision["commit"]
+            flex_extract_dirty = revision["dirty"]
+        etadot_status = "NOT_WIRED"
+        if Path(args.output_dir, "flex-extract-oracle", "comparison-report.json").is_file():
+            try:
+                comparison = json.loads(
+                    Path(args.output_dir, "flex-extract-oracle",
+                         "comparison-report.json").read_text(encoding="utf-8")
+                )
+                etadot_status = "PASS" if comparison.get("status") == "PASS" else "FAIL"
+            except Exception:
+                etadot_status = "FAIL"
+        etadot_oracle = {
+            "manifest": "reference/flex-extract.json",
+            "pinned_commit": pinned,
+            "actual_commit": flex_extract_commit,
+            "worktree_clean": (not flex_extract_dirty
+                               if flex_extract_dirty is not None else None),
+            "status": etadot_status,
+        }
 
     candidate_binary = project_root / "target" / "release" / "fortran-validation"
     # Windows executable has .exe suffix; accept either.
@@ -262,6 +297,7 @@ def main():
             "executable_sha256": oracle_executable_sha,
             "manifest": "reference/flexpart-11.1.json",
         },
+        "etadot_oracle": etadot_oracle,
         "candidate": {
             "revision": candidate_git["commit"],
             "worktree_dirty": candidate_git["dirty"],

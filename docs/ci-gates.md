@@ -63,6 +63,28 @@ Fail-closed steps:
    executable/input/output hashes, adapter, seed note) and
    `ci-gate-report.json` (schema v1, see §5); require both to exist.
 
+Fail-closed step 2b (#30, direct vertical routine):
+
+- Compile the pinned `verttransform_ecmwf_heights` routine against the
+  pristine `FLEXPART` objects, run synthetic and real ERA5/ETEX columns,
+  and compare candidate + conformance-harness outputs against the routine
+  oracle with prescribed tolerances (see `docs/vertical-transform.md`).
+
+Fail-closed step 2c (#70, calc_etadot preprocessing oracle):
+
+- Runs when the pinned flex_extract 7.1.2 checkout exists at
+  `../flex_extract` (or `--flex-extract-checkout <dir>`); otherwise the tier
+  is reported `NOT_WIRED` and never `PASS`. The driver
+  (`scripts/vertical/flex_extract_etadot_oracle.sh`) verifies the checkout
+  against `reference/flex-extract.json`, builds `calc_etadot` in a scratch
+  dir (extra packages `libemos-dev`/`libemos-bin`/`libemos-data`/
+  `libopenjp2-7-dev` via `Dockerfile.flex-extract`), runs the pinned
+  `Testing/Installation/Calc_etadot` example (must print `CONGRATULATIONS`),
+  extracts canonical snapshot/motion/oracle JSONs, runs the
+  `eta-dot-column-report` candidate, and compares every grid point x level
+  against the oracle field (f32-vs-f64 tolerances, worst attributable
+  relative error ≤ 3e-5). The checkout must stay pristine after the run.
+
 Any missing adapter, skipped GPU test, missing oracle artifact, or failed
 comparison exits non-zero. Unwired corpus cases are listed as `NOT_WIRED`,
 never as `PASS`; no placeholder reports success.
@@ -119,6 +141,9 @@ traceable to one concrete run via `GITHUB_RUN_ID`/`GITHUB_SHA` (or
   packages, compiler, executable/input/output hashes, adapter line).
 - `build-env.txt` (`rustc`, `cargo`, `docker`, Python, OS, revisions).
 - `oracle-verify.log`, `oracle-build.log`, `oracle-executable.sha256`.
+- `flex-extract-etadot.log`, `flex-extract-oracle/` when step 2c ran
+  (`verify.log`, `oracle-build-run.log`, `oracle-json/{snapshot,motion,oracle}.json`,
+  `candidate.json`, `comparison-report.json`).
 - `gpu-preflight.log`, `sw-wgpu-advection.log`.
 - `candidate-run.log`, `candidate-output.json`,
   `candidate-output-check.log`, `candidate-executable.sha256` (when built).
@@ -139,6 +164,13 @@ traceable to one concrete run via `GITHUB_RUN_ID`/`GITHUB_SHA` (or
   "status": "TECHNICAL_PASS",
   "scientific_verdict": "NOT_EVALUATED",
   "oracle": {"pinned_commit": "…", "actual_commit": "…"},
+  "etadot_oracle": {
+    "manifest": "reference/flex-extract.json",
+    "pinned_commit": "…",
+    "actual_commit": "…",
+    "worktree_clean": true,
+    "status": "PASS|FAIL|NOT_WIRED"
+  },
   "candidate": {"revision": "…"},
   "adapter": {"name": "llvmpipe", "is_software": true},
   "cases": [{"case_id": "SW-WGPU-ADVECTION-001", "status": "PASS"}],

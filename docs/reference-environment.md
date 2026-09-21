@@ -188,7 +188,74 @@ to a foreign executable, changed consumed inputs, missing experiment records,
 and unscoped partial evaluations fail closed; single-case scoping yields a
 valid single-case report).
 
-## 4. What the oracle is used for
+## 4. flex_extract calc_etadot oracle (#70)
+
+The preprocessing of the ECMWF eta-coordinate vertical velocity (deta/dt,
+GRIB parameter 77) into the pressure vertical velocity consumed by FLEXPART
+as omega is validated against **flex_extract v7.1.2** at the commit pinned in
+`reference/flex-extract.json` (`calc_etadot`, regular-grid META=1,
+METADIFF=0, MOMEGA=0, MDPDETA=1). This oracle is documented as
+`flex-extract-7.1.2-calc-etadot` (revision 1) in the manifest's
+`execution_profile`. It is separate from the FLEXPART 11.1 oracle above.
+
+### Fetch and verify
+
+```bash
+git clone https://gitlab.phaidra.org/flexpart/flex_extract.git ../flex_extract
+cd ../flex_extract
+git checkout e0005c99ac81d12faa45a8ff799debbd592b0dc0  # read pinned_commit instead
+cd ..
+cargo run --bin reference-check -- verify --checkout ../flex_extract \
+  --manifest reference/flex-extract.json
+```
+
+Verification is fail-closed like the FLEXPART tier: the checkout must be at
+the pinned commit with an empty `git status --porcelain`.
+
+### Build and run (Docker)
+
+The `calc_etadot` build needs gfortran, ecCodes, EMOSLIB (`-lemosR64`, which
+resolves the spectral routines `set90`/`set99`/`jsspol`/`fft99`) and OpenJPEG
+(`-lopenjp2`, a static-link dependency of ecCodes). The container image comes
+from `docker/Dockerfile.flex-extract` (base `flexpart-fortran:latest` plus
+`libemos-dev`/`libemos-bin`/`libemos-data`/`libopenjp2-7-dev`, all resolved
+from the same pinned Ubuntu snapshot):
+
+```bash
+docker compose -f docker/docker-compose.fortran.yml build flex-extract
+scripts/vertical/flex_extract_etadot_oracle.sh --flex-extract-checkout ../flex_extract
+```
+
+The driver copies `Source/Fortran` and the `Testing/Installation/Calc_etadot`
+example inputs into scratch dirs under `target/ci-gate/flex-extract-oracle/`
+so the checkout stays byte-for-byte pristine, compiles `calc_etadot` with the
+manifested LIB line, runs the example (must print
+`CONGRATULATIONS`), extracts canonical snapshot/motion/oracle JSONs, runs the
+`eta-dot-column-report` candidate, and compares the full 6x6 field x levels
+88-91 (36 points x 4 levels) against the oracle reference with f32-vs-f64
+tolerances (worst attributable relative error 3e-5, absolute 1e-7 Pa/s).
+Build and run logs, the extracted JSONs and the comparison report land in
+`target/ci-gate/flex-extract-oracle/`.
+
+Observed result (2026-09-21, Docker Desktop, `flex-extract:latest` built
+from `flexpart-fortran:latest` `sha256:cafb19c…` with gfortran 11.4.0):
+`STOP SUCCESSFULLY FINISHED calc_etadot: CONGRATULATIONS`, fort.15 = 21987
+bytes, and the candidate matched the oracle field with worst relative error
+1.03e-5 and worst absolute error 2.5e-8 Pa/s. The `calc_etadot.f90` blob at
+the pinned commit hashes to sha256
+`07ED3522F8C1B35065965D01AF828F7532605A3AA9BE44D48FB9CA3F2ED976FF` (verified
+byte-identical to master) and is cross-checked by the comparison harness
+together with the ETAR transform source-snippet contract and the fort.4
+config.
+
+### CI wiring
+
+`validation-gate.yml` clones the pinned flex_extract checkout (sibling
+`../flex_extract`) and the gate runs step 2c automatically. When the
+checkout is absent, the tier is reported `NOT_WIRED`, never `PASS`, and the
+rest of the gate is unaffected (see `docs/ci-gates.md`).
+
+## 5. What the oracle is used for
 
 - Synthetic uniform-wind comparison (`scripts/compare-fortran.sh validate`,
   `src/bin/fortran-validation.rs`, `scripts/compare_concentrations.py`).
@@ -230,7 +297,7 @@ the comparison reads that last file - never a mid-run time average against an
 instantaneous end state (see the RISK-03.3G-03 addendum in
 `docs/validation-report.md`).
 
-## 5. Software-adapter note
+## 6. Software-adapter note
 
 Oracle comparisons must run on a hardware GPU or document the adapter. Runs
 on a software fallback adapter (`FLEXPART_GPU_SOFTWARE=1`) are valid for

@@ -597,6 +597,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${OUTPUT_DIR}/vertical-column/real-column-fixture-provenance.json" \
     --input "${PROJECT_ROOT}/reference/flex-extract.json" \
     --artifact "${OUTPUT_DIR}/flex-extract-etadot.log" \
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/run-provenance.json" \
     --artifact "${OUTPUT_DIR}/flex-extract-oracle/comparison-report.json" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
     fail "Provenance manifest generation failed (missing artifact or unpinned oracle)"
   fi

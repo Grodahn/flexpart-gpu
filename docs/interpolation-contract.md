@@ -38,7 +38,10 @@ hashes for the fixture generator, direct-oracle harness, real-column extractor, 
 driver and FLEXPART reference manifest. It also records the actual gfortran version,
 the pinned full-FLEXPART object-build profile/container, the driver compile/link flags,
 and the complete sorted set of linked FLEXPART object files. CI requires those metadata
-fields to reproduce exactly.
+fields to reproduce exactly. The local oracle executable path/SHA is deliberately **not**
+part of the frozen provenance: source/object/compiler metadata plus direct per-case output
+hashes are the reproducible evidence, while an executable hash may legitimately vary with
+local link/build details.
 
 ## 2. Horizontal grid conventions
 
@@ -196,7 +199,7 @@ that geographic and direct-grid paths converge before interpolation.
 
 ### Verified golden (global seam via duplicate column)
 
-Same grid with `periodic=1` (canonical `nx=4`, FLEXPART `nxmax=5`), query
+Global index fixture with `periodic=1`, canonical `nx=4`, `dx=90°` (`nx*dx=360°`) and FLEXPART `nxmax=5`, query
 `(xt,yt) = (3.2, 1.5)`, `kz=1`. This samples across the periodic seam via
 FLEXPART's duplicated ghost column. For this valid canonical-domain query
 `ixp=4 < nxmax`, so the explicit `ixp >= nxmax` correction branch is **not**

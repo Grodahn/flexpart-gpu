@@ -197,22 +197,44 @@ CASE_SEMANTICS = {
             "interpol_mod::find_grid_distances",
             "interpol_mod::hor_interpol_4d",
         ],
-        "production_coordinate_initialization_path": [
-            "FLEXPART::read_options_and_initialise_flexpart",
-            "point_mod::coordtrafo",
-        ],
-        "production_sampling_path": [
-            "advance_mod::advance",
-            "interpol_mod::init_interpol",
-            "interpol_mod::find_grid_indices",
-            "interpol_mod::find_grid_distances",
-            "interpol_mod::interpol_wind",
-            "interpol_mod::hor_interpol_4d",
-        ],
+        "production_direct_call_edges": {
+            "release_coordinate_initialization": [
+                [
+                    "FLEXPART::read_options_and_initialise_flexpart",
+                    "point_mod::coordtrafo",
+                ],
+            ],
+            "above_pbl_wind_sampling": [
+                ["advance_mod::advance", "interpol_mod::init_interpol"],
+                ["interpol_mod::init_interpol", "interpol_mod::find_ngrid"],
+                ["interpol_mod::init_interpol", "interpol_mod::find_grid_indices"],
+                ["interpol_mod::init_interpol", "interpol_mod::find_grid_distances"],
+                ["interpol_mod::init_interpol", "interpol_mod::find_time_vars"],
+                ["interpol_mod::init_interpol", "interpol_mod::find_z_level"],
+                ["advance_mod::advance", "advance_mod::adv_above_pbl"],
+                ["advance_mod::adv_above_pbl", "interpol_mod::interpol_wind"],
+                ["interpol_mod::interpol_wind", "interpol_mod::find_ngrid"],
+                ["interpol_mod::interpol_wind", "interpol_mod::find_grid_indices"],
+                ["interpol_mod::interpol_wind", "interpol_mod::find_grid_distances"],
+                ["interpol_mod::interpol_wind", "interpol_mod::find_time_vars"],
+                ["interpol_mod::interpol_wind", "interpol_mod::find_z_level_meters"],
+                ["interpol_mod::interpol_wind", "interpol_mod::interpol_wind_meter"],
+                ["interpol_mod::interpol_wind_meter", "interpol_mod::find_vert_vars"],
+                ["interpol_mod::interpol_wind_meter", "interpol_mod::hor_interpol"],
+                ["interpol_mod::interpol_wind_meter", "interpol_mod::vert_interpol"],
+                [
+                    "interpol_mod::interpol_wind_meter",
+                    "interpol_mod::temporal_interpolation",
+                ],
+            ],
+        },
+        "generic_interface_resolution": {
+            "interpol_mod::hor_interpol(4d_field,...)": "interpol_mod::hor_interpol_4d",
+        },
         "production_note": (
-            "coordtrafo transforms release points during initialization; runtime "
-            "meteorology sampling consumes particle grid coordinates and does not "
-            "call coordtrafo immediately before interpolation"
+            "All production edges above are direct CALL statements in the pinned "
+            "source. init_interpol setup and adv_above_pbl/interpol_wind are sibling "
+            "branches of advance, not one synthetic linear stack."
         ),
         "mapping": {
             "xlon0_deg": -2.0,
@@ -263,12 +285,34 @@ CASE_SEMANTICS = {
             "members": [0, 3600],
             "endpoints_inclusive": True,
             "primitive_outside_memory_window": "linear_extrapolation_no_range_guard",
-            "production_call_path": [
-                "getfields_mod::getfields",
-                "advance_mod::advance",
-                "interpol_mod::init_interpol",
-                "interpol_mod::find_time_vars",
-                "interpol_mod::temporal_interpolation",
+            "production_lifecycle_direct_call_edges": [
+                ["timemanager_mod::timemanager", "getfields_mod::getfields"],
+                ["timemanager_mod::timemanager", "advance_mod::advance"],
+            ],
+            "production_temporal_direct_call_edges": [
+                ["advance_mod::advance", "interpol_mod::init_interpol"],
+                ["interpol_mod::init_interpol", "interpol_mod::find_time_vars"],
+                ["advance_mod::advance", "advance_mod::adv_above_pbl"],
+                ["advance_mod::adv_above_pbl", "interpol_mod::interpol_wind"],
+                ["interpol_mod::interpol_wind", "interpol_mod::find_time_vars"],
+                ["interpol_mod::interpol_wind", "interpol_mod::interpol_wind_meter"],
+                [
+                    "interpol_mod::interpol_wind_meter",
+                    "interpol_mod::temporal_interpolation",
+                ],
+                ["advance_mod::advance", "advance_mod::petterssen_corr"],
+                [
+                    "advance_mod::petterssen_corr",
+                    "interpol_mod::interpol_wind_short",
+                ],
+                [
+                    "interpol_mod::interpol_wind_short",
+                    "interpol_mod::find_time_vars",
+                ],
+                [
+                    "interpol_mod::interpol_wind_short",
+                    "interpol_mod::interpol_wind_meter",
+                ],
             ],
             "range_policy_owner": (
                 "caller/canonical API; Petterssen end-step guard is outside "
@@ -301,26 +345,28 @@ CASE_SEMANTICS = {
             "precipitation_input_representation": "already_normalized_rate",
             "reset_deaccumulation": "not_performed_here; owned_by_issue_75",
         },
-        "production_ingest_paths": {
+        "production_ingest_direct_call_edges": {
             "ecmwf": [
-                "getfields_mod::getfields",
-                "windfields_mod::readwind_ecmwf",
-                "windfields_mod::lsprec/convprec",
+                ["timemanager_mod::timemanager", "getfields_mod::getfields"],
+                ["getfields_mod::getfields", "windfields_mod::readwind_ecmwf"],
             ],
             "gfs": [
-                "getfields_mod::getfields",
-                "windfields_mod::readwind_gfs",
-                "windfields_mod::lsprec/convprec",
+                ["timemanager_mod::timemanager", "getfields_mod::getfields"],
+                ["getfields_mod::getfields", "windfields_mod::readwind_gfs"],
             ],
         },
-        "production_sampling_path": [
-            "wetdepo_mod::wetdepo",
-            "wetdepo_mod::get_wetscav",
-            "interpol_mod::find_ngrid",
-            "interpol_mod::find_grid_indices",
-            "interpol_mod::find_grid_distances",
-            "interpol_mod::find_z_level_meters",
-            "interpol_mod::interpol_rain",
+        "ingest_output_fields": [
+            "windfields_mod::lsprec",
+            "windfields_mod::convprec",
+        ],
+        "production_sampling_direct_call_edges": [
+            ["timemanager_mod::timemanager", "wetdepo_mod::wetdepo"],
+            ["wetdepo_mod::wetdepo", "wetdepo_mod::get_wetscav"],
+            ["wetdepo_mod::get_wetscav", "interpol_mod::find_ngrid"],
+            ["wetdepo_mod::get_wetscav", "interpol_mod::find_grid_indices"],
+            ["wetdepo_mod::get_wetscav", "interpol_mod::find_grid_distances"],
+            ["wetdepo_mod::get_wetscav", "interpol_mod::find_z_level_meters"],
+            ["wetdepo_mod::get_wetscav", "interpol_mod::interpol_rain"],
         ],
         "production_boundary_note": (
             "FLEXPART samples lsprec/convprec already stored in windfields_mod; "
@@ -977,14 +1023,16 @@ def main() -> None:
                 "The driver links the pristine pinned FLEXPART 11.1 interpolation "
                 "modules. The geographic case intentionally composes "
                 "point_mod::coordtrafo with the horizontal interpolation primitives "
-                "as an oracle exercise path; pristine production uses coordtrafo "
-                "during release-point initialization, while runtime particle sampling "
-                "enters interpol_mod::init_interpol with grid coordinates and then "
-                "uses the horizontal primitives. Precipitation ingestion is "
-                "crosswalked through getfields_mod::getfields -> "
-                "windfields_mod::readwind_ecmwf/readwind_gfs -> lsprec/convprec, "
-                "while production wet-deposition sampling is wetdepo_mod::wetdepo -> "
-                "get_wetscav -> interpolation setup -> interpol_mod::interpol_rain. "
+                "as an oracle exercise path. Production behavior is crosswalked as "
+                "direct CALL edges rather than synthetic linear stacks: release "
+                "coordtrafo is called from read_options_and_initialise_flexpart; "
+                "timemanager calls getfields and advance as siblings; advance calls "
+                "init_interpol and adv_above_pbl; adv_above_pbl calls interpol_wind; "
+                "interpol_wind performs its own grid/time/vertical setup and dispatches "
+                "to interpol_wind_meter, which calls horizontal, vertical and temporal "
+                "interpolation. Precipitation ingestion and wet-deposition sampling are "
+                "likewise recorded as direct CALL edges, with lsprec/convprec named "
+                "separately as data fields rather than pseudo-routines. "
                 "W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output "
                 "as its vertical geometry/value source. The real #29 ERA5/ETEX "
                 "temperature column is paired with #30's pinned FLEXPART level-height "

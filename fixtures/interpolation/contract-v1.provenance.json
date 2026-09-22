@@ -8,10 +8,6 @@
     "version": "11.1",
     "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8"
   },
-  "binary": {
-    "path": "/workspace/target/interpolation/oracle-build/interpolation-oracle",
-    "sha256": "0c6594d035c7d6e9d36a172887b31325fb2733cdbdb10c93c8efb1bff3aac84d"
-  },
   "driver_source": {
     "path": "scripts/interpolation/direct_interpolation_oracle.f90",
     "sha256": "026dc90a676906d1b656b73545f6a67f195a9d31e7d6d6c2681ac6f7803d2135"
@@ -224,11 +220,11 @@
   "fixture_artifact": {
     "path": "fixtures/interpolation/contract-v1.json",
     "hash_kind": "normalized_canonical_json_sha256",
-    "sha256": "c857f18a99501290b2820fe890e94999f88e6a5d50508e17eb58b37c4d608dd1"
+    "sha256": "d537a239e69d609131abbddf870d0067272a6e675cd4c50ba059e223793cfaed"
   },
   "generator_source": {
     "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
-    "sha256": "123cc1d36dfea02673f6d4e3156f02e0f27240e43c6581166a14584a67764322"
+    "sha256": "b89ee8ac134fb19a19a32e84d5509bd0ec01c7bedc395e14aba4cf6818e2e989"
   },
   "oracle_harness_source": {
     "path": "scripts/interpolation/direct_oracle.sh",

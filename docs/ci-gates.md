@@ -179,7 +179,9 @@ traceable to one concrete run via `GITHUB_RUN_ID`/`GITHUB_SHA` (or
   `oracle-json/{snapshot,motion,oracle}.json`, `candidate.json`,
   `comparison-report.json`).
 - `interpolation/contract-v1.json`, `interpolation/contract-v1.provenance.json`,
-  direct oracle outputs (including `horizontal-geographic-interior.out`) and
+  `interpolation/oracle-build/interpolation-oracle.compiler-version.txt`,
+  `interpolation/oracle-build/interpolation-oracle.linked-objects.txt`, direct
+  oracle outputs (including `horizontal-geographic-interior.out`) and
   `interpolation/reproducibility-check.log`.
 - `gpu-preflight.log`, `sw-wgpu-advection.log`.
 - `candidate-run.log`, `candidate-output.json`,

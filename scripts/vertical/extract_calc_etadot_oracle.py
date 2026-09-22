@@ -29,6 +29,7 @@ rust candidate (eta_dot_to_pressure_velocity, mdpdeta=1):
 """
 
 import argparse
+import datetime as dt
 import hashlib
 import json
 import os
@@ -53,6 +54,8 @@ PROVENANCE_GRIB_KEYS = [
     "centre",
     "dataDate",
     "dataTime",
+    "validityDate",
+    "validityTime",
     "gridType",
     "typeOfLevel",
     "stepType",
@@ -74,6 +77,25 @@ def safe_grib_metadata(handle):
         except Exception:
             result[key] = None
     return result
+
+
+def valid_time_epoch_seconds(metadata):
+    date = metadata.get("validityDate") or metadata.get("dataDate")
+    time = metadata.get("validityTime")
+    if time is None:
+        time = metadata.get("dataTime")
+    if date is None or time is None:
+        raise ValueError("raw GRIB lacks date/time metadata for canonical valid_time")
+    date = int(date)
+    time = int(time)
+    year = date // 10000
+    month = (date // 100) % 100
+    day = date % 100
+    hour = time // 100
+    minute = time % 100
+    return int(
+        dt.datetime(year, month, day, hour, minute, tzinfo=dt.timezone.utc).timestamp()
+    )
 
 
 def read_messages(path, param_filter=None, level_filter=None):
@@ -105,9 +127,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--example-dir", type=str, required=True)
     parser.add_argument("--output-dir", type=str, required=True)
-    parser.add_argument(
-        "--valid-time-epoch-seconds", type=int, default=1700000000
-    )
+    parser.add_argument("--valid-time-epoch-seconds", type=int, default=None)
     args = parser.parse_args()
 
     example_dir = args.example_dir
@@ -130,6 +150,12 @@ def main():
         raw_grib_metadata = safe_grib_metadata(handle)
     finally:
         ec.codes_release(handle)
+
+    valid_time = (
+        args.valid_time_epoch_seconds
+        if args.valid_time_epoch_seconds is not None
+        else valid_time_epoch_seconds(raw_grib_metadata)
+    )
 
     handle = read_first_handle(hybrid_path)
     try:
@@ -201,7 +227,7 @@ def main():
                 "time": {
                     "calendar": "gregorian",
                     "kind": "instantaneous",
-                    "valid_time_epoch_seconds": args.valid_time_epoch_seconds,
+                    "valid_time_epoch_seconds": valid_time,
                 },
                 "values": [float(v) for v in ps_flat],
             }

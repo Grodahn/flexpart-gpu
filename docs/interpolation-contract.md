@@ -160,7 +160,6 @@ output = input1*dz2 + input2*dz1
 | 5 | 1/2 | 0, 1 | 1.0 |
 | 50 | 1/2 | 0.44444448, 0.55555558 | 1.44444442 |
 | 100 | 2/3 | 0, 1 | 2.0 |
-| 1000 | 2/3 | 1, 0 | 3.0 |
 | 500 | 2/3 | 0.44444448, 0.55555558 | 2.44444466 |
 | 1000 | 2/3 | 1, 0 | 3.0 |
 | 2000 | 2/3 | 1, 0 | 3.0 |
@@ -242,7 +241,7 @@ the interpolated cloud value is `icmv` and both `intiy1/intiy2` collapse to `icm
 ### Verified golden
 
 `nx=4, ny=3, dx=dy=1`, `memtime=[0,3600]`, query `(xt,yt,itime,kz) = (1.25,0.5,1800,1)`
-(see `smoke-rain` fixture for the full field listing):
+(see `rain-layer-fields` fixture for the full field listing):
 
 ```
 lsprec t1: linear-in-x field 0..11 ; t2: 100..111

@@ -27,7 +27,7 @@ is the only oracle evidence; no reimplementation is used as evidence.
 
 Every machine-readable case carries a `semantics` object with explicit coordinate
 conventions, horizontal/vertical staggering, storage/vertical ordering, units and time
-semantics. The real ERA5/ETEX descriptor carries the same categories plus field-specific
+semantics. The real ERA5/ETEX sampling case carries the same categories plus field-specific
 units/staggering. These fields are part of the reproduced contract, not documentation-only
 annotations.
 

@@ -31,7 +31,6 @@ from pathlib import Path
 
 PRESSURE_VELOCITY_ABS_TOL_PA_S = 1.0e-7
 PRESSURE_VELOCITY_REL_TOL = 3.0e-5
-MAX_ATTRIBUTED_REL_ERROR = 3.0e-5
 
 PINNED_CALC_ETADOT_SHA256 = "160F267F8741F23D13FDBA2F7A88F110BB131AA84AD7894FA43605258E55B0D9"
 PINNED_CALC_ETADOT_GIT_BLOB = "741eba91eab049df23a560219d0f2656a6cc9881"
@@ -486,10 +485,11 @@ def main():
                 "relative": PRESSURE_VELOCITY_REL_TOL,
             },
             "note": (
-                "Candidate arithmetic is f32; the pinned calc_etadot builds "
-                f"with -fdefault-real-8 (f64). Worst observed relative error "
-                f"is the hybrid-coordinate rounding floor; the attributable "
-                f"cap of {MAX_ATTRIBUTED_REL_ERROR} admits 3x headroom over it."
+                "Candidate recurrence uses f64 to match the pinned "
+                "calc_etadot -fdefault-real-8 arithmetic and rounds once at "
+                "the canonical f32 output boundary. The comparison applies "
+                "the declared relative tolerance with an absolute-error floor "
+                "for values near zero."
             ),
         },
         "grid": {"nx": nx, "ny": ny, "nlev": nlev, "levels": levels},

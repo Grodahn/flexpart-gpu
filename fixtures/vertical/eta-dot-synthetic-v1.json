@@ -1,7 +1,7 @@
 {
   "kind": "eta_coordinate_velocity",
   "unit": "per_second",
-  "sign": "positive_eta_decreasing",
+  "sign": "positive_eta_increasing",
   "vertical_staggering": "level_center",
   "values": [-1.0e-05, -2.0e-05, 3.0e-05],
   "provenance": {

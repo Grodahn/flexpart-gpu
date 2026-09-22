@@ -448,11 +448,11 @@ fn contract_provenance_matches_fixture() {
     );
     assert_eq!(
         provenance.fixture_artifact["hash_kind"],
-        "canonical_json_sha256"
+        "normalized_canonical_json_sha256"
     );
     assert_eq!(
         provenance.fixture_artifact["sha256"],
-        "33da856a2af83443926422bf4ea8c7aebf856450d6238e75c2e17e5bd1176bef"
+        "8286630800cfbf8c8f0b80f7f11e523631517c7999f1ff000da8286f18384b34"
     );
     assert_eq!(
         provenance.generator_source["path"],

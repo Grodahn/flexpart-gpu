@@ -242,6 +242,22 @@ hash to the comparison. The extracted oracle metadata identifies the pinned
 upstream Calc_etadot fixture as a native-model-level source and derives its
 valid time from the GRIB metadata rather than injecting a synthetic timestamp.
 
+The driver additionally runs the same pinned `calc_etadot` executable on a
+full checked-in ETEX/ERA5 eta-dot profile at 1994-10-23 15:00 UTC:
+`fixtures/etex/native-mini` supplies param 77 on all 137 model levels, the
+matching real ERA5 U/V/T/Q fields, and the complete 138-interface A/B
+coordinate. This exercises the recursive `ETAR(K)-ETAR(K-1)` path through
+the entire native column instead of zero-filling the unrequested upper levels.
+The checked-in surface-pressure archive is grid-point data, whereas
+`calc_etadot` requires spectral ln(ps) on `fort.12`; therefore this proof
+case transparently reuses the spectral ln(ps) carrier from the pinned pristine
+installation fixture and replaces only its PV array with the real ERA5
+138-interface A/B coefficients. That carrier is separately hashed and recorded
+in `source-provenance.json`; it is **not** claimed to be ERA5 surface
+pressure. The real-data acceptance report is
+`real-era5-137/comparison-report.json` and requires all
+137 x 65 x 41 = 365105 eta-dot-to-Pa/s values to pass.
+
 Observed result (2026-09-21, Docker Desktop, `flex-extract:latest` built
 from `flexpart-fortran:latest` `sha256:cafb19c…` with gfortran 11.4.0):
 `STOP SUCCESSFULLY FINISHED calc_etadot: CONGRATULATIONS`, fort.15 = 21987

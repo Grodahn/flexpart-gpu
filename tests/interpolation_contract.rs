@@ -379,6 +379,38 @@ fn contract_fixture_metadata_is_frozen() {
         source["oracle_output_sha256"],
         "5015ea3a9a9e42b1a2b88c60c2867b74a632bffd1b9cfefdc186b005c752b197"
     );
+
+    for case in &contract.cases {
+        for key in ["coordinates", "staggering", "ordering", "units", "time"] {
+            assert!(
+                case.semantics[key].is_object(),
+                "{} must declare semantics.{key}",
+                case.id
+            );
+        }
+    }
+    let rain = contract
+        .cases
+        .iter()
+        .find(|case| case.id == "rain-layer-fields")
+        .expect("rain fixture");
+    assert_eq!(
+        rain.semantics["time"]["precipitation_input_representation"],
+        "already_normalized_rate"
+    );
+    assert_eq!(
+        rain.semantics["time"]["reset_deaccumulation"],
+        "not_performed_here; owned_by_issue_75"
+    );
+    assert_eq!(
+        real["semantics"]["ordering"]["vertical"],
+        "increasing",
+        "real sample must freeze canonical vertical ordering"
+    );
+    assert_eq!(
+        real["compatibility"]["extraction_source_sha256"],
+        "bd1e9d8531ceabe99544a7e7659766d1642fcb576a0fdd505aa4c50886f3bdc0"
+    );
 }
 
 #[test]
@@ -409,6 +441,30 @@ fn contract_provenance_matches_fixture() {
     assert_eq!(
         provenance.interface_vertical_source["geometry_field"],
         "wzlev"
+    );
+    assert_eq!(
+        provenance.fixture_artifact["path"],
+        "fixtures/interpolation/contract-v1.json"
+    );
+    assert_eq!(
+        provenance.fixture_artifact["sha256"],
+        "c51bf31aaa58c9274ba4f4e057b2ed5d704b6df9c8f02756dd2ec4de3031c06b"
+    );
+    assert_eq!(
+        provenance.generator_source["path"],
+        "scripts/interpolation/prepare_interpolation_fixtures.py"
+    );
+    assert_eq!(
+        provenance.oracle_harness_source["path"],
+        "scripts/interpolation/direct_oracle.sh"
+    );
+    assert_eq!(
+        provenance.real_extraction_source["path"],
+        "scripts/vertical/extract_real_etex_column.py"
+    );
+    assert_eq!(
+        provenance.reference_manifest["path"],
+        "reference/flexpart-11.1.json"
     );
 
     // The linked objects must name every module the oracle driver calls.
@@ -525,6 +581,7 @@ struct FixtureCase {
     vertical_staggering: Option<String>,
     #[serde(default)]
     source_oracle: Option<serde_json::Value>,
+    semantics: serde_json::Value,
     input: Vec<String>,
     golden: serde_json::Map<String, serde_json::Value>,
 }
@@ -540,6 +597,11 @@ struct ContractProvenance {
     cases: std::collections::HashMap<String, String>,
     real_data_samples: Vec<serde_json::Value>,
     interface_vertical_source: serde_json::Value,
+    fixture_artifact: serde_json::Value,
+    generator_source: serde_json::Value,
+    oracle_harness_source: serde_json::Value,
+    real_extraction_source: serde_json::Value,
+    reference_manifest: serde_json::Value,
 }
 
 #[derive(Deserialize)]

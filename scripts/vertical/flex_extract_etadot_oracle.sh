@@ -114,6 +114,7 @@ docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
        \"\$src\"/grphreal.f90 \"\$src\"/posnam.f90 \"\$src\"/phgrreal.f90 \
        \"\$src\"/makefile_fast \"\$build\"/
     cd \"\$build\"
+    gfortran --version | head -1 > /workspace/target/ci-gate/flex-extract-oracle/compiler-version.txt
     make -f makefile_fast \
       LIB='-Bstatic -leccodes_f90_static -leccodes_static -Bdynamic -lemosR64 -lm -lpng -laec -lopenjp2' \
       INC='-I. -I/usr/lib/x86_64-linux-gnu/fortran/gfortran-mod-15' \

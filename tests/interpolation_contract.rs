@@ -31,10 +31,10 @@ const ABS_TOL: f64 = 1.0e-6;
 
 fn assert_close(actual: f64, expected: f64, what: &str) {
     let diff = (actual - expected).abs();
-    let scale = expected.abs().max(1.0) * REL_TOL;
+    let tolerance = ABS_TOL + REL_TOL * expected.abs();
     assert!(
-        diff <= scale + ABS_TOL,
-        "{what}: golden {expected} != closed form {actual} (diff {diff})"
+        diff <= tolerance,
+        "{what}: golden {expected} != closed form {actual} (diff {diff}, tolerance {tolerance})"
     );
 }
 
@@ -497,6 +497,16 @@ fn contract_fixture_metadata_is_frozen() {
         periodic_horizontal.semantics["supported_query_domain"]["out_of_domain"],
         "not frozen by #71; downstream #72 fails closed"
     );
+    let periodic_grid = tokens(&periodic_horizontal.input[2]);
+    let periodic_nx = tokens(&periodic_horizontal.input[1])[0]
+        .parse::<usize>()
+        .expect("periodic nx");
+    let periodic_dx = parse_f64(&periodic_grid[2], "periodic dx");
+    assert_close(
+        periodic_nx as f64 * periodic_dx,
+        360.0,
+        "periodic fixture must represent a reachable global longitude layout",
+    );
 
     let geographic = contract
         .cases
@@ -731,6 +741,12 @@ fn contract_provenance_matches_fixture() {
     let provenance_source = include_str!("../fixtures/interpolation/contract-v1.provenance.json");
     let provenance: ContractProvenance = serde_json::from_str(provenance_source)
         .expect("interpolation provenance must be well-formed");
+    let provenance_value: serde_json::Value =
+        serde_json::from_str(provenance_source).expect("interpolation provenance JSON");
+    assert!(
+        provenance_value.get("binary").is_none(),
+        "local executable path/hash is intentionally not part of frozen provenance"
+    );
     assert_eq!(
         provenance.schema,
         "flexpart-gpu.interpolation-contract-provenance.v1"
@@ -784,7 +800,7 @@ fn contract_provenance_matches_fixture() {
     );
     assert_eq!(
         provenance.fixture_artifact["sha256"],
-        "c857f18a99501290b2820fe890e94999f88e6a5d50508e17eb58b37c4d608dd1"
+        "d537a239e69d609131abbddf870d0067272a6e675cd4c50ba059e223793cfaed"
     );
     assert_eq!(
         provenance.generator_source["path"],

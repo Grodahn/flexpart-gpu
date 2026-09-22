@@ -62,7 +62,54 @@
       "temporal_interpolation",
       "vert_interpol",
       "interpol_rain"
-    ]
+    ],
+    "linked_objects": [
+      "advance_mod.o",
+      "binary_output_mod.o",
+      "cbl_mod.o",
+      "chemistry_mod.o",
+      "class_gribfile_mod.o",
+      "cmapf_mod.o",
+      "com_mod.o",
+      "conv_mod.o",
+      "date_mod.o",
+      "drydepo_mod.o",
+      "emissions_mod.o",
+      "erf_mod.o",
+      "flux_mod.o",
+      "getfields_mod.o",
+      "initdomain_mod.o",
+      "initialise_mod.o",
+      "interpol_mod.o",
+      "mean_mod.o",
+      "netcdf_output_mod.o",
+      "outgrid_mod.o",
+      "output_mod.o",
+      "par_mod.o",
+      "particle_mod.o",
+      "pbl_profile_mod.o",
+      "plume_mod.o",
+      "point_mod.o",
+      "qvsat_mod.o",
+      "random_mod.o",
+      "readoptions_mod.o",
+      "receptor_mod.o",
+      "receptor_netcdf_mod.o",
+      "restart_mod.o",
+      "settling_mod.o",
+      "sort_mod.o",
+      "timemanager_mod.o",
+      "totals_mod.o",
+      "turbulence_mod.o",
+      "txt_output_mod.o",
+      "unc_mod.o",
+      "verttransform_mod.o",
+      "wetdepo_mod.o",
+      "windfields_mod.o",
+      "xmass_mod.o"
+    ],
+    "linked_object_count": 43,
+    "linked_object_set_sha256": "388d1f824306df30fc74fbedc6464e86602b6a93ba782e9e1dad20ffacc3327c"
   },
   "cases": {
     "horizontal-interior": "3eaa131a904a874e5fff07eb832f265ebbe1859ba959e06ac63fecff2104229d",
@@ -181,11 +228,11 @@
   },
   "generator_source": {
     "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
-    "sha256": "4a1b62784b8d33daa2b3657324c6e23e8e24c56a0a60409e3afc7cef970c2c94"
+    "sha256": "9e84f70e61b8ab367fa3534a07e47165ba6ceec1f434906a86009d22ec1818a3"
   },
   "oracle_harness_source": {
     "path": "scripts/interpolation/direct_oracle.sh",
-    "sha256": "63039987d0d5d7e981a4d2b4f473641cd8ee9c7ad04abad1847e21355124cfac"
+    "sha256": "00b4791dc25ec9a7cc9c7e49244a7ff47abaf6acca5cfa62b40b29ed2caa0bc1"
   },
   "real_extraction_source": {
     "path": "scripts/vertical/extract_real_etex_column.py",
@@ -209,5 +256,44 @@
     "latitude_deg": 48,
     "timestamp": "1994-10-23T15:00:00Z",
     "epoch_seconds": 782924400
+  },
+  "build": {
+    "compiler_version": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+    "full_flexpart_object_build": {
+      "makefile": "src/makefile_gfortran",
+      "make_arguments": "eta=no arch=x86-64",
+      "fortran_compiler": "gfortran",
+      "optimization": "-O3",
+      "openmp_flag": "-fopenmp",
+      "arch_flag": "-march=x86-64",
+      "eta": "no",
+      "netcdf": "enabled (USE_NCF)"
+    },
+    "container": {
+      "image": "flexpart-fortran:latest",
+      "dockerfile": "docker/Dockerfile.fortran",
+      "compose_file": "docker/docker-compose.fortran.yml",
+      "base_image": "ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7",
+      "ubuntu_snapshot": "20260910T000000Z"
+    },
+    "driver_compile_link": {
+      "compiler": "gfortran",
+      "compile_flags": [
+        "-O0",
+        "-I<oracle-src>",
+        "-fopenmp",
+        "-mcmodel=large"
+      ],
+      "driver": "scripts/interpolation/direct_interpolation_oracle.f90",
+      "objects": "sorted src/*.o excluding FLEXPART.o",
+      "link_flags": [
+        "-L/usr/lib/x86_64-linux-gnu",
+        "-Wl,-rpath=/usr/lib/x86_64-linux-gnu",
+        "-leccodes",
+        "-leccodes_f90",
+        "-lm",
+        "-lnetcdff"
+      ]
+    }
   }
 }

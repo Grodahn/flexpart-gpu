@@ -84,15 +84,19 @@ Fail-closed step 2c (#70, calc_etadot preprocessing oracle):
   `eta-dot-column-report` candidate, and compares every grid point x level
   against the oracle field (f32-vs-f64 tolerances, worst attributable
   relative error ≤ 3e-5). The same pinned executable is then run on a second
-  checked-in ETEX/ERA5 case whose raw eta-dot, U/V/T/Q and hybrid A/B coordinate
-  cover all 137 native model levels at 65x41 points. Because the checked-in
-  ERA5 surface fixture is gridded while `calc_etadot` requires spectral
-  ln(ps), that second case explicitly reuses the pinned upstream installation
-  fixture's spectral ln(ps) carrier while replacing only its PV array with the
-  real 138-interface ERA5 A/B coefficients. The proof therefore covers the
-  complete real 137-level eta-dot recurrence without zero-filled levels; it
-  does not claim that the pressure carrier is ERA5. The real-data report must
-  pass all 137 x 65 x 41 = 365105 comparisons. The validated native contract
+  checked-in ETEX/ERA5 case built from one complete real native-model-level
+  column at 48.0 N, 2.0 W. Its raw eta-dot, T/U/V/Q and hybrid A/B coordinate
+  cover all 137 model levels and its surface pressure comes from the matching
+  ERA5 surface snapshot. The selected source column is replicated onto the
+  pinned 6x6 installation-test work grid; those 36 copies are plumbing, not
+  independent ERA5 columns. Because `calc_etadot` requires spectral ln(ps),
+  the selected real surface pressure is encoded as a spatially constant
+  spherical-harmonic field and the comparator verifies the reconstructed
+  pressure against the source value. The proof therefore covers the complete
+  real 137-level eta-dot recurrence without zero-filled levels. The real-data
+  report must pass all 137 x 6 x 6 = 4932 replicated oracle/candidate
+  comparisons and records the single selected source column explicitly. The
+  validated native contract
   is deliberately narrowed to `positive_eta_increasing`; the opposite sign
   convention remains fail-closed. The tier records run provenance for both
   oracle executions with the concrete image ID, compiler, executable hash,

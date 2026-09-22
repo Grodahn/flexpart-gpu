@@ -145,6 +145,29 @@
             ]
           }
         ]
+      },
+      "semantics": {
+        "coordinates": {
+          "horizontal": "canonical cell-center grid-index coordinates xt/yt",
+          "vertical": "kz is a 1-based FLEXPART model-level index"
+        },
+        "staggering": {
+          "horizontal": "cell_center",
+          "vertical": "level_center"
+        },
+        "ordering": {
+          "horizontal_storage": "x_fastest_then_y",
+          "vertical": "single_level"
+        },
+        "units": {
+          "horizontal_query": "grid_cell",
+          "vertical_query": "index",
+          "value": "arbitrary_scalar"
+        },
+        "time": {
+          "kind": "instantaneous_static_for_fixture",
+          "memory_slots": "same field copied to both FLEXPART memory slots"
+        }
       }
     },
     {
@@ -248,6 +271,29 @@
             ]
           }
         ]
+      },
+      "semantics": {
+        "coordinates": {
+          "horizontal": "canonical cell-center grid-index coordinates xt/yt; periodic X adds a wrapped duplicate column",
+          "vertical": "kz is a 1-based FLEXPART model-level index"
+        },
+        "staggering": {
+          "horizontal": "cell_center",
+          "vertical": "level_center"
+        },
+        "ordering": {
+          "horizontal_storage": "x_fastest_then_y",
+          "vertical": "single_level"
+        },
+        "units": {
+          "horizontal_query": "grid_cell",
+          "vertical_query": "index",
+          "value": "arbitrary_scalar"
+        },
+        "time": {
+          "kind": "instantaneous_static_for_fixture",
+          "memory_slots": "same field copied to both FLEXPART memory slots"
+        }
       }
     },
     {
@@ -404,7 +450,27 @@
           }
         ]
       },
-      "vertical_staggering": "level_center"
+      "vertical_staggering": "level_center",
+      "semantics": {
+        "coordinates": {
+          "horizontal": "not_applicable",
+          "vertical": "metric height AGL"
+        },
+        "staggering": {
+          "horizontal": "not_applicable",
+          "vertical": "level_center"
+        },
+        "ordering": {
+          "vertical": "bottom_to_top_increasing_height"
+        },
+        "units": {
+          "vertical_query": "meter",
+          "value": "arbitrary_scalar"
+        },
+        "time": {
+          "kind": "not_applicable"
+        }
+      }
     },
     {
       "id": "vertical-interface-wzlev",
@@ -594,6 +660,26 @@
             ]
           }
         ]
+      },
+      "semantics": {
+        "coordinates": {
+          "horizontal": "not_applicable",
+          "vertical": "FLEXPART wzlev metric height AGL"
+        },
+        "staggering": {
+          "horizontal": "not_applicable",
+          "vertical": "level_interface"
+        },
+        "ordering": {
+          "vertical": "bottom_to_top_increasing_height"
+        },
+        "units": {
+          "vertical_query": "meter",
+          "value": "meter_per_second"
+        },
+        "time": {
+          "kind": "not_applicable"
+        }
       }
     },
     {
@@ -667,6 +753,31 @@
             ]
           }
         ]
+      },
+      "semantics": {
+        "coordinates": {
+          "horizontal": "not_applicable",
+          "vertical": "not_applicable"
+        },
+        "staggering": {
+          "horizontal": "not_applicable",
+          "vertical": "not_applicable"
+        },
+        "ordering": {
+          "time": "memtime_1_then_memtime_2"
+        },
+        "units": {
+          "time": "second",
+          "value": "arbitrary_scalar"
+        },
+        "time": {
+          "kind": "instantaneous_two_member_linear",
+          "members": [
+            0,
+            3600
+          ],
+          "endpoints_inclusive": true
+        }
       }
     },
     {
@@ -841,6 +952,38 @@
             ]
           }
         ]
+      },
+      "semantics": {
+        "coordinates": {
+          "horizontal": "canonical cell-center grid-index coordinates xt/yt",
+          "vertical": "kz is the 1-based layer selector consumed by interpol_rain"
+        },
+        "staggering": {
+          "horizontal": "cell_center",
+          "vertical": "surface_or_layer_field"
+        },
+        "ordering": {
+          "horizontal_storage": "x_fastest_then_y",
+          "time": "field_time1_then_field_time2"
+        },
+        "units": {
+          "time": "second",
+          "lsprec": "millimeter_per_hour",
+          "convprec": "millimeter_per_hour",
+          "tcc": "dimensionless_fraction",
+          "tt": "kelvin",
+          "ctwc": "kilogram_per_kilogram",
+          "cloud_bounds": "model_level_index_or_icmv"
+        },
+        "time": {
+          "kind": "two_FLEXPART_memory_members",
+          "members": [
+            0,
+            3600
+          ],
+          "precipitation_input_representation": "already_normalized_rate",
+          "reset_deaccumulation": "not_performed_here; owned_by_issue_75"
+        }
       }
     }
   ],
@@ -879,9 +1022,55 @@
         "extraction_path": "scripts/vertical/extract_real_etex_column.py",
         "ci_gate_step": "2b",
         "pinned_oracle_evidence": "target/ci-gate/vertical-column/real-comparison-report.json",
-        "fixture_provenance_evidence": "target/ci-gate/vertical-column/real-column-fixture-provenance.json"
+        "fixture_provenance_evidence": "target/ci-gate/vertical-column/real-column-fixture-provenance.json",
+        "extraction_source_sha256": "bd1e9d8531ceabe99544a7e7659766d1642fcb576a0fdd505aa4c50886f3bdc0"
       },
-      "scope": "Checked-in real ERA5/ETEX source column used by #29 and transformed/validated by #30 against the pinned FLEXPART 11.1 direct routine oracle. #71 references this source as its required real sampling fixture; it does not duplicate provider decoding or vertical-transform ownership."
+      "scope": "Checked-in real ERA5/ETEX source column used by #29 and transformed/validated by #30 against the pinned FLEXPART 11.1 direct routine oracle. #71 references this source as its required real sampling fixture; it does not duplicate provider decoding or vertical-transform ownership.",
+      "semantics": {
+        "coordinates": {
+          "horizontal": "longitude/latitude cell centers in degrees",
+          "vertical": "hybrid_sigma_pressure",
+          "vertical_reference": "model_native"
+        },
+        "staggering": {
+          "wind_u": {
+            "horizontal": "cell_center",
+            "vertical": "level_center"
+          },
+          "wind_v": {
+            "horizontal": "cell_center",
+            "vertical": "level_center"
+          },
+          "temperature": {
+            "horizontal": "cell_center",
+            "vertical": "level_center"
+          },
+          "specific_humidity": {
+            "horizontal": "cell_center",
+            "vertical": "level_center"
+          },
+          "surface_pressure": {
+            "horizontal": "cell_center",
+            "vertical": "not_applicable"
+          }
+        },
+        "ordering": {
+          "vertical": "increasing",
+          "storage": "x_fastest"
+        },
+        "units": {
+          "wind_u": "meter_per_second",
+          "wind_v": "meter_per_second",
+          "temperature": "kelvin",
+          "specific_humidity": "kilogram_per_kilogram",
+          "surface_pressure": "pascal"
+        },
+        "time": {
+          "kind": "instantaneous_valid_time",
+          "timestamp": "1994-10-23T15:00:00Z",
+          "epoch_seconds": 782924400
+        }
+      }
     }
   ]
 }

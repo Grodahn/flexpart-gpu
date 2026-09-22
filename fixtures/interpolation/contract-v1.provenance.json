@@ -59,11 +59,12 @@
   "cases": {
     "horizontal-interior": "3eaa131a904a874e5fff07eb832f265ebbe1859ba959e06ac63fecff2104229d",
     "horizontal-periodic-wrap": "c91f73034789b690848c7266ff12cd7653cdef2c98f9fd7924032d785b293b9c",
-    "vertical-model-levels": "8c65e3b0afe88ba6a85837d4f419fd26d0b8cdb4f9f0f8f0e3d00d04758ca667",
+    "vertical-model-levels": "95f72332cb4b5e8e2878debaba12bb41f4a45234514687a86d7ec9e7abcc2520",
     "temporal-bilinear": "ae44f1e5dba664011bb51029d2a58693d39f5aa975a00214baf6aa9cb5f92085",
-    "rain-layer-fields": "a0182f4ad823f67971a14304be7814021a09e52d93d21fc044308684508451d0"
+    "rain-layer-fields": "a0182f4ad823f67971a14304be7814021a09e52d93d21fc044308684508451d0",
+    "vertical-interface-wzlev": "f0ff2a2eca1b15f1574d9ee603a30a5fc6199cabcd800bfa2f0c009971c0e9c5"
   },
-  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules and calls find_grid_indices/find_grid_distances/find_z_level_meters/find_vert_vars/hor_interpol_4d/temporal_interpolation/vert_interpol/interpol_rain directly on canonical synthetic grids. The contract additionally pins the checked-in real #29/#30 ERA5/ETEX column source and its #30 pinned-oracle evidence. Golden values in contract-v1.json are the direct interpolation-oracle outputs.",
+  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules and calls find_grid_indices/find_grid_distances/find_z_level_meters/find_vert_vars/hor_interpol_4d/temporal_interpolation/vert_interpol/interpol_rain directly on canonical synthetic grids. W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output as its vertical geometry/value source. The contract also pins the checked-in real #29/#30 ERA5/ETEX column source and its #30 pinned-oracle evidence. Golden values in contract-v1.json are the direct interpolation-oracle outputs.",
   "real_data_samples": [
     {
       "id": "era5-etex-real-column-v1",
@@ -103,5 +104,15 @@
       },
       "scope": "Checked-in real ERA5/ETEX source column used by #29 and transformed/validated by #30 against the pinned FLEXPART 11.1 direct routine oracle. #71 references this source as its required real sampling fixture; it does not duplicate provider decoding or vertical-transform ownership."
     }
-  ]
+  ],
+  "interface_vertical_source": {
+    "producer_issue": 30,
+    "producer_driver": "scripts/vertical/direct_oracle_driver.f90",
+    "producer_routine": "verttransform_mod::verttransform_ecmwf_heights",
+    "oracle_output_sha256": "ae7cd8c7a057e81439bc7e316e123c438951a4a0cd0bff9c4e21b086bac3e9bf",
+    "geometry_field": "wzlev",
+    "value_field": "omega * pinmconv",
+    "source_fixture": "fixtures/vertical/synthetic-column-v1.json",
+    "source_motion": "fixtures/vertical/synthetic-omega-interface-v1.json"
+  }
 }

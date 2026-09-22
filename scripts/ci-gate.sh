@@ -448,6 +448,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --binary "${INTERPOL_BUILD_DIR}/interpolation-oracle" \
     --oracle-checkout "${ORACLE_CHECKOUT}" \
     --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+    --vertical-routine-oracle-output "${OUTPUT_DIR}/vertical-column/routine-oracle-output.txt" \
     --out-fixture "${INTERPOL_DIR}/contract-v1.json"; then
     fail "Emitting the #71 interpolation oracle case inputs failed"
   fi
@@ -458,7 +459,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     ${DOCKER_USER_ARGS} \
     flexpart-fortran bash -c '
       set -euo pipefail
-      for name in horizontal-interior horizontal-periodic-wrap vertical-model-levels temporal-bilinear rain-layer-fields; do
+      for name in horizontal-interior horizontal-periodic-wrap vertical-model-levels vertical-interface-wzlev temporal-bilinear rain-layer-fields; do
         /workspace/flexpart-gpu/scripts/interpolation/direct_oracle.sh \
           /workspace/target/ci-gate/interpolation/oracle-build \
           "/workspace/target/ci-gate/interpolation/oracle-input/${name}/${name}.txt" \
@@ -477,6 +478,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --binary "${INTERPOL_BUILD_DIR}/interpolation-oracle" \
     --oracle-checkout "${ORACLE_CHECKOUT}" \
     --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+    --vertical-routine-oracle-output "${OUTPUT_DIR}/vertical-column/routine-oracle-output.txt" \
     --out-fixture "${INTERPOL_DIR}/contract-v1.json" \
     --out-provenance "${INTERPOL_DIR}/contract-v1.provenance.json"; then
     fail "Repacking the #71 interpolation fixture/provenance failed"
@@ -497,7 +499,7 @@ assert committed["real_data_samples"] == regenerated["real_data_samples"], "real
 assert committed["cases"] == regenerated["cases"], "golden values drifted"
 p = json.load(open(sys.argv[3]))
 q = json.load(open(sys.argv[4]))
-for key in ("schema", "pinned_commit", "checkout_clean", "entrypoint_present", "cases", "real_data_samples"):
+for key in ("schema", "pinned_commit", "checkout_clean", "entrypoint_present", "cases", "real_data_samples", "interface_vertical_source"):
     assert p[key] == q[key], f"provenance drift in {key}"
 assert p["linked_flexpart"]["routines"] == q["linked_flexpart"]["routines"], "routine list drifted"
 pa = {o["object"]: o["object_sha256"] for o in p["linked_flexpart"]["objects"]}

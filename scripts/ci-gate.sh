@@ -186,7 +186,14 @@ fi
 if [ -n "$(git -C "${ORACLE_CHECKOUT}" status --porcelain 2>/dev/null || true)" ]; then
   fail "Oracle checkout has uncommitted changes; the oracle must stay unmodified"
 fi
+
+# docker-compose.fortran.yml mounts FLEXPART_DIR at /workspace/flexpart. Bind it
+# explicitly to the exact checkout verified above so --oracle-checkout cannot
+# verify one tree while the direct routine/oracle drivers link against another.
+ORACLE_DOCKER_CHECKOUT="$(cd "${ORACLE_CHECKOUT}" && pwd -P)"
+export FLEXPART_DIR="${ORACLE_DOCKER_CHECKOUT}"
 log_info "Oracle pinned at ${ORACLE_ACTUAL} (clean)."
+log_info "Docker oracle mount: ${FLEXPART_DIR} -> /workspace/flexpart"
 
 # ---------------------------------------------------------------------------
 # 2. Build the oracle Docker image and Fortran executable (fail-closed).
@@ -223,6 +230,8 @@ else
       ${DOCKER_USER_ARGS} \
       flexpart-fortran bash -c "
         set -euo pipefail
+        container_oracle_head=\$(git -C /workspace/flexpart rev-parse HEAD)
+        test \"\$container_oracle_head\" = \"${PINNED_COMMIT}\"
         cd /workspace/flexpart/src
         make -f makefile_gfortran clean >/dev/null 2>&1 || true
         FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4 2>&1 | tail -5
@@ -579,31 +588,16 @@ assert committed["cases"] == regenerated["cases"], "golden values drifted"
 p = json.load(open(sys.argv[3]))
 q = json.load(open(sys.argv[4]))
 assert "binary" not in p and "binary" not in q, "local executable hash/path must not be frozen"
-for key in (
-    "schema", "pinned_commit", "checkout_clean", "entrypoint_present",
-    "build", "fixture_artifact", "generator_source", "driver_source",
-    "oracle_harness_source", "real_extraction_source", "reference_manifest",
-    "cases", "real_data_samples", "interface_vertical_source",
-    "real_vertical_source",
-):
-    assert p[key] == q[key], f"provenance drift in {key}"
+assert normalize_json(p) == normalize_json(q), "full provenance semantic drift"
 assert p["fixture_artifact"]["hash_kind"] == "normalized_canonical_json_sha256"
 assert p["fixture_artifact"]["sha256"] == canonical_json_sha256(sys.argv[1]), "committed contract hash mismatch"
 assert q["fixture_artifact"]["sha256"] == canonical_json_sha256(sys.argv[2]), "regenerated contract hash mismatch"
-assert p["linked_flexpart"]["link_strategy"] == q["linked_flexpart"]["link_strategy"], "link strategy drifted"
-for key in ("linked_objects", "linked_object_count", "linked_object_set_sha256"):
-    assert p["linked_flexpart"][key] == q["linked_flexpart"][key], f"linked-object provenance drifted in {key}"
 for side in (p, q):
     linked = side["linked_flexpart"]["linked_objects"]
     assert linked == sorted(linked), "linked-object list must be sorted"
     assert len(linked) == len(set(linked)) == side["linked_flexpart"]["linked_object_count"], "linked-object count mismatch"
     digest = hashlib.sha256(("\n".join(linked) + "\n").encode("utf-8")).hexdigest()
     assert digest == side["linked_flexpart"]["linked_object_set_sha256"], "linked-object set hash mismatch"
-assert p["linked_flexpart"]["routines"] == q["linked_flexpart"]["routines"], "routine list drifted"
-pa = {o["object"]: o["object_sha256"] for o in p["linked_flexpart"]["direct_routine_objects"]}
-qa = {o["object"]: o["object_sha256"] for o in q["linked_flexpart"]["direct_routine_objects"]}
-assert pa == qa, "direct routine object hashes drifted"
-assert p["driver_source"]["sha256"] == q["driver_source"]["sha256"], "driver source drifted"
 print("interpolation contract fixture/provenance reproduced: OK")
 ' \
     "${PROJECT_ROOT}/fixtures/interpolation/contract-v1.json" \

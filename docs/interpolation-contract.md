@@ -1,7 +1,7 @@
 # FLEXPART 11.1 Interpolation Oracle Contract
 
 Status: frozen reference for issues #72 (horizontal), #73 (vertical), #74 (temporal),
-and #75 (accumulated fields / wet deposition forcing).
+and #75 (accumulated-field interval/rate normalization).
 
 This document freezes the *normative* interpolation behavior that the downstream
 interpolation implementation issues must reproduce or explicitly diverge from.
@@ -218,8 +218,11 @@ yint2 = (y2(1)*dtp2 + y2(2)*dtp1) / dtt        ! cp
 ```
 
 For `numpf=1` the denominator is `dt/3` while `dtp1+dtp2 = dt`, so the interpolated
-precipitation is **3 × the linear blend**. This is the actual pinned behavior and is
-frozen here. Issue #75 must reproduce it or explicitly diverge.
+precipitation is **3 × the linear blend**. This is the actual pinned sampling behavior
+and is frozen here. It sits **downstream** of #75's accumulation-to-interval/rate
+normalization boundary: #75 must preserve the normalized quantity, units, interval and
+provenance needed by the composed sampler, but must not implement reset/deaccumulation
+by emulating this interpolation quirk.
 
 `tcc`, `ctwc`, `tt`, and cloud masking use the plain denominator `dt`:
 

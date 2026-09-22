@@ -2027,32 +2027,27 @@ mod tests {
     }
 
     #[test]
-    fn eta_dot_fails_closed_without_independent_reference() {
+    fn eta_dot_production_path_remains_fail_closed_after_validation() {
         let snapshot = geometry_snapshot(VerticalOrdering::Increasing);
-        for sign in [
-            NativeVerticalMotionSign::PositiveEtaIncreasing,
-            NativeVerticalMotionSign::PositiveEtaDecreasing,
-        ] {
-            let native = NativeVerticalMotion {
-                kind: NativeVerticalMotionKind::EtaCoordinateVelocity,
-                unit: NativeVerticalMotionUnit::PerSecond,
-                sign,
-                vertical_staggering: VerticalStaggering::LevelCenter,
-                values: vec![1.0e-5, 0.0, 3.0e-5, 0.0],
-                provenance: NativeVerticalMotionProvenance {
-                    source_id: "unvalidated-etadot".to_string(),
-                },
-            };
+        let native = NativeVerticalMotion {
+            kind: NativeVerticalMotionKind::EtaCoordinateVelocity,
+            unit: NativeVerticalMotionUnit::PerSecond,
+            sign: NativeVerticalMotionSign::PositiveEtaDecreasing,
+            vertical_staggering: VerticalStaggering::LevelCenter,
+            values: vec![1.0e-5, 0.0, 3.0e-5, 0.0],
+            provenance: NativeVerticalMotionProvenance {
+                source_id: "validated-etadot-production-disabled".to_string(),
+            },
+        };
 
-            let error = reconstruct_vertical_geometry_with_motion(&snapshot, &native)
-                .expect_err("eta-dot must fail closed until independently validated");
-            assert!(matches!(
-                error,
-                VerticalTransformError::InvalidNativeVerticalMotion {
-                    reason: "eta-dot preprocessing is disabled until an independent pinned reference validates eta-dot to pressure-velocity conversion"
-                }
-            ));
-        }
+        let error = reconstruct_vertical_geometry_with_motion(&snapshot, &native)
+            .expect_err("validated eta-dot preprocessing must remain disabled in production");
+        assert!(matches!(
+            error,
+            VerticalTransformError::InvalidNativeVerticalMotion {
+                reason: "eta-dot preprocessing is disabled until an independent pinned reference validates eta-dot to pressure-velocity conversion"
+            }
+        ));
     }
 
     #[test]

@@ -2055,7 +2055,7 @@ mod tests {
             unit: NativeVerticalMotionUnit::PerSecond,
             sign: NativeVerticalMotionSign::PositiveEtaIncreasing,
             vertical_staggering: VerticalStaggering::LevelCenter,
-                values: vec![1.0e-5, 0.0, 3.0e-5, 0.0],
+            values: vec![1.0e-5, 0.0, 3.0e-5, 0.0],
             provenance: NativeVerticalMotionProvenance {
                 source_id: "validated-etadot-production-disabled".to_string(),
             },

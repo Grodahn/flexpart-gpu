@@ -55,6 +55,11 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# The compose service bind-mounts host-owned scratch directories. Match the
+# invoking user's uid/gid so CI runners can write those bind mounts.
+export DOCKER_UID="${DOCKER_UID:-$(id -u)}"
+export DOCKER_GID="${DOCKER_GID:-$(id -g)}"
+
 # The compose service bind-mounts the checkout via FLEXEXTRACT_DIR, so keep it
 # in lockstep with the checkout actually verified (never silently verify one
 # tree and mount another).
@@ -65,6 +70,8 @@ fail() {
   exit 1
 }
 
+# Never reuse oracle products from an earlier invocation.
+rm -rf "${OUTPUT_DIR}"
 mkdir -p "${OUTPUT_DIR}"
 MANIFEST="${PROJECT_ROOT}/reference/flex-extract.json"
 PINNED_COMMIT="$("${HOST_PYTHON}" -c \
@@ -131,6 +138,59 @@ docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
   " 2>&1 | tee "${OUTPUT_DIR}/oracle-build-run.log" || \
   fail "calc_etadot oracle build/run/extract failed (see oracle-build-run.log)"
 
+# Record machine-readable identity of the concrete oracle run: container image,
+# compiler, executable and all consumed/produced fort.* payloads.
+DOCKER_IMAGE_ID="$(docker image inspect flex-extract:latest --format '{{.Id}}' 2>/dev/null)" \
+  || fail "could not inspect flex-extract:latest image identity"
+if ! "${HOST_PYTHON}" - "${OUTPUT_DIR}" "${DOCKER_IMAGE_ID}" "${PROJECT_ROOT}" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+out = Path(sys.argv[1])
+image_id = sys.argv[2]
+project = Path(sys.argv[3])
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+compiler_file = out / "compiler-version.txt"
+exe = out / "oracle-build" / "calc_etadot_fast.out"
+run = out / "oracle-run"
+required_inputs = ["fort.4", "fort.10", "fort.11", "fort.12", "fort.17", "fort.21"]
+for path in [compiler_file, exe, *(run / name for name in required_inputs), run / "fort.15"]:
+    if not path.is_file():
+        raise SystemExit(f"missing provenance input: {path}")
+
+payload = {
+    "schema": "flexpart-gpu.etadot-oracle-run-provenance.v1",
+    "docker_image": {"name": "flex-extract:latest", "id": image_id},
+    "compiler": {"version": compiler_file.read_text(encoding="utf-8").strip()},
+    "oracle_executable": {
+        "path": str(exe),
+        "sha256": digest(exe),
+    },
+    "build_inputs": {
+        "dockerfile_sha256": digest(project / "docker" / "Dockerfile.flex-extract"),
+        "compose_sha256": digest(project / "docker" / "docker-compose.fortran.yml"),
+    },
+    "oracle_inputs": {
+        name: {"path": str(run / name), "sha256": digest(run / name)}
+        for name in required_inputs
+    },
+    "oracle_outputs": {
+        "fort.15": {"path": str(run / "fort.15"), "sha256": digest(run / "fort.15")}
+    },
+}
+(out / "run-provenance.json").write_text(
+    json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+)
+PY
+then
+  fail "failed to write calc_etadot run provenance"
+fi
+
 ORACLE_JSON="${OUTPUT_DIR}/oracle-json"
 test -s "${ORACLE_JSON}/snapshot.json" || fail "oracle snapshot missing"
 test -s "${ORACLE_JSON}/motion.json" || fail "oracle motion missing"
@@ -152,6 +212,7 @@ if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/compare_calc_etadot_orac
   --reference-manifest "${MANIFEST}" \
   --source-snapshot "${ORACLE_JSON}/snapshot.json" \
   --source-motion "${ORACLE_JSON}/motion.json" \
+  --run-provenance "${OUTPUT_DIR}/run-provenance.json" \
   --output "${OUTPUT_DIR}/comparison-report.json"; then
   fail "calc_etadot oracle field comparison failed"
 fi

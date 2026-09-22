@@ -164,6 +164,26 @@ fn run_horizontal_check(case: &FixtureCase) {
         let query_tokens = tokens(&input[cursor + index]);
         let xt = parse_f64(&query_tokens[0], "xt");
         let yt = parse_f64(&query_tokens[1], "yt");
+        assert!(xt >= 0.0, "{} query {index}: xt below canonical domain", case.id);
+        assert!(yt >= 0.0, "{} query {index}: yt below canonical domain", case.id);
+        if periodic {
+            assert!(
+                xt < nx as f64,
+                "{} query {index}: periodic xt reaches/exceeds duplicate endpoint",
+                case.id
+            );
+        } else {
+            assert!(
+                xt <= (nx - 1) as f64,
+                "{} query {index}: non-periodic xt exceeds last cell center",
+                case.id
+            );
+        }
+        assert!(
+            yt <= (ny - 1) as f64,
+            "{} query {index}: yt exceeds last cell center",
+            case.id
+        );
         let expected = horizontal_value(&field, nx, ny, xt, yt, periodic);
         assert_close(
             as_f64(&query["VALUE"][0]),
@@ -449,6 +469,25 @@ fn contract_fixture_metadata_is_frozen() {
         real_source["oracle_output_sha256"]
     );
 
+    let horizontal = contract
+        .cases
+        .iter()
+        .find(|case| case.id == "horizontal-interior")
+        .expect("horizontal fixture");
+    assert_eq!(
+        horizontal.semantics["supported_query_domain"]["out_of_domain"],
+        "not frozen by #71; downstream #72 fails closed"
+    );
+    let periodic_horizontal = contract
+        .cases
+        .iter()
+        .find(|case| case.id == "horizontal-periodic-wrap")
+        .expect("periodic horizontal fixture");
+    assert_eq!(
+        periodic_horizontal.semantics["supported_query_domain"]["out_of_domain"],
+        "not frozen by #71; downstream #72 fails closed"
+    );
+
     let geographic = contract
         .cases
         .iter()
@@ -663,7 +702,7 @@ fn contract_provenance_matches_fixture() {
     );
     assert_eq!(
         provenance.fixture_artifact["sha256"],
-        "b1346ae8a741b9508237c9add53ba4bda865015046c209eaa10cbb78ccd5347d"
+        "c7a01435c7df428f39f35f97eb2a85ac5b2f00a9aa02f3f8666b5d175baf4fc8"
     );
     assert_eq!(
         provenance.generator_source["path"],

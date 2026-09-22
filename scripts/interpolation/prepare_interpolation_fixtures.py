@@ -182,6 +182,18 @@ CASE_SEMANTICS = {
             "kind": "instantaneous_two_member_linear",
             "members": [0, 3600],
             "endpoints_inclusive": True,
+            "primitive_outside_memory_window": "linear_extrapolation_no_range_guard",
+            "production_call_path": [
+                "getfields_mod::getfields",
+                "advance_mod::advance",
+                "interpol_mod::init_interpol",
+                "interpol_mod::find_time_vars",
+                "interpol_mod::temporal_interpolation",
+            ],
+            "range_policy_owner": (
+                "caller/canonical API; Petterssen end-step guard is outside "
+                "find_time_vars/temporal_interpolation"
+            ),
         },
     },
     "rain-layer-fields": {

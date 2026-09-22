@@ -143,7 +143,7 @@ docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
 # compiler, executable and all consumed/produced fort.* payloads.
 DOCKER_IMAGE_ID="$(docker image inspect flex-extract:latest --format '{{.Id}}' 2>/dev/null)" \
   || fail "could not inspect flex-extract:latest image identity"
-if ! "${HOST_PYTHON}" - "${OUTPUT_DIR}" "${DOCKER_IMAGE_ID}" "${PROJECT_ROOT}" <<'PY'
+if ! "${HOST_PYTHON}" - "${OUTPUT_DIR}" "${DOCKER_IMAGE_ID}" "${PROJECT_ROOT}" "${FLEXEXTRACT_CHECKOUT}" <<'PY'
 import hashlib
 import json
 import sys
@@ -152,6 +152,8 @@ from pathlib import Path
 out = Path(sys.argv[1])
 image_id = sys.argv[2]
 project = Path(sys.argv[3])
+checkout = Path(sys.argv[4])
+upstream_example = checkout / "Testing" / "Installation" / "Calc_etadot"
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -160,9 +162,18 @@ compiler_file = out / "compiler-version.txt"
 exe = out / "oracle-build" / "calc_etadot_fast.out"
 run = out / "oracle-run"
 required_inputs = ["fort.4", "fort.10", "fort.11", "fort.12", "fort.17", "fort.21"]
-for path in [compiler_file, exe, *(run / name for name in required_inputs), run / "fort.15"]:
+for path in [
+    compiler_file,
+    exe,
+    *(run / name for name in required_inputs),
+    *(upstream_example / name for name in required_inputs),
+    run / "fort.15",
+]:
     if not path.is_file():
         raise SystemExit(f"missing provenance input: {path}")
+for name in required_inputs:
+    if digest(run / name) != digest(upstream_example / name):
+        raise SystemExit(f"oracle input mutated during run: {name}")
 
 payload = {
     "schema": "flexpart-gpu.etadot-oracle-run-provenance.v1",
@@ -177,7 +188,12 @@ payload = {
         "compose_sha256": digest(project / "docker" / "docker-compose.fortran.yml"),
     },
     "oracle_inputs": {
-        name: {"path": str(run / name), "sha256": digest(run / name)}
+        name: {
+            "path": str(run / name),
+            "sha256": digest(run / name),
+            "upstream_path": str(upstream_example / name),
+            "upstream_sha256": digest(upstream_example / name),
+        }
         for name in required_inputs
     },
     "oracle_outputs": {

@@ -214,6 +214,16 @@ fn run_horizontal_geographic_check(case: &FixtureCase) {
         let lat = parse_f64(&query_tokens[1], "latitude");
         let expected_xt = (lon - xlon0) / dx;
         let expected_yt = (lat - ylat0) / dy;
+        assert!(
+            expected_xt >= 0.0 && expected_xt <= (nx - 1) as f64,
+            "{} geographic query {index}: transformed xt outside canonical domain",
+            case.id
+        );
+        assert!(
+            expected_yt >= 0.0 && expected_yt <= (ny - 1) as f64,
+            "{} geographic query {index}: transformed yt outside canonical domain",
+            case.id
+        );
 
         assert_close(
             as_f64(&query["LONLAT"][0]),

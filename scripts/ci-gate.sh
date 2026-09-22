@@ -598,7 +598,10 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --input "${PROJECT_ROOT}/reference/flex-extract.json" \
     --artifact "${OUTPUT_DIR}/flex-extract-etadot.log" \
     --artifact "${OUTPUT_DIR}/flex-extract-oracle/run-provenance.json" \
-    --artifact "${OUTPUT_DIR}/flex-extract-oracle/comparison-report.json" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/comparison-report.json" \
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/oracle-run/source-provenance.json" \
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/run-provenance.json" \
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/comparison-report.json" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
     fail "Provenance manifest generation failed (missing artifact or unpinned oracle)"
   fi
   test -s "${OUTPUT_DIR}/run-manifest.json" || fail "Provenance manifest missing: ${OUTPUT_DIR}/run-manifest.json"

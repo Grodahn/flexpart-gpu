@@ -26,11 +26,11 @@
       "fdefault_real_8": "enabled (-fdefault-real-8: oracle arithmetic in 64-bit real)",
       "endianness": "big-endian (-fconvert=big-endian)",
       "openmp_flag": "-fopenmp",
-      "verified_in_container": "flexpart-fortran:latest (gfortran 11.4.0, Ubuntu 22.04) + apt packages libemos-dev libemos-bin libemos-data libopenjp2-7-dev; calc_etadot_fast.out links and the official Calc_etadot installation example runs to 'STOP SUCCESSFULLY FINISHED'"
+      "verified_in_container": "flex-extract:latest (built from flexpart-fortran:latest; gfortran 11.4.0, Ubuntu 22.04) + apt packages libemos-dev libemos-bin libemos-data libopenjp2-7-dev; calc_etadot_fast.out links and the official Calc_etadot installation example runs to 'STOP SUCCESSFULLY FINISHED'"
     },
     "docker": {
-      "image": "flexpart-fortran:latest",
-      "dockerfile": "docker/Dockerfile.fortran",
+      "image": "flex-extract:latest",
+      "dockerfile": "docker/Dockerfile.flex-extract",
       "compose_file": "docker/docker-compose.fortran.yml",
       "base_image": "ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7",
       "ubuntu_snapshot": "20260910T000000Z",
@@ -62,7 +62,7 @@
   "license_url": "https://gitlab.phaidra.org/flexpart/flex_extract/-/blob/7.1.2/LICENSE.md",
   "source_requirement": "Reference checkouts must be unmodified upstream sources at exactly the pinned commit. Any deviation (different commit, dirty work tree) fails verification.",
   "notes": [
-    "calc_etadot.f90 at v7.1.2 is byte-identical to master; the pinned file (git blob 741eba91eab049df23a560219d0f2656a6cc9881) hashes to sha256 07ED3522F8C1B35065965D01AF828F7532605A3AA9BE44D48FB9CA3F2ED976FF. Comparison harnesses cross-check this hash plus the source-snippet contract of the ETAR transform block (calc_etadot.f90 lines 541-557).",
+    "calc_etadot.f90 at v7.1.2 is identified by git blob 741eba91eab049df23a560219d0f2656a6cc9881. The canonical blob bytes (LF line endings as stored by Git) hash to sha256 160F267F8741F23D13FDBA2F7A88F110BB131AA84AD7894FA43605258E55B0D9. Comparison harnesses verify the Git blob and hash canonical bytes from git show, so core.autocrlf cannot change the oracle fingerprint, then cross-check the source-snippet contract of the ETAR transform block (calc_etadot.f90 lines 541-557).",
     "Vertical coordinate convention: AK=BK come from fort.12 pv, top-of-atmosphere half level first (ECMWF ordering); candidates express the same coefficients in canonical interface order index 0 = top.",
     "The makefile_fast link line and include path target a machine with emoslib and a gfortran-15 module directory; the container environment overrides LIB (ecCodes static archives are postfixed _static in this image and EMOSLIB provides the spectral transforms) and pins INC to the container eccodes Fortran module directory (/usr/lib/x86_64-linux-gnu/fortran/gfortran-mod-15, which exists in flexpart-fortran:latest). The extra apt packages libemos-dev/libemos-bin/libemos-data/libopenjp2-7-dev must be installed in the running container (libemosR64.a ships with libemos-dev, variant R64.D64.I32).",
     "fort.15 output field for the pressure vertical velocity carries parameter METAPAR (default 77); FLEXPART 11.1 readwind_ecmwf maps parameter 77 to 135 and feeds it as omega into wwh before the pinmconv geometric transform.",

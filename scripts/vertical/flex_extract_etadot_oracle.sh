@@ -289,7 +289,7 @@ if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run -
       --example-dir \$run \
       --output-dir \$json \
       --expected-levels 1/to/137 \
-      --fixture-classification real_era5_etadot_full_native_column \
+      --fixture-classification real_era5_native_model_level_full_column \
       --fixture-origin 'fixtures/etex/native-mini ERA5 Complete 1994-10-23T15:00:00Z' \
       --source-provenance \$run/source-provenance.json
   " 2>&1 | tee "${REAL_ROOT}/oracle-build-run.log"; then
@@ -391,9 +391,10 @@ assert coverage["comparisons"] == 137 * 6 * 6
 assert coverage["failure_count"] == 0
 assert report["source_fixture"]["level_coverage"]["complete_native_column"] is True
 selected = coverage["selected_real_column"]
-assert selected["lon_deg"] == -2.0
-assert selected["lat_deg"] == 48.0
-assert selected["surface_pressure_strategy"] == "constant_spectral_lnps_from_real_era5_column"
+assert selected["longitude_deg"] == -2.0
+assert selected["latitude_deg"] == 48.0
+assert selected["model_levels"] == 137
+assert selected["level_coverage"] == "1/to/137"
 print(
     "full real ERA5 eta-dot oracle comparison: PASS "
     f"({coverage['comparisons']} values)"

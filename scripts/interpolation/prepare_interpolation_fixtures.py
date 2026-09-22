@@ -181,12 +181,34 @@ CASE_SEMANTICS = {
             "kind": "instantaneous_static_for_fixture",
             "memory_slots": "same field copied to both FLEXPART memory slots",
         },
-        "production_call_path": [
+        # The direct oracle intentionally composes coordtrafo with the
+        # interpolation primitives to prove the geographic->grid mapping. This is
+        # an oracle exercise path, not a pristine production call chain:
+        # coordtrafo is used during release-point initialization, while runtime
+        # meteorology sampling already operates in FLEXPART grid coordinates.
+        "oracle_exercise_path": [
             "point_mod::coordtrafo",
             "interpol_mod::find_grid_indices",
             "interpol_mod::find_grid_distances",
             "interpol_mod::hor_interpol_4d",
         ],
+        "production_coordinate_initialization_path": [
+            "FLEXPART::read_options_and_initialise_flexpart",
+            "point_mod::coordtrafo",
+        ],
+        "production_sampling_path": [
+            "advance_mod::advance",
+            "interpol_mod::init_interpol",
+            "interpol_mod::find_grid_indices",
+            "interpol_mod::find_grid_distances",
+            "interpol_mod::interpol_wind",
+            "interpol_mod::hor_interpol_4d",
+        ],
+        "production_note": (
+            "coordtrafo transforms release points during initialization; runtime "
+            "meteorology sampling consumes particle grid coordinates and does not "
+            "call coordtrafo immediately before interpolation"
+        ),
         "mapping": {
             "xlon0_deg": -2.0,
             "ylat0_deg": 48.0,
@@ -269,6 +291,32 @@ CASE_SEMANTICS = {
             "precipitation_input_representation": "already_normalized_rate",
             "reset_deaccumulation": "not_performed_here; owned_by_issue_75",
         },
+        "production_ingest_paths": {
+            "ecmwf": [
+                "getfields_mod::getfields",
+                "windfields_mod::readwind_ecmwf",
+                "windfields_mod::lsprec/convprec",
+            ],
+            "gfs": [
+                "getfields_mod::getfields",
+                "windfields_mod::readwind_gfs",
+                "windfields_mod::lsprec/convprec",
+            ],
+        },
+        "production_sampling_path": [
+            "wetdepo_mod::wetdepo",
+            "wetdepo_mod::get_wetscav",
+            "interpol_mod::find_ngrid",
+            "interpol_mod::find_grid_indices",
+            "interpol_mod::find_grid_distances",
+            "interpol_mod::find_z_level_meters",
+            "interpol_mod::interpol_rain",
+        ],
+        "production_boundary_note": (
+            "FLEXPART samples lsprec/convprec already stored in windfields_mod; "
+            "source accumulation deaccumulation/reset normalization is upstream "
+            "of this sampling boundary and owned by issue #75"
+        ),
     },
 }
 

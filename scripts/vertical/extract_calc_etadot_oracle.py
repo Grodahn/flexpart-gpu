@@ -221,12 +221,15 @@ def main():
             motion_values[(lvl - 1) * nxy + idx] = raw_by_level[lvl][idx]
 
     reference_ps = float(max(ps_flat))
+    xlon0 = float(grid["longitudeOfFirstGridPointInDegrees"])
+    if xlon0 >= 180.0:
+        xlon0 -= 360.0
     snapshot = {
         "schema": {"id": "flexpart-gpu.canonical-meteorology", "version": 1},
         "horizontal_grid": {
             "nx": nx,
             "ny": ny,
-            "xlon0_deg": grid["longitudeOfFirstGridPointInDegrees"],
+            "xlon0_deg": xlon0,
             "ylat0_deg": grid["latitudeOfFirstGridPointInDegrees"],
             "dx_deg": grid["iDirectionIncrementInDegrees"],
             "dy_deg": grid["jDirectionIncrementInDegrees"],

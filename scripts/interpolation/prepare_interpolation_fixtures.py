@@ -41,7 +41,7 @@ CASES = {
             "110.0", "210.0", "310.0", "410.0",
             "120.0", "220.0", "320.0", "420.0",
         ],
-        "queries": ["2", "1.25 0.5 1", "3.1 2.0 1"],
+        "queries": ["2", "1.25 0.5 1", "2.9 2.0 1"],
     },
     "horizontal-geographic-interior": {
         "mode": "horizontal_geographic",
@@ -65,7 +65,7 @@ CASES = {
             "110.0", "210.0", "310.0", "410.0",
             "120.0", "220.0", "320.0", "420.0",
         ],
-        "queries": ["3", "3.2 1.5 1", "3.9 0.5 1", "0.4 2.3 1"],
+        "queries": ["3", "3.2 1.5 1", "3.9 0.5 1", "0.4 2.0 1"],
     },
     "vertical-model-levels": {
         "mode": "vertical",
@@ -160,6 +160,11 @@ CASE_SEMANTICS = {
             "kind": "instantaneous_static_for_fixture",
             "memory_slots": "same field copied to both FLEXPART memory slots",
         },
+        "supported_query_domain": {
+            "x": "0 <= xt <= nx-1 for non-periodic canonical grids",
+            "y": "0 <= yt <= ny-1",
+            "out_of_domain": "not frozen by #71; downstream #72 fails closed",
+        },
     },
     "horizontal-geographic-interior": {
         "coordinates": {
@@ -227,6 +232,11 @@ CASE_SEMANTICS = {
         "time": {
             "kind": "instantaneous_static_for_fixture",
             "memory_slots": "same field copied to both FLEXPART memory slots",
+        },
+        "supported_query_domain": {
+            "x": "0 <= xt < nx for periodic canonical grids; nx is the duplicate endpoint",
+            "y": "0 <= yt <= ny-1",
+            "out_of_domain": "not frozen by #71; downstream #72 fails closed",
         },
     },
     "vertical-model-levels": {

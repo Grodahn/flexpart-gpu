@@ -112,7 +112,10 @@ Fail-closed step 2d (#71, interpolation oracle contract):
   longitude/latitude and calls the real pinned `point_mod::coordtrafo` before
   `find_grid_indices`, `find_grid_distances` and `hor_interpol_4d`; this
   makes the documented Lon/Lat -> grid mapping part of the oracle evidence
-  instead of a documentation-only formula. The pack also retains the six
+  instead of a documentation-only formula. This is explicitly an **oracle exercise
+  path**, not a pristine production call chain: production `coordtrafo` is used for
+  release-point initialization, while runtime particle sampling enters the interpolation
+  layer in grid coordinates. The pack also retains the six
   synthetic index/vertical/temporal/rain cases and the real
   `real-era5-etex-temperature-column` case. CI re-packs
   `fixtures/interpolation/contract-v1.json` plus provenance and fails on any

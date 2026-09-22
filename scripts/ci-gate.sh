@@ -747,6 +747,8 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${OUTPUT_DIR}/vertical-column/real-column-fixture-provenance.json" \
     --artifact "${OUTPUT_DIR}/interpolation/contract-v1.json" \
     --artifact "${OUTPUT_DIR}/interpolation/contract-v1.provenance.json" \
+    --artifact "${OUTPUT_DIR}/interpolation/oracle-build/interpolation-oracle.compiler-version.txt" \
+    --artifact "${OUTPUT_DIR}/interpolation/oracle-build/interpolation-oracle.linked-objects.txt" \
     --artifact "${OUTPUT_DIR}/interpolation/oracle-output/horizontal-geographic-interior.out" \
     --artifact "${OUTPUT_DIR}/interpolation/oracle-output/real-era5-etex-temperature-column.out" \
     --artifact "${OUTPUT_DIR}/vertical-column/real-routine-oracle-output.txt" \

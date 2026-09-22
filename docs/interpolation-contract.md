@@ -296,7 +296,7 @@ than pretending that a coordinate label changes the METRE interpolation routine:
    interior and boundary sample heights.
 
 The #30 source output is frozen by SHA-256
-`ae7cd8c7a057e81439bc7e316e123c438951a4a0cd0bff9c4e21b086bac3e9bf`.
+`5015ea3a9a9e42b1a2b88c60c2867b74a632bffd1b9cfefdc186b005c752b197`.
 CI step 2c refuses to generate the interface fixture if the step-2b direct-oracle
 output differs from that evidence. The fixture also declares
 `vertical_staggering=level_interface`, and the Rust validation test requires every

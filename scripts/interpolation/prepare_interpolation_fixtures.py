@@ -823,7 +823,8 @@ def main() -> None:
                 "sha256": sha256(args.reference_manifest),
             },
             "linked_flexpart": {
-                "objects": [
+                "link_strategy": "all src/*.o except FLEXPART.o",
+                "direct_routine_objects": [
                     {"file": "src/com_mod.f90", "object": "src/com_mod.o",
                      "source_sha256": sha256(src / "com_mod.f90"),
                      "object_sha256": sha256(src / "com_mod.o")},

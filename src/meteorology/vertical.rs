@@ -1206,25 +1206,35 @@ pub fn eta_dot_to_pressure_velocity(
     for y in 0..ny {
         for x in 0..nx {
             let horizontal_index = surface_offset(x, y, nx);
-            let ps = surface_pressure[horizontal_index];
-            let mut previous_output_pa_s = 0.0_f32;
+
+            // The pinned calc_etadot oracle is compiled with
+            // -fdefault-real-8. Preserve that arithmetic width throughout the
+            // recursive ETAR(K)-ETAR(K-1) chain and round only once at the
+            // canonical f32 output boundary. Re-rounding the previous value at
+            // every model level accumulates visibly over a complete 137-level
+            // ERA5 column.
+            let ps = f64::from(surface_pressure[horizontal_index]);
+            let p00 = f64::from(FLEX_EXTRACT_CALC_ETADOT_REFERENCE_PRESSURE_PA);
+            let mut previous_output_pa_s = 0.0_f64;
 
             for k in 1..=nz {
                 let above = interface_index_from_top(snapshot.vertical_coordinate.ordering, nz, k);
                 let below =
                     interface_index_from_top(snapshot.vertical_coordinate.ordering, nz, k + 1);
-                let dak_pa = a[below] - a[above];
-                let dbk = b[below] - b[above];
+                let dak_pa = f64::from(a[below]) - f64::from(a[above]);
+                let dbk = f64::from(b[below]) - f64::from(b[above]);
 
                 let level_index = model_level_index_from_surface(
                     snapshot.vertical_coordinate.ordering,
                     nz,
                     nz - k,
                 );
-                let deta_dt = native_motion.values[volume_offset(x, y, level_index, nx, ny)];
+                let deta_dt = f64::from(
+                    native_motion.values[volume_offset(x, y, level_index, nx, ny)],
+                );
 
-                let scaled = 2.0 * deta_dt * ps * (dak_pa / ps + dbk)
-                    / (dak_pa / FLEX_EXTRACT_CALC_ETADOT_REFERENCE_PRESSURE_PA + dbk);
+                let scaled =
+                    2.0_f64 * deta_dt * ps * (dak_pa / ps + dbk) / (dak_pa / p00 + dbk);
                 if !scaled.is_finite() {
                     return Err(VerticalTransformError::InvalidEtaDotTransform { x, y, k });
                 }
@@ -1233,8 +1243,16 @@ pub fn eta_dot_to_pressure_velocity(
                 } else {
                     scaled
                 };
+                if !output.is_finite() {
+                    return Err(VerticalTransformError::InvalidEtaDotTransform { x, y, k });
+                }
                 previous_output_pa_s = output;
-                interface_pa_s[interface_offset(x, y, below, nx, ny)] = output;
+
+                let output_f32 = output as f32;
+                if !output_f32.is_finite() {
+                    return Err(VerticalTransformError::InvalidEtaDotTransform { x, y, k });
+                }
+                interface_pa_s[interface_offset(x, y, below, nx, ny)] = output_f32;
             }
         }
     }
@@ -1243,7 +1261,7 @@ pub fn eta_dot_to_pressure_velocity(
         values_interface_pa_s: interface_pa_s,
         algorithm_id: "flex_extract_7_1_2_calc_etadot_meta_mdpdeta_v1",
         conversion:
-            "raw deta/dt [1/s] * 2*ps*(DAK/ps+DBK)/(DAK/P00+DBK), alternating cumulative interface difference -> interface-staggered Pa/s"
+            "raw deta/dt [1/s] * 2*ps*(DAK/ps+DBK)/(DAK/P00+DBK), f64 recursive interface difference matching the pinned oracle, rounded once to canonical f32 interface-staggered Pa/s"
                 .to_string(),
     })
 }

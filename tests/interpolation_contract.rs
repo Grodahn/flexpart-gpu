@@ -455,9 +455,36 @@ fn contract_fixture_metadata_is_frozen() {
         .find(|case| case.id == "horizontal-geographic-interior")
         .expect("geographic horizontal fixture");
     assert_eq!(geographic.mode, "horizontal_geographic");
+    assert!(
+        geographic.semantics.get("production_call_path").is_none(),
+        "oracle composition must not be mislabeled as a pristine production call path"
+    );
     assert_eq!(
-        geographic.semantics["production_call_path"][0],
-        "point_mod::coordtrafo"
+        geographic.semantics["oracle_exercise_path"],
+        serde_json::json!([
+            "point_mod::coordtrafo",
+            "interpol_mod::find_grid_indices",
+            "interpol_mod::find_grid_distances",
+            "interpol_mod::hor_interpol_4d"
+        ])
+    );
+    assert_eq!(
+        geographic.semantics["production_coordinate_initialization_path"],
+        serde_json::json!([
+            "FLEXPART::read_options_and_initialise_flexpart",
+            "point_mod::coordtrafo"
+        ])
+    );
+    assert_eq!(
+        geographic.semantics["production_sampling_path"],
+        serde_json::json!([
+            "advance_mod::advance",
+            "interpol_mod::init_interpol",
+            "interpol_mod::find_grid_indices",
+            "interpol_mod::find_grid_distances",
+            "interpol_mod::interpol_wind",
+            "interpol_mod::hor_interpol_4d"
+        ])
     );
     assert_eq!(geographic.semantics["mapping"]["dx_deg"], 0.25);
 
@@ -540,6 +567,34 @@ fn contract_fixture_metadata_is_frozen() {
         "not_performed_here; owned_by_issue_75"
     );
     assert_eq!(
+        rain.semantics["production_ingest_paths"]["ecmwf"],
+        serde_json::json!([
+            "getfields_mod::getfields",
+            "windfields_mod::readwind_ecmwf",
+            "windfields_mod::lsprec/convprec"
+        ])
+    );
+    assert_eq!(
+        rain.semantics["production_ingest_paths"]["gfs"],
+        serde_json::json!([
+            "getfields_mod::getfields",
+            "windfields_mod::readwind_gfs",
+            "windfields_mod::lsprec/convprec"
+        ])
+    );
+    assert_eq!(
+        rain.semantics["production_sampling_path"],
+        serde_json::json!([
+            "wetdepo_mod::wetdepo",
+            "wetdepo_mod::get_wetscav",
+            "interpol_mod::find_ngrid",
+            "interpol_mod::find_grid_indices",
+            "interpol_mod::find_grid_distances",
+            "interpol_mod::find_z_level_meters",
+            "interpol_mod::interpol_rain"
+        ])
+    );
+    assert_eq!(
         real["semantics"]["ordering"]["vertical"],
         "increasing",
         "real sample must freeze canonical vertical ordering"
@@ -608,7 +663,7 @@ fn contract_provenance_matches_fixture() {
     );
     assert_eq!(
         provenance.fixture_artifact["sha256"],
-        "6729843cbd59b0ac60e39e873fde179dbe7949f3191ee0ee7ba9deb443d45c70"
+        "b1346ae8a741b9508237c9add53ba4bda865015046c209eaa10cbb78ccd5347d"
     );
     assert_eq!(
         provenance.generator_source["path"],

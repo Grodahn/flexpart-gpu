@@ -109,7 +109,7 @@
     "producer_issue": 30,
     "producer_driver": "scripts/vertical/direct_oracle_driver.f90",
     "producer_routine": "verttransform_mod::verttransform_ecmwf_heights",
-    "oracle_output_sha256": "ae7cd8c7a057e81439bc7e316e123c438951a4a0cd0bff9c4e21b086bac3e9bf",
+    "oracle_output_sha256": "5015ea3a9a9e42b1a2b88c60c2867b74a632bffd1b9cfefdc186b005c752b197",
     "geometry_field": "wzlev",
     "value_field": "omega * pinmconv",
     "source_fixture": "fixtures/vertical/synthetic-column-v1.json",

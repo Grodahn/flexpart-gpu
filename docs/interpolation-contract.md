@@ -21,8 +21,8 @@ It is the machine- and human-readable contract accompanying
 | Oracle harness | `scripts/interpolation/direct_oracle.sh` (container build + run) |
 | Fixture pack | `fixtures/interpolation/` (+ per-case golden outputs) |
 
-The oracle links the pristine `src/com_mod.o`, `src/par_mod.o`, `src/windfields_mod.o`,
-`src/interpol_mod.o` and calls the real pinned routines directly. The driver's output
+The oracle links the pristine `src/com_mod.o`, `src/par_mod.o`, `src/point_mod.o`,
+`src/windfields_mod.o`, `src/interpol_mod.o` and calls the real pinned routines directly. The driver's output
 is the only oracle evidence; no reimplementation is used as evidence.
 
 Every machine-readable case carries a `semantics` object with explicit coordinate
@@ -39,13 +39,19 @@ exactly.
 ## 2. Horizontal grid conventions
 
 FLEXPART reads grids with cell-center samples. The canonical convention frozen here is
-cell-center anchored:
+cell-center anchored. Geographic positions are converted by the **real pinned**
+`point_mod::coordtrafo` production routine before interpolation:
 
 ```
-X_can      = (lon_deg - xlon0_deg) / dx_deg_x        [grid units]
-xlon0_deg  = longitude of the X=0 cell-center sample
-dx_deg_x   = equiangular zonal step
+xt = (lon_deg - xlon0_deg) / dx_deg_x
+yt = (lat_deg - ylat0_deg) / dy_deg_y
 ```
+
+The direct oracle configures `point_mod::{xlon0,ylat0,dx,dy}`, passes the
+geographic query through `coordtrafo`, and then feeds the returned `xt/yt`
+through `find_grid_indices -> find_grid_distances -> hor_interpol_4d`.
+Consequently this Lon/Lat-to-grid conversion is direct FLEXPART oracle evidence,
+not a formula implemented only by the fixture generator or documentation.
 
 FLEXPART computes the zonal step from the stored first/last longitudes
 (`gridcheck_ecmwf`, `windfields_mod.f90:572-718`):
@@ -109,6 +115,22 @@ ix, jy, ixp, jyp = 1, 0, 2, 1
 p1..p4           = 0.375, 0.125, 0.375, 0.125
 value            = 230.0
 ```
+
+### Geographic-to-grid oracle case
+
+The `horizontal-geographic-interior` case uses a non-zero geographic origin
+and non-unit spacing: `xlon0=-2°`, `ylat0=48°`, `dx=dy=0.25°`.
+Its inputs are **Lon/Lat**, not precomputed grid coordinates:
+
+```
+lon=-1.6875°, lat=48.125° -> point_mod::coordtrafo -> xt=1.25, yt=0.5
+lon=-1.3750°, lat=48.375° -> point_mod::coordtrafo -> xt=2.50, yt=1.5
+```
+
+Those transformed coordinates are then sampled by the pinned horizontal
+interpolation routines. The first query intentionally lands on the same
+`xt/yt` as the index-space interior fixture, providing an end-to-end check
+that geographic and direct-grid paths converge before interpolation.
 
 ### Verified golden (periodic wrap)
 

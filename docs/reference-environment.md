@@ -242,21 +242,34 @@ hash to the comparison. The extracted oracle metadata identifies the pinned
 upstream Calc_etadot fixture as a native-model-level source and derives its
 valid time from the GRIB metadata rather than injecting a synthetic timestamp.
 
-The driver additionally runs the same pinned `calc_etadot` executable on a
-full checked-in ETEX/ERA5 eta-dot profile at 1994-10-23 15:00 UTC:
-`fixtures/etex/native-mini` supplies param 77 on all 137 model levels, the
-matching real ERA5 U/V/T/Q fields, and the complete 138-interface A/B
-coordinate. This exercises the recursive `ETAR(K)-ETAR(K-1)` path through
-the entire native column instead of zero-filling the unrequested upper levels.
-The checked-in surface-pressure archive is grid-point data, whereas
-`calc_etadot` requires spectral ln(ps) on `fort.12`; therefore this proof
-case transparently reuses the spectral ln(ps) carrier from the pinned pristine
-installation fixture and replaces only its PV array with the real ERA5
-138-interface A/B coefficients. That carrier is separately hashed and recorded
-in `source-provenance.json`; it is **not** claimed to be ERA5 surface
-pressure. The real-data acceptance report is
-`real-era5-137/comparison-report.json` and requires all
-137 x 65 x 41 = 365105 eta-dot-to-Pa/s values to pass.
+The driver additionally runs the same pinned `calc_etadot` executable on one
+complete checked-in ETEX/ERA5 native-model-level column at
+1994-10-23 15:00 UTC. The source column is the 48.0 N, 2.0 W grid point in
+`fixtures/etex/native-mini`: param 77, T/U/V/Q and the native A/B coordinate
+cover all 137 model levels, and surface pressure comes from the matching
+checked-in ERA5 surface snapshot. Source files are verified against their
+request manifests before the column is constructed.
+
+The selected real column is replicated horizontally onto the pinned
+`calc_etadot` installation example's 6x6 work grid. This replication does
+**not** represent 36 independent ERA5 columns; it lets the pristine regular-grid
+oracle exercise one independently sourced real vertical profile without
+changing the oracle implementation. Because `calc_etadot` reads `fort.12`
+as spherical harmonics, the selected column's real ln(ps) is encoded as a
+spatially constant spectral field (only the T0/X(0,0) coefficient is non-zero)
+and paired with the real 138-interface A/B coefficients. The comparator
+requires the reconstructed oracle surface pressure to match the selected ERA5
+surface pressure and verifies that every prepared eta-dot level is the selected
+source-column value.
+
+This exercises the recursive `ETAR(K)-ETAR(K-1)` path through all 137 native
+levels instead of zero-filling upper levels. The real-data acceptance report is
+`real-era5-137/comparison-report.json`; it compares 137 x 6 x 6 = 4932
+oracle/candidate values, all derived from the same single complete real ERA5
+column. `source-provenance.json` records the original 65x41 source-grid
+location, the full selected profile, real surface pressure and the source-file
+hashes; `run-provenance.json` binds the generated fort.* inputs and output to
+the concrete oracle executable and container.
 
 Observed result (2026-09-21, Docker Desktop, `flex-extract:latest` built
 from `flexpart-fortran:latest` `sha256:cafb19c…` with gfortran 11.4.0):

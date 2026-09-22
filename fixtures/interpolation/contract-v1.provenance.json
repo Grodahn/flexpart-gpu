@@ -164,11 +164,11 @@
   "fixture_artifact": {
     "path": "fixtures/interpolation/contract-v1.json",
     "hash_kind": "normalized_canonical_json_sha256",
-    "sha256": "8286630800cfbf8c8f0b80f7f11e523631517c7999f1ff000da8286f18384b34"
+    "sha256": "87dfb15ef021b43cb1c4e65902567fd8bf1c95951e479e10e2be807a021b5e6f"
   },
   "generator_source": {
     "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
-    "sha256": "6acc71931ecb1b651ec0c4f9bc9c0162e0dd24d52e6fe8322b1eda571a07ee4f"
+    "sha256": "a2001e2f6822e3f08f5cb5ea888c9837d1ca17d870c646d20f420ddf5fbef86a"
   },
   "oracle_harness_source": {
     "path": "scripts/interpolation/direct_oracle.sh",

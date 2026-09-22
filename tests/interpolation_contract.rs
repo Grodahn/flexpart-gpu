@@ -517,23 +517,57 @@ fn contract_fixture_metadata_is_frozen() {
             "interpol_mod::hor_interpol_4d"
         ])
     );
+    assert!(geographic
+        .semantics
+        .get("production_coordinate_initialization_path")
+        .is_none());
+    assert!(geographic.semantics.get("production_sampling_path").is_none());
     assert_eq!(
-        geographic.semantics["production_coordinate_initialization_path"],
-        serde_json::json!([
+        geographic.semantics["production_direct_call_edges"]
+            ["release_coordinate_initialization"],
+        serde_json::json!([[
             "FLEXPART::read_options_and_initialise_flexpart",
             "point_mod::coordtrafo"
-        ])
+        ]])
     );
-    assert_eq!(
-        geographic.semantics["production_sampling_path"],
+    let wind_edges = geographic.semantics["production_direct_call_edges"]
+        ["above_pbl_wind_sampling"]
+        .as_array()
+        .expect("wind sampling direct-call edges");
+    for edge in [
+        serde_json::json!(["advance_mod::advance", "interpol_mod::init_interpol"]),
+        serde_json::json!(["advance_mod::advance", "advance_mod::adv_above_pbl"]),
         serde_json::json!([
-            "advance_mod::advance",
-            "interpol_mod::init_interpol",
-            "interpol_mod::find_grid_indices",
-            "interpol_mod::find_grid_distances",
+            "advance_mod::adv_above_pbl",
+            "interpol_mod::interpol_wind"
+        ]),
+        serde_json::json!([
             "interpol_mod::interpol_wind",
-            "interpol_mod::hor_interpol_4d"
-        ])
+            "interpol_mod::find_grid_indices"
+        ]),
+        serde_json::json!([
+            "interpol_mod::interpol_wind",
+            "interpol_mod::find_time_vars"
+        ]),
+        serde_json::json!([
+            "interpol_mod::interpol_wind",
+            "interpol_mod::interpol_wind_meter"
+        ]),
+        serde_json::json!([
+            "interpol_mod::interpol_wind_meter",
+            "interpol_mod::hor_interpol"
+        ]),
+        serde_json::json!([
+            "interpol_mod::interpol_wind_meter",
+            "interpol_mod::temporal_interpolation"
+        ]),
+    ] {
+        assert!(wind_edges.contains(&edge), "missing direct production edge {edge}");
+    }
+    assert_eq!(
+        geographic.semantics["generic_interface_resolution"]
+            ["interpol_mod::hor_interpol(4d_field,...)"],
+        "interpol_mod::hor_interpol_4d"
     );
     assert_eq!(geographic.semantics["mapping"]["dx_deg"], 0.25);
 
@@ -587,16 +621,47 @@ fn contract_fixture_metadata_is_frozen() {
         temporal.semantics["time"]["primitive_outside_memory_window"],
         "linear_extrapolation_no_range_guard"
     );
+    assert!(
+        temporal.semantics["time"]
+            .get("production_call_path")
+            .is_none(),
+        "temporal lifecycle must not be represented as a synthetic linear call stack"
+    );
     assert_eq!(
-        temporal.semantics["time"]["production_call_path"],
+        temporal.semantics["time"]["production_lifecycle_direct_call_edges"],
         serde_json::json!([
-            "getfields_mod::getfields",
-            "advance_mod::advance",
-            "interpol_mod::init_interpol",
-            "interpol_mod::find_time_vars",
-            "interpol_mod::temporal_interpolation"
+            ["timemanager_mod::timemanager", "getfields_mod::getfields"],
+            ["timemanager_mod::timemanager", "advance_mod::advance"]
         ])
     );
+    let temporal_edges = temporal.semantics["time"]["production_temporal_direct_call_edges"]
+        .as_array()
+        .expect("temporal direct-call edges");
+    for edge in [
+        serde_json::json!(["advance_mod::advance", "interpol_mod::init_interpol"]),
+        serde_json::json!([
+            "interpol_mod::init_interpol",
+            "interpol_mod::find_time_vars"
+        ]),
+        serde_json::json!([
+            "advance_mod::adv_above_pbl",
+            "interpol_mod::interpol_wind"
+        ]),
+        serde_json::json!([
+            "interpol_mod::interpol_wind",
+            "interpol_mod::find_time_vars"
+        ]),
+        serde_json::json!([
+            "interpol_mod::interpol_wind_meter",
+            "interpol_mod::temporal_interpolation"
+        ]),
+        serde_json::json!([
+            "advance_mod::petterssen_corr",
+            "interpol_mod::interpol_wind_short"
+        ]),
+    ] {
+        assert!(temporal_edges.contains(&edge), "missing temporal direct edge {edge}");
+    }
     assert_eq!(
         temporal.semantics["time"]["range_policy_owner"],
         "caller/canonical API; Petterssen end-step guard is outside find_time_vars/temporal_interpolation"
@@ -615,32 +680,39 @@ fn contract_fixture_metadata_is_frozen() {
         rain.semantics["time"]["reset_deaccumulation"],
         "not_performed_here; owned_by_issue_75"
     );
+    assert!(rain.semantics.get("production_ingest_paths").is_none());
+    assert!(rain.semantics.get("production_sampling_path").is_none());
     assert_eq!(
-        rain.semantics["production_ingest_paths"]["ecmwf"],
+        rain.semantics["production_ingest_direct_call_edges"]["ecmwf"],
         serde_json::json!([
-            "getfields_mod::getfields",
-            "windfields_mod::readwind_ecmwf",
-            "windfields_mod::lsprec/convprec"
+            ["timemanager_mod::timemanager", "getfields_mod::getfields"],
+            ["getfields_mod::getfields", "windfields_mod::readwind_ecmwf"]
         ])
     );
     assert_eq!(
-        rain.semantics["production_ingest_paths"]["gfs"],
+        rain.semantics["production_ingest_direct_call_edges"]["gfs"],
         serde_json::json!([
-            "getfields_mod::getfields",
-            "windfields_mod::readwind_gfs",
-            "windfields_mod::lsprec/convprec"
+            ["timemanager_mod::timemanager", "getfields_mod::getfields"],
+            ["getfields_mod::getfields", "windfields_mod::readwind_gfs"]
         ])
     );
     assert_eq!(
-        rain.semantics["production_sampling_path"],
+        rain.semantics["ingest_output_fields"],
         serde_json::json!([
-            "wetdepo_mod::wetdepo",
-            "wetdepo_mod::get_wetscav",
-            "interpol_mod::find_ngrid",
-            "interpol_mod::find_grid_indices",
-            "interpol_mod::find_grid_distances",
-            "interpol_mod::find_z_level_meters",
-            "interpol_mod::interpol_rain"
+            "windfields_mod::lsprec",
+            "windfields_mod::convprec"
+        ])
+    );
+    assert_eq!(
+        rain.semantics["production_sampling_direct_call_edges"],
+        serde_json::json!([
+            ["timemanager_mod::timemanager", "wetdepo_mod::wetdepo"],
+            ["wetdepo_mod::wetdepo", "wetdepo_mod::get_wetscav"],
+            ["wetdepo_mod::get_wetscav", "interpol_mod::find_ngrid"],
+            ["wetdepo_mod::get_wetscav", "interpol_mod::find_grid_indices"],
+            ["wetdepo_mod::get_wetscav", "interpol_mod::find_grid_distances"],
+            ["wetdepo_mod::get_wetscav", "interpol_mod::find_z_level_meters"],
+            ["wetdepo_mod::get_wetscav", "interpol_mod::interpol_rain"]
         ])
     );
     assert_eq!(
@@ -712,7 +784,7 @@ fn contract_provenance_matches_fixture() {
     );
     assert_eq!(
         provenance.fixture_artifact["sha256"],
-        "c7a01435c7df428f39f35f97eb2a85ac5b2f00a9aa02f3f8666b5d175baf4fc8"
+        "c857f18a99501290b2820fe890e94999f88e6a5d50508e17eb58b37c4d608dd1"
     );
     assert_eq!(
         provenance.generator_source["path"],

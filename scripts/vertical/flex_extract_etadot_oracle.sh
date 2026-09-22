@@ -395,9 +395,10 @@ assert selected["longitude_deg"] == -2.0
 assert selected["latitude_deg"] == 48.0
 assert selected["model_levels"] == 137
 assert selected["level_coverage"] == "1/to/137"
+comparison_count = coverage["comparisons"]
 print(
     "full real ERA5 eta-dot oracle comparison: PASS "
-    f"({coverage['comparisons']} values)"
+    f"({comparison_count} values)"
 )
 ' "${REAL_ROOT}/comparison-report.json"; then
   fail "full real ERA5 comparison report failed structural assertion"

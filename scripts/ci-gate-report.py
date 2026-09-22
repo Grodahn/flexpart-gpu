@@ -199,14 +199,22 @@ def main():
             revision = git_revision(args.flex_extract_checkout)
             flex_extract_commit = revision["commit"]
             flex_extract_dirty = revision["dirty"]
+        status_path = Path(args.output_dir, "flex-extract-oracle-status.txt")
         etadot_status = "NOT_WIRED"
-        if Path(args.output_dir, "flex-extract-oracle", "comparison-report.json").is_file():
+        if status_path.is_file():
+            etadot_status = status_path.read_text(encoding="utf-8").strip()
+        if etadot_status not in {"PASS", "FAIL", "NOT_WIRED", "NOT_RUN", "RUNNING"}:
+            etadot_status = "FAIL"
+        if etadot_status == "RUNNING":
+            etadot_status = "FAIL"
+        comparison_path = Path(
+            args.output_dir, "flex-extract-oracle", "comparison-report.json"
+        )
+        if etadot_status == "PASS":
             try:
-                comparison = json.loads(
-                    Path(args.output_dir, "flex-extract-oracle",
-                         "comparison-report.json").read_text(encoding="utf-8")
-                )
-                etadot_status = "PASS" if comparison.get("status") == "PASS" else "FAIL"
+                comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+                if comparison.get("status") != "PASS":
+                    etadot_status = "FAIL"
             except Exception:
                 etadot_status = "FAIL"
         etadot_oracle = {

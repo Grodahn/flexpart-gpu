@@ -83,7 +83,11 @@ Fail-closed step 2c (#70, calc_etadot preprocessing oracle):
   extracts canonical snapshot/motion/oracle JSONs, runs the
   `eta-dot-column-report` candidate, and compares every grid point x level
   against the oracle field (f32-vs-f64 tolerances, worst attributable
-  relative error ≤ 3e-5). The checkout must stay pristine after the run.
+  relative error ≤ 3e-5). The validated native contract is deliberately
+  narrowed to `positive_eta_decreasing`; the opposite sign convention remains
+  fail-closed. The tier records `run-provenance.json` with the concrete image
+  ID, compiler, oracle executable hash, consumed fort.* hashes and fort.15
+  output hash. The checkout must stay pristine after the run.
 
 Any missing adapter, skipped GPU test, missing oracle artifact, or failed
 comparison exits non-zero. Unwired corpus cases are listed as `NOT_WIRED`,
@@ -142,8 +146,9 @@ traceable to one concrete run via `GITHUB_RUN_ID`/`GITHUB_SHA` (or
 - `build-env.txt` (`rustc`, `cargo`, `docker`, Python, OS, revisions).
 - `oracle-verify.log`, `oracle-build.log`, `oracle-executable.sha256`.
 - `flex-extract-etadot.log`, `flex-extract-oracle/` when step 2c ran
-  (`verify.log`, `oracle-build-run.log`, `oracle-json/{snapshot,motion,oracle}.json`,
-  `candidate.json`, `comparison-report.json`).
+  (`verify.log`, `oracle-build-run.log`, `run-provenance.json`,
+  `oracle-json/{snapshot,motion,oracle}.json`, `candidate.json`,
+  `comparison-report.json`).
 - `gpu-preflight.log`, `sw-wgpu-advection.log`.
 - `candidate-run.log`, `candidate-output.json`,
   `candidate-output-check.log`, `candidate-executable.sha256` (when built).

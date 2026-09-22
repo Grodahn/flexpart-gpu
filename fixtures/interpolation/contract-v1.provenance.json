@@ -232,7 +232,7 @@
   },
   "oracle_harness_source": {
     "path": "scripts/interpolation/direct_oracle.sh",
-    "sha256": "00b4791dc25ec9a7cc9c7e49244a7ff47abaf6acca5cfa62b40b29ed2caa0bc1"
+    "sha256": "7738d77b97af82ca8d2a9f04541d0319d9863f1497912e3a45188b9790c1d631"
   },
   "real_extraction_source": {
     "path": "scripts/vertical/extract_real_etex_column.py",

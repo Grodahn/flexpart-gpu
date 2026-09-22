@@ -489,6 +489,11 @@ fi
 if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
   log_info "Step 2d/6: regenerate and verify the interpolation oracle contract fixture (#71)..."
   INTERPOL_DIR="${OUTPUT_DIR}/interpolation"
+  # The direct-oracle harness intentionally reuses its binary across the eight
+  # cases within one run. Start every gate invocation from a clean interpolation
+  # directory so a local rerun can never combine current sources/provenance with
+  # a stale executable from an earlier checkout.
+  rm -rf "${INTERPOL_DIR}"
   INTERPOL_BUILD_DIR="${INTERPOL_DIR}/oracle-build"
   mkdir -p "${INTERPOL_DIR}" "${INTERPOL_BUILD_DIR}" "${INTERPOL_DIR}/oracle-output"
 

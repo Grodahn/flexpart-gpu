@@ -9,8 +9,8 @@ set -euo pipefail
 # Fail-closed. Keeps the pinned flex_extract checkout pristine by building
 # and running in scratch directories under the output dir; the checkout is
 # never modified. Requires:
-#   * Docker with the flexpart-fortran image + libemos-dev/libemos-bin/
-#     libemos-data/libopenjp2-7-dev (Dockerfile.flex-extract),
+#   * Docker with the flex-extract image built from flexpart-fortran plus
+#     libemos-dev/libemos-bin/libemos-data/libopenjp2-7-dev,
 #   * a pinned, clean flex_extract checkout (reference/flex-extract.json).
 #
 # Usage:
@@ -240,7 +240,8 @@ if ! "${HOST_PYTHON}" -c '
 import json, sys
 report = json.load(open(sys.argv[1]))
 assert report["status"] == "PASS", report["status"]
-assert report["oracle"]["calc_etadot_f90_sha256"] == "07ED3522F8C1B35065965D01AF828F7532605A3AA9BE44D48FB9CA3F2ED976FF"
+assert report["oracle"]["calc_etadot_f90_sha256"] == "160F267F8741F23D13FDBA2F7A88F110BB131AA84AD7894FA43605258E55B0D9"
+assert report["oracle"]["calc_etadot_f90_git_blob"] == "741eba91eab049df23a560219d0f2656a6cc9881"
 print("eta-dot oracle comparison: PASS")
 ' "${OUTPUT_DIR}/comparison-report.json"; then
   fail "comparison report failed structural assertion"

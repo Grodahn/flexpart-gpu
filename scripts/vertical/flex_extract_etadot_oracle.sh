@@ -249,8 +249,10 @@ fi
 
 # 5. Run the same pinned calc_etadot executable on one complete real ERA5
 #    native-level case: 137/137 eta-dot levels over the checked-in 65x41 ETEX
-#    native-mini grid at 1994-10-23 15:00 UTC. This closes #70's real-column
-#    proof obligation without candidate-derived inputs or zero-filled levels.
+#    native-mini grid at 1994-10-23 15:00 UTC. The full eta-dot column,
+#    U/V/T/Q fields and 138-interface A/B coordinate are real ERA5; only the
+#    spectral ln(ps) carrier is explicitly borrowed from the pinned upstream
+#    calc_etadot fixture because the checked-in ERA5 surface field is gridded.
 REAL_ROOT="${OUTPUT_DIR}/real-era5-137"
 REAL_RUN="${REAL_ROOT}/oracle-run"
 REAL_JSON="${REAL_ROOT}/oracle-json"
@@ -287,11 +289,11 @@ if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run -
       --example-dir \$run \
       --output-dir \$json \
       --expected-levels 1/to/137 \
-      --fixture-classification real_era5_native_model_level_full_column \
+      --fixture-classification real_era5_etadot_full_native_column \
       --fixture-origin 'fixtures/etex/native-mini ERA5 Complete 1994-10-23T15:00:00Z' \
       --source-provenance \$run/source-provenance.json
   " 2>&1 | tee "${REAL_ROOT}/oracle-build-run.log"; then
-  fail "full 137-level real ERA5 calc_etadot oracle run failed"
+  fail "full 137-level real ERA5 eta-dot calc_etadot oracle run failed"
 fi
 
 # Bind the real ERA5 run to the same concrete image/compiler/executable identity
@@ -374,7 +376,7 @@ if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/compare_calc_etadot_orac
   --source-motion "${REAL_JSON}/motion.json" \
   --run-provenance "${REAL_ROOT}/run-provenance.json" \
   --output "${REAL_ROOT}/comparison-report.json"; then
-  fail "full 137-level real ERA5 calc_etadot field comparison failed"
+  fail "full 137-level real ERA5 eta-dot calc_etadot field comparison failed"
 fi
 
 if ! "${HOST_PYTHON}" -c '

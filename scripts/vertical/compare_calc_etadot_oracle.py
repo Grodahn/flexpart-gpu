@@ -215,6 +215,17 @@ def main():
             raise ValueError("real ERA5 oracle lacks pinned source provenance")
         if source_provenance.get("classification") != REAL_ERA5_CLASSIFICATION:
             raise ValueError("real ERA5 source provenance classification mismatch")
+        real_column = source_provenance.get("validated_real_column", {})
+        if (
+            real_column.get("lon_deg") != -2.0
+            or real_column.get("lat_deg") != 48.0
+            or real_column.get("surface_pressure_strategy")
+            != "constant_spectral_lnps_from_real_era5_column"
+            or not isinstance(real_column.get("surface_pressure_pa"), (int, float))
+        ):
+            raise ValueError(
+                f"real ERA5 selected-column provenance is incomplete: {real_column!r}"
+            )
         spectral_record = (
             source_provenance.get("sources", {})
             .get("spectral_surface_pressure_template", {})
@@ -287,6 +298,20 @@ def main():
             raise ValueError(
                 "real ERA5 oracle coverage changed: "
                 f"nlev={nlev}, levels={levels[:3]}..{levels[-3:]}, grid={(nx, ny)}"
+            )
+        selected_ps = float(
+            source_fixture["source_provenance"]["content"]["validated_real_column"][
+                "surface_pressure_pa"
+            ]
+        )
+        surface_pressures = oracle.get("surface_pressure_pa_xy", [])
+        if len(surface_pressures) != nxy:
+            raise ValueError("real ERA5 oracle surface-pressure field has wrong shape")
+        max_ps_error = max(abs(float(value) - selected_ps) for value in surface_pressures)
+        if max_ps_error > max(0.5, 1.0e-5 * selected_ps):
+            raise ValueError(
+                "calc_etadot spectral ln(ps) does not reproduce the selected "
+                f"real ERA5 column pressure: max error {max_ps_error} Pa"
             )
 
     values = candidate["result"]["values_interface_pa_s"]
@@ -387,6 +412,13 @@ def main():
             "points_per_level": nxy,
             "comparisons": len(levels) * nxy,
             "complete_real_native_column": classification == REAL_ERA5_CLASSIFICATION,
+            "selected_real_column": (
+                source_fixture.get("source_provenance", {})
+                .get("content", {})
+                .get("validated_real_column")
+                if classification == REAL_ERA5_CLASSIFICATION
+                else None
+            ),
             "failure_count": failure_count,
             "max_absolute_difference_pa_s": overall_max_abs,
             "max_relative_difference": overall_max_rel,

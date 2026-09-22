@@ -23,25 +23,48 @@ DRIVER="${DRIVER:-/workspace/flexpart-gpu/scripts/interpolation/direct_interpola
 mkdir -p "${BUILD}"
 
 # Keep the complete link-input set available on every invocation. CI reuses the
-# same oracle binary across all fixture cases, so this cannot live only inside
-# the first-build branch.
+# same oracle binary across all fixture cases, so reuse is allowed only when the
+# harness, driver, compiler and every linked FLEXPART object are byte-identical.
 objects=$(find "${ORACLE_SRC}" -maxdepth 1 -type f -name '*.o' ! -name 'FLEXPART.o' -print | sort)
 if [ -z "${objects}" ]; then
   echo "no FLEXPART objects found in ${ORACLE_SRC}; build the oracle first" >&2
   exit 1
 fi
 
-if [ ! -x "${BUILD}/interpolation-oracle" ]; then
+COMPILER_VERSION="$(gfortran --version | sed -n '1p')"
+FINGERPRINT_OUTPUT="${BUILD}/interpolation-oracle.build-fingerprint.txt"
+build_fingerprint="$(
+  {
+    printf 'harness '
+    sha256sum "${BASH_SOURCE[0]}"
+    printf 'driver '
+    sha256sum "${DRIVER}"
+    printf 'compiler %s\n' "${COMPILER_VERSION}"
+    printf '%s\n' "${objects}" | while IFS= read -r object; do
+      sha256sum "${object}"
+    done
+  } | sha256sum | awk '{print $1}'
+)"
+stored_fingerprint=""
+if [ -f "${FINGERPRINT_OUTPUT}" ]; then
+  stored_fingerprint="$(cat "${FINGERPRINT_OUTPUT}")"
+fi
+
+if [ ! -x "${BUILD}/interpolation-oracle" ] || [ "${stored_fingerprint}" != "${build_fingerprint}" ]; then
+  tmp_binary="${BUILD}/interpolation-oracle.tmp"
+  rm -f "${tmp_binary}"
   # shellcheck disable=SC2046
   gfortran -O0 -I"${ORACLE_SRC}" -fopenmp -mcmodel=large "${DRIVER}" ${objects} \
     -L/usr/lib/x86_64-linux-gnu -Wl,-rpath=/usr/lib/x86_64-linux-gnu \
     -leccodes -leccodes_f90 -lm -lnetcdff \
-    -o "${BUILD}/interpolation-oracle"
+    -o "${tmp_binary}"
+  mv "${tmp_binary}" "${BUILD}/interpolation-oracle"
+  printf '%s\n' "${build_fingerprint}" > "${FINGERPRINT_OUTPUT}"
 fi
 
 COMPILER_VERSION_OUTPUT="${BUILD}/interpolation-oracle.compiler-version.txt"
 LINKED_OBJECTS_OUTPUT="${BUILD}/interpolation-oracle.linked-objects.txt"
-gfortran --version | sed -n '1p' > "${COMPILER_VERSION_OUTPUT}"
+printf '%s\n' "${COMPILER_VERSION}" > "${COMPILER_VERSION_OUTPUT}"
 printf '%s\n' ${objects} | sed "s#^${ORACLE_SRC}/##" > "${LINKED_OBJECTS_OUTPUT}"
 
 NM_OUTPUT="${BUILD}/interpolation-oracle.nm"

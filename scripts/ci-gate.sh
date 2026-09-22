@@ -491,7 +491,15 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
   # every semantic field (goldens, per-case output hashes, object hashes,
   # routines, pinning, cleanliness) must match exactly.
   if ! "${HOST_PYTHON}" -c '
-import json, sys
+import hashlib, json, sys
+
+def canonical_json_sha256(path):
+    value = json.load(open(path))
+    canonical = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
 committed = json.load(open(sys.argv[1]))
 regenerated = json.load(open(sys.argv[2]))
 assert committed["schema"] == regenerated["schema"], "schema drift"
@@ -508,6 +516,9 @@ for key in (
     "cases", "real_data_samples", "interface_vertical_source",
 ):
     assert p[key] == q[key], f"provenance drift in {key}"
+assert p["fixture_artifact"]["hash_kind"] == "canonical_json_sha256"
+assert p["fixture_artifact"]["sha256"] == canonical_json_sha256(sys.argv[1]), "committed contract hash mismatch"
+assert q["fixture_artifact"]["sha256"] == canonical_json_sha256(sys.argv[2]), "regenerated contract hash mismatch"
 assert p["linked_flexpart"]["routines"] == q["linked_flexpart"]["routines"], "routine list drifted"
 pa = {o["object"]: o["object_sha256"] for o in p["linked_flexpart"]["objects"]}
 qa = {o["object"]: o["object_sha256"] for o in q["linked_flexpart"]["objects"]}

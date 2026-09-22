@@ -269,7 +269,8 @@ if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run -
     python3 /workspace/flexpart-gpu/scripts/vertical/prepare_real_era5_etadot_oracle.py \
       --native-dir /workspace/flexpart-gpu/fixtures/etex/native-mini \
       --output-dir \$run \
-      --timestamp 1994-10-23T15:00:00
+      --timestamp 1994-10-23T15:00:00 \
+      --spectral-lnsp-template /workspace/flex_extract/Testing/Installation/Calc_etadot/fort.12
 
     cd \$run
     ln -sf \$exe calc_etadot

@@ -226,23 +226,6 @@ def main():
             raise ValueError(
                 f"real ERA5 selected-column provenance is incomplete: {real_column!r}"
             )
-        spectral_record = (
-            source_provenance.get("sources", {})
-            .get("spectral_surface_pressure_template", {})
-        )
-        pinned_spectral = (
-            args.flex_extract_checkout
-            / "Testing"
-            / "Installation"
-            / "Calc_etadot"
-            / "fort.12"
-        )
-        if not pinned_spectral.is_file():
-            raise ValueError(f"pinned spectral lnsp template missing: {pinned_spectral}")
-        if spectral_record.get("sha256") != sha256(pinned_spectral):
-            raise ValueError(
-                "real ERA5 case did not use the pinned upstream spectral lnsp template"
-            )
 
     run_provenance = json.loads(args.run_provenance.read_text(encoding="utf-8"))
     if run_provenance.get("schema") != "flexpart-gpu.etadot-oracle-run-provenance.v1":
@@ -252,6 +235,17 @@ def main():
     executable_hash = run_provenance.get("oracle_executable", {}).get("sha256")
     if not image_id or not compiler_version or not executable_hash:
         raise ValueError("run provenance lacks concrete build identity")
+
+    if classification == REAL_ERA5_CLASSIFICATION:
+        embedded_source = source_fixture.get("source_provenance", {})
+        run_source = run_provenance.get("source_provenance", {})
+        if (
+            not embedded_source.get("sha256")
+            or embedded_source.get("sha256") != run_source.get("sha256")
+        ):
+            raise ValueError(
+                "real ERA5 source provenance differs between extraction and run identity"
+            )
 
     fixture_hashes = source_fixture.get("source_hashes_sha256", {})
     run_inputs = run_provenance.get("oracle_inputs", {})
@@ -267,6 +261,11 @@ def main():
             "maxb": 41,
             "mlevel": 137,
             "mlevelist": "1/to/137",
+            "mnauf": int(
+                source_fixture["source_provenance"]["content"][
+                    "validated_real_column"
+                ]["spectral_truncation"]
+            ),
             "metapar": 77,
             "momega": 0,
             "momegadiff": 0,

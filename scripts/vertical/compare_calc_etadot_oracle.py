@@ -293,10 +293,57 @@ def main():
     nx, ny = oracle["nx"], oracle["ny"]
     nxy = nx * ny
     if classification == REAL_ERA5_CLASSIFICATION:
-        if nlev != 137 or levels != list(range(1, 138)) or (nx, ny) != (65, 41):
+        if nlev != 137 or levels != list(range(1, 138)) or (nx, ny) != (6, 6):
             raise ValueError(
                 "real ERA5 oracle coverage changed: "
                 f"nlev={nlev}, levels={levels[:3]}..{levels[-3:]}, grid={(nx, ny)}"
+            )
+        source_provenance = source_fixture["source_provenance"]["content"]
+        selected = source_provenance.get("selected_column", {})
+        if (
+            source_provenance.get("source_grid") != {"nx": 65, "ny": 41}
+            or selected.get("longitude_deg") != -2.0
+            or selected.get("latitude_deg") != 48.0
+            or selected.get("model_levels") != 137
+            or selected.get("level_coverage") != "1/to/137"
+        ):
+            raise ValueError(
+                f"real ERA5 selected-column provenance changed: {selected!r}"
+            )
+        oracle_grid = source_provenance.get("oracle_grid", {})
+        if (
+            oracle_grid.get("nx") != 6
+            or oracle_grid.get("ny") != 6
+            or oracle_grid.get("construction")
+            != "selected real ERA5 column replicated horizontally"
+        ):
+            raise ValueError(f"unexpected real-column oracle grid: {oracle_grid!r}")
+
+        selected_profiles = selected.get("profile_values", {})
+        eta_profile = selected_profiles.get("77")
+        if not isinstance(eta_profile, list) or len(eta_profile) != 137:
+            raise ValueError("real ERA5 provenance lacks the complete eta-dot profile")
+        motion = json.loads(args.source_motion.read_text(encoding="utf-8"))
+        motion_values = motion.get("values", [])
+        if len(motion_values) != 137 * nxy:
+            raise ValueError("real ERA5 motion does not contain 137 replicated levels")
+        for level_index, expected_eta in enumerate(eta_profile):
+            row = motion_values[level_index * nxy : (level_index + 1) * nxy]
+            if len(row) != nxy or any(abs(value - expected_eta) > 1.0e-12 for value in row):
+                raise ValueError(
+                    f"real ERA5 eta-dot level {level_index + 1} was not replicated "
+                    "exactly from the selected source column"
+                )
+
+        expected_ps = float(selected.get("surface_pressure_pa"))
+        actual_ps = oracle.get("surface_pressure_pa_xy", [])
+        if len(actual_ps) != nxy:
+            raise ValueError("real ERA5 oracle surface-pressure field has wrong shape")
+        max_ps_error = max(abs(value - expected_ps) for value in actual_ps)
+        if max_ps_error > 0.5:
+            raise ValueError(
+                "real ERA5 spectral ln(ps) does not reconstruct the selected "
+                f"surface pressure: max error {max_ps_error} Pa"
             )
         selected_ps = float(
             source_fixture["source_provenance"]["content"]["validated_real_column"][

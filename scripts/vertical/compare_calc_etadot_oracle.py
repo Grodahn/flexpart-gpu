@@ -154,7 +154,7 @@ def validate_checkout(checkout, manifest):
                 f"example namelist no longer selects the oracle configuration: "
                 f"{key}={actual_value!r} expected {expected!r}"
             )
-    return calc_etadot
+    return calc_etadot, source_blob, digest
 
 
 def main():
@@ -170,7 +170,9 @@ def main():
     args = parser.parse_args()
 
     manifest = json.loads(args.reference_manifest.read_text(encoding="utf-8"))
-    calc_etadot = validate_checkout(args.flex_extract_checkout, manifest)
+    calc_etadot, source_blob, calc_etadot_digest = validate_checkout(
+        args.flex_extract_checkout, manifest
+    )
 
     candidate = json.loads(args.candidate.read_text(encoding="utf-8"))
     if candidate.get("schema", {}).get("id") != "flexpart-gpu.eta-dot-column-report":
@@ -281,7 +283,7 @@ def main():
             "calc_etadot_f90": {
                 "path": str(calc_etadot),
                 "git_blob": source_blob,
-                "canonical_sha256": digest,
+                "canonical_sha256": calc_etadot_digest,
                 "working_tree_sha256": sha256(calc_etadot),
             },
         },

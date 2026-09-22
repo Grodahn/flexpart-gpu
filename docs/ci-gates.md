@@ -49,19 +49,6 @@ Fail-closed steps:
 2. Build `flexpart-fortran:latest` and compile `FLEXPART` with
    `make -f makefile_gfortran eta=no arch=x86-64`; require the executable,
    hash it, and require the checkout to stay clean (`gitversion.txt` removed).
-2b. Regenerate and verify the vertical-coordinate oracle column comparisons
-    (#30): direct routine oracle plus conformance harness on synthetic and real
-    ERA5/ETEX columns.
-2c. Regenerate and verify the interpolation oracle contract fixture (#71):
-    re-run `scripts/interpolation/direct_oracle.sh` for all seven sampling cases
-    in the pinned container, including the real
-    `real-era5-etex-temperature-column` case built from #29 temperature values
-    and #30 direct-oracle AGL geometry; re-pack
-    `fixtures/interpolation/contract-v1.json` (+ provenance), require #30's
-    direct FLEXPART source evidence for both the W/interface and real-column
-    cases to match their frozen hashes, require the regenerated
-    goldens/output/object hashes to match the committed pack, and re-verify the
-    goldens analytically via `cargo test --test interpolation_contract`.
 3. Run `gpu-preflight --software`; require `software adapter: true` and
    `smoke test: PASS` (a skipped smoke test fails).
 4. Run `SW-WGPU-ADVECTION-001` with `--exact`; require `test result: ok`,
@@ -75,6 +62,61 @@ Fail-closed steps:
    (oracle revision, candidate revision, image ID, packages, compiler,
    executable/input/output hashes, adapter, seed note) and
    `ci-gate-report.json` (schema v1, see §5); require both to exist.
+
+Fail-closed step 2b (#30, direct vertical routine):
+
+- Compile the pinned `verttransform_ecmwf_heights` routine against the
+  pristine `FLEXPART` objects, run synthetic and real ERA5/ETEX columns,
+  and compare candidate + conformance-harness outputs against the routine
+  oracle with prescribed tolerances (see `docs/vertical-transform.md`).
+
+Fail-closed step 2c (#70, calc_etadot preprocessing oracle):
+
+- Runs when the pinned flex_extract 7.1.2 checkout exists at
+  `../flex_extract` (or `--flex-extract-checkout <dir>`); otherwise the tier
+  is reported `NOT_WIRED` and never `PASS`. Passing
+  `--require-flex-extract-oracle` makes that state fail the overall gate; the
+  GitHub validation workflow always enables this requirement. The driver
+  (`scripts/vertical/flex_extract_etadot_oracle.sh`) verifies the checkout
+  against `reference/flex-extract.json`, builds `calc_etadot` in a scratch
+  dir (extra packages `libemos-dev`/`libemos-bin`/`libemos-data`/
+  `libopenjp2-7-dev` via `Dockerfile.flex-extract`), runs the pinned
+  `Testing/Installation/Calc_etadot` example (must print `CONGRATULATIONS`),
+  extracts canonical snapshot/motion/oracle JSONs, runs the
+  `eta-dot-column-report` candidate, and compares every grid point x level
+  against the oracle field (f32-vs-f64 tolerances, worst attributable
+  relative error ≤ 3e-5). The same pinned executable is then run on a second
+  checked-in ETEX/ERA5 case built from one complete real native-model-level
+  column at 48.0 N, 2.0 W. Its raw eta-dot, T/U/V/Q and hybrid A/B coordinate
+  cover all 137 model levels and its surface pressure comes from the matching
+  ERA5 surface snapshot. The selected source column is replicated onto the
+  pinned 6x6 installation-test work grid; those 36 copies are plumbing, not
+  independent ERA5 columns. Because `calc_etadot` requires spectral ln(ps),
+  the selected real surface pressure is encoded as a spatially constant
+  spherical-harmonic field and the comparator verifies the reconstructed
+  pressure against the source value. The proof therefore covers the complete
+  real 137-level eta-dot recurrence without zero-filled levels. The real-data
+  report must pass all 137 x 6 x 6 = 4932 replicated oracle/candidate
+  comparisons and records the single selected source column explicitly. The
+  validated native contract
+  is deliberately narrowed to `positive_eta_increasing`; the opposite sign
+  convention remains fail-closed. The tier records run provenance for both
+  oracle executions with the concrete image ID, compiler, executable hash,
+  consumed fort.* hashes, source manifests and fort.15 output hash. The
+  checkout must stay pristine after the run.
+
+Fail-closed step 2d (#71, interpolation oracle contract):
+
+- Regenerate and verify all **eight** sampling cases with the pinned FLEXPART
+  11.1 objects. The `horizontal-geographic-interior` case starts from
+  longitude/latitude and calls the real pinned `point_mod::coordtrafo` before
+  `find_grid_indices`, `find_grid_distances` and `hor_interpol_4d`; this
+  makes the documented Lon/Lat -> grid mapping part of the oracle evidence
+  instead of a documentation-only formula. The pack also retains the six
+  synthetic index/vertical/temporal/rain cases and the real
+  `real-era5-etex-temperature-column` case. CI re-packs
+  `fixtures/interpolation/contract-v1.json` plus provenance and fails on any
+  golden, source/object hash, routine-list, or semantic drift.
 
 Any missing adapter, skipped GPU test, missing oracle artifact, or failed
 comparison exits non-zero. Unwired corpus cases are listed as `NOT_WIRED`,
@@ -132,6 +174,13 @@ traceable to one concrete run via `GITHUB_RUN_ID`/`GITHUB_SHA` (or
   packages, compiler, executable/input/output hashes, adapter line).
 - `build-env.txt` (`rustc`, `cargo`, `docker`, Python, OS, revisions).
 - `oracle-verify.log`, `oracle-build.log`, `oracle-executable.sha256`.
+- `flex-extract-etadot.log`, `flex-extract-oracle/` when step 2c ran
+  (`verify.log`, `oracle-build-run.log`, `run-provenance.json`,
+  `oracle-json/{snapshot,motion,oracle}.json`, `candidate.json`,
+  `comparison-report.json`).
+- `interpolation/contract-v1.json`, `interpolation/contract-v1.provenance.json`,
+  direct oracle outputs (including `horizontal-geographic-interior.out`) and
+  `interpolation/reproducibility-check.log`.
 - `gpu-preflight.log`, `sw-wgpu-advection.log`.
 - `candidate-run.log`, `candidate-output.json`,
   `candidate-output-check.log`, `candidate-executable.sha256` (when built).
@@ -152,6 +201,13 @@ traceable to one concrete run via `GITHUB_RUN_ID`/`GITHUB_SHA` (or
   "status": "TECHNICAL_PASS",
   "scientific_verdict": "NOT_EVALUATED",
   "oracle": {"pinned_commit": "…", "actual_commit": "…"},
+  "etadot_oracle": {
+    "manifest": "reference/flex-extract.json",
+    "pinned_commit": "…",
+    "actual_commit": "…",
+    "worktree_clean": true,
+    "status": "PASS|FAIL|NOT_WIRED"
+  },
   "candidate": {"revision": "…"},
   "adapter": {"name": "llvmpipe", "is_software": true},
   "cases": [{"case_id": "SW-WGPU-ADVECTION-001", "status": "PASS"}],

@@ -17,8 +17,11 @@ use std::process::Command;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Relative path of the bundled oracle manifest from the crate root.
+/// Relative path of the bundled FLEXPART oracle manifest from the crate root.
 pub const BUNDLED_MANIFEST_RELATIVE_PATH: &str = "reference/flexpart-11.1.json";
+
+/// Relative path of the bundled flex_extract oracle manifest from the crate root.
+pub const BUNDLED_FLEX_EXTRACT_MANIFEST_RELATIVE_PATH: &str = "reference/flex-extract.json";
 
 /// Machine-readable description of the normative FLEXPART oracle revision.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -83,6 +86,18 @@ impl ReferenceManifest {
     /// A failure here indicates a broken checkout of this repository itself.
     pub fn bundled() -> Result<Self, ReferenceError> {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(BUNDLED_MANIFEST_RELATIVE_PATH);
+        Self::load(&path)
+    }
+
+    /// Load the bundled flex_extract oracle manifest (`reference/flex-extract.json`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ReferenceError`] when the bundled manifest is missing or invalid.
+    /// A failure here indicates a broken checkout of this repository itself.
+    pub fn bundled_flex_extract() -> Result<Self, ReferenceError> {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(BUNDLED_FLEX_EXTRACT_MANIFEST_RELATIVE_PATH);
         Self::load(&path)
     }
 
@@ -263,6 +278,17 @@ mod tests {
         assert_eq!(manifest.version, "11.1");
         assert_eq!(manifest.pinned_tag, "v11.1");
         assert_eq!(manifest.pinned_commit, PINNED_COMMIT);
+    }
+
+    #[test]
+    fn test_bundled_flex_extract_manifest_pins_calc_etadot_oracle() {
+        let manifest = ReferenceManifest::bundled_flex_extract().expect("bundled manifest loads");
+        assert_eq!(manifest.name, "flex_extract");
+        assert_eq!(manifest.version, "7.1.2");
+        assert_eq!(
+            manifest.pinned_commit,
+            "e0005c99ac81d12faa45a8ff799debbd592b0dc0"
+        );
     }
 
     #[test]

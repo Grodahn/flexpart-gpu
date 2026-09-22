@@ -1,80 +1,160 @@
 # FLEXPART-GPU
 
-Rust/WebGPU port of FLEXPART for scientific exploration, numerical validation, and CPU (Fortran/Rust) vs GPU performance evaluation.
+`flexpart-gpu` is a standalone Rust/WebGPU reimplementation of FLEXPART.
+The current development focus is to close the scientific and behavioral gap to
+FLEXPART 11.1 through reproducible, oracle-backed validation while retaining a
+GPU-oriented execution architecture.
 
-## Project status and relationship to upstream
+The project is independent and unofficial. It is not affiliated with or endorsed
+by the official FLEXPART development team.
 
-`flexpart-gpu` is an independent and unofficial project inspired by, and partially derived from, FLEXPART.
-It is not affiliated with or endorsed by the official FLEXPART development team.
+## Project status
 
-## Context
+This repository is experimental and under active development.
 
-This project re-implements FLEXPART components in Rust and WGSL, with a focus on:
+Substantial model, meteorology, GPU, validation, and benchmarking infrastructure
+already exists, but `flexpart-gpu` must **not** currently be treated as a
+scientifically interchangeable replacement for FLEXPART 11.1.
 
-- experiment reproducibility,
-- output comparison between the legacy implementation and the GPU port,
-- performance measurement at significant problem sizes.
+Scientific or behavioral parity is considered established only where the relevant
+production path has passed an explicitly defined comparison against the pinned
+FLEXPART 11.1 reference environment. Isolated kernel agreement, successful
+execution, or good benchmark performance is not sufficient evidence by itself.
 
-## Value beyond raw performance
+## Goals
 
-Beyond speedups, this codebase brings practical value for scientific and
-operational workflows:
+The project is organized around five main goals:
 
-- **Shorter scenario turnaround**: faster runs make it easier to iterate on
-  hypotheses, boundary conditions, and sensitivity studies.
-- **More accessible operations**: strong throughput on a single GPU workstation
-  can reduce dependence on MPI clusters for many day-to-day campaigns.
-- **Reproducibility and auditability**: benchmark protocols, validation reports,
-  and comparison scripts are versioned and repeatable.
-- **Safer engineering surface**: Rust typing, explicit error handling, and test
-  coverage improve maintainability of a complex numerical pipeline.
-- **Structured migration path**: side-by-side comparison with legacy outputs
-  helps adopt GPU acceleration incrementally instead of requiring a hard switch.
+- reproduce FLEXPART 11.1 behavior with explicitly defined scientific contracts;
+- keep FLEXPART 11.1 available as a pinned, reproducible reference oracle;
+- execute the candidate model as a standalone Rust application with GPU compute
+  implemented through `wgpu` and WGSL;
+- make validation auditable through versioned inputs, provenance, raw outputs,
+  metrics, thresholds, and fail-closed CI gates;
+- preserve the option for high-throughput operational workloads once scientific
+  correctness has been demonstrated.
 
-## License and implications
+Performance matters, but correctness and reproducibility take precedence over
+speedups.
 
-Upstream FLEXPART is distributed under `GPL-3.0-or-later`.
-This project is therefore also published under `GPL-3.0-or-later`.
+## Validation model
 
-Practical implications for distribution:
+The preferred validation path is a paired comparison:
 
-- this port must remain under a GPL-compatible license;
-- if binaries are distributed, the corresponding source code must be provided;
-- upstream copyright/license notices and attributions must be preserved;
-- modifications must be clearly identified;
-- AI-assisted porting does not waive license obligations.
+```text
+canonical scenario / meteorology
+              |
+              +------------------------+
+              |                        |
+              v                        v
+   pinned FLEXPART 11.1         flexpart-gpu
+        reference                 candidate
+              |                        |
+              v                        v
+        raw outputs                raw outputs
+              |                        |
+              +-----------+------------+
+                          |
+                          v
+              normalized comparison
+                          |
+                          v
+              metrics / thresholds /
+              provenance / CI gates
+```
 
-## Attribution
+Validation workflows are designed to fail closed: missing oracle runs, stale or
+incomplete artifacts, decoder failures, absent GPU execution where required, or
+missing comparison metrics must not be reported as successful paired validation.
 
-This project explicitly acknowledges the scientific and software origins of FLEXPART.
-Primary credit for the model foundations, methods, and scientific validation goes to the FLEXPART team.
+See:
+
+- [Reference environment](docs/reference-environment.md)
+- [Evaluation and comparison model](docs/evaluation.md)
+- [CI gates](docs/ci-gates.md)
+- [Scientific changelog](docs/scientific-changelog.md)
+
+## Quick start
+
+The current end-to-end example uses the ETEX scenario and can run the candidate
+and pinned FLEXPART 11.1 reference from the same prepared meteorological inputs.
+
+Check what is available locally:
+
+```bash
+scripts/run-etex.sh status
+```
+
+Run the paired workflow:
+
+```bash
+scripts/run-etex.sh all
+```
+
+For prerequisites, GPU modes, generated artifacts, and step-by-step execution,
+see [docs/quickstart.md](docs/quickstart.md).
+
+## Architecture
+
+`flexpart-gpu` is a standalone Rust application rather than an FFI layer around
+the Fortran implementation.
+
+At a high level:
+
+- Rust owns configuration, meteorological I/O, releases, orchestration, and
+  validation-facing host logic;
+- `wgpu` manages GPU resources and dispatch;
+- WGSL kernels implement the GPU physics path;
+- CPU-side implementations and analytical cases provide lower-level engineering
+  checks;
+- FLEXPART 11.1 remains the normative external reference where parity with
+  upstream behavior is claimed.
+
+The detailed source tree and execution flow are documented in
+[docs/architecture.md](docs/architecture.md).
+
+## Documentation
+
+The full documentation index is available at [docs/README.md](docs/README.md).
+
+Useful entry points:
+
+- [Quickstart](docs/quickstart.md)
+- [Architecture and source tree](docs/architecture.md)
+- [Development guide](docs/development.md)
+- [Scientific foundations](docs/science/README.md)
+- [Meteorology contract](docs/meteorology-contract.md)
+- [Validation report](docs/validation-report.md)
+- [Benchmark methodology](docs/benchmarks.md)
+
+Contributors and coding agents should also read [AGENTS.md](AGENTS.md), especially
+the rules for issue scope, proof obligations, production-path validation, and
+fail-closed behavior.
+
+## Upstream relationship and attribution
+
+This project reimplements and, in places, derives algorithmic structure from
+FLEXPART. Primary credit for the underlying model, scientific methods, and
+historical validation belongs to the FLEXPART developers and scientific
+community.
 
 Upstream references:
 
 - FLEXPART home page: <https://www.flexpart.eu/>
 - FLEXPART v11 repository: <https://gitlab.phaidra.org/flexpart/flexpart>
+- Bakels et al. (2024), *Geoscientific Model Development* 17, 7595-7624:
+  <https://doi.org/10.5194/gmd-17-7595-2024>
 
-Key publication:
+See [NOTICE.md](NOTICE.md) for attribution and distribution notes.
 
-- Bakels et al. (2024), Geosci. Model Dev., 17, 7595-7624, <https://doi.org/10.5194/gmd-17-7595-2024>
+## License
 
-See `NOTICE.md` for attribution and compliance details.
+`flexpart-gpu` is published under `GPL-3.0-or-later`, consistent with the
+upstream licensing obligations applicable to this work.
 
-## Benchmarks
+See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md) for details.
 
-The benchmark methodology and recommended commands are documented in `docs/benchmarks.md`.
+## Maintainer
 
-## Documentation
-
-Full documentation index: [`docs/`](docs/README.md)
-
-- Quickstart (first simulation): [`docs/quickstart.md`](docs/quickstart.md)
-- Architecture & source tree: [`docs/architecture.md`](docs/architecture.md)
-- Development guide (build, Docker, test): [`docs/development.md`](docs/development.md)
-- Scientific foundations: [`docs/science/`](docs/science/README.md)
-- Validation report: [`docs/validation-report.md`](docs/validation-report.md)
-
-## Contact
-
-Sylvain Meylan (Improba)  
-Email: sylvain.meylan@improba.fr
+Andre Schmitz  
+Email: `andre_schmitz@web.de`

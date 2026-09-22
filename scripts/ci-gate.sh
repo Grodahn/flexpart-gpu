@@ -49,7 +49,9 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 OUTPUT_DIR="${PROJECT_ROOT}/target/ci-gate"
 PARTICLES="1000"
 ORACLE_CHECKOUT="${PROJECT_ROOT}/../flexpart"
+FLEXEXTRACT_CHECKOUT="${PROJECT_ROOT}/../flex_extract"
 SKIP_ORACLE_BUILD="0"
+REQUIRE_FLEXEXTRACT_ORACLE="0"
 CI_CASE_ALLOWLIST="SW-WGPU-ADVECTION-001 SYNTHETIC-UNIFORM-WIND-SMOKE"
 
 HOST_PYTHON="python3"
@@ -70,12 +72,19 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/ci-gate.sh [--output-dir <dir>] [--particles <n>]
-                     [--oracle-checkout <dir>] [--skip-oracle-build]
+                     [--oracle-checkout <dir>] [--flex-extract-checkout <dir>]
+                     [--require-flex-extract-oracle] [--skip-oracle-build]
 
 Options:
   --output-dir <dir>       Output directory (default: target/ci-gate).
   --particles <n>          Candidate smoke particle count (default: 1000).
   --oracle-checkout <dir>  Pinned FLEXPART checkout (default: ../flexpart).
+  --flex-extract-checkout <dir>
+                           Pinned flex_extract checkout for the calc_etadot
+                           oracle tier (default: ../flex_extract; Step 2c runs
+                           only when the checkout exists).
+  --require-flex-extract-oracle
+                           Fail the gate when the flex_extract checkout is absent instead of reporting NOT_WIRED.
   --skip-oracle-build      Skip Docker oracle build (local iteration only;
                            the gate then reports INCOMPLETE and fails).
   -h, --help               Show this help.
@@ -87,6 +96,8 @@ while [ $# -gt 0 ]; do
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --particles) PARTICLES="$2"; shift 2 ;;
     --oracle-checkout) ORACLE_CHECKOUT="$2"; shift 2 ;;
+    --flex-extract-checkout) FLEXEXTRACT_CHECKOUT="$2"; shift 2 ;;
+    --require-flex-extract-oracle) REQUIRE_FLEXEXTRACT_ORACLE="1"; shift ;;
     --skip-oracle-build) SKIP_ORACLE_BUILD="1"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) log_error "Unknown argument: $1"; usage; exit 2 ;;
@@ -94,6 +105,10 @@ while [ $# -gt 0 ]; do
 done
 
 mkdir -p "${OUTPUT_DIR}"
+FLEXEXTRACT_STATUS_FILE="${OUTPUT_DIR}/flex-extract-oracle-status.txt"
+rm -rf "${OUTPUT_DIR}/flex-extract-oracle"
+rm -f "${OUTPUT_DIR}/flex-extract-etadot.log" "${FLEXEXTRACT_STATUS_FILE}"
+printf '%s\n' "NOT_RUN" > "${FLEXEXTRACT_STATUS_FILE}"
 GATE_LOG="${OUTPUT_DIR}/ci-gate.log"
 exec > >(tee "${GATE_LOG}") 2>&1
 
@@ -102,6 +117,7 @@ log_info "Project root: ${PROJECT_ROOT}"
 log_info "Output dir: ${OUTPUT_DIR}"
 log_info "Particles: ${PARTICLES}"
 log_info "Oracle checkout: ${ORACLE_CHECKOUT}"
+log_info "flex_extract checkout: ${FLEXEXTRACT_CHECKOUT}"
 log_info "Allow-listed CI cases: ${CI_CASE_ALLOWLIST}"
 
 fail() {
@@ -111,6 +127,7 @@ fail() {
     --project-root "${PROJECT_ROOT}" \
     --output-dir "${OUTPUT_DIR}" \
     --oracle-checkout "${ORACLE_CHECKOUT}" \
+    --flex-extract-checkout "${FLEXEXTRACT_CHECKOUT}" \
     --status "TECHNICAL_FAIL" \
     --failure "$*" || true
   log_error "CI gate: TECHNICAL_FAIL"
@@ -290,10 +307,9 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
         -leccodes -leccodes_f90 -lm -lnetcdff \
         -o \"\$build/flexpart-vertical-routine-oracle\"
 
-      nm \"\$build/flexpart-vertical-routine-oracle\" > \
-        \"\$build/flexpart-vertical-routine-oracle.nm\"
+      nm \"\$build/flexpart-vertical-routine-oracle\" > \"\$build/flexpart-vertical-routine-oracle.symbols\"
       grep -q '__verttransform_mod_MOD_verttransform_ecmwf_heights' \
-        \"\$build/flexpart-vertical-routine-oracle.nm\"
+        \"\$build/flexpart-vertical-routine-oracle.symbols\"
       sha256sum \"\$oracle_src/verttransform_mod.o\" > \"\$build/verttransform_mod.o.sha256\"
       sha256sum \"\$oracle_src/windfields_mod.o\" > \"\$build/windfields_mod.o.sha256\"
 
@@ -425,7 +441,40 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 2c. Interpolation oracle contract fixture (#71, RISK-03.3G-10c1).
+# 2c. calc_etadot preprocessing oracle (#70).
+# ---------------------------------------------------------------------------
+# Runs only when the pinned flex_extract checkout exists (default
+# ../flex_extract); otherwise the tier is reported as NOT_WIRED below. It
+# builds/runs in scratch dirs and leaves the checkout pristine.
+FLEXEXTRACT_ORACLE_STATUS="NOT_WIRED"
+printf '%s\n' "${FLEXEXTRACT_ORACLE_STATUS}" > "${FLEXEXTRACT_STATUS_FILE}"
+if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
+  if [ -d "${FLEXEXTRACT_CHECKOUT}" ]; then
+    log_info "Step 2c/6: pinned flex_extract calc_etadot oracle comparison..."
+    FLEXEXTRACT_ORACLE_STATUS="RUNNING"
+    printf '%s\n' "${FLEXEXTRACT_ORACLE_STATUS}" > "${FLEXEXTRACT_STATUS_FILE}"
+    if ! "${PROJECT_ROOT}/scripts/vertical/flex_extract_etadot_oracle.sh" \
+      --flex-extract-checkout "${FLEXEXTRACT_CHECKOUT}" \
+      --output-dir "${OUTPUT_DIR}/flex-extract-oracle" 2>&1 \
+      | tee "${OUTPUT_DIR}/flex-extract-etadot.log"; then
+      FLEXEXTRACT_ORACLE_STATUS="FAIL"
+      printf '%s\n' "${FLEXEXTRACT_ORACLE_STATUS}" > "${FLEXEXTRACT_STATUS_FILE}"
+      fail "calc_etadot oracle tier failed (#70)"
+    fi
+    FLEXEXTRACT_ORACLE_STATUS="PASS"
+    printf '%s\n' "${FLEXEXTRACT_ORACLE_STATUS}" > "${FLEXEXTRACT_STATUS_FILE}"
+  else
+    log_warn "flex_extract checkout not found at ${FLEXEXTRACT_CHECKOUT}; calc_etadot oracle tier is NOT_WIRED"
+    if [ "${REQUIRE_FLEXEXTRACT_ORACLE}" = "1" ]; then
+      fail "calc_etadot oracle tier is required but the pinned flex_extract checkout is absent (#70)"
+    fi
+  fi
+else
+  FLEXEXTRACT_ORACLE_STATUS="NOT_RUN"
+  printf '%s\n' "${FLEXEXTRACT_ORACLE_STATUS}" > "${FLEXEXTRACT_STATUS_FILE}"
+fi
+# ---------------------------------------------------------------------------
+# 2d. Interpolation oracle contract fixture (#71, RISK-03.3G-10c1).
 # ---------------------------------------------------------------------------
 # The interpolation contract (docs/interpolation-contract.md) freezes the
 # behaviour of find_grid_indices / find_grid_distances / find_z_level_meters /
@@ -438,7 +487,7 @@ fi
 # goldens are additionally re-verified analytically by the Rust test
 # tests/interpolation_contract.rs (cargo test runs it).
 if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
-  log_info "Step 2c/6: regenerate and verify the interpolation oracle contract fixture (#71)..."
+  log_info "Step 2d/6: regenerate and verify the interpolation oracle contract fixture (#71)..."
   INTERPOL_DIR="${OUTPUT_DIR}/interpolation"
   INTERPOL_BUILD_DIR="${INTERPOL_DIR}/oracle-build"
   mkdir -p "${INTERPOL_DIR}" "${INTERPOL_BUILD_DIR}" "${INTERPOL_DIR}/oracle-output"
@@ -556,6 +605,7 @@ print("interpolation contract fixture/provenance reproduced: OK")
   fi
   log_info "Interpolation contract fixture reproduced and goldens re-verified analytically."
 fi
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # 3. Prove a real software-WGPU adapter (fail-closed, no skip allowed).
 # ---------------------------------------------------------------------------
@@ -688,9 +738,17 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${OUTPUT_DIR}/vertical-column/real-column-fixture-provenance.json" \
     --artifact "${OUTPUT_DIR}/interpolation/contract-v1.json" \
     --artifact "${OUTPUT_DIR}/interpolation/contract-v1.provenance.json" \
+    --artifact "${OUTPUT_DIR}/interpolation/oracle-output/horizontal-geographic-interior.out" \
     --artifact "${OUTPUT_DIR}/interpolation/oracle-output/real-era5-etex-temperature-column.out" \
     --artifact "${OUTPUT_DIR}/vertical-column/real-routine-oracle-output.txt" \
-    --artifact "${OUTPUT_DIR}/interpolation/reproducibility-check.log" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
+    --artifact "${OUTPUT_DIR}/interpolation/reproducibility-check.log" \
+    --input "${PROJECT_ROOT}/reference/flex-extract.json" \
+    --artifact "${OUTPUT_DIR}/flex-extract-etadot.log" \
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/run-provenance.json" \
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/comparison-report.json" \
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/oracle-run/source-provenance.json" \
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/run-provenance.json" \
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/comparison-report.json" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
     fail "Provenance manifest generation failed (missing artifact or unpinned oracle)"
   fi
   test -s "${OUTPUT_DIR}/run-manifest.json" || fail "Provenance manifest missing: ${OUTPUT_DIR}/run-manifest.json"
@@ -718,6 +776,7 @@ if ! "${HOST_PYTHON}" "${SCRIPT_DIR}/ci-gate-report.py" \
   --project-root "${PROJECT_ROOT}" \
   --output-dir "${OUTPUT_DIR}" \
   --oracle-checkout "${ORACLE_CHECKOUT}" \
+  --flex-extract-checkout "${FLEXEXTRACT_CHECKOUT}" \
   --status "${REPORT_STATUS}" \
   --particles "${PARTICLES}" \
   --allowlist "${CI_CASE_ALLOWLIST}" 2>&1 | tee "${OUTPUT_DIR}/ci-gate-report.log"; then

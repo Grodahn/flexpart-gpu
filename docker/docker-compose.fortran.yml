@@ -35,3 +35,38 @@ services:
       OMP_PROC_BIND: "FALSE"
       OMP_WAIT_POLICY: "PASSIVE"
     command: ["bash"]
+
+  # flex_extract calc_etadot oracle service (#70). Built on top of the
+  # flexpart-fortran image (adds EMOSLIB/libopenjp2). The pinned flex_extract
+  # checkout is bind-mounted read-write only for convenience, but the oracle
+  # harness (scripts/vertical/flex_extract_etadot_oracle.sh) copies the
+  # sources and example inputs into scratch dirs and never modifies this
+  # checkout, so it stays byte-for-byte pristine.
+  flex-extract:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.flex-extract
+    image: flex-extract:latest
+    working_dir: /workspace/flex_extract/Source/Fortran
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
+    stdin_open: true
+    tty: true
+    volumes:
+      # Pinned flex_extract sources (must pass `reference-check -- verify`
+      # with reference/flex-extract.json).
+      - ${FLEXEXTRACT_DIR:-../../flex_extract}:/workspace/flex_extract
+      # This repository (comparison scripts, fixtures).
+      - ..:/workspace/flexpart-gpu
+      # Host-visible result directories for the comparison scripts.
+      - ../target:/workspace/target
+    environment:
+      FC: "gfortran"
+      OMP_NUM_THREADS: "1"
+      OMP_THREAD_LIMIT: "1"
+      OMP_DYNAMIC: "FALSE"
+      OMP_NESTED: "FALSE"
+      OMP_MAX_ACTIVE_LEVELS: "1"
+      OMP_SCHEDULE: "static"
+      OMP_PROC_BIND: "FALSE"
+      OMP_WAIT_POLICY: "PASSIVE"
+    command: ["bash"]

@@ -60,12 +60,25 @@ jobs:
           git -C ../flexpart rev-parse HEAD
           test -z "$(git -C ../flexpart status --porcelain)"
 
+      - name: Clone pinned flex_extract 7.1.2 oracle
+        run: |
+          set -euo pipefail
+          cd flexpart-gpu
+          pinned=$(python3 -c 'import json; print(json.load(open("reference/flex-extract.json"))["pinned_commit"])')
+          echo "$pinned" | grep -qE '^[0-9a-f]{40}$'
+          echo "Pinned flex_extract commit: $pinned"
+          rm -rf ../flex_extract
+          git clone https://gitlab.phaidra.org/flexpart/flex_extract.git ../flex_extract
+          git -C ../flex_extract checkout "$pinned"
+          git -C ../flex_extract rev-parse HEAD
+          test -z "$(git -C ../flex_extract status --porcelain)"
+
       - name: Run small deterministic technical gate
         run: |
           set -euo pipefail
           cd flexpart-gpu
-          chmod +x scripts/ci-gate.sh
-          scripts/ci-gate.sh --particles 1000
+          chmod +x scripts/ci-gate.sh scripts/vertical/flex_extract_etadot_oracle.sh
+          scripts/ci-gate.sh --particles 1000 --require-flex-extract-oracle
 
       - name: Upload gate artifacts (reports, logs, manifests)
         if: always()

@@ -216,6 +216,15 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def canonical_json_sha256(path: Path) -> str:
+    """Hash JSON semantically so insignificant object ordering/whitespace cannot drift provenance."""
+    value = json.loads(path.read_text(encoding="utf-8"))
+    canonical = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def validate_interface_oracle_source(path: Path) -> None:
     """Verify the #30 direct FLEXPART W/interface evidence used by #71."""
     case = CASES["vertical-interface-wzlev"]
@@ -576,7 +585,8 @@ def main() -> None:
             },
             "fixture_artifact": {
                 "path": "fixtures/interpolation/contract-v1.json",
-                "sha256": sha256(args.out_fixture),
+                "hash_kind": "canonical_json_sha256",
+                "sha256": canonical_json_sha256(args.out_fixture),
             },
             "generator_source": {
                 "path": "scripts/interpolation/prepare_interpolation_fixtures.py",

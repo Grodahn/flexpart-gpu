@@ -59,7 +59,7 @@ CASES = {
     },
     "horizontal-periodic-wrap": {
         "mode": "horizontal",
-        "grid": ("4 3 1", "0.0 0.0 1.0 1.0", "1"),
+        "grid": ("4 3 1", "0.0 0.0 90.0 1.0", "1"),
         "data": [
             "100.0", "200.0", "300.0", "400.0",
             "110.0", "210.0", "310.0", "410.0",
@@ -947,10 +947,6 @@ def main() -> None:
                 "name": manifest["name"],
                 "version": manifest["version"],
                 "pinned_commit": pinned,
-            },
-            "binary": {
-                "path": str(args.binary),
-                "sha256": sha256(args.binary),
             },
             "build": {
                 "compiler_version": build_metadata["compiler_version"],

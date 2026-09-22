@@ -22,13 +22,17 @@ DRIVER="${DRIVER:-/workspace/flexpart-gpu/scripts/interpolation/direct_interpola
 
 mkdir -p "${BUILD}"
 
+# Keep the complete link-input set available on every invocation. CI reuses the
+# same oracle binary across all fixture cases, so this cannot live only inside
+# the first-build branch.
+objects=$(find "${ORACLE_SRC}" -maxdepth 1 -type f -name '*.o' ! -name 'FLEXPART.o' -print | sort)
+if [ -z "${objects}" ]; then
+  echo "no FLEXPART objects found in ${ORACLE_SRC}; build the oracle first" >&2
+  exit 1
+fi
+
 if [ ! -x "${BUILD}/interpolation-oracle" ]; then
   # shellcheck disable=SC2046
-  objects=$(find "${ORACLE_SRC}" -maxdepth 1 -type f -name '*.o' ! -name 'FLEXPART.o' -print | sort)
-  if [ -z "${objects}" ]; then
-    echo "no FLEXPART objects found in ${ORACLE_SRC}; build the oracle first" >&2
-    exit 1
-  fi
   gfortran -O0 -I"${ORACLE_SRC}" -fopenmp -mcmodel=large "${DRIVER}" ${objects} \
     -L/usr/lib/x86_64-linux-gnu -Wl,-rpath=/usr/lib/x86_64-linux-gnu \
     -leccodes -leccodes_f90 -lm -lnetcdff \

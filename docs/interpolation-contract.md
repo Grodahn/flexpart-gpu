@@ -150,8 +150,9 @@ output = input1*dz2 + input2*dz1
 | 50 | 1/2 | 0.44444448, 0.55555558 | 1.44444442 |
 | 100 | 2/3 | 0, 1 | 2.0 |
 | 1000 | 2/3 | 1, 0 | 3.0 |
+| 500 | 2/3 | 0.44444448, 0.55555558 | 2.44444466 |
+| 1000 | 2/3 | 1, 0 | 3.0 |
 | 2000 | 2/3 | 1, 0 | 3.0 |
-| 500 (interface coord) | 2/3 | 0.44444448, 0.55555558 | 2.44444466 |
 
 ## 4. Temporal conventions
 
@@ -273,16 +274,41 @@ exactly together with the synthetic interpolation goldens.
 This satisfies the real #29/#30-compatible ERA5/ETEX fixture obligation without adding
 provider decoding or moving vertical-transform ownership into #71.
 
-## 7. Interface-staggered vertical sampling (METRE mode)
+## 7. Interface-staggered vertical sampling on #30 W geometry
 
-Model-level sampling (`level_center`) is normative and proven by
-`find_z_level_meters` + `find_vert_vars` + `vert_interpol`.
+#73 does not reconstruct FLEXPART's native ETA coordinate. Its normative input is the
+derived runtime geometry owned by #30: model-level heights for center-staggered fields
+and FLEXPART-`wzlev`-compatible W/interface heights for interface-staggered vertical
+motion.
 
-Interface-staggered sampling (`level_interface` for `w` in ETA mode) has **no direct
-execution path in the pinned METRE build**: `interpol_wind_meter`
-(`interpol_mod.f90:1651-1706`) samples all of `u/v/w/tt` on the shared `height`
-coordinate. This is recorded as an **unresolved/unsupported** semantic and blocks #73
-from claiming interface-staggered parity without a dedicated ETA-mode oracle build.
+The `vertical-interface-wzlev` fixture therefore freezes that exact handoff rather
+than pretending that a coordinate label changes the METRE interpolation routine:
+
+1. #30's direct oracle driver calls the pristine pinned
+   `verttransform_mod::verttransform_ecmwf_heights` routine.
+2. Its `wzlev` output supplies the four W/interface AGL heights
+   `[0, 1954.7922363, 4363.8686523, 7076.8583984] m` in bottom-to-top order.
+3. The same direct oracle's `omega * pinmconv` result supplies the
+   interface-staggered geometric vertical velocity values
+   `[0.1353315860, 0.1002457738, 0.0602269098, 0.0] m/s`.
+4. #71 feeds that actual W geometry/value profile through the pristine pinned
+   `find_z_level_meters`, `find_vert_vars` and `vert_interpol` routines at
+   interior and boundary sample heights.
+
+The #30 source output is frozen by SHA-256
+`ae7cd8c7a057e81439bc7e316e123c438951a4a0cd0bff9c4e21b086bac3e9bf`.
+CI step 2c refuses to generate the interface fixture if the step-2b direct-oracle
+output differs from that evidence. The fixture also declares
+`vertical_staggering=level_interface`, and the Rust validation test requires every
+query in that case to carry the interface coordinate id.
+
+This proves both vertical sampling classes required by #71 at the #30/#73 boundary:
+`level_center` over model-level geometry and `level_interface` over real
+FLEXPART-derived W geometry.
+
+A full ETA-mode `interpol_wind_eta` execution remains outside this contract because
+#73 consumes #30 runtime geometry rather than native provider ETA coordinates. It is
+not needed to claim interface-staggered parity at the canonical sampling boundary.
 
 ## 8. Out-of-contract semantics (fail closed)
 
@@ -292,8 +318,9 @@ unresolved and must not invent behavior:
 - `numpf = 3` temporally-equidistant precipitation scheme
   (`interpol_mod.f90:1317-1340`): dead in the pinned `numpf=1` build. Freezing it
   requires a separate `numpf=3` oracle build.
-- ETA-mode interface staggering (`wzlev`/`wheight`, `interpol_wind_eta`,
-  `interpol_mod.f90:1590-1650`): excluded by `-UETA`.
+- Native ETA-mode `interpol_wind_eta` execution (`interpol_mod.f90:1590-1650`):
+  not part of the canonical #30 runtime-geometry boundary. W/interface sampling itself
+  is frozen above using direct FLEXPART `wzlev` geometry.
 - Logarithmic vertical interpolation (`log_interpol=.true.`): not active in the pinned
   build; `find_vert_vars` (`interpol_mod.f90:364-392`) is documented but unreachable.
 - Nesting (`ngrid > 0`), polar-overshoot pole handling (`find_ngrid_sp/dp`), and
@@ -309,7 +336,9 @@ than extending this contract.
   `FLEXPART_INTERPOLATION_ROUTINE_ORACLE_V1`.
 - `scripts/interpolation/direct_oracle.sh` — container build + run harness.
 - `fixtures/interpolation/*.json` — canonical sampling cases (schema
-  `flexpart-gpu.interpolation-contract.v1`) with embedded golden values and provenance.
+  `flexpart-gpu.interpolation-contract.v1`) with embedded golden values and provenance,
+  including `vertical-interface-wzlev` sourced from #30's direct FLEXPART
+  `wzlev`/`pinmconv` evidence.
 - `fixtures/meteorology/era5-etex-native-v1.json` plus its provenance and
   surface archive — real #29 source referenced by `era5-etex-real-column-v1`; #30 CI
   supplies the pinned direct-routine vertical-oracle evidence for that selection.

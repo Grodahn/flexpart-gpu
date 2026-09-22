@@ -955,11 +955,7 @@ fn validate_native_motion_semantics(
         }
         NativeVerticalMotionKind::EtaCoordinateVelocity => {
             motion.unit == NativeVerticalMotionUnit::PerSecond
-                && matches!(
-                    motion.sign,
-                    NativeVerticalMotionSign::PositiveEtaIncreasing
-                        | NativeVerticalMotionSign::PositiveEtaDecreasing
-                )
+                && motion.sign == NativeVerticalMotionSign::PositiveEtaDecreasing
         }
     };
     if !valid {
@@ -1100,8 +1096,9 @@ pub struct EtaDotPressureVelocity {
 /// ```
 ///
 /// The input raw field is a full-level (`LevelCenter`) field in `PerSecond`
-/// with either eta sign convention; calc_etadot passes the raw values through
-/// verbatim (it performs no sign flip), and this function does the same. The
+/// using the `PositiveEtaDecreasing` convention validated by the pinned
+/// calc_etadot oracle. The opposite eta sign convention remains fail-closed
+/// until it has independent oracle evidence. The
 /// result is deliberately **not** wired into `normalize_vertical_motion`:
 /// production consumers keep rejecting `EtaCoordinateVelocity` until a
 /// follow-up flips the switch after this validated preprocessing is adopted.
@@ -1109,7 +1106,7 @@ pub struct EtaDotPressureVelocity {
 /// Source of truth: `reference/flex-extract.json` (pinned commit
 /// `e0005c99ac81d12faa45a8ff799debbd592b0dc0`, tag 7.1.2;
 /// `calc_etadot.f90` bytes hash to
-/// sha256 160F267F8741F23D13FDBA2F7A88F110BB131AA84AD7894FA43605258E55B0D9).
+/// sha256 07ED3522F8C1B35065965D01AF828F7532605A3AA9BE44D48FB9CA3F2ED976FF).
 ///
 /// # Errors
 ///
@@ -2292,6 +2289,13 @@ mod tests {
         wrong_staggering.vertical_staggering = VerticalStaggering::LevelInterface;
         assert!(matches!(
             eta_dot_to_pressure_velocity(&snapshot, &wrong_staggering),
+            Err(VerticalTransformError::InvalidNativeVerticalMotion { .. })
+        ));
+
+        let mut unvalidated_sign = eta_dot_motion(vec![-1.0e-5, -2.0e-5, 3.0e-5]);
+        unvalidated_sign.sign = NativeVerticalMotionSign::PositiveEtaIncreasing;
+        assert!(matches!(
+            eta_dot_to_pressure_velocity(&snapshot, &unvalidated_sign),
             Err(VerticalTransformError::InvalidNativeVerticalMotion { .. })
         ));
 

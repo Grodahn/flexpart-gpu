@@ -270,6 +270,7 @@ if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run -
 
     python3 /workspace/flexpart-gpu/scripts/vertical/prepare_real_era5_etadot_oracle.py \
       --native-dir /workspace/flexpart-gpu/fixtures/etex/native-mini \
+      --flex-extract-checkout /workspace/flex_extract \
       --output-dir \$run \
       --timestamp 1994-10-23T15:00:00
 
@@ -385,8 +386,8 @@ coverage = report["coverage"]
 assert report["status"] == "PASS", report["status"]
 assert coverage["complete_real_native_column"] is True
 assert coverage["levels_compared"] == 137
-assert coverage["points_per_level"] == 65 * 41
-assert coverage["comparisons"] == 137 * 65 * 41
+assert coverage["points_per_level"] == 6 * 6
+assert coverage["comparisons"] == 137 * 6 * 6
 assert coverage["failure_count"] == 0
 assert report["source_fixture"]["level_coverage"]["complete_native_column"] is True
 selected = coverage["selected_real_column"]

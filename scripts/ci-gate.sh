@@ -101,6 +101,10 @@ while [ $# -gt 0 ]; do
 done
 
 mkdir -p "${OUTPUT_DIR}"
+FLEXEXTRACT_STATUS_FILE="${OUTPUT_DIR}/flex-extract-oracle-status.txt"
+rm -rf "${OUTPUT_DIR}/flex-extract-oracle"
+rm -f "${OUTPUT_DIR}/flex-extract-etadot.log" "${FLEXEXTRACT_STATUS_FILE}"
+printf '%s\n' "NOT_RUN" > "${FLEXEXTRACT_STATUS_FILE}"
 GATE_LOG="${OUTPUT_DIR}/ci-gate.log"
 exec > >(tee "${GATE_LOG}") 2>&1
 
@@ -438,9 +442,6 @@ fi
 # ../flex_extract); otherwise the tier is reported as NOT_WIRED below. It
 # builds/runs in scratch dirs and leaves the checkout pristine.
 FLEXEXTRACT_ORACLE_STATUS="NOT_WIRED"
-FLEXEXTRACT_STATUS_FILE="${OUTPUT_DIR}/flex-extract-oracle-status.txt"
-rm -rf "${OUTPUT_DIR}/flex-extract-oracle"
-rm -f "${OUTPUT_DIR}/flex-extract-etadot.log" "${FLEXEXTRACT_STATUS_FILE}"
 printf '%s\n' "${FLEXEXTRACT_ORACLE_STATUS}" > "${FLEXEXTRACT_STATUS_FILE}"
 if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
   if [ -d "${FLEXEXTRACT_CHECKOUT}" ]; then

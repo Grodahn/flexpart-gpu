@@ -83,11 +83,21 @@ Fail-closed step 2c (#70, calc_etadot preprocessing oracle):
   extracts canonical snapshot/motion/oracle JSONs, runs the
   `eta-dot-column-report` candidate, and compares every grid point x level
   against the oracle field (f32-vs-f64 tolerances, worst attributable
-  relative error ≤ 3e-5). The validated native contract is deliberately
-  narrowed to `positive_eta_increasing`; the opposite sign convention remains
-  fail-closed. The tier records `run-provenance.json` with the concrete image
-  ID, compiler, oracle executable hash, consumed fort.* hashes and fort.15
-  output hash. The checkout must stay pristine after the run.
+  relative error ≤ 3e-5). The same pinned executable is then run on a second
+  checked-in ETEX/ERA5 case whose raw eta-dot, U/V/T/Q and hybrid A/B coordinate
+  cover all 137 native model levels at 65x41 points. Because the checked-in
+  ERA5 surface fixture is gridded while `calc_etadot` requires spectral
+  ln(ps), that second case explicitly reuses the pinned upstream installation
+  fixture's spectral ln(ps) carrier while replacing only its PV array with the
+  real 138-interface ERA5 A/B coefficients. The proof therefore covers the
+  complete real 137-level eta-dot recurrence without zero-filled levels; it
+  does not claim that the pressure carrier is ERA5. The real-data report must
+  pass all 137 x 65 x 41 = 365105 comparisons. The validated native contract
+  is deliberately narrowed to `positive_eta_increasing`; the opposite sign
+  convention remains fail-closed. The tier records run provenance for both
+  oracle executions with the concrete image ID, compiler, executable hash,
+  consumed fort.* hashes, source manifests and fort.15 output hash. The
+  checkout must stay pristine after the run.
 
 Any missing adapter, skipped GPU test, missing oracle artifact, or failed
 comparison exits non-zero. Unwired corpus cases are listed as `NOT_WIRED`,

@@ -401,6 +401,7 @@ def main():
             "model_levels": LEVEL_COUNT,
             "level_coverage": "1/to/137",
             "profile_values_sha256": selected_profiles_sha256,
+            "profile_values": selected_profiles,
         },
         "oracle_grid": {
             "nx": ORACLE_NX,

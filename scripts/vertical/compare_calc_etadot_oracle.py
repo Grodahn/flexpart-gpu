@@ -148,6 +148,7 @@ def main():
     parser.add_argument("--reference-manifest", type=Path, required=True)
     parser.add_argument("--source-snapshot", type=Path, required=True)
     parser.add_argument("--source-motion", type=Path, required=True)
+    parser.add_argument("--run-provenance", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -161,6 +162,31 @@ def main():
     source_motion_sha = sha256(args.source_motion)
 
     oracle = json.loads(args.oracle.read_text(encoding="utf-8"))
+    source_fixture = oracle.get("source_fixture", {})
+    if source_fixture.get("classification") != "upstream_flex_extract_native_model_level":
+        raise ValueError("oracle fixture is not identified as the pinned native-model-level source")
+    raw_metadata = source_fixture.get("raw_grib_metadata", {})
+    if raw_metadata.get("paramId") != 77:
+        raise ValueError(f"oracle raw GRIB is not parameter 77: {raw_metadata!r}")
+
+    run_provenance = json.loads(args.run_provenance.read_text(encoding="utf-8"))
+    if run_provenance.get("schema") != "flexpart-gpu.etadot-oracle-run-provenance.v1":
+        raise ValueError("run provenance has the wrong schema")
+    image_id = run_provenance.get("docker_image", {}).get("id")
+    compiler_version = run_provenance.get("compiler", {}).get("version")
+    executable_hash = run_provenance.get("oracle_executable", {}).get("sha256")
+    if not image_id or not compiler_version or not executable_hash:
+        raise ValueError("run provenance lacks concrete build identity")
+
+    fixture_hashes = source_fixture.get("source_hashes_sha256", {})
+    run_inputs = run_provenance.get("oracle_inputs", {})
+    run_outputs = run_provenance.get("oracle_outputs", {})
+    for name in ("fort.12", "fort.21"):
+        if fixture_hashes.get(name) != run_inputs.get(name, {}).get("sha256"):
+            raise ValueError(f"{name} hash differs between extracted fixture and run provenance")
+    if fixture_hashes.get("fort.15") != run_outputs.get("fort.15", {}).get("sha256"):
+        raise ValueError("fort.15 hash differs between extracted oracle and run provenance")
+
     nlev = oracle["nlev"]
     levels = oracle["levels_present"]
     nx, ny = oracle["nx"], oracle["ny"]
@@ -218,6 +244,18 @@ def main():
         "candidate": {
             "report_path": str(args.candidate),
             "sha256": sha256(args.candidate),
+        },
+        "source_fixture": source_fixture,
+        "run_provenance": {
+            "path": str(args.run_provenance),
+            "sha256": sha256(args.run_provenance),
+            "build_identity": {
+                "docker_image": run_provenance["docker_image"],
+                "compiler": run_provenance["compiler"],
+                "oracle_executable": run_provenance["oracle_executable"],
+            },
+            "oracle_inputs": run_provenance["oracle_inputs"],
+            "oracle_outputs": run_provenance["oracle_outputs"],
         },
         "inputs": {
             "snapshot": {"path": str(args.source_snapshot), "sha256": source_snapshot_sha},

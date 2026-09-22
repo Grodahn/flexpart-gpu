@@ -43,19 +43,45 @@ fields to reproduce exactly.
 ## 2. Horizontal grid conventions
 
 FLEXPART reads grids with cell-center samples. The canonical convention frozen here is
-cell-center anchored. Geographic positions are converted by the **real pinned**
-`point_mod::coordtrafo` production routine before interpolation:
+cell-center anchored.
+
+### Production coordinate path versus oracle exercise path
+
+`point_mod::coordtrafo` is a real pinned FLEXPART routine, but it is **not** called
+immediately before every meteorology interpolation. Its production role is release-point
+initialization:
+
+```
+FLEXPART::read_options_and_initialise_flexpart
+  -> point_mod::coordtrafo
+```
+
+That routine converts configured geographic release coordinates to FLEXPART grid
+coordinates:
 
 ```
 xt = (lon_deg - xlon0_deg) / dx_deg_x
 yt = (lat_deg - ylat0_deg) / dy_deg_y
 ```
 
-The direct oracle configures `point_mod::{xlon0,ylat0,dx,dy}`, passes the
-geographic query through `coordtrafo`, and then feeds the returned `xt/yt`
-through `find_grid_indices -> find_grid_distances -> hor_interpol_4d`.
-Consequently this Lon/Lat-to-grid conversion is direct FLEXPART oracle evidence,
-not a formula implemented only by the fixture generator or documentation.
+Runtime particle meteorology sampling already operates in FLEXPART grid coordinates.
+A representative production wind-sampling path is:
+
+```
+advance_mod::advance
+  -> interpol_mod::init_interpol
+       -> find_grid_indices
+       -> find_grid_distances
+  -> interpol_mod::interpol_wind
+       -> hor_interpol_4d
+```
+
+The `horizontal-geographic-interior` direct oracle intentionally composes
+`coordtrafo -> find_grid_indices -> find_grid_distances -> hor_interpol_4d` so the
+geographic-to-grid mapping is exercised by pristine code before the interpolation
+primitive. That composition is therefore recorded as `oracle_exercise_path`, **not**
+as a pristine production call chain. The machine-readable fixture separately records
+`production_coordinate_initialization_path` and `production_sampling_path`.
 
 FLEXPART computes the zonal step from the stored first/last longitudes
 (`gridcheck_ecmwf`, `windfields_mod.f90:572-718`):
@@ -271,10 +297,45 @@ in-memory members:
   `mp/ip/dtp1/dtp2` pair selection;
 - `tcc`, `ctwc`, `tt`, and the cloud-bottom/top `ip`-masked averages use `dt1/dt2/dt`.
 
+### Production ingest and sampling crosswalk
+
+The precipitation fields used by `interpol_rain` enter the two FLEXPART wind-memory
+slots through `getfields_mod::getfields`:
+
+```
+ECMWF:
+getfields_mod::getfields
+  -> windfields_mod::readwind_ecmwf
+  -> windfields_mod::{lsprec,convprec}
+
+GFS:
+getfields_mod::getfields
+  -> windfields_mod::readwind_gfs
+  -> windfields_mod::{lsprec,convprec}
+```
+
+The production wet-deposition consumer reaches the interpolation routine through:
+
+```
+wetdepo_mod::wetdepo
+  -> wetdepo_mod::get_wetscav
+       -> interpol_mod::find_ngrid
+       -> find_grid_indices
+       -> find_grid_distances
+       -> find_z_level_meters        # eta=no build
+       -> interpol_rain
+```
+
+`get_wetscav` also nudges east/north border positions slightly into the mother grid
+before calling the grid-index routines. That caller-side boundary handling is distinct
+from the raw primitive behavior frozen by the synthetic horizontal cases.
+
 Input units (pinned build): precipitation fields are stored as **mm/h rates**; ECMWF
-data is read without conversion (accumulation -> rate conversion is owned by the
-pre-processing pipeline such as flex_extract), GFS data is multiplied by 3600 at read
-(`windfields_mod.f90`). FLEXPART performs **no** accumulation deconvolution.
+data is read without in-core accumulation deconvolution (accumulation -> interval/rate
+normalization is upstream, e.g. preprocessing such as flex_extract, and candidate
+normalization is owned by #75). GFS precipitation is converted from mm/s to mm/h by
+multiplication by 3600 in `readwind_gfs` (`windfields_mod.f90`). FLEXPART performs
+**no** accumulation reset/deaccumulation at the `interpol_rain` sampling boundary.
 
 ### Frozen quirk: unconditional `dtt = dt/3` (`interpol_mod.f90:1302-1316, 1549-1550`)
 

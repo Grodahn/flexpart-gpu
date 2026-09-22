@@ -33,8 +33,10 @@ annotations.
 
 The provenance sibling pins the final `contract-v1.json` SHA-256 and the exact source
 hashes for the fixture generator, direct-oracle harness, real-column extractor, oracle
-driver and FLEXPART reference manifest. CI requires those metadata fields to reproduce
-exactly.
+driver and FLEXPART reference manifest. It also records the actual gfortran version,
+the pinned full-FLEXPART object-build profile/container, the driver compile/link flags,
+and the complete sorted set of linked FLEXPART object files. CI requires those metadata
+fields to reproduce exactly.
 
 ## 2. Horizontal grid conventions
 
@@ -135,11 +137,13 @@ that geographic and direct-grid paths converge before interpolation.
 ### Verified golden (periodic wrap)
 
 Same grid with `periodic=1` (canonical `nx=4`, FLEXPART `nxmax=5`), query
-`(xt,yt) = (3.2, 1.5)`, `kz=1`:
+`(xt,yt) = (3.2, 1.5)`, `kz=1`. This samples across the periodic seam via
+FLEXPART's duplicated ghost column. For this valid-domain query `ixp=4 < nxmax`,
+so the explicit `ixp >= nxmax` correction branch is not executed:
 
 ```
 ix, jy, ixp, jyp = 3, 1, 4, 2
-value            = 355.0        (ixp=4 wraps to column 0)
+value            = 355.0        (ixp=4 is the duplicate ghost column copied from column 0)
 ```
 
 ## 3. Vertical conventions (METRE mode)
@@ -355,7 +359,7 @@ The resulting #71 interpolation-oracle output is frozen in provenance as
 `5679760f10c75679ecd597979b5caadfd3bf30debbbf9b0fa1fc6af1aa9e3771`.
 
 CI step 2b regenerates and validates the real #30 column against pristine
-FLEXPART. Step 2c derives the real #71 input from that output, runs the pinned
+FLEXPART. Step 2d derives the real #71 input from that output, runs the pinned
 interpolation routines, and requires the complete case, oracle-output hash and
 source hash to reproduce the committed contract. This keeps #29 provider
 normalization and #30 vertical transformation outside #71 while proving that
@@ -384,7 +388,7 @@ than pretending that a coordinate label changes the METRE interpolation routine:
 
 The #30 source output is frozen by SHA-256
 `5015ea3a9a9e42b1a2b88c60c2867b74a632bffd1b9cfefdc186b005c752b197`.
-CI step 2c refuses to generate the interface fixture if the step-2b direct-oracle
+CI step 2d refuses to generate the interface fixture if the step-2b direct-oracle
 output differs from that evidence. The fixture also declares
 `vertical_staggering=level_interface`, and the Rust validation test requires every
 query in that case to carry the interface coordinate id.
@@ -421,7 +425,8 @@ than extending this contract.
 - `scripts/interpolation/direct_interpolation_oracle.f90` — modes `horizontal`,
   `vertical`, `temporal`, `rain`; calls the pinned routines; versioned output header
   `FLEXPART_INTERPOLATION_ROUTINE_ORACLE_V1`.
-- `scripts/interpolation/direct_oracle.sh` — container build + run harness.
+- `scripts/interpolation/direct_oracle.sh` — container build + run harness; records
+  the actual compiler version and complete sorted linked-object set alongside the binary.
 - `fixtures/interpolation/*.json` — canonical sampling cases (schema
   `flexpart-gpu.interpolation-contract.v1`) with embedded golden values and provenance,
   including `vertical-interface-wzlev` sourced from #30's direct FLEXPART

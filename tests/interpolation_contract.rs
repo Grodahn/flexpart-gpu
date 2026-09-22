@@ -163,6 +163,57 @@ fn run_horizontal_check(case: &FixtureCase) {
     }
 }
 
+fn run_horizontal_geographic_check(case: &FixtureCase) {
+    let input = &case.input;
+    let nx = tokens(&input[1])[0].parse::<usize>().unwrap();
+    let ny = tokens(&input[1])[1].parse::<usize>().unwrap();
+    let grid = tokens(&input[2]);
+    let xlon0 = parse_f64(&grid[0], "xlon0");
+    let ylat0 = parse_f64(&grid[1], "ylat0");
+    let dx = parse_f64(&grid[2], "dx");
+    let dy = parse_f64(&grid[3], "dy");
+    let periodic = tokens(&input[3])[0].parse::<usize>().unwrap() != 0;
+    let mut cursor = 4;
+    let field = read_reals(input, &mut cursor, nx * ny, "geographic horizontal field");
+    let nquery = input[cursor].parse::<usize>().unwrap();
+    cursor += 1;
+
+    for (index, query) in golden_queries(case, nquery).iter().enumerate() {
+        let query_tokens = tokens(&input[cursor + index]);
+        let lon = parse_f64(&query_tokens[0], "longitude");
+        let lat = parse_f64(&query_tokens[1], "latitude");
+        let expected_xt = (lon - xlon0) / dx;
+        let expected_yt = (lat - ylat0) / dy;
+
+        assert_close(
+            as_f64(&query["LONLAT"][0]),
+            lon,
+            &format!("{} longitude {index}", case.id),
+        );
+        assert_close(
+            as_f64(&query["LONLAT"][1]),
+            lat,
+            &format!("{} latitude {index}", case.id),
+        );
+        assert_close(
+            as_f64(&query["XY"][0]),
+            expected_xt,
+            &format!("{} coordtrafo xt {index}", case.id),
+        );
+        assert_close(
+            as_f64(&query["XY"][1]),
+            expected_yt,
+            &format!("{} coordtrafo yt {index}", case.id),
+        );
+        let expected = horizontal_value(&field, nx, ny, expected_xt, expected_yt, periodic);
+        assert_close(
+            as_f64(&query["VALUE"][0]),
+            expected,
+            &format!("{} geographic query {index}", case.id),
+        );
+    }
+}
+
 fn run_vertical_check(case: &FixtureCase) {
     let input = &case.input;
     let mut cursor = 1;
@@ -387,6 +438,18 @@ fn contract_fixture_metadata_is_frozen() {
         real_source["oracle_output_sha256"]
     );
 
+    let geographic = contract
+        .cases
+        .iter()
+        .find(|case| case.id == "horizontal-geographic-interior")
+        .expect("geographic horizontal fixture");
+    assert_eq!(geographic.mode, "horizontal_geographic");
+    assert_eq!(
+        geographic.semantics["production_call_path"][0],
+        "point_mod::coordtrafo"
+    );
+    assert_eq!(geographic.semantics["mapping"]["dx_deg"], 0.25);
+
     let model = contract
         .cases
         .iter()
@@ -564,6 +627,7 @@ fn contract_provenance_matches_fixture() {
         );
     }
     let obligations: Vec<&str> = vec![
+        "coordtrafo",
         "find_grid_indices",
         "find_grid_distances",
         "find_time_vars",
@@ -587,6 +651,7 @@ fn contract_provenance_matches_fixture() {
     let golden_files: Vec<&str> = provenance.cases.keys().map(String::as_str).collect();
     for name in [
         "horizontal-interior",
+        "horizontal-geographic-interior",
         "horizontal-periodic-wrap",
         "vertical-model-levels",
         "vertical-interface-wzlev",
@@ -616,6 +681,7 @@ fn goldens_satisfy_flexpart_closed_forms() {
         );
         match case.mode.as_str() {
             "horizontal" => run_horizontal_check(case),
+            "horizontal_geographic" => run_horizontal_geographic_check(case),
             "vertical" => run_vertical_check(case),
             "temporal" => run_temporal_check(case),
             "rain" => run_rain_check(case),
@@ -623,7 +689,7 @@ fn goldens_satisfy_flexpart_closed_forms() {
         }
     }
     // Every frozen sampling mode must be covered by at least one case.
-    for mode in ["horizontal", "vertical", "temporal", "rain"] {
+    for mode in ["horizontal", "horizontal_geographic", "vertical", "temporal", "rain"] {
         assert!(
             contract.cases.iter().any(|case| case.mode == mode),
             "contract must contain at least one {mode} case"

@@ -57,33 +57,6 @@ CASES = {
             "-1.375 48.375 1",
         ],
     },
-    "horizontal-geographic-interior": {
-        "coordinates": {
-            "horizontal": (
-                "geographic longitude/latitude cell-center coordinates converted "
-                "by point_mod::coordtrafo before interpolation"
-            ),
-            "vertical": "kz is a 1-based FLEXPART model-level index",
-        },
-        "staggering": {"horizontal": "cell_center", "vertical": "level_center"},
-        "ordering": {"horizontal_storage": "x_fastest_then_y", "vertical": "single_level"},
-        "units": {
-            "horizontal_query": "degrees_east/degrees_north",
-            "internal_horizontal": "grid_cell",
-            "vertical_query": "index",
-            "value": "arbitrary_scalar",
-        },
-        "time": {
-            "kind": "instantaneous_static_for_fixture",
-            "memory_slots": "same field copied to both FLEXPART memory slots",
-        },
-        "production_call_path": [
-            "point_mod::coordtrafo",
-            "interpol_mod::find_grid_indices",
-            "interpol_mod::find_grid_distances",
-            "interpol_mod::hor_interpol_4d",
-        ],
-    },
     "horizontal-periodic-wrap": {
         "mode": "horizontal",
         "grid": ("4 3 1", "0.0 0.0 1.0 1.0", "1"),
@@ -186,6 +159,39 @@ CASE_SEMANTICS = {
         "time": {
             "kind": "instantaneous_static_for_fixture",
             "memory_slots": "same field copied to both FLEXPART memory slots",
+        },
+    },
+    "horizontal-geographic-interior": {
+        "coordinates": {
+            "horizontal": (
+                "geographic longitude/latitude cell-center coordinates converted "
+                "by point_mod::coordtrafo before interpolation"
+            ),
+            "vertical": "kz is a 1-based FLEXPART model-level index",
+        },
+        "staggering": {"horizontal": "cell_center", "vertical": "level_center"},
+        "ordering": {"horizontal_storage": "x_fastest_then_y", "vertical": "single_level"},
+        "units": {
+            "horizontal_query": "degrees_east/degrees_north",
+            "internal_horizontal": "grid_cell",
+            "vertical_query": "index",
+            "value": "arbitrary_scalar",
+        },
+        "time": {
+            "kind": "instantaneous_static_for_fixture",
+            "memory_slots": "same field copied to both FLEXPART memory slots",
+        },
+        "production_call_path": [
+            "point_mod::coordtrafo",
+            "interpol_mod::find_grid_indices",
+            "interpol_mod::find_grid_distances",
+            "interpol_mod::hor_interpol_4d",
+        ],
+        "mapping": {
+            "xlon0_deg": -2.0,
+            "ylat0_deg": 48.0,
+            "dx_deg": 0.25,
+            "dy_deg": 0.25,
         },
     },
     "horizontal-periodic-wrap": {

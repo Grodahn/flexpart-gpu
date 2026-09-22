@@ -29,6 +29,7 @@ rust candidate (eta_dot_to_pressure_velocity, mdpdeta=1):
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -46,6 +47,33 @@ GRID_KEYS = [
     "Ni",
     "Nj",
 ]
+
+PROVENANCE_GRIB_KEYS = [
+    "edition",
+    "centre",
+    "dataDate",
+    "dataTime",
+    "gridType",
+    "typeOfLevel",
+    "stepType",
+    "paramId",
+    "shortName",
+]
+
+
+def sha256_file(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def safe_grib_metadata(handle):
+    result = {}
+    for key in PROVENANCE_GRIB_KEYS:
+        try:
+            result[key] = ec.codes_get(handle, key)
+        except Exception:
+            result[key] = None
+    return result
 
 
 def read_messages(path, param_filter=None, level_filter=None):
@@ -92,13 +120,18 @@ def main():
     if not raw or not oracle or not sp:
         raise ValueError("missing oracle field (fort.21 raw, fort.15 etadot and sp)")
 
-    handle = read_first_handle(os.path.join(example_dir, "fort.21"))
+    raw_path = os.path.join(example_dir, "fort.21")
+    oracle_path_grib = os.path.join(example_dir, "fort.15")
+    hybrid_path = os.path.join(example_dir, "fort.12")
+
+    handle = read_first_handle(raw_path)
     try:
         grid = {key: ec.codes_get(handle, key) for key in GRID_KEYS}
+        raw_grib_metadata = safe_grib_metadata(handle)
     finally:
         ec.codes_release(handle)
 
-    handle = read_first_handle(os.path.join(example_dir, "fort.12"))
+    handle = read_first_handle(hybrid_path)
     try:
         pv = list(ec.codes_get_array(handle, "pv"))
     finally:
@@ -188,6 +221,16 @@ def main():
 
     reference = {
         "oracle_tag": "flex_extract-7.1.2-Calc_etadot-installation-example",
+        "source_fixture": {
+            "classification": "upstream_flex_extract_native_model_level",
+            "origin": "Testing/Installation/Calc_etadot at the pinned pristine flex_extract revision",
+            "raw_grib_metadata": raw_grib_metadata,
+            "source_hashes_sha256": {
+                "fort.12": sha256_file(hybrid_path),
+                "fort.21": sha256_file(raw_path),
+                "fort.15": sha256_file(oracle_path_grib),
+            },
+        },
         "nx": nx,
         "ny": ny,
         "nlev": nlev,

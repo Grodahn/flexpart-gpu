@@ -41,7 +41,7 @@ fi
 
 COMPILER_VERSION_OUTPUT="${BUILD}/interpolation-oracle.compiler-version.txt"
 LINKED_OBJECTS_OUTPUT="${BUILD}/interpolation-oracle.linked-objects.txt"
-gfortran --version | head -n 1 > "${COMPILER_VERSION_OUTPUT}"
+gfortran --version | sed -n '1p' > "${COMPILER_VERSION_OUTPUT}"
 printf '%s\n' ${objects} | sed "s#^${ORACLE_SRC}/##" > "${LINKED_OBJECTS_OUTPUT}"
 
 NM_OUTPUT="${BUILD}/interpolation-oracle.nm"

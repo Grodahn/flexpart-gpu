@@ -63,5 +63,45 @@
     "temporal-bilinear": "ae44f1e5dba664011bb51029d2a58693d39f5aa975a00214baf6aa9cb5f92085",
     "rain-layer-fields": "a0182f4ad823f67971a14304be7814021a09e52d93d21fc044308684508451d0"
   },
-  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules and calls find_grid_indices/find_grid_distances/find_z_level_meters/find_vert_vars/hor_interpol_4d/temporal_interpolation/vert_interpol/interpol_rain directly on canonical synthetic grids. Golden values in contract-v1.json are the direct oracle outputs."
+  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules and calls find_grid_indices/find_grid_distances/find_z_level_meters/find_vert_vars/hor_interpol_4d/temporal_interpolation/vert_interpol/interpol_rain directly on canonical synthetic grids. The contract additionally pins the checked-in real #29/#30 ERA5/ETEX column source and its #30 pinned-oracle evidence. Golden values in contract-v1.json are the direct interpolation-oracle outputs.",
+  "real_data_samples": [
+    {
+      "id": "era5-etex-real-column-v1",
+      "kind": "era5_etex_vertical_column",
+      "source": {
+        "canonical_fixture": "fixtures/meteorology/era5-etex-native-v1.json",
+        "canonical_fixture_sha256": "a88723556201302298e17ab01eba2bedd830bc29f99548f50f52d27805f28b13",
+        "canonical_provenance": "fixtures/meteorology/era5-etex-native-v1.provenance.json",
+        "surface_archive": "fixtures/etex/native-mini/era5-surface-19941023-24.npz",
+        "surface_archive_sha256": "88cd4dcb5e8ff89aeae6c065e3f2c2f75ad09c125f5d15290bfe7a56b059668d"
+      },
+      "selection": {
+        "canonical_x": 0,
+        "canonical_y": 0,
+        "source_lon_index": 24,
+        "source_lat_desc_index": 20,
+        "longitude_deg": -2,
+        "latitude_deg": 48,
+        "timestamp": "1994-10-23T15:00:00Z",
+        "epoch_seconds": 782924400,
+        "native_levels": 137
+      },
+      "represented_fields": [
+        "wind_u",
+        "wind_v",
+        "temperature",
+        "specific_humidity",
+        "surface_pressure"
+      ],
+      "compatibility": {
+        "canonical_contract_issue": 29,
+        "vertical_transform_issue": 30,
+        "extraction_path": "scripts/vertical/extract_real_etex_column.py",
+        "ci_gate_step": "2b",
+        "pinned_oracle_evidence": "target/ci-gate/vertical-column/real-comparison-report.json",
+        "fixture_provenance_evidence": "target/ci-gate/vertical-column/real-column-fixture-provenance.json"
+      },
+      "scope": "Checked-in real ERA5/ETEX source column used by #29 and transformed/validated by #30 against the pinned FLEXPART 11.1 direct routine oracle. #71 references this source as its required real sampling fixture; it does not duplicate provider decoding or vertical-transform ownership."
+    }
+  ]
 }

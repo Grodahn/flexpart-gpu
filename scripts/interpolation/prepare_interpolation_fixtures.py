@@ -965,15 +965,21 @@ def main() -> None:
             "real_data_samples": real_data_samples,
             "scope": (
                 "The driver links the pristine pinned FLEXPART 11.1 interpolation "
-                "modules and calls point_mod::coordtrafo for geographic-to-grid "
-                "normalization, then find_grid_indices/find_grid_distances/"
-                "find_z_level_meters/find_vert_vars/hor_interpol_4d/"
-                "temporal_interpolation/vert_interpol/interpol_rain directly on "
-                "canonical synthetic grids. W/interface sampling uses #30 direct FLEXPART "
-                "wzlev/pinmconv output as its vertical geometry/value source. The real "
-                "#29 ERA5/ETEX temperature column is paired with #30's pinned FLEXPART "
-                "level-height output and sampled by the same #71 vertical routines. "
-                "Golden values in contract-v1.json are direct interpolation-oracle outputs."
+                "modules. The geographic case intentionally composes "
+                "point_mod::coordtrafo with the horizontal interpolation primitives "
+                "as an oracle exercise path; pristine production uses coordtrafo "
+                "during release-point initialization, while runtime particle sampling "
+                "enters interpol_mod::init_interpol with grid coordinates and then "
+                "uses the horizontal primitives. Precipitation ingestion is "
+                "crosswalked through getfields_mod::getfields -> "
+                "windfields_mod::readwind_ecmwf/readwind_gfs -> lsprec/convprec, "
+                "while production wet-deposition sampling is wetdepo_mod::wetdepo -> "
+                "get_wetscav -> interpolation setup -> interpol_mod::interpol_rain. "
+                "W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output "
+                "as its vertical geometry/value source. The real #29 ERA5/ETEX "
+                "temperature column is paired with #30's pinned FLEXPART level-height "
+                "output and sampled by the same #71 vertical routines. Golden values "
+                "in contract-v1.json are direct interpolation-oracle outputs."
             ),
         }
         args.out_provenance.parent.mkdir(parents=True, exist_ok=True)

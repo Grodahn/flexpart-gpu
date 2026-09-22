@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare a full real ERA5 137-level calc_etadot oracle case for #70.
+"""Prepare a full real ERA5 eta-dot 137-level calc_etadot oracle case for #70.
 
 The checked-in ETEX native-mini fixture contains independent ERA5 Complete
 model-level data and eta-coordinate vertical velocity (param 77) on all 137
@@ -283,7 +283,7 @@ def main():
     }
     provenance = {
         "schema": "flexpart-gpu.etadot-real-era5-case.v1",
-        "classification": "real_era5_native_model_level_full_column",
+        "classification": "real_era5_etadot_full_native_column",
         "timestamp": args.timestamp + "Z",
         "grid": {"nx": NX, "ny": NY},
         "vertical": {

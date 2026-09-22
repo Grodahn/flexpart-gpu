@@ -215,6 +215,23 @@ def main():
             raise ValueError("real ERA5 oracle lacks pinned source provenance")
         if source_provenance.get("classification") != REAL_ERA5_CLASSIFICATION:
             raise ValueError("real ERA5 source provenance classification mismatch")
+        spectral_record = (
+            source_provenance.get("sources", {})
+            .get("spectral_surface_pressure_template", {})
+        )
+        pinned_spectral = (
+            args.flex_extract_checkout
+            / "Testing"
+            / "Installation"
+            / "Calc_etadot"
+            / "fort.12"
+        )
+        if not pinned_spectral.is_file():
+            raise ValueError(f"pinned spectral lnsp template missing: {pinned_spectral}")
+        if spectral_record.get("sha256") != sha256(pinned_spectral):
+            raise ValueError(
+                "real ERA5 case did not use the pinned upstream spectral lnsp template"
+            )
 
     run_provenance = json.loads(args.run_provenance.read_text(encoding="utf-8"))
     if run_provenance.get("schema") != "flexpart-gpu.etadot-oracle-run-provenance.v1":

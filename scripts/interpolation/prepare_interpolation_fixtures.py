@@ -43,6 +43,47 @@ CASES = {
         ],
         "queries": ["2", "1.25 0.5 1", "3.1 2.0 1"],
     },
+    "horizontal-geographic-interior": {
+        "mode": "horizontal_geographic",
+        "grid": ("4 3 1", "-2.0 48.0 0.25 0.25", "0"),
+        "data": [
+            "100.0", "200.0", "300.0", "400.0",
+            "110.0", "210.0", "310.0", "410.0",
+            "120.0", "220.0", "320.0", "420.0",
+        ],
+        "queries": [
+            "2",
+            "-1.6875 48.125 1",
+            "-1.375 48.375 1",
+        ],
+    },
+    "horizontal-geographic-interior": {
+        "coordinates": {
+            "horizontal": (
+                "geographic longitude/latitude cell-center coordinates converted "
+                "by point_mod::coordtrafo before interpolation"
+            ),
+            "vertical": "kz is a 1-based FLEXPART model-level index",
+        },
+        "staggering": {"horizontal": "cell_center", "vertical": "level_center"},
+        "ordering": {"horizontal_storage": "x_fastest_then_y", "vertical": "single_level"},
+        "units": {
+            "horizontal_query": "degrees_east/degrees_north",
+            "internal_horizontal": "grid_cell",
+            "vertical_query": "index",
+            "value": "arbitrary_scalar",
+        },
+        "time": {
+            "kind": "instantaneous_static_for_fixture",
+            "memory_slots": "same field copied to both FLEXPART memory slots",
+        },
+        "production_call_path": [
+            "point_mod::coordtrafo",
+            "interpol_mod::find_grid_indices",
+            "interpol_mod::find_grid_distances",
+            "interpol_mod::hor_interpol_4d",
+        ],
+    },
     "horizontal-periodic-wrap": {
         "mode": "horizontal",
         "grid": ("4 3 1", "0.0 0.0 1.0 1.0", "1"),
@@ -676,7 +717,7 @@ def main() -> None:
 
     src = args.oracle_checkout / "src"
     for obj in (
-        "com_mod.o", "par_mod.o", "windfields_mod.o", "interpol_mod.o",
+        "com_mod.o", "par_mod.o", "point_mod.o", "windfields_mod.o", "interpol_mod.o",
     ):
         if not (src / obj).is_file():
             raise ValueError(f"missing pinned object file: {src / obj}")
@@ -717,6 +758,7 @@ def main() -> None:
 
     if args.out_provenance is not None:
         symbols_probe = {
+            "coordtrafo": "__point_mod_MOD_coordtrafo",
             "interpol_rain": "__interpol_mod_MOD_interpol_rain",
             "find_grid_indices": "__interpol_mod_MOD_find_grid_indices",
             "find_grid_distances": "__interpol_mod_MOD_find_grid_distances",
@@ -782,6 +824,9 @@ def main() -> None:
                     {"file": "src/par_mod.f90", "object": "src/par_mod.o",
                      "source_sha256": sha256(src / "par_mod.f90"),
                      "object_sha256": sha256(src / "par_mod.o")},
+                    {"file": "src/point_mod.f90", "object": "src/point_mod.o",
+                     "source_sha256": sha256(src / "point_mod.f90"),
+                     "object_sha256": sha256(src / "point_mod.o")},
                     {"file": "src/windfields_mod.f90", "object": "src/windfields_mod.o",
                      "source_sha256": sha256(src / "windfields_mod.f90"),
                      "object_sha256": sha256(src / "windfields_mod.o")},
@@ -790,7 +835,7 @@ def main() -> None:
                      "object_sha256": sha256(src / "interpol_mod.o")},
                 ],
                 "routines": [
-                    "find_grid_indices", "find_grid_distances",
+                    "coordtrafo", "find_grid_indices", "find_grid_distances",
                     "find_time_vars", "find_z_level_meters", "find_vert_vars",
                     "hor_interpol_4d", "hor_interpol_2d",
                     "temporal_interpolation", "vert_interpol", "interpol_rain",
@@ -805,7 +850,8 @@ def main() -> None:
             "real_data_samples": real_data_samples,
             "scope": (
                 "The driver links the pristine pinned FLEXPART 11.1 interpolation "
-                "modules and calls find_grid_indices/find_grid_distances/"
+                "modules and calls point_mod::coordtrafo for geographic-to-grid "
+                "normalization, then find_grid_indices/find_grid_distances/"
                 "find_z_level_meters/find_vert_vars/hor_interpol_4d/"
                 "temporal_interpolation/vert_interpol/interpol_rain directly on "
                 "canonical synthetic grids. W/interface sampling uses #30 direct FLEXPART "

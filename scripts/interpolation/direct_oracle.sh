@@ -39,5 +39,6 @@ NM_OUTPUT="${BUILD}/interpolation-oracle.nm"
 nm "${BUILD}/interpolation-oracle" > "${NM_OUTPUT}"
 grep -q '__interpol_mod_MOD_interpol_rain' "${NM_OUTPUT}"
 grep -q '__interpol_mod_MOD_find_vert_vars' "${NM_OUTPUT}"
+grep -q '__point_mod_MOD_coordtrafo' "${NM_OUTPUT}"
 
 "${BUILD}/interpolation-oracle" "${INPUT}" "${OUTPUT}"

@@ -462,7 +462,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     ${DOCKER_USER_ARGS} \
     flexpart-fortran bash -c '
       set -euo pipefail
-      for name in horizontal-interior horizontal-periodic-wrap vertical-model-levels vertical-interface-wzlev temporal-bilinear rain-layer-fields real-era5-etex-temperature-column; do
+      for name in horizontal-interior horizontal-geographic-interior horizontal-periodic-wrap vertical-model-levels vertical-interface-wzlev temporal-bilinear rain-layer-fields real-era5-etex-temperature-column; do
         bash /workspace/flexpart-gpu/scripts/interpolation/direct_oracle.sh \
           /workspace/target/ci-gate/interpolation/oracle-build \
           "/workspace/target/ci-gate/interpolation/oracle-input/${name}/${name}.txt" \

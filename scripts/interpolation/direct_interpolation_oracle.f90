@@ -7,6 +7,7 @@ program interpolation_direct_oracle
   ! the pristine module state that the pinned routines consume and then calls
   ! the compiled FLEXPART routines themselves:
   !
+  !   geographic: point_mod::coordtrafo, then the horizontal routines below
   !   horizontal: find_grid_indices, find_grid_distances, hor_interpol_4d
   !   vertical:   find_z_level_meters, find_vert_vars, vert_interpol
   !   temporal:   find_time_vars, temporal_interpolation
@@ -16,7 +17,10 @@ program interpolation_direct_oracle
   ! authoritative; see docs/interpolation-contract.md.
   ! ---------------------------------------------------------------------------
   use par_mod, only: numwfmem, numpf, icmv
-  use com_mod, only: memtime, memind, numbnests, xglobal, sglobal, nglobal, lcw
+  use com_mod, only: memtime, memind, numbnests, xglobal, sglobal, nglobal, lcw, &
+    numpoint, ipin
+  use point_mod, only: grid_dx => dx, grid_dy => dy, grid_xlon0 => xlon0, &
+    grid_ylat0 => ylat0, xpoint1, xpoint2, ypoint1, ypoint2, coordtrafo
   use windfields_mod, only: nxmax, nymax, nzmax, nx, ny, nz, nxfield, &
     nxmin1, nymin1, height, lsprec, convprec, tcc, tt, ctwc, icloudbot, &
     icloudtop
@@ -58,7 +62,9 @@ program interpolation_direct_oracle
   read(input_unit, *) mode
   select case (trim(mode))
     case ("horizontal")
-      call run_horizontal(input_unit, output_unit)
+      call run_horizontal(input_unit, output_unit, .false.)
+    case ("horizontal_geographic")
+      call run_horizontal(input_unit, output_unit, .true.)
     case ("vertical")
       call run_vertical(input_unit, output_unit)
     case ("temporal")
@@ -92,6 +98,14 @@ contains
     real, intent(in) :: canonical_xlon0, canonical_ylat0
     real, intent(in) :: canonical_dx, canonical_dy
 
+    if (canonical_dx <= 0.0 .or. canonical_dy <= 0.0) then
+      error stop "grid spacing must be positive"
+    endif
+    grid_xlon0 = canonical_xlon0
+    grid_ylat0 = canonical_ylat0
+    grid_dx = canonical_dx
+    grid_dy = canonical_dy
+
     nxfield = canonical_nx
     ny = canonical_ny
     nymax = canonical_ny
@@ -108,11 +122,36 @@ contains
     nxmin1 = nx - 1
   end subroutine configure_grid
 
-  subroutine run_horizontal(input_unit, output_unit)
+  subroutine transform_lonlat(lon, lat, xt, yt)
+    real, intent(in) :: lon, lat
+    real, intent(out) :: xt, yt
+
+    if (allocated(xpoint1)) deallocate(xpoint1)
+    if (allocated(xpoint2)) deallocate(xpoint2)
+    if (allocated(ypoint1)) deallocate(ypoint1)
+    if (allocated(ypoint2)) deallocate(ypoint2)
+    allocate(xpoint1(1), xpoint2(1), ypoint1(1), ypoint2(1))
+
+    numpoint = 1
+    ipin = 0
+    xpoint1(1) = lon
+    xpoint2(1) = lon
+    ypoint1(1) = lat
+    ypoint2(1) = lat
+    call coordtrafo(nxmin1, nymin1)
+    if (numpoint /= 1) error stop "coordtrafo rejected in-domain oracle query"
+
+    xt = xpoint1(1)
+    yt = ypoint1(1)
+    deallocate(xpoint1, xpoint2, ypoint1, ypoint2)
+  end subroutine transform_lonlat
+
+  subroutine run_horizontal(input_unit, output_unit, geographic)
     integer, intent(in) :: input_unit, output_unit
+    logical, intent(in) :: geographic
     integer :: canonical_nx, canonical_ny, canonical_nz, periodic
     integer :: nquery, q
-    real :: xlon0, ylat0, dx, dy, xt, yt
+    real :: xlon0, ylat0, dx, dy, xt, yt, lon, lat
     integer :: k
     real, allocatable :: field(:, :, :, :)
     real :: output
@@ -151,7 +190,11 @@ contains
     field(:, :, :, 2) = field(:, :, :, 1)
 
     read(input_unit, *) nquery
-    write(output_unit, '(A)') "MODE horizontal"
+    if (geographic) then
+      write(output_unit, '(A)') "MODE horizontal_geographic"
+    else
+      write(output_unit, '(A)') "MODE horizontal"
+    endif
     write(output_unit, '(A,1X,I0)') "CANONICAL_NX", canonical_nx
     write(output_unit, '(A,1X,I0)') "CANONICAL_NY", canonical_ny
     write(output_unit, '(A,1X,I0)') "FLEXPART_NXMAX", nxmax
@@ -159,11 +202,19 @@ contains
     write(output_unit, '(A,1X,I0)') "PERIODIC", periodic
     write(output_unit, '(A,1X,I0)') "NQUERY", nquery
     do q = 1, nquery
-      read(input_unit, *) xt, yt, k
+      if (geographic) then
+        read(input_unit, *) lon, lat, k
+        call transform_lonlat(lon, lat, xt, yt)
+      else
+        read(input_unit, *) xt, yt, k
+      endif
       call find_grid_indices(xt, yt)
       call find_grid_distances(xt, yt)
       call hor_interpol_4d(field, output, k, 1, nzmax)
       write(output_unit, '(A)') "QUERY"
+      if (geographic) then
+        write(output_unit, '(A,1X,ES24.16E3,1X,ES24.16E3)') "LONLAT", lon, lat
+      endif
       write(output_unit, '(A,1X,ES24.16E3,1X,ES24.16E3,1X,I0)') "XY", xt, yt, k
       write(output_unit, '(A,4(1X,I0))') "INDICES", ix, jy, ixp, jyp
       write(output_unit, '(A,4(1X,ES24.16E3))') "WEIGHTS", p1, p2, p3, p4

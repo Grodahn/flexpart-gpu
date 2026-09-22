@@ -451,6 +451,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --oracle-checkout "${ORACLE_CHECKOUT}" \
     --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
     --vertical-routine-oracle-output "${OUTPUT_DIR}/vertical-column/routine-oracle-output.txt" \
+    --real-vertical-routine-oracle-output "${OUTPUT_DIR}/vertical-column/real-routine-oracle-output.txt" \
     --out-fixture "${INTERPOL_DIR}/contract-v1.json"; then
     fail "Emitting the #71 interpolation oracle case inputs failed"
   fi
@@ -461,7 +462,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     ${DOCKER_USER_ARGS} \
     flexpart-fortran bash -c '
       set -euo pipefail
-      for name in horizontal-interior horizontal-periodic-wrap vertical-model-levels vertical-interface-wzlev temporal-bilinear rain-layer-fields; do
+      for name in horizontal-interior horizontal-periodic-wrap vertical-model-levels vertical-interface-wzlev temporal-bilinear rain-layer-fields real-era5-etex-temperature-column; do
         bash /workspace/flexpart-gpu/scripts/interpolation/direct_oracle.sh \
           /workspace/target/ci-gate/interpolation/oracle-build \
           "/workspace/target/ci-gate/interpolation/oracle-input/${name}/${name}.txt" \
@@ -481,6 +482,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --oracle-checkout "${ORACLE_CHECKOUT}" \
     --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
     --vertical-routine-oracle-output "${OUTPUT_DIR}/vertical-column/routine-oracle-output.txt" \
+    --real-vertical-routine-oracle-output "${OUTPUT_DIR}/vertical-column/real-routine-oracle-output.txt" \
     --out-fixture "${INTERPOL_DIR}/contract-v1.json" \
     --out-provenance "${INTERPOL_DIR}/contract-v1.provenance.json"; then
     fail "Repacking the #71 interpolation fixture/provenance failed"
@@ -526,6 +528,7 @@ for key in (
     "fixture_artifact", "generator_source", "driver_source",
     "oracle_harness_source", "real_extraction_source", "reference_manifest",
     "cases", "real_data_samples", "interface_vertical_source",
+    "real_vertical_source",
 ):
     assert p[key] == q[key], f"provenance drift in {key}"
 assert p["fixture_artifact"]["hash_kind"] == "normalized_canonical_json_sha256"
@@ -685,6 +688,8 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${OUTPUT_DIR}/vertical-column/real-column-fixture-provenance.json" \
     --artifact "${OUTPUT_DIR}/interpolation/contract-v1.json" \
     --artifact "${OUTPUT_DIR}/interpolation/contract-v1.provenance.json" \
+    --artifact "${OUTPUT_DIR}/interpolation/oracle-output/real-era5-etex-temperature-column.out" \
+    --artifact "${OUTPUT_DIR}/vertical-column/real-routine-oracle-output.txt" \
     --artifact "${OUTPUT_DIR}/interpolation/reproducibility-check.log" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
     fail "Provenance manifest generation failed (missing artifact or unpinned oracle)"
   fi

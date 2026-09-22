@@ -13,6 +13,7 @@ Usage:
       --binary target/interpolation/oracle-build/interpolation-oracle \
       --oracle-checkout <path to pinned FLEXPART checkout> \
       --reference-manifest reference/flexpart-11.1.json \
+      --real-vertical-routine-oracle-output target/ci-gate/vertical-column/real-routine-oracle-output.txt \
       --out-fixture fixtures/interpolation/contract-v1.json
 
 Pass --offline (with pre-generated oracle-output files) to skip re-running the oracle.
@@ -317,7 +318,128 @@ def validate_interface_oracle_source(path: Path) -> None:
         raise ValueError("#71 W/interface values drifted from #30 FLEXPART pinmconv output")
 
 
-def build_real_data_sample() -> dict:
+def build_real_vertical_sampling_case(path: Path) -> dict:
+    """Build a real #29/#30 temperature-column case sampled by the #71 oracle."""
+    repo_root = Path(__file__).resolve().parents[2]
+    canonical_path = repo_root / "fixtures/meteorology/era5-etex-native-v1.json"
+    provenance_path = (
+        repo_root / "fixtures/meteorology/era5-etex-native-v1.provenance.json"
+    )
+    canonical = json.loads(canonical_path.read_text(encoding="utf-8"))
+    source_provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+
+    if not path.is_file():
+        raise ValueError(f"missing real #30 vertical routine oracle output: {path}")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if len(lines) < 3 or lines[0] != "FLEXPART_VERTICAL_ROUTINE_ORACLE_V1":
+        raise ValueError("invalid real #30 vertical routine oracle header")
+    oracle_nz = int(lines[1])
+
+    nx = canonical["horizontal_grid"]["nx"]
+    ny = canonical["horizontal_grid"]["ny"]
+    nz = len(canonical["vertical_coordinate"]["level_values"])
+    if oracle_nz != nz:
+        raise ValueError(
+            f"real #30 oracle level count {oracle_nz} != canonical level count {nz}"
+        )
+
+    level_heights_top_to_bottom = []
+    for expected in range(nz):
+        parts = lines[2 + expected].split()
+        if len(parts) != 4 or int(parts[0]) != expected:
+            raise ValueError(f"invalid real #30 level row {expected}")
+        level_heights_top_to_bottom.append(float(parts[2]))
+
+    matches = [field for field in canonical["fields"] if field["id"] == "temperature"]
+    if len(matches) != 1:
+        raise ValueError("real canonical fixture must contain exactly one temperature field")
+    temperature = matches[0]
+    if temperature["shape"] != [nx, ny, nz]:
+        raise ValueError("real canonical temperature shape drifted")
+
+    x = 0
+    y = 0
+    values_top_to_bottom = [
+        float(temperature["values"][x + nx * (y + ny * z)])
+        for z in range(nz)
+    ]
+    heights = list(reversed(level_heights_top_to_bottom))
+    values = list(reversed(values_top_to_bottom))
+    if not all(math.isfinite(value) for value in heights + values):
+        raise ValueError("real vertical sampling source contains non-finite values")
+    if not all(upper > lower for lower, upper in zip(heights, heights[1:])):
+        raise ValueError("real #30 AGL heights must increase bottom-to-top")
+
+    # Freeze two boundaries, two strict interior interpolations and one exact
+    # interior model level. The query heights are derived from the real #30
+    # geometry rather than synthetic constants.
+    query_heights = [
+        heights[0],
+        0.5 * (heights[20] + heights[21]),
+        heights[nz // 2],
+        0.5 * (heights[nz - 22] + heights[nz - 21]),
+        heights[-1],
+    ]
+    fmt = lambda value: format(value, ".17g")
+    horizontal = source_provenance["slice"]["horizontal"]
+    timestamp = source_provenance["slice"]["timestamp"]
+    epoch_seconds = source_provenance["slice"]["epoch_seconds"]
+
+    return {
+        "mode": "vertical",
+        "vertical_staggering": "level_center",
+        "source_oracle": {
+            "producer_issue": 30,
+            "producer_driver": "scripts/vertical/direct_oracle_driver.f90",
+            "producer_routine": "verttransform_mod::verttransform_ecmwf_heights",
+            "oracle_output_sha256": sha256(path),
+            "geometry_field": "level height_agl_m",
+            "value_field": "temperature",
+            "value_source": "fixtures/meteorology/era5-etex-native-v1.json",
+            "canonical_x": x,
+            "canonical_y": y,
+            "longitude_deg": horizontal["longitudes_deg"][x],
+            "latitude_deg": horizontal["latitudes_deg"][y],
+            "timestamp": timestamp,
+            "epoch_seconds": epoch_seconds,
+        },
+        "grid": tuple(
+            [str(nz)]
+            + [fmt(value) for value in heights]
+            + [str(nz)]
+            + [fmt(value) for value in values]
+        ),
+        "queries": [str(len(query_heights))]
+        + [f"0 {fmt(value)}" for value in query_heights],
+        "semantics": {
+            "coordinates": {
+                "horizontal": (
+                    "fixed real ERA5/ETEX cell-center column at canonical x=0,y=0"
+                ),
+                "vertical": "metric height AGL from pinned #30 FLEXPART oracle",
+            },
+            "staggering": {
+                "horizontal": "cell_center",
+                "vertical": "level_center",
+            },
+            "ordering": {
+                "vertical_geometry": "bottom_to_top_increasing_height",
+                "source_native_levels": "top_to_bottom_increasing_pressure",
+            },
+            "units": {
+                "vertical_query": "meter",
+                "value": temperature["unit"],
+            },
+            "time": {
+                "kind": "instantaneous_valid_time",
+                "timestamp": timestamp,
+                "epoch_seconds": epoch_seconds,
+            },
+        },
+    }
+
+
+def build_real_data_sample(real_sampling_case: dict) -> dict:
     """Describe and verify the checked-in real #29/#30 ERA5/ETEX column source."""
     repo_root = Path(__file__).resolve().parents[2]
     canonical_path = repo_root / "fixtures/meteorology/era5-etex-native-v1.json"
@@ -411,6 +533,11 @@ def build_real_data_sample() -> dict:
         "compatibility": {
             "canonical_contract_issue": 29,
             "vertical_transform_issue": 30,
+            "interpolation_contract_issue": 71,
+            "interpolation_sampling_case": "real-era5-etex-temperature-column",
+            "interpolation_geometry_oracle_sha256": (
+                real_sampling_case["source_oracle"]["oracle_output_sha256"]
+            ),
             "extraction_path": extraction_path,
             "extraction_source_sha256": sha256(repo_root / extraction_path),
             "ci_gate_step": "2b",
@@ -424,8 +551,9 @@ def build_real_data_sample() -> dict:
         "scope": (
             "Checked-in real ERA5/ETEX source column used by #29 and transformed/"
             "validated by #30 against the pinned FLEXPART 11.1 direct routine oracle. "
-            "#71 references this source as its required real sampling fixture; it does "
-            "not duplicate provider decoding or vertical-transform ownership."
+            "#71 samples the real temperature profile on #30's pinned FLEXPART AGL "
+            "geometry through find_z_level_meters/find_vert_vars/vert_interpol. "
+            "Provider decoding and vertical-transform ownership remain in #29/#30."
         ),
     }
 
@@ -507,6 +635,9 @@ def main() -> None:
     parser.add_argument("--out-fixture", type=Path, required=True)
     parser.add_argument("--out-provenance", type=Path, required=False)
     parser.add_argument("--vertical-routine-oracle-output", type=Path, required=False)
+    parser.add_argument(
+        "--real-vertical-routine-oracle-output", type=Path, required=True
+    )
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--emit-inputs-only", action="store_true")
     args = parser.parse_args()
@@ -514,7 +645,13 @@ def main() -> None:
     if args.vertical_routine_oracle_output is not None:
         validate_interface_oracle_source(args.vertical_routine_oracle_output)
 
-    for name, case in CASES.items():
+    cases = dict(CASES)
+    real_sampling_case = build_real_vertical_sampling_case(
+        args.real_vertical_routine_oracle_output
+    )
+    cases["real-era5-etex-temperature-column"] = real_sampling_case
+
+    for name, case in cases.items():
         case = dict(case, name=name)
         input_dir = args.input_dir / name
         input_dir.mkdir(parents=True, exist_ok=True)
@@ -545,7 +682,7 @@ def main() -> None:
             raise ValueError(f"missing pinned object file: {src / obj}")
 
     cases_out = []
-    for name, case in CASES.items():
+    for name, case in cases.items():
         case = dict(case, name=name)
         case_file = args.input_dir / name / f"{name}.txt"
         output_file = args.output_dir / f"{name}.out"
@@ -557,13 +694,15 @@ def main() -> None:
             "input": case_file.read_text(encoding="utf-8").splitlines(),
             "golden": golden,
         }
-        fixture_case["semantics"] = CASE_SEMANTICS[name]
+        fixture_case["semantics"] = case.get("semantics", CASE_SEMANTICS.get(name))
+        if fixture_case["semantics"] is None:
+            raise ValueError(f"missing semantics for interpolation case {name}")
         for key in ("vertical_staggering", "source_oracle"):
             if key in case:
                 fixture_case[key] = case[key]
         cases_out.append(fixture_case)
 
-    real_data_samples = [build_real_data_sample()]
+    real_data_samples = [build_real_data_sample(real_sampling_case)]
     fixture = {
         "schema": {"id": "flexpart-gpu.interpolation-contract", "version": 1},
         "pinned_flexpart": manifest,
@@ -659,9 +798,10 @@ def main() -> None:
             },
             "cases": {
                 name: sha256(args.output_dir / f"{name}.out")
-                for name in CASES
+                for name in cases
             },
             "interface_vertical_source": CASES["vertical-interface-wzlev"]["source_oracle"],
+            "real_vertical_source": real_sampling_case["source_oracle"],
             "real_data_samples": real_data_samples,
             "scope": (
                 "The driver links the pristine pinned FLEXPART 11.1 interpolation "
@@ -669,7 +809,10 @@ def main() -> None:
                 "find_z_level_meters/find_vert_vars/hor_interpol_4d/"
                 "temporal_interpolation/vert_interpol/interpol_rain directly on "
                 "canonical synthetic grids. W/interface sampling uses #30 direct FLEXPART "
-                "wzlev/pinmconv output as its vertical geometry/value source. The contract also pins the checked-in real #29/#30 ERA5/ETEX column source and its #30 pinned-oracle evidence. Golden values in contract-v1.json are the direct interpolation-oracle outputs."
+                "wzlev/pinmconv output as its vertical geometry/value source. The real "
+                "#29 ERA5/ETEX temperature column is paired with #30's pinned FLEXPART "
+                "level-height output and sampled by the same #71 vertical routines. "
+                "Golden values in contract-v1.json are direct interpolation-oracle outputs."
             ),
         }
         args.out_provenance.parent.mkdir(parents=True, exist_ok=True)

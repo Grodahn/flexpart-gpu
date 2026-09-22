@@ -74,7 +74,9 @@ Fail-closed step 2c (#70, calc_etadot preprocessing oracle):
 
 - Runs when the pinned flex_extract 7.1.2 checkout exists at
   `../flex_extract` (or `--flex-extract-checkout <dir>`); otherwise the tier
-  is reported `NOT_WIRED` and never `PASS`. The driver
+  is reported `NOT_WIRED` and never `PASS`. Passing
+  `--require-flex-extract-oracle` makes that state fail the overall gate; the
+  GitHub validation workflow always enables this requirement. The driver
   (`scripts/vertical/flex_extract_etadot_oracle.sh`) verifies the checkout
   against `reference/flex-extract.json`, builds `calc_etadot` in a scratch
   dir (extra packages `libemos-dev`/`libemos-bin`/`libemos-data`/

@@ -267,9 +267,9 @@
         "0 5.0",
         "0 50.0",
         "0 100.0",
+        "0 500.0",
         "0 1000.0",
-        "0 2000.0",
-        "1 500.0"
+        "0 2000.0"
       ],
       "golden": {
         "MODE": "vertical",
@@ -342,6 +342,27 @@
           {
             "COORD_ZT": [
               0,
+              500
+            ],
+            "LEVELS": [
+              2,
+              3
+            ],
+            "BOUNDS": [
+              "F",
+              "F"
+            ],
+            "DZ": [
+              0.4444444477558136,
+              0.5555555820465088
+            ],
+            "VALUE": [
+              2.4444446563720703
+            ]
+          },
+          {
+            "COORD_ZT": [
+              0,
               1000
             ],
             "LEVELS": [
@@ -380,11 +401,118 @@
             "VALUE": [
               3
             ]
+          }
+        ]
+      },
+      "vertical_staggering": "level_center"
+    },
+    {
+      "id": "vertical-interface-wzlev",
+      "mode": "vertical",
+      "vertical_staggering": "level_interface",
+      "source_oracle": {
+        "producer_issue": 30,
+        "producer_driver": "scripts/vertical/direct_oracle_driver.f90",
+        "producer_routine": "verttransform_mod::verttransform_ecmwf_heights",
+        "oracle_output_sha256": "ae7cd8c7a057e81439bc7e316e123c438951a4a0cd0bff9c4e21b086bac3e9bf",
+        "geometry_field": "wzlev",
+        "value_field": "omega * pinmconv",
+        "source_fixture": "fixtures/vertical/synthetic-column-v1.json",
+        "source_motion": "fixtures/vertical/synthetic-omega-interface-v1.json"
+      },
+      "input": [
+        "vertical",
+        "4",
+        "0.0",
+        "1954.792236328125",
+        "4363.86865234375",
+        "7076.8583984375",
+        "4",
+        "0.13533158600330353",
+        "0.10024577379226685",
+        "0.060226909816265106",
+        "-0.0",
+        "7",
+        "1 -100.0",
+        "1 0.0",
+        "1 1000.0",
+        "1 3000.0",
+        "1 6000.0",
+        "1 7076.8583984375",
+        "1 8000.0"
+      ],
+      "golden": {
+        "MODE": "vertical",
+        "NLEVEL": 4,
+        "NQUERY": 7,
+        "queries": [
+          {
+            "COORD_ZT": [
+              1,
+              -100
+            ],
+            "LEVELS": [
+              1,
+              2
+            ],
+            "BOUNDS": [
+              "T",
+              "F"
+            ],
+            "DZ": [
+              0,
+              1
+            ],
+            "VALUE": [
+              0.13533158600330353
+            ]
           },
           {
             "COORD_ZT": [
               1,
-              500
+              0
+            ],
+            "LEVELS": [
+              1,
+              2
+            ],
+            "BOUNDS": [
+              "T",
+              "F"
+            ],
+            "DZ": [
+              0,
+              1
+            ],
+            "VALUE": [
+              0.13533158600330353
+            ]
+          },
+          {
+            "COORD_ZT": [
+              1,
+              1000
+            ],
+            "LEVELS": [
+              1,
+              2
+            ],
+            "BOUNDS": [
+              "F",
+              "F"
+            ],
+            "DZ": [
+              0.5115633010864258,
+              0.4884366989135742
+            ],
+            "VALUE": [
+              0.1173829734325409
+            ]
+          },
+          {
+            "COORD_ZT": [
+              1,
+              3000
             ],
             "LEVELS": [
               2,
@@ -395,11 +523,74 @@
               "F"
             ],
             "DZ": [
-              0.4444444477558136,
-              0.5555555820465088
+              0.43386244773864746,
+              0.5661375522613525
             ],
             "VALUE": [
-              2.4444446563720703
+              0.0828830897808075
+            ]
+          },
+          {
+            "COORD_ZT": [
+              1,
+              6000
+            ],
+            "LEVELS": [
+              3,
+              4
+            ],
+            "BOUNDS": [
+              "F",
+              "F"
+            ],
+            "DZ": [
+              0.6030731797218323,
+              0.3969268202781677
+            ],
+            "VALUE": [
+              0.0239056758582592
+            ]
+          },
+          {
+            "COORD_ZT": [
+              1,
+              7076.8583984375
+            ],
+            "LEVELS": [
+              3,
+              4
+            ],
+            "BOUNDS": [
+              "F",
+              "T"
+            ],
+            "DZ": [
+              1,
+              0
+            ],
+            "VALUE": [
+              0
+            ]
+          },
+          {
+            "COORD_ZT": [
+              1,
+              8000
+            ],
+            "LEVELS": [
+              3,
+              4
+            ],
+            "BOUNDS": [
+              "F",
+              "T"
+            ],
+            "DZ": [
+              1,
+              0
+            ],
+            "VALUE": [
+              0
             ]
           }
         ]

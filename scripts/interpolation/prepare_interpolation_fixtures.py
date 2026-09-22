@@ -53,10 +53,42 @@ CASES = {
     },
     "vertical-model-levels": {
         "mode": "vertical",
+        "vertical_staggering": "level_center",
         "grid": ("3", "10.0", "100.0", "1000.0", "3", "1.0", "2.0", "3.0"),
         "queries": [
             "6",
-            "0 5.0", "0 50.0", "0 100.0", "0 1000.0", "0 2000.0", "1 500.0",
+            "0 5.0", "0 50.0", "0 100.0", "0 500.0", "0 1000.0", "0 2000.0",
+        ],
+    },
+    "vertical-interface-wzlev": {
+        "mode": "vertical",
+        "vertical_staggering": "level_interface",
+        "source_oracle": {
+            "producer_issue": 30,
+            "producer_driver": "scripts/vertical/direct_oracle_driver.f90",
+            "producer_routine": "verttransform_mod::verttransform_ecmwf_heights",
+            "oracle_output_sha256": "ae7cd8c7a057e81439bc7e316e123c438951a4a0cd0bff9c4e21b086bac3e9bf",
+            "geometry_field": "wzlev",
+            "value_field": "omega * pinmconv",
+            "source_fixture": "fixtures/vertical/synthetic-column-v1.json",
+            "source_motion": "fixtures/vertical/synthetic-omega-interface-v1.json",
+        },
+        "grid": (
+            "4",
+            "0.0",
+            "1954.792236328125",
+            "4363.86865234375",
+            "7076.8583984375",
+            "4",
+            "0.13533158600330353",
+            "0.10024577379226685",
+            "0.060226909816265106",
+            "-0.0",
+        ),
+        "queries": [
+            "7",
+            "1 -100.0", "1 0.0", "1 1000.0", "1 3000.0",
+            "1 6000.0", "1 7076.8583984375", "1 8000.0",
         ],
     },
     "temporal-bilinear": {
@@ -102,6 +134,71 @@ CASES = {
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def validate_interface_oracle_source(path: Path) -> None:
+    """Verify the #30 direct FLEXPART W/interface evidence used by #71."""
+    case = CASES["vertical-interface-wzlev"]
+    source = case["source_oracle"]
+    if not path.is_file():
+        raise ValueError(f"missing #30 vertical routine oracle output: {path}")
+    actual_sha = sha256(path)
+    if actual_sha != source["oracle_output_sha256"]:
+        raise ValueError(
+            f"#30 vertical routine oracle output hash {actual_sha} != "
+            f"frozen {source['oracle_output_sha256']}"
+        )
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if len(lines) < 4 or lines[0] != "FLEXPART_VERTICAL_ROUTINE_ORACLE_V1":
+        raise ValueError("invalid #30 vertical routine oracle header")
+    nz = int(lines[1])
+    pos = 2 + nz
+    header = lines[pos].split()
+    pos += 1
+    if header != ["INTERFACES", str(nz + 1)]:
+        raise ValueError("invalid #30 INTERFACES section")
+    interface_heights_top_to_surface = []
+    for expected in range(nz + 1):
+        parts = lines[pos].split()
+        pos += 1
+        if len(parts) != 4 or int(parts[0]) != expected:
+            raise ValueError("invalid #30 interface row")
+        interface_heights_top_to_surface.append(float(parts[2]))
+
+    motion_header = lines[pos].split()
+    pos += 1
+    if motion_header != ["MOTION", "1"]:
+        raise ValueError("#30 interface fixture must contain normalized W motion")
+    count = int(lines[pos])
+    pos += 1
+    if count != nz + 1:
+        raise ValueError("#30 W-motion count mismatch")
+    motion_top_to_surface = []
+    for expected in range(count):
+        parts = lines[pos].split()
+        pos += 1
+        if len(parts) != 3 or int(parts[0]) != expected:
+            raise ValueError("invalid #30 W-motion row")
+        motion_top_to_surface.append(float(parts[2]))
+    if pos != len(lines):
+        raise ValueError("unexpected trailing #30 oracle output")
+
+    grid = list(case["grid"])
+    nlevel = int(grid[0])
+    heights = [float(v) for v in grid[1:1 + nlevel]]
+    nvalues_pos = 1 + nlevel
+    nvalues = int(grid[nvalues_pos])
+    values = [float(v) for v in grid[nvalues_pos + 1:nvalues_pos + 1 + nvalues]]
+    if nlevel != nz + 1 or nvalues != nlevel:
+        raise ValueError("#71 interface fixture shape does not match #30 W geometry")
+
+    oracle_heights = list(reversed(interface_heights_top_to_surface))
+    oracle_values = list(reversed(motion_top_to_surface))
+    if heights != oracle_heights:
+        raise ValueError("#71 W/interface heights drifted from #30 FLEXPART wzlev output")
+    if values != oracle_values:
+        raise ValueError("#71 W/interface values drifted from #30 FLEXPART pinmconv output")
 
 
 def build_real_data_sample() -> dict:
@@ -263,9 +360,13 @@ def main() -> None:
     parser.add_argument("--reference-manifest", type=Path, required=True)
     parser.add_argument("--out-fixture", type=Path, required=True)
     parser.add_argument("--out-provenance", type=Path, required=False)
+    parser.add_argument("--vertical-routine-oracle-output", type=Path, required=False)
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--emit-inputs-only", action="store_true")
     args = parser.parse_args()
+
+    if args.vertical_routine_oracle_output is not None:
+        validate_interface_oracle_source(args.vertical_routine_oracle_output)
 
     for name, case in CASES.items():
         case = dict(case, name=name)
@@ -304,14 +405,16 @@ def main() -> None:
         output_file = args.output_dir / f"{name}.out"
         run_oracle(args.binary, case_file, output_file, args.offline)
         golden = parse_output(output_file.read_text(encoding="utf-8"))
-        cases_out.append(
-            {
-                "id": name,
-                "mode": case["mode"],
-                "input": case_file.read_text(encoding="utf-8").splitlines(),
-                "golden": golden,
-            }
-        )
+        fixture_case = {
+            "id": name,
+            "mode": case["mode"],
+            "input": case_file.read_text(encoding="utf-8").splitlines(),
+            "golden": golden,
+        }
+        for key in ("vertical_staggering", "source_oracle"):
+            if key in case:
+                fixture_case[key] = case[key]
+        cases_out.append(fixture_case)
 
     real_data_samples = [build_real_data_sample()]
     fixture = {
@@ -392,14 +495,15 @@ def main() -> None:
                 name: sha256(args.output_dir / f"{name}.out")
                 for name in CASES
             },
+            "interface_vertical_source": CASES["vertical-interface-wzlev"]["source_oracle"],
             "real_data_samples": real_data_samples,
             "scope": (
                 "The driver links the pristine pinned FLEXPART 11.1 interpolation "
                 "modules and calls find_grid_indices/find_grid_distances/"
                 "find_z_level_meters/find_vert_vars/hor_interpol_4d/"
                 "temporal_interpolation/vert_interpol/interpol_rain directly on "
-                "canonical synthetic grids. The contract additionally pins the checked-in "
-                "real #29/#30 ERA5/ETEX column source and its #30 pinned-oracle evidence. " "Golden values in contract-v1.json are the direct interpolation-oracle outputs."
+                "canonical synthetic grids. W/interface sampling uses #30 direct FLEXPART "
+                "wzlev/pinmconv output as its vertical geometry/value source. The contract also pins the checked-in real #29/#30 ERA5/ETEX column source and its #30 pinned-oracle evidence. Golden values in contract-v1.json are the direct interpolation-oracle outputs."
             ),
         }
         args.out_provenance.parent.mkdir(parents=True, exist_ok=True)

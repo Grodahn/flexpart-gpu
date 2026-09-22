@@ -13,8 +13,18 @@
 
 use serde::Deserialize;
 
-pub const FLEXPART_PINNED_COMMIT: &str = "c70586c2b7f5258850705325881c61f557ea9bd8";
 pub const ORACLE_OUTPUT_VERSION: &str = "FLEXPART_INTERPOLATION_ROUTINE_ORACLE_V1";
+
+#[derive(Deserialize)]
+struct ReferenceManifest {
+    version: String,
+    pinned_commit: String,
+}
+
+fn reference_manifest() -> ReferenceManifest {
+    serde_json::from_str(include_str!("../reference/flexpart-11.1.json"))
+        .expect("reference/flexpart-11.1.json must be valid")
+}
 
 const REL_TOL: f64 = 1.0e-4;
 const ABS_TOL: f64 = 1.0e-6;
@@ -369,13 +379,14 @@ fn contract_fixture_metadata_is_frozen() {
     assert_eq!(contract.schema.id, "flexpart-gpu.interpolation-contract");
     assert_eq!(contract.schema.version, 1);
     assert_eq!(contract.oracle_output_version, ORACLE_OUTPUT_VERSION);
+    let reference = reference_manifest();
     assert_eq!(
-        contract.pinned_flexpart.pinned_commit, FLEXPART_PINNED_COMMIT,
+        contract.pinned_flexpart.pinned_commit, reference.pinned_commit,
         "contract must pin the same FLEXPART revision as reference/flexpart-11.1.json"
     );
     assert_eq!(
-        contract.pinned_flexpart.version, "11.1",
-        "contract must reference FLEXPART 11.1"
+        contract.pinned_flexpart.version, reference.version,
+        "contract must reference the same FLEXPART version as the canonical manifest"
     );
     assert_eq!(
         contract.real_data_samples.len(),
@@ -548,7 +559,7 @@ fn contract_provenance_matches_fixture() {
         provenance.schema,
         "flexpart-gpu.interpolation-contract-provenance.v1"
     );
-    assert_eq!(provenance.pinned_commit, FLEXPART_PINNED_COMMIT);
+    assert_eq!(provenance.pinned_commit, reference_manifest().pinned_commit);
     assert!(provenance.checkout_clean, "oracle checkout must be clean");
     assert!(provenance.binary_entrypoint_present);
     assert_eq!(
@@ -608,10 +619,14 @@ fn contract_provenance_matches_fixture() {
         "reference/flexpart-11.1.json"
     );
 
-    // The linked objects must name every module the oracle driver calls.
+    assert_eq!(
+        provenance.linked_flexpart.link_strategy,
+        "all src/*.o except FLEXPART.o"
+    );
+    // The hashed subset must name every module directly consumed by the oracle driver.
     let source_files: Vec<&str> = provenance
         .linked_flexpart
-        .objects
+        .direct_routine_objects
         .iter()
         .map(|object| object.file.as_str())
         .collect();
@@ -753,7 +768,8 @@ struct ContractProvenance {
 
 #[derive(Deserialize)]
 struct LinkedFlexpart {
-    objects: Vec<LinkedObject>,
+    link_strategy: String,
+    direct_routine_objects: Vec<LinkedObject>,
     routines: Vec<String>,
 }
 

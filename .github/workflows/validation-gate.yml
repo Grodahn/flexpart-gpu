@@ -78,7 +78,7 @@ jobs:
           set -euo pipefail
           cd flexpart-gpu
           chmod +x scripts/ci-gate.sh scripts/vertical/flex_extract_etadot_oracle.sh
-          scripts/ci-gate.sh --particles 1000
+          scripts/ci-gate.sh --particles 1000 --require-flex-extract-oracle
 
       - name: Upload gate artifacts (reports, logs, manifests)
         if: always()

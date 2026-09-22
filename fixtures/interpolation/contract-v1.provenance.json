@@ -17,7 +17,8 @@
     "sha256": "026dc90a676906d1b656b73545f6a67f195a9d31e7d6d6c2681ac6f7803d2135"
   },
   "linked_flexpart": {
-    "objects": [
+    "link_strategy": "all src/*.o except FLEXPART.o",
+    "direct_routine_objects": [
       {
         "file": "src/com_mod.f90",
         "object": "src/com_mod.o",
@@ -180,7 +181,7 @@
   },
   "generator_source": {
     "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
-    "sha256": "53d67b63399e98b683c6599d8616f813ff9866cbd689ff6e746efcb273d8ed6f"
+    "sha256": "4a1b62784b8d33daa2b3657324c6e23e8e24c56a0a60409e3afc7cef970c2c94"
   },
   "oracle_harness_source": {
     "path": "scripts/interpolation/direct_oracle.sh",

@@ -51,6 +51,7 @@ PARTICLES="1000"
 ORACLE_CHECKOUT="${PROJECT_ROOT}/../flexpart"
 FLEXEXTRACT_CHECKOUT="${PROJECT_ROOT}/../flex_extract"
 SKIP_ORACLE_BUILD="0"
+REQUIRE_FLEXEXTRACT_ORACLE="0"
 CI_CASE_ALLOWLIST="SW-WGPU-ADVECTION-001 SYNTHETIC-UNIFORM-WIND-SMOKE"
 
 HOST_PYTHON="python3"
@@ -72,7 +73,7 @@ usage() {
 Usage:
   scripts/ci-gate.sh [--output-dir <dir>] [--particles <n>]
                      [--oracle-checkout <dir>] [--flex-extract-checkout <dir>]
-                     [--skip-oracle-build]
+                     [--require-flex-extract-oracle] [--skip-oracle-build]
 
 Options:
   --output-dir <dir>       Output directory (default: target/ci-gate).
@@ -82,6 +83,8 @@ Options:
                            Pinned flex_extract checkout for the calc_etadot
                            oracle tier (default: ../flex_extract; Step 2c runs
                            only when the checkout exists).
+  --require-flex-extract-oracle
+                           Fail the gate when the flex_extract checkout is absent instead of reporting NOT_WIRED.
   --skip-oracle-build      Skip Docker oracle build (local iteration only;
                            the gate then reports INCOMPLETE and fails).
   -h, --help               Show this help.
@@ -94,6 +97,7 @@ while [ $# -gt 0 ]; do
     --particles) PARTICLES="$2"; shift 2 ;;
     --oracle-checkout) ORACLE_CHECKOUT="$2"; shift 2 ;;
     --flex-extract-checkout) FLEXEXTRACT_CHECKOUT="$2"; shift 2 ;;
+    --require-flex-extract-oracle) REQUIRE_FLEXEXTRACT_ORACLE="1"; shift ;;
     --skip-oracle-build) SKIP_ORACLE_BUILD="1"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) log_error "Unknown argument: $1"; usage; exit 2 ;;
@@ -461,6 +465,9 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     printf '%s\n' "${FLEXEXTRACT_ORACLE_STATUS}" > "${FLEXEXTRACT_STATUS_FILE}"
   else
     log_warn "flex_extract checkout not found at ${FLEXEXTRACT_CHECKOUT}; calc_etadot oracle tier is NOT_WIRED"
+    if [ "${REQUIRE_FLEXEXTRACT_ORACLE}" = "1" ]; then
+      fail "calc_etadot oracle tier is required but the pinned flex_extract checkout is absent (#70)"
+    fi
   fi
 else
   FLEXEXTRACT_ORACLE_STATUS="NOT_RUN"

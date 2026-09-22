@@ -166,20 +166,59 @@ output = input1*dz2 + input2*dz1
 
 ## 4. Temporal conventions
 
-Two in-memory members `memtime(1) <= itime <= memtime(2)`. `find_time_vars`
-(`interpol_mod.f90:190-198`):
+`find_time_vars` (`interpol_mod.f90:190-198`) derives weights from the two
+in-memory wind-field times:
 
 ```
 dt1 = itime - memtime(1)
 dt2 = memtime(2) - itime
-dtt = 1 / (dt1 + dt2)          ! undefined outside [memtime(1), memtime(2)]
+dtt = 1 / (dt1 + dt2)
 ```
 
-`temporal_interpolation` (`interpol_mod.f90:531-537`):
+`temporal_interpolation` (`interpol_mod.f90:531-537`) then applies them:
 
 ```
 output = (time1*dt2 + time2*dt1) * dtt
 ```
+
+There is **no range guard in either primitive**. For a non-zero memory span,
+`dt1 + dt2 = memtime(2) - memtime(1)` remains constant, so calling these
+routines with `itime` outside the two memory times performs linear
+**extrapolation** rather than becoming mathematically undefined.
+
+### Production caller path and range ownership
+
+The pinned FLEXPART call path separates interpolation math from wind-memory
+coverage policy:
+
+```
+getfields_mod::getfields
+    -> maintains the wind fields / memtime entries held in memory
+
+advance_mod::advance
+    -> interpol_mod::init_interpol(itime, ...)
+        -> find_grid_indices / find_grid_distances
+        -> find_time_vars(itime)
+    -> interpol_* consumers
+        -> temporal_interpolation(...)
+```
+
+The Petterssen correction is a concrete caller-side example of this separation:
+`advance_mod::advance` checks that the predicted step end remains within the
+loaded wind-field time before calling `petterssen_corr`. That guard is **not**
+part of `find_time_vars` or `temporal_interpolation`, and must not be inferred
+as primitive behavior.
+
+Therefore the #71 oracle contract is:
+
+- inside the selected two-member window, downstream #74 values must match the
+  direct FLEXPART routines;
+- the direct FLEXPART temporal primitives themselves extrapolate when invoked
+  outside that window;
+- if #74 chooses to reject requests outside its canonical snapshot window, that
+  is an explicit fail-closed candidate/API policy and a documented divergence
+  from the raw primitive outside its normal caller-managed domain, not FLEXPART
+  oracle behavior.
 
 ### Verified golden
 

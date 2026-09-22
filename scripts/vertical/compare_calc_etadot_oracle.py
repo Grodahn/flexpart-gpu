@@ -33,7 +33,8 @@ PRESSURE_VELOCITY_ABS_TOL_PA_S = 1.0e-7
 PRESSURE_VELOCITY_REL_TOL = 3.0e-5
 MAX_ATTRIBUTED_REL_ERROR = 3.0e-5
 
-PINNED_CALC_ETADOT_SHA256 = "07ED3522F8C1B35065965D01AF828F7532605A3AA9BE44D48FB9CA3F2ED976FF"
+PINNED_CALC_ETADOT_SHA256 = "160F267F8741F23D13FDBA2F7A88F110BB131AA84AD7894FA43605258E55B0D9"
+PINNED_CALC_ETADOT_GIT_BLOB = "741eba91eab049df23a560219d0f2656a6cc9881"
 
 REQUIRED_TRANSFORM_SNIPPETS = (
     "P00=101325.",
@@ -63,6 +64,10 @@ EXPECTED_NAMGEN = {
 
 def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def sha256_bytes(data):
+    return hashlib.sha256(data).hexdigest()
 
 
 def git(checkout, *args):
@@ -104,13 +109,25 @@ def validate_checkout(checkout, manifest):
     calc_etadot = checkout / "Source" / "Fortran" / "calc_etadot.f90"
     if not calc_etadot.is_file():
         raise ValueError(f"missing oracle source {calc_etadot}")
-    digest = sha256(calc_etadot)
+
+    source_ref = f"{pinned_commit}:Source/Fortran/calc_etadot.f90"
+    source_blob = git(checkout, "rev-parse", source_ref)
+    if source_blob.lower() != PINNED_CALC_ETADOT_GIT_BLOB.lower():
+        raise ValueError(
+            f"calc_etadot.f90 git blob {source_blob} != pinned "
+            f"{PINNED_CALC_ETADOT_GIT_BLOB}"
+        )
+    source_bytes = subprocess.run(
+        ["git", "-C", str(checkout), "show", source_ref],
+        check=True, capture_output=True
+    ).stdout
+    digest = sha256_bytes(source_bytes)
     if digest.lower() != PINNED_CALC_ETADOT_SHA256.lower():
         raise ValueError(
-            f"calc_etadot.f90 sha256 {digest} != pinned "
+            f"canonical calc_etadot.f90 sha256 {digest} != pinned "
             f"{PINNED_CALC_ETADOT_SHA256}"
         )
-    source_text = calc_etadot.read_text(encoding="utf-8")
+    source_text = source_bytes.decode("utf-8")
     missing = [
         snippet for snippet in REQUIRED_TRANSFORM_SNIPPETS
         if snippet not in source_text
@@ -238,6 +255,7 @@ def main():
             "pinned_commit": manifest["pinned_commit"],
             "checkout_clean": True,
             "calc_etadot_f90_sha256": PINNED_CALC_ETADOT_SHA256,
+            "calc_etadot_f90_git_blob": PINNED_CALC_ETADOT_GIT_BLOB,
             "source_contract_snippets_verified": True,
             "namelist_configuration_verified": True,
         },
@@ -260,7 +278,12 @@ def main():
         "inputs": {
             "snapshot": {"path": str(args.source_snapshot), "sha256": source_snapshot_sha},
             "motion": {"path": str(args.source_motion), "sha256": source_motion_sha},
-            "calc_etadot_f90": {"path": str(calc_etadot), "sha256": sha256(calc_etadot)},
+            "calc_etadot_f90": {
+                "path": str(calc_etadot),
+                "git_blob": source_blob,
+                "canonical_sha256": digest,
+                "working_tree_sha256": sha256(calc_etadot),
+            },
         },
         "tolerances": {
             "pressure_velocity": {

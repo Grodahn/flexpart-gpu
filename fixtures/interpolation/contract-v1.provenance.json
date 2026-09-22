@@ -112,8 +112,8 @@
     "linked_object_set_sha256": "388d1f824306df30fc74fbedc6464e86602b6a93ba782e9e1dad20ffacc3327c"
   },
   "cases": {
-    "horizontal-interior": "3eaa131a904a874e5fff07eb832f265ebbe1859ba959e06ac63fecff2104229d",
-    "horizontal-periodic-wrap": "c91f73034789b690848c7266ff12cd7653cdef2c98f9fd7924032d785b293b9c",
+    "horizontal-interior": "9bfc39be93f5b743f1b2c46c5ea589c7cd2c9a6847dc9af24f638bc8abc68662",
+    "horizontal-periodic-wrap": "4da71b7aeded048f40d35ccccb2eafb09226c23fab40d8cf27f105b381061003",
     "vertical-model-levels": "95f72332cb4b5e8e2878debaba12bb41f4a45234514687a86d7ec9e7abcc2520",
     "temporal-bilinear": "ae44f1e5dba664011bb51029d2a58693d39f5aa975a00214baf6aa9cb5f92085",
     "rain-layer-fields": "a0182f4ad823f67971a14304be7814021a09e52d93d21fc044308684508451d0",
@@ -224,11 +224,11 @@
   "fixture_artifact": {
     "path": "fixtures/interpolation/contract-v1.json",
     "hash_kind": "normalized_canonical_json_sha256",
-    "sha256": "b1346ae8a741b9508237c9add53ba4bda865015046c209eaa10cbb78ccd5347d"
+    "sha256": "c7a01435c7df428f39f35f97eb2a85ac5b2f00a9aa02f3f8666b5d175baf4fc8"
   },
   "generator_source": {
     "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
-    "sha256": "4dbebea3488c8f0b424a12d7d3be79ad672090f25f4ea524daa1291fdfaa835e"
+    "sha256": "66119ccb268376bd5451bdc5df729b8dd4d762c0069152f03640ba7e98d66a73"
   },
   "oracle_harness_source": {
     "path": "scripts/interpolation/direct_oracle.sh",

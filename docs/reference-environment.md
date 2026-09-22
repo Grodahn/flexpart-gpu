@@ -248,12 +248,14 @@ from `flexpart-fortran:latest` `sha256:cafb19c…` with gfortran 11.4.0):
 bytes, and the candidate matched the oracle field with worst relative error
 1.03e-5 and worst absolute error 2.5e-8 Pa/s. The `calc_etadot.f90` blob at
 the pinned commit hashes to sha256
-`07ED3522F8C1B35065965D01AF828F7532605A3AA9BE44D48FB9CA3F2ED976FF` (verified
-byte-identical to master) and is cross-checked by the comparison harness
+`160F267F8741F23D13FDBA2F7A88F110BB131AA84AD7894FA43605258E55B0D9`; the source is
+also pinned by git blob `741eba91eab049df23a560219d0f2656a6cc9881`, with the
+hash computed from canonical Git bytes so host line-ending conversion cannot
+change the fingerprint and is cross-checked by the comparison harness
 together with the ETAR transform source-snippet contract and the fort.4
 config.
 
-Only the `positive_eta_decreasing` raw eta-dot sign convention is accepted by
+Only the `positive_eta_increasing` raw eta-dot sign convention is accepted by
 the validated native contract. The opposite sign convention remains
 fail-closed until separately demonstrated against an independent oracle.
 

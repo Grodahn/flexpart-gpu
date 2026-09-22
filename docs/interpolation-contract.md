@@ -146,6 +146,18 @@ p1..p4           = 0.375, 0.125, 0.375, 0.125
 value            = 230.0
 ```
 
+The same non-periodic fixture also samples the valid north-edge query
+`(xt,yt)=(2.9,2.0)`. It remains inside the canonical domain
+`0 <= xt <= nx-1`, `0 <= yt <= ny-1`; `jyp` is clamped at the exact last
+row while the east-neighbor index stays inside the regional grid. #71 therefore
+does **not** freeze regional east-wrap behavior outside the supported domain.
+
+For the periodic fixture, `0 <= xt < nx` covers the seam up to (but excluding)
+the duplicate endpoint at `xt=nx`; Y remains `0 <= yt <= ny-1`. Its north-edge
+case is now exactly `yt=2.0`, not an overshoot. Any horizontal query outside
+these domains is deliberately not part of the #71 candidate contract and must
+fail closed in #72 rather than inheriting raw primitive wrap/clamp behavior.
+
 ### Geographic-to-grid oracle case
 
 The `horizontal-geographic-interior` case uses a non-zero geographic origin

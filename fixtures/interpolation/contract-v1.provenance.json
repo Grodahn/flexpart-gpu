@@ -121,7 +121,7 @@
     "real-era5-etex-temperature-column": "5679760f10c75679ecd597979b5caadfd3bf30debbbf9b0fa1fc6af1aa9e3771",
     "horizontal-geographic-interior": "1858607f1f5a976af7476f8754fd74bd84b5986f2eeeb32241378edf115fec6e"
   },
-  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules. The geographic case intentionally composes point_mod::coordtrafo with the horizontal interpolation primitives as an oracle exercise path; pristine production uses coordtrafo during release-point initialization, while runtime particle sampling enters interpol_mod::init_interpol with grid coordinates and then uses the horizontal primitives. Precipitation ingestion is crosswalked through getfields_mod::getfields -> windfields_mod::readwind_ecmwf/readwind_gfs -> lsprec/convprec, while production wet-deposition sampling is wetdepo_mod::wetdepo -> get_wetscav -> interpolation setup -> interpol_mod::interpol_rain. W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output as its vertical geometry/value source. The real #29 ERA5/ETEX temperature column is paired with #30's pinned FLEXPART level-height output and sampled by the same #71 vertical routines. Golden values in contract-v1.json are direct interpolation-oracle outputs.",
+  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules. The geographic case intentionally composes point_mod::coordtrafo with the horizontal interpolation primitives as an oracle exercise path. Production behavior is crosswalked as direct CALL edges rather than synthetic linear stacks: release coordtrafo is called from read_options_and_initialise_flexpart; timemanager calls getfields and advance as siblings; advance calls init_interpol and adv_above_pbl; adv_above_pbl calls interpol_wind; interpol_wind performs its own grid/time/vertical setup and dispatches to interpol_wind_meter, which calls horizontal, vertical and temporal interpolation. Precipitation ingestion and wet-deposition sampling are likewise recorded as direct CALL edges, with lsprec/convprec named separately as data fields rather than pseudo-routines. W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output as its vertical geometry/value source. The real #29 ERA5/ETEX temperature column is paired with #30's pinned FLEXPART level-height output and sampled by the same #71 vertical routines. Golden values in contract-v1.json are direct interpolation-oracle outputs.",
   "real_data_samples": [
     {
       "id": "era5-etex-real-column-v1",
@@ -224,11 +224,11 @@
   "fixture_artifact": {
     "path": "fixtures/interpolation/contract-v1.json",
     "hash_kind": "normalized_canonical_json_sha256",
-    "sha256": "c7a01435c7df428f39f35f97eb2a85ac5b2f00a9aa02f3f8666b5d175baf4fc8"
+    "sha256": "c857f18a99501290b2820fe890e94999f88e6a5d50508e17eb58b37c4d608dd1"
   },
   "generator_source": {
     "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
-    "sha256": "66119ccb268376bd5451bdc5df729b8dd4d762c0069152f03640ba7e98d66a73"
+    "sha256": "123cc1d36dfea02673f6d4e3156f02e0f27240e43c6581166a14584a67764322"
   },
   "oracle_harness_source": {
     "path": "scripts/interpolation/direct_oracle.sh",

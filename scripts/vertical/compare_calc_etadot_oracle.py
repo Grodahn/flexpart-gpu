@@ -35,6 +35,7 @@ MAX_ATTRIBUTED_REL_ERROR = 3.0e-5
 
 PINNED_CALC_ETADOT_SHA256 = "160F267F8741F23D13FDBA2F7A88F110BB131AA84AD7894FA43605258E55B0D9"
 PINNED_CALC_ETADOT_GIT_BLOB = "741eba91eab049df23a560219d0f2656a6cc9881"
+REAL_ERA5_CLASSIFICATION = "real_era5_native_model_level_full_column"
 
 REQUIRED_TRANSFORM_SNIPPETS = (
     "P00=101325.",
@@ -182,11 +183,38 @@ def main():
 
     oracle = json.loads(args.oracle.read_text(encoding="utf-8"))
     source_fixture = oracle.get("source_fixture", {})
-    if source_fixture.get("classification") != "upstream_flex_extract_native_model_level":
-        raise ValueError("oracle fixture is not identified as the pinned native-model-level source")
+    classification = source_fixture.get("classification")
+    if classification not in {
+        "upstream_flex_extract_native_model_level",
+        REAL_ERA5_CLASSIFICATION,
+    }:
+        raise ValueError(
+            f"oracle fixture has unsupported classification: {classification!r}"
+        )
     raw_metadata = source_fixture.get("raw_grib_metadata", {})
     if raw_metadata.get("paramId") != 77:
         raise ValueError(f"oracle raw GRIB is not parameter 77: {raw_metadata!r}")
+    if classification == REAL_ERA5_CLASSIFICATION:
+        if raw_metadata.get("typeOfLevel") != "hybrid":
+            raise ValueError(
+                f"real ERA5 eta-dot is not on native hybrid levels: {raw_metadata!r}"
+            )
+        coverage = source_fixture.get("level_coverage", {})
+        if (
+            coverage.get("first") != 1
+            or coverage.get("last") != 137
+            or coverage.get("count") != 137
+            or coverage.get("native_level_count") != 137
+            or coverage.get("complete_native_column") is not True
+        ):
+            raise ValueError(
+                f"real ERA5 oracle does not cover the complete 137-level column: {coverage!r}"
+            )
+        source_provenance = source_fixture.get("source_provenance", {}).get("content", {})
+        if source_provenance.get("schema") != "flexpart-gpu.etadot-real-era5-case.v1":
+            raise ValueError("real ERA5 oracle lacks pinned source provenance")
+        if source_provenance.get("classification") != REAL_ERA5_CLASSIFICATION:
+            raise ValueError("real ERA5 source provenance classification mismatch")
 
     run_provenance = json.loads(args.run_provenance.read_text(encoding="utf-8"))
     if run_provenance.get("schema") != "flexpart-gpu.etadot-oracle-run-provenance.v1":
@@ -200,6 +228,33 @@ def main():
     fixture_hashes = source_fixture.get("source_hashes_sha256", {})
     run_inputs = run_provenance.get("oracle_inputs", {})
     run_outputs = run_provenance.get("oracle_outputs", {})
+
+    if classification == REAL_ERA5_CLASSIFICATION:
+        fort4_path = Path(run_inputs.get("fort.4", {}).get("path", ""))
+        if not fort4_path.is_file():
+            raise ValueError("real ERA5 oracle run provenance lacks fort.4")
+        real_namgen = parse_namgen(fort4_path)
+        real_expected = {
+            "maxl": 65,
+            "maxb": 41,
+            "mlevel": 137,
+            "mlevelist": "1/to/137",
+            "metapar": 77,
+            "momega": 0,
+            "momegadiff": 0,
+            "mgauss": 0,
+            "msmooth": 0,
+            "meta": 1,
+            "metadiff": 0,
+            "mdpdeta": 1,
+        }
+        for key, expected in real_expected.items():
+            actual_value = real_namgen.get(key)
+            if actual_value != expected:
+                raise ValueError(
+                    f"real ERA5 calc_etadot namelist mismatch: "
+                    f"{key}={actual_value!r} expected {expected!r}"
+                )
     for name in ("fort.12", "fort.21"):
         if fixture_hashes.get(name) != run_inputs.get(name, {}).get("sha256"):
             raise ValueError(f"{name} hash differs between extracted fixture and run provenance")
@@ -210,6 +265,12 @@ def main():
     levels = oracle["levels_present"]
     nx, ny = oracle["nx"], oracle["ny"]
     nxy = nx * ny
+    if classification == REAL_ERA5_CLASSIFICATION:
+        if nlev != 137 or levels != list(range(1, 138)) or (nx, ny) != (65, 41):
+            raise ValueError(
+                "real ERA5 oracle coverage changed: "
+                f"nlev={nlev}, levels={levels[:3]}..{levels[-3:]}, grid={(nx, ny)}"
+            )
 
     values = candidate["result"]["values_interface_pa_s"]
     if len(values) != (nlev + 1) * nxy:
@@ -266,6 +327,13 @@ def main():
             "sha256": sha256(args.candidate),
         },
         "source_fixture": source_fixture,
+        "coverage": {
+            "classification": classification,
+            "levels_compared": len(levels),
+            "points_per_level": nxy,
+            "comparisons": len(levels) * nxy,
+            "complete_real_native_column": classification == REAL_ERA5_CLASSIFICATION,
+        },
         "run_provenance": {
             "path": str(args.run_provenance),
             "sha256": sha256(args.run_provenance),

@@ -178,6 +178,22 @@ fn run_vertical_check(case: &FixtureCase) {
 
     for (index, query) in golden_queries(case, nquery).iter().enumerate() {
         let query_tokens = tokens(&input[cursor + index]);
+        let coordinate = query_tokens[0]
+            .parse::<u32>()
+            .expect("vertical coordinate id");
+        let expected_coordinate = match case.vertical_staggering.as_deref() {
+            Some("level_center") => 0,
+            Some("level_interface") => 1,
+            other => panic!(
+                "vertical case {} must declare level_center/level_interface staggering, got {other:?}",
+                case.id
+            ),
+        };
+        assert_eq!(
+            coordinate, expected_coordinate,
+            "{} query {index} coordinate id must match declared staggering",
+            case.id
+        );
         let zt = parse_f64(&query_tokens[1], "zt");
         let (indz, indzp, dz1, dz2, _bounds) = vertical_levels(&heights, zt);
         let expected = values[indz - 1] * dz2 + values[indzp - 1] * dz1;
@@ -331,6 +347,38 @@ fn contract_fixture_metadata_is_frozen() {
         real["compatibility"]["vertical_transform_issue"], 30,
         "real sample must use the #30 vertical-transform path"
     );
+
+    let model = contract
+        .cases
+        .iter()
+        .find(|case| case.id == "vertical-model-levels")
+        .expect("model-level vertical fixture");
+    assert_eq!(model.vertical_staggering.as_deref(), Some("level_center"));
+
+    let interface = contract
+        .cases
+        .iter()
+        .find(|case| case.id == "vertical-interface-wzlev")
+        .expect("W/interface vertical fixture");
+    assert_eq!(
+        interface.vertical_staggering.as_deref(),
+        Some("level_interface")
+    );
+    let source = interface
+        .source_oracle
+        .as_ref()
+        .expect("W/interface fixture must identify its direct FLEXPART source");
+    assert_eq!(source["producer_issue"], 30);
+    assert_eq!(
+        source["producer_routine"],
+        "verttransform_mod::verttransform_ecmwf_heights"
+    );
+    assert_eq!(source["geometry_field"], "wzlev");
+    assert_eq!(source["value_field"], "omega * pinmconv");
+    assert_eq!(
+        source["oracle_output_sha256"],
+        "ae7cd8c7a057e81439bc7e316e123c438951a4a0cd0bff9c4e21b086bac3e9bf"
+    );
 }
 
 #[test]
@@ -353,6 +401,14 @@ fn contract_provenance_matches_fixture() {
     assert_eq!(
         provenance.real_data_samples[0]["id"],
         "era5-etex-real-column-v1"
+    );
+    assert_eq!(
+        provenance.interface_vertical_source["oracle_output_sha256"],
+        "ae7cd8c7a057e81439bc7e316e123c438951a4a0cd0bff9c4e21b086bac3e9bf"
+    );
+    assert_eq!(
+        provenance.interface_vertical_source["geometry_field"],
+        "wzlev"
     );
 
     // The linked objects must name every module the oracle driver calls.
@@ -399,6 +455,7 @@ fn contract_provenance_matches_fixture() {
         "horizontal-interior",
         "horizontal-periodic-wrap",
         "vertical-model-levels",
+        "vertical-interface-wzlev",
         "temporal-bilinear",
         "rain-layer-fields",
     ] {
@@ -464,6 +521,10 @@ struct PinnedFlexpart {
 struct FixtureCase {
     id: String,
     mode: String,
+    #[serde(default)]
+    vertical_staggering: Option<String>,
+    #[serde(default)]
+    source_oracle: Option<serde_json::Value>,
     input: Vec<String>,
     golden: serde_json::Map<String, serde_json::Value>,
 }
@@ -478,6 +539,7 @@ struct ContractProvenance {
     linked_flexpart: LinkedFlexpart,
     cases: std::collections::HashMap<String, String>,
     real_data_samples: Vec<serde_json::Value>,
+    interface_vertical_source: serde_json::Value,
 }
 
 #[derive(Deserialize)]

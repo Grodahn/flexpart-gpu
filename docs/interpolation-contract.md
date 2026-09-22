@@ -25,6 +25,17 @@ The oracle links the pristine `src/com_mod.o`, `src/par_mod.o`, `src/windfields_
 `src/interpol_mod.o` and calls the real pinned routines directly. The driver's output
 is the only oracle evidence; no reimplementation is used as evidence.
 
+Every machine-readable case carries a `semantics` object with explicit coordinate
+conventions, horizontal/vertical staggering, storage/vertical ordering, units and time
+semantics. The real ERA5/ETEX descriptor carries the same categories plus field-specific
+units/staggering. These fields are part of the reproduced contract, not documentation-only
+annotations.
+
+The provenance sibling pins the final `contract-v1.json` SHA-256 and the exact source
+hashes for the fixture generator, direct-oracle harness, real-column extractor, oracle
+driver and FLEXPART reference manifest. CI requires those metadata fields to reproduce
+exactly.
+
 ## 2. Horizontal grid conventions
 
 FLEXPART reads grids with cell-center samples. The canonical convention frozen here is

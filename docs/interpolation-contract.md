@@ -297,34 +297,47 @@ yint4 (ctwc) = 0.0025
 intiy1/intiy2 = -9999, -9999   (all four corners icmv -> CLOUD -9999 -9999)
 ```
 
-## 6. Real #29/#30 ERA5/ETEX sample
+## 6. Real #29/#30 ERA5/ETEX oracle-sampled column
 
-The machine-readable contract includes one real sample descriptor,
-`era5-etex-real-column-v1`, anchored to the checked-in #29 canonical fixture
-`fixtures/meteorology/era5-etex-native-v1.json`.
+The contract now contains both the real source descriptor
+`era5-etex-real-column-v1` **and an actual direct-oracle sampling case**,
+`real-era5-etex-temperature-column`.
 
-The frozen selection is the column at canonical `x=0, y=0`:
+The source is the checked-in #29 canonical fixture
+`fixtures/meteorology/era5-etex-native-v1.json`, selecting canonical
+`x=0, y=0` at `-2° / 48°` and `1994-10-23T15:00:00Z`. Its 137 real ERA5
+temperature values are paired with the 137 model-level AGL heights produced for
+that exact column by #30's pinned
+`verttransform_mod::verttransform_ecmwf_heights` direct-routine oracle. The
+native top-to-bottom/increasing-pressure profile and the oracle heights are
+reversed together into the bottom-to-top metric ordering consumed by
+`find_z_level_meters`.
 
-- timestamp: `1994-10-23T15:00:00Z`;
-- longitude/latitude: `-2° / 48°`;
-- 137 native ERA5 hybrid levels;
-- represented fields: `wind_u`, `wind_v`, `temperature`,
-  `specific_humidity`, and `surface_pressure`.
+#71 then feeds those **real values and real #30 geometry** through the pinned
+FLEXPART 11.1 interpolation binary, calling
+`find_z_level_meters -> find_vert_vars -> vert_interpol`. Five samples freeze
+both level-array boundaries, one exact interior level and two strict interior
+interpolations:
 
-The descriptor records the SHA-256 of both the canonical #29 fixture and its checked-in
-surface archive. `prepare_interpolation_fixtures.py` recomputes those hashes and fails
-closed if either source drifts.
+| AGL query | Direct FLEXPART temperature |
+| ---: | ---: |
+| 10.004482 m | 286.817047 K |
+| 1132.992432 m | 277.940491 K |
+| 13156.470703 m | 221.304260 K |
+| 37143.621094 m | 238.244354 K |
+| 76287.062500 m | 186.494110 K |
 
-#71 does not duplicate #30's vertical transformation. CI step 2b extracts exactly this
-real column through `scripts/vertical/extract_real_etex_column.py`, runs the #30
-vertical transform, and compares the resulting 137-level column against the pinned
-FLEXPART 11.1 direct-routine oracle. The contract records the corresponding
-`real-comparison-report.json` and real-column provenance paths as the oracle evidence
-for this real-data sample. Step 2c then requires the real-data descriptor to reproduce
-exactly together with the synthetic interpolation goldens.
+The #30 real geometry oracle output is frozen by SHA-256
+`7fe3f5fa17d0067464258c93efbe1bbf9cf2403b4d442191b08b6deb29e026a4`.
+The resulting #71 interpolation-oracle output is frozen in provenance as
+`5679760f10c75679ecd597979b5caadfd3bf30debbbf9b0fa1fc6af1aa9e3771`.
 
-This satisfies the real #29/#30-compatible ERA5/ETEX fixture obligation without adding
-provider decoding or moving vertical-transform ownership into #71.
+CI step 2b regenerates and validates the real #30 column against pristine
+FLEXPART. Step 2c derives the real #71 input from that output, runs the pinned
+interpolation routines, and requires the complete case, oracle-output hash and
+source hash to reproduce the committed contract. This keeps #29 provider
+normalization and #30 vertical transformation outside #71 while proving that
+#71 samples their real handoff rather than merely pointing at a descriptor.
 
 ## 7. Interface-staggered vertical sampling on #30 W geometry
 
@@ -390,7 +403,8 @@ than extending this contract.
 - `fixtures/interpolation/*.json` — canonical sampling cases (schema
   `flexpart-gpu.interpolation-contract.v1`) with embedded golden values and provenance,
   including `vertical-interface-wzlev` sourced from #30's direct FLEXPART
-  `wzlev`/`pinmconv` evidence.
+  `wzlev`/`pinmconv` evidence and `real-era5-etex-temperature-column`,
+  which samples a real #29 temperature profile on #30 direct-oracle geometry.
 - `fixtures/meteorology/era5-etex-native-v1.json` plus its provenance and
   surface archive — real #29 source referenced by `era5-etex-real-column-v1`; #30 CI
   supplies the pinned direct-routine vertical-oracle evidence for that selection.

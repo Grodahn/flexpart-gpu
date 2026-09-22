@@ -62,9 +62,10 @@
     "vertical-model-levels": "95f72332cb4b5e8e2878debaba12bb41f4a45234514687a86d7ec9e7abcc2520",
     "temporal-bilinear": "ae44f1e5dba664011bb51029d2a58693d39f5aa975a00214baf6aa9cb5f92085",
     "rain-layer-fields": "a0182f4ad823f67971a14304be7814021a09e52d93d21fc044308684508451d0",
-    "vertical-interface-wzlev": "f0ff2a2eca1b15f1574d9ee603a30a5fc6199cabcd800bfa2f0c009971c0e9c5"
+    "vertical-interface-wzlev": "f0ff2a2eca1b15f1574d9ee603a30a5fc6199cabcd800bfa2f0c009971c0e9c5",
+    "real-era5-etex-temperature-column": "5679760f10c75679ecd597979b5caadfd3bf30debbbf9b0fa1fc6af1aa9e3771"
   },
-  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules and calls find_grid_indices/find_grid_distances/find_z_level_meters/find_vert_vars/hor_interpol_4d/temporal_interpolation/vert_interpol/interpol_rain directly on canonical synthetic grids. W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output as its vertical geometry/value source. The contract also pins the checked-in real #29/#30 ERA5/ETEX column source and its #30 pinned-oracle evidence. Golden values in contract-v1.json are the direct interpolation-oracle outputs.",
+  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules and calls find_grid_indices/find_grid_distances/find_z_level_meters/find_vert_vars/hor_interpol_4d/temporal_interpolation/vert_interpol/interpol_rain directly on canonical synthetic grids. W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output as its vertical geometry/value source. The real #29 ERA5/ETEX temperature column is paired with #30's pinned FLEXPART level-height output and sampled by the same #71 vertical routines. Golden values in contract-v1.json are direct interpolation-oracle outputs.",
   "real_data_samples": [
     {
       "id": "era5-etex-real-column-v1",
@@ -101,9 +102,12 @@
         "ci_gate_step": "2b",
         "pinned_oracle_evidence": "target/ci-gate/vertical-column/real-comparison-report.json",
         "fixture_provenance_evidence": "target/ci-gate/vertical-column/real-column-fixture-provenance.json",
-        "extraction_source_sha256": "bd1e9d8531ceabe99544a7e7659766d1642fcb576a0fdd505aa4c50886f3bdc0"
+        "extraction_source_sha256": "bd1e9d8531ceabe99544a7e7659766d1642fcb576a0fdd505aa4c50886f3bdc0",
+        "interpolation_contract_issue": 71,
+        "interpolation_sampling_case": "real-era5-etex-temperature-column",
+        "interpolation_geometry_oracle_sha256": "7fe3f5fa17d0067464258c93efbe1bbf9cf2403b4d442191b08b6deb29e026a4"
       },
-      "scope": "Checked-in real ERA5/ETEX source column used by #29 and transformed/validated by #30 against the pinned FLEXPART 11.1 direct routine oracle. #71 references this source as its required real sampling fixture; it does not duplicate provider decoding or vertical-transform ownership.",
+      "scope": "Checked-in real ERA5/ETEX source column used by #29 and transformed/validated by #30 against the pinned FLEXPART 11.1 direct routine oracle. #71 samples the real temperature profile on #30's pinned FLEXPART AGL geometry through find_z_level_meters/find_vert_vars/vert_interpol. Provider decoding and vertical-transform ownership remain in #29/#30.",
       "semantics": {
         "coordinates": {
           "horizontal": "longitude/latitude cell centers in degrees",
@@ -164,11 +168,11 @@
   "fixture_artifact": {
     "path": "fixtures/interpolation/contract-v1.json",
     "hash_kind": "normalized_canonical_json_sha256",
-    "sha256": "87dfb15ef021b43cb1c4e65902567fd8bf1c95951e479e10e2be807a021b5e6f"
+    "sha256": "d261a6d5656a644db4bf3ba7bc29091c4da2477802b9553e7af461f3fe51fba6"
   },
   "generator_source": {
     "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
-    "sha256": "a2001e2f6822e3f08f5cb5ea888c9837d1ca17d870c646d20f420ddf5fbef86a"
+    "sha256": "c38f385578a331ab032cd17b2e1cbc02b0a2628e5a2242faf10245610ea428c6"
   },
   "oracle_harness_source": {
     "path": "scripts/interpolation/direct_oracle.sh",
@@ -181,5 +185,20 @@
   "reference_manifest": {
     "path": "reference/flexpart-11.1.json",
     "sha256": "2c13a87733098e385dc12f33d1bf5ca60ba275775f472ec279b8a0a234c3a464"
+  },
+  "real_vertical_source": {
+    "producer_issue": 30,
+    "producer_driver": "scripts/vertical/direct_oracle_driver.f90",
+    "producer_routine": "verttransform_mod::verttransform_ecmwf_heights",
+    "oracle_output_sha256": "7fe3f5fa17d0067464258c93efbe1bbf9cf2403b4d442191b08b6deb29e026a4",
+    "geometry_field": "level height_agl_m",
+    "value_field": "temperature",
+    "value_source": "fixtures/meteorology/era5-etex-native-v1.json",
+    "canonical_x": 0,
+    "canonical_y": 0,
+    "longitude_deg": -2,
+    "latitude_deg": 48,
+    "timestamp": "1994-10-23T15:00:00Z",
+    "epoch_seconds": 782924400
   }
 }

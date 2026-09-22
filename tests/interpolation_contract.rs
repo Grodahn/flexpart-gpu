@@ -347,6 +347,45 @@ fn contract_fixture_metadata_is_frozen() {
         real["compatibility"]["vertical_transform_issue"], 30,
         "real sample must use the #30 vertical-transform path"
     );
+    assert_eq!(real["compatibility"]["interpolation_contract_issue"], 71);
+    assert_eq!(
+        real["compatibility"]["interpolation_sampling_case"],
+        "real-era5-etex-temperature-column"
+    );
+
+    let real_sampling = contract
+        .cases
+        .iter()
+        .find(|case| case.id == "real-era5-etex-temperature-column")
+        .expect("real ERA5/ETEX sampling fixture");
+    assert_eq!(
+        real_sampling.vertical_staggering.as_deref(),
+        Some("level_center")
+    );
+    assert_eq!(real_sampling.golden["NLEVEL"].as_f64(), Some(137.0));
+    assert_eq!(real_sampling.golden["NQUERY"].as_f64(), Some(5.0));
+    assert_eq!(real_sampling.semantics["units"]["value"], "kelvin");
+    assert_eq!(
+        real_sampling.semantics["time"]["timestamp"],
+        "1994-10-23T15:00:00Z"
+    );
+    let real_source = real_sampling
+        .source_oracle
+        .as_ref()
+        .expect("real sampling fixture must identify #30 direct-oracle geometry");
+    assert_eq!(real_source["producer_issue"], 30);
+    assert_eq!(
+        real_source["oracle_output_sha256"],
+        "7fe3f5fa17d0067464258c93efbe1bbf9cf2403b4d442191b08b6deb29e026a4"
+    );
+    assert_eq!(
+        real_source["value_source"],
+        "fixtures/meteorology/era5-etex-native-v1.json"
+    );
+    assert_eq!(
+        real["compatibility"]["interpolation_geometry_oracle_sha256"],
+        real_source["oracle_output_sha256"]
+    );
 
     let model = contract
         .cases
@@ -467,6 +506,17 @@ fn contract_provenance_matches_fixture() {
         "wzlev"
     );
     assert_eq!(
+        provenance.real_vertical_source["oracle_output_sha256"],
+        "7fe3f5fa17d0067464258c93efbe1bbf9cf2403b4d442191b08b6deb29e026a4"
+    );
+    assert_eq!(
+        provenance
+            .cases
+            .get("real-era5-etex-temperature-column")
+            .map(String::as_str),
+        Some("5679760f10c75679ecd597979b5caadfd3bf30debbbf9b0fa1fc6af1aa9e3771")
+    );
+    assert_eq!(
         provenance.fixture_artifact["path"],
         "fixtures/interpolation/contract-v1.json"
     );
@@ -476,7 +526,7 @@ fn contract_provenance_matches_fixture() {
     );
     assert_eq!(
         provenance.fixture_artifact["sha256"],
-        "87dfb15ef021b43cb1c4e65902567fd8bf1c95951e479e10e2be807a021b5e6f"
+        "d261a6d5656a644db4bf3ba7bc29091c4da2477802b9553e7af461f3fe51fba6"
     );
     assert_eq!(
         provenance.generator_source["path"],
@@ -542,6 +592,7 @@ fn contract_provenance_matches_fixture() {
         "vertical-interface-wzlev",
         "temporal-bilinear",
         "rain-layer-fields",
+        "real-era5-etex-temperature-column",
     ] {
         assert!(
             golden_files.contains(&name),
@@ -625,6 +676,7 @@ struct ContractProvenance {
     cases: std::collections::HashMap<String, String>,
     real_data_samples: Vec<serde_json::Value>,
     interface_vertical_source: serde_json::Value,
+    real_vertical_source: serde_json::Value,
     fixture_artifact: serde_json::Value,
     generator_source: serde_json::Value,
     oracle_harness_source: serde_json::Value,

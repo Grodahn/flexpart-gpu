@@ -104,6 +104,89 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def build_real_data_sample() -> dict:
+    """Describe and verify the checked-in real #29/#30 ERA5/ETEX column source."""
+    repo_root = Path(__file__).resolve().parents[2]
+    canonical_path = repo_root / "fixtures/meteorology/era5-etex-native-v1.json"
+    provenance_path = (
+        repo_root / "fixtures/meteorology/era5-etex-native-v1.provenance.json"
+    )
+    surface_path = (
+        repo_root / "fixtures/etex/native-mini/era5-surface-19941023-24.npz"
+    )
+    extraction_path = "scripts/vertical/extract_real_etex_column.py"
+
+    canonical = json.loads(canonical_path.read_text(encoding="utf-8"))
+    source_provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    expected_canonical_sha = source_provenance["artifact"]["sha256"]
+    actual_canonical_sha = sha256(canonical_path)
+    if actual_canonical_sha != expected_canonical_sha:
+        raise ValueError(
+            "real ERA5/ETEX canonical fixture hash does not match its #29 provenance"
+        )
+
+    expected_surface_sha = source_provenance["source"]["surface_archive"]["sha256"]
+    actual_surface_sha = sha256(surface_path)
+    if actual_surface_sha != expected_surface_sha:
+        raise ValueError(
+            "real ERA5/ETEX surface archive hash does not match its #29 provenance"
+        )
+
+    slice_meta = source_provenance["slice"]
+    horizontal = slice_meta["horizontal"]
+    native_levels = slice_meta["vertical"]["native_levels"]
+    if canonical["horizontal_grid"]["nx"] < 1 or canonical["horizontal_grid"]["ny"] < 1:
+        raise ValueError("real ERA5/ETEX fixture has no selectable column")
+    if len(canonical["vertical_coordinate"]["level_values"]) != native_levels:
+        raise ValueError("real ERA5/ETEX native-level count drifted")
+
+    return {
+        "id": "era5-etex-real-column-v1",
+        "kind": "era5_etex_vertical_column",
+        "source": {
+            "canonical_fixture": "fixtures/meteorology/era5-etex-native-v1.json",
+            "canonical_fixture_sha256": actual_canonical_sha,
+            "canonical_provenance": (
+                "fixtures/meteorology/era5-etex-native-v1.provenance.json"
+            ),
+            "surface_archive": (
+                "fixtures/etex/native-mini/era5-surface-19941023-24.npz"
+            ),
+            "surface_archive_sha256": actual_surface_sha,
+        },
+        "selection": {
+            "canonical_x": 0,
+            "canonical_y": 0,
+            "source_lon_index": horizontal["source_lon_indices"][0],
+            "source_lat_desc_index": horizontal["source_lat_desc_indices"][0],
+            "longitude_deg": horizontal["longitudes_deg"][0],
+            "latitude_deg": horizontal["latitudes_deg"][0],
+            "timestamp": slice_meta["timestamp"],
+            "epoch_seconds": slice_meta["epoch_seconds"],
+            "native_levels": native_levels,
+        },
+        "represented_fields": source_provenance["represented_fields"],
+        "compatibility": {
+            "canonical_contract_issue": 29,
+            "vertical_transform_issue": 30,
+            "extraction_path": extraction_path,
+            "ci_gate_step": "2b",
+            "pinned_oracle_evidence": (
+                "target/ci-gate/vertical-column/real-comparison-report.json"
+            ),
+            "fixture_provenance_evidence": (
+                "target/ci-gate/vertical-column/real-column-fixture-provenance.json"
+            ),
+        },
+        "scope": (
+            "Checked-in real ERA5/ETEX source column used by #29 and transformed/"
+            "validated by #30 against the pinned FLEXPART 11.1 direct routine oracle. "
+            "#71 references this source as its required real sampling fixture; it does "
+            "not duplicate provider decoding or vertical-transform ownership."
+        ),
+    }
+
+
 def write_input(case: dict, input_dir: Path) -> Path:
     lines = [case["mode"]]
     lines.extend(case["grid"])
@@ -230,10 +313,12 @@ def main() -> None:
             }
         )
 
+    real_data_samples = [build_real_data_sample()]
     fixture = {
         "schema": {"id": "flexpart-gpu.interpolation-contract", "version": 1},
         "pinned_flexpart": manifest,
         "oracle_output_version": ORACLE_OUTPUT_VERSION,
+        "real_data_samples": real_data_samples,
         "cases": cases_out,
     }
     args.out_fixture.parent.mkdir(parents=True, exist_ok=True)
@@ -307,13 +392,14 @@ def main() -> None:
                 name: sha256(args.output_dir / f"{name}.out")
                 for name in CASES
             },
+            "real_data_samples": real_data_samples,
             "scope": (
                 "The driver links the pristine pinned FLEXPART 11.1 interpolation "
                 "modules and calls find_grid_indices/find_grid_distances/"
                 "find_z_level_meters/find_vert_vars/hor_interpol_4d/"
                 "temporal_interpolation/vert_interpol/interpol_rain directly on "
-                "canonical synthetic grids. Golden values in contract-v1.json are "
-                "the direct oracle outputs."
+                "canonical synthetic grids. The contract additionally pins the checked-in "
+                "real #29/#30 ERA5/ETEX column source and its #30 pinned-oracle evidence. " "Golden values in contract-v1.json are the direct interpolation-oracle outputs."
             ),
         }
         args.out_provenance.parent.mkdir(parents=True, exist_ok=True)

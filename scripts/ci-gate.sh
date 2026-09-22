@@ -491,10 +491,21 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
   # every semantic field (goldens, per-case output hashes, object hashes,
   # routines, pinning, cleanliness) must match exactly.
   if ! "${HOST_PYTHON}" -c '
-import hashlib, json, sys
+import hashlib, json, math, sys
+
+def normalize_json(value):
+    if isinstance(value, dict):
+        return {key: normalize_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [normalize_json(item) for item in value]
+    if isinstance(value, float):
+        assert math.isfinite(value), "non-finite contract number"
+        if value.is_integer():
+            return int(value)
+    return value
 
 def canonical_json_sha256(path):
-    value = json.load(open(path))
+    value = normalize_json(json.load(open(path)))
     canonical = json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
@@ -502,6 +513,7 @@ def canonical_json_sha256(path):
 
 committed = json.load(open(sys.argv[1]))
 regenerated = json.load(open(sys.argv[2]))
+assert normalize_json(committed) == normalize_json(regenerated), "full contract semantic drift"
 assert committed["schema"] == regenerated["schema"], "schema drift"
 assert committed["oracle_output_version"] == regenerated["oracle_output_version"]
 assert committed["pinned_flexpart"]["pinned_commit"] == regenerated["pinned_flexpart"]["pinned_commit"]
@@ -516,7 +528,7 @@ for key in (
     "cases", "real_data_samples", "interface_vertical_source",
 ):
     assert p[key] == q[key], f"provenance drift in {key}"
-assert p["fixture_artifact"]["hash_kind"] == "canonical_json_sha256"
+assert p["fixture_artifact"]["hash_kind"] == "normalized_canonical_json_sha256"
 assert p["fixture_artifact"]["sha256"] == canonical_json_sha256(sys.argv[1]), "committed contract hash mismatch"
 assert q["fixture_artifact"]["sha256"] == canonical_json_sha256(sys.argv[2]), "regenerated contract hash mismatch"
 assert p["linked_flexpart"]["routines"] == q["linked_flexpart"]["routines"], "routine list drifted"

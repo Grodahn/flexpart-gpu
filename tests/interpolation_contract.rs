@@ -447,8 +447,12 @@ fn contract_provenance_matches_fixture() {
         "fixtures/interpolation/contract-v1.json"
     );
     assert_eq!(
+        provenance.fixture_artifact["hash_kind"],
+        "canonical_json_sha256"
+    );
+    assert_eq!(
         provenance.fixture_artifact["sha256"],
-        "c51bf31aaa58c9274ba4f4e057b2ed5d704b6df9c8f02756dd2ec4de3031c06b"
+        "33da856a2af83443926422bf4ea8c7aebf856450d6238e75c2e17e5bd1176bef"
     );
     assert_eq!(
         provenance.generator_source["path"],

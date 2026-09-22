@@ -29,8 +29,9 @@ pub enum NativeVerticalMotionKind {
     PressureVelocityOmega,
     /// Native hybrid-coordinate tendency d(eta)/dt.
     ///
-    /// Recognized at the boundary but currently rejected fail-closed until a
-    /// pinned independent flex_extract/calc_etadot reference is wired.
+    /// Recognized at the boundary. Preprocessing is oracle-validated only for
+    /// the positive-eta-decreasing convention; production normalization stays
+    /// fail-closed until it is explicitly enabled after #70.
     EtaCoordinateVelocity,
 }
 
@@ -847,9 +848,9 @@ pub fn reconstruct_vertical_geometry_with_motion(
 /// Normalize native vertical motion to geometric m/s, positive upward.
 ///
 /// Pressure velocity follows FLEXPART's pinmconv concept: multiply omega
-/// [Pa/s] by dz/dp [m/Pa]. Raw eta-dot is recognized by the input contract but
-/// is rejected fail-closed until its preprocessing is independently validated
-/// against a pinned flex_extract/calc_etadot reference.
+/// [Pa/s] by dz/dp [m/Pa]. Raw eta-dot preprocessing has an independently
+/// validated path, but production normalization remains deliberately
+/// fail-closed until it is explicitly enabled after #70.
 fn normalize_vertical_motion(
     snapshot: &Snapshot,
     geometry: &VerticalTransformResult,
@@ -915,7 +916,7 @@ fn normalize_vertical_motion(
         },
         NativeVerticalMotionKind::EtaCoordinateVelocity => {
             return Err(VerticalTransformError::InvalidNativeVerticalMotion {
-                reason: "eta-dot preprocessing is disabled until an independent pinned reference validates eta-dot to pressure-velocity conversion",
+                reason: "eta-dot preprocessing is validation-only; production normalization remains disabled until explicitly enabled after #70",
             });
         }
     };
@@ -2045,7 +2046,7 @@ mod tests {
         assert!(matches!(
             error,
             VerticalTransformError::InvalidNativeVerticalMotion {
-                reason: "eta-dot preprocessing is disabled until an independent pinned reference validates eta-dot to pressure-velocity conversion"
+                reason: "eta-dot preprocessing is validation-only; production normalization remains disabled until explicitly enabled after #70"
             }
         ));
     }

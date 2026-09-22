@@ -1107,7 +1107,8 @@ pub struct EtaDotPressureVelocity {
 /// Source of truth: `reference/flex-extract.json` (pinned commit
 /// `e0005c99ac81d12faa45a8ff799debbd592b0dc0`, tag 7.1.2;
 /// `calc_etadot.f90` bytes hash to
-/// sha256 160F267F8741F23D13FDBA2F7A88F110BB131AA84AD7894FA43605258E55B0D9;\n/// git blob 741eba91eab049df23a560219d0f2656a6cc9881).
+/// sha256 160F267F8741F23D13FDBA2F7A88F110BB131AA84AD7894FA43605258E55B0D9;
+/// git blob 741eba91eab049df23a560219d0f2656a6cc9881).
 ///
 /// # Errors
 ///

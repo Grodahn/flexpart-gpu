@@ -493,10 +493,11 @@ regenerated = json.load(open(sys.argv[2]))
 assert committed["schema"] == regenerated["schema"], "schema drift"
 assert committed["oracle_output_version"] == regenerated["oracle_output_version"]
 assert committed["pinned_flexpart"]["pinned_commit"] == regenerated["pinned_flexpart"]["pinned_commit"]
+assert committed["real_data_samples"] == regenerated["real_data_samples"], "real-data sample descriptor drifted"
 assert committed["cases"] == regenerated["cases"], "golden values drifted"
 p = json.load(open(sys.argv[3]))
 q = json.load(open(sys.argv[4]))
-for key in ("schema", "pinned_commit", "checkout_clean", "entrypoint_present", "cases"):
+for key in ("schema", "pinned_commit", "checkout_clean", "entrypoint_present", "cases", "real_data_samples"):
     assert p[key] == q[key], f"provenance drift in {key}"
 assert p["linked_flexpart"]["routines"] == q["linked_flexpart"]["routines"], "routine list drifted"
 pa = {o["object"]: o["object_sha256"] for o in p["linked_flexpart"]["objects"]}

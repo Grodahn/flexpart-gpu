@@ -1,8 +1,8 @@
 use flexpart_gpu::meteorology::{
     vertical::{
-        reconstruct_vertical_geometry, reconstruct_vertical_geometry_with_motion,
-        resolve_release_height_at_column, resolve_release_height_range_at_column,
-        NativeVerticalMotion, VerticalTransformError,
+        eta_dot_to_pressure_velocity, reconstruct_vertical_geometry,
+        reconstruct_vertical_geometry_with_motion, resolve_release_height_at_column,
+        resolve_release_height_range_at_column, NativeVerticalMotion, VerticalTransformError,
     },
     Snapshot, VerticalReference,
 };
@@ -12,6 +12,26 @@ fn snapshot() -> Snapshot {
         "../../fixtures/vertical/synthetic-column-v1.json"
     ))
     .expect("synthetic #30 vertical fixture must parse")
+}
+
+#[test]
+fn eta_dot_synthetic_fixture_exercises_validated_preprocessing_contract() {
+    let snapshot = snapshot();
+    let motion: NativeVerticalMotion = serde_json::from_str(include_str!(
+        "../../fixtures/vertical/eta-dot-synthetic-v1.json"
+    ))
+    .expect("synthetic eta-dot fixture must parse");
+
+    let result = eta_dot_to_pressure_velocity(&snapshot, &motion)
+        .expect("checked-in eta-dot fixture must satisfy the validated contract");
+
+    assert_eq!(result.values_interface_pa_s.len(), 4);
+    assert_eq!(result.values_interface_pa_s[0], 0.0);
+    assert!(result.values_interface_pa_s.iter().all(|value| value.is_finite()));
+    assert_eq!(
+        result.algorithm_id,
+        "flex_extract_7_1_2_calc_etadot_meta_mdpdeta_v1"
+    );
 }
 
 #[test]

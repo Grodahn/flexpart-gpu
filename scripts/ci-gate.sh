@@ -542,9 +542,10 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     fail "Repacking the #71 interpolation fixture/provenance failed"
   fi
 
-  # The committed goldens and provenance sub-fields must be reproducible. Paths
-  # and binary hashes are local build locations and may legitimately differ;
-  # every semantic field (goldens, per-case output hashes, object hashes,
+  # The committed goldens and provenance sub-fields must be reproducible.
+  # Local executable path/hash is deliberately not frozen: compiler, source,
+  # linked-object and per-case output provenance are the reproducible evidence.
+  # Every semantic field (goldens, per-case output hashes, object hashes,
   # routines, pinning, cleanliness) must match exactly.
   if ! "${HOST_PYTHON}" -c '
 import hashlib, json, math, sys
@@ -577,6 +578,7 @@ assert committed["real_data_samples"] == regenerated["real_data_samples"], "real
 assert committed["cases"] == regenerated["cases"], "golden values drifted"
 p = json.load(open(sys.argv[3]))
 q = json.load(open(sys.argv[4]))
+assert "binary" not in p and "binary" not in q, "local executable hash/path must not be frozen"
 for key in (
     "schema", "pinned_commit", "checkout_clean", "entrypoint_present",
     "build", "fixture_artifact", "generator_source", "driver_source",

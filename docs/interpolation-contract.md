@@ -3,6 +3,8 @@
 Status: frozen reference for issues #72 (horizontal), #73 (vertical), #74 (temporal),
 and #75 (accumulated-field interval/rate normalization).
 
+For #73, model-level meter-coordinate sampling is frozen as direct FLEXPART oracle evidence. The `vertical-interface-wzlev` case freezes the #30 W/interface **handoff geometry/staggering and primitive interpolation behavior only**; it is not end-to-end evidence for pristine FLEXPART's `eta=no` W production path. That remaining production-path oracle is tracked by #80 and blocks W/interface implementation in #73.
+
 This document freezes the *normative* interpolation behavior that the downstream
 interpolation implementation issues must reproduce or explicitly diverge from.
 It is the machine- and human-readable contract accompanying
@@ -134,12 +136,15 @@ interpolation routines. The first query intentionally lands on the same
 `xt/yt` as the index-space interior fixture, providing an end-to-end check
 that geographic and direct-grid paths converge before interpolation.
 
-### Verified golden (periodic wrap)
+### Verified golden (global seam via duplicate column)
 
 Same grid with `periodic=1` (canonical `nx=4`, FLEXPART `nxmax=5`), query
 `(xt,yt) = (3.2, 1.5)`, `kz=1`. This samples across the periodic seam via
-FLEXPART's duplicated ghost column. For this valid-domain query `ixp=4 < nxmax`,
-so the explicit `ixp >= nxmax` correction branch is not executed:
+FLEXPART's duplicated ghost column. For this valid canonical-domain query
+`ixp=4 < nxmax`, so the explicit `ixp >= nxmax` correction branch is **not**
+executed. #71 therefore freezes the global duplicate-column seam behavior, not
+that explicit correction branch. Exercising the branch requires a query on/beyond
+the duplicate endpoint and is outside the supported canonical coordinate domain:
 
 ```
 ix, jy, ixp, jyp = 3, 1, 4, 2
@@ -365,41 +370,68 @@ source hash to reproduce the committed contract. This keeps #29 provider
 normalization and #30 vertical transformation outside #71 while proving that
 #71 samples their real handoff rather than merely pointing at a descriptor.
 
-## 7. Interface-staggered vertical sampling on #30 W geometry
+## 7. Interface-staggered #30 handoff fixture — not end-to-end W production parity
 
-#73 does not reconstruct FLEXPART's native ETA coordinate. Its normative input is the
-derived runtime geometry owned by #30: model-level heights for center-staggered fields
-and FLEXPART-`wzlev`-compatible W/interface heights for interface-staggered vertical
-motion.
+#73 consumes the derived runtime geometry owned by #30: model-level heights for
+center-staggered fields and FLEXPART-`wzlev`-compatible W/interface heights for
+interface-staggered vertical motion.
 
-The `vertical-interface-wzlev` fixture therefore freezes that exact handoff rather
-than pretending that a coordinate label changes the METRE interpolation routine:
+The `vertical-interface-wzlev` fixture freezes that **handoff contract**:
 
-1. #30's direct oracle driver calls the pristine pinned
-   `verttransform_mod::verttransform_ecmwf_heights` routine.
+1. #30's direct oracle driver calls pristine
+   `verttransform_mod::verttransform_ecmwf_heights`.
 2. Its `wzlev` output supplies the four W/interface AGL heights
    `[0, 1954.7922363, 4363.8686523, 7076.8583984] m` in bottom-to-top order.
 3. The same direct oracle's `omega * pinmconv` result supplies the
-   interface-staggered geometric vertical velocity values
+   interface-staggered geometric vertical-velocity values
    `[0.1353315860, 0.1002457738, 0.0602269098, 0.0] m/s`.
-4. #71 feeds that actual W geometry/value profile through the pristine pinned
-   `find_z_level_meters`, `find_vert_vars` and `vert_interpol` routines at
+4. #71 feeds that real #30 geometry/value profile through the pristine
+   `find_z_level_meters`, `find_vert_vars` and `vert_interpol` primitives at
    interior and boundary sample heights.
 
 The #30 source output is frozen by SHA-256
 `5015ea3a9a9e42b1a2b88c60c2867b74a632bffd1b9cfefdc186b005c752b197`.
 CI step 2d refuses to generate the interface fixture if the step-2b direct-oracle
-output differs from that evidence. The fixture also declares
+output differs from that evidence. The fixture declares
 `vertical_staggering=level_interface`, and the Rust validation test requires every
 query in that case to carry the interface coordinate id.
 
-This proves both vertical sampling classes required by #71 at the #30/#73 boundary:
-`level_center` over model-level geometry and `level_interface` over real
-FLEXPART-derived W geometry.
+### Important production-path boundary
 
-A full ETA-mode `interpol_wind_eta` execution remains outside this contract because
-#73 consumes #30 runtime geometry rather than native provider ETA coordinates. It is
-not needed to claim interface-staggered parity at the canonical sampling boundary.
+This fixture must **not** be interpreted as proof that direct interpolation on
+`wzlev` is numerically identical to pristine FLEXPART's final `eta=no` W sampling.
+
+The pinned meter-coordinate production path first remaps interface/native W onto
+FLEXPART's shared `height[]` grid inside
+`verttransform_mod::verttransform_ecmwf_windfields`. Particle sampling later runs
+through the public `interpol_mod::interpol_wind` entry point, which dispatches to
+`interpol_wind_meter` and samples `windfields_mod::ww` on that shared height grid.
+That is a two-stage vertical path:
+
+```
+W/interface geometry + pressure velocity
+  -> verttransform_ecmwf_windfields
+  -> ww on FLEXPART height[]
+  -> interpol_wind
+  -> interpol_wind_meter
+  -> final particle w
+```
+
+#71 currently freezes the #30 handoff and the underlying linear interpolation
+primitive, but does not directly execute this full two-stage path. Because two
+successive interpolations are not generally equivalent to one direct interpolation
+for an arbitrary non-linear profile, no end-to-end W parity claim is made here.
+
+Issue #80 owns the missing direct production-path oracle. It must deliberately include
+a non-linear W profile, execute the pristine
+`verttransform_ecmwf_windfields -> interpol_wind/interpol_wind_meter` path, and
+determine whether #73 may sample `VerticalRuntimeView` W/interface geometry directly
+or must reproduce the pristine two-stage result. **The W/interface portion of #73 is
+blocked on #80.**
+
+The current fixture remains normative for its narrower claim: #30 W/interface
+geometry/staggering, units/order, and the behavior of the pinned primitive
+`find_z_level_meters -> find_vert_vars -> vert_interpol` on that handoff.
 
 ## 8. Out-of-contract semantics (fail closed)
 
@@ -409,9 +441,12 @@ unresolved and must not invent behavior:
 - `numpf = 3` temporally-equidistant precipitation scheme
   (`interpol_mod.f90:1317-1340`): dead in the pinned `numpf=1` build. Freezing it
   requires a separate `numpf=3` oracle build.
+- End-to-end meter-coordinate W production sampling (`verttransform_ecmwf_windfields`
+  -> `interpol_wind` -> `interpol_wind_meter`): not frozen by #71. The current
+  `vertical-interface-wzlev` case is a #30 handoff/primitive fixture only. #80 owns
+  the production-path oracle and blocks the W/interface portion of #73.
 - Native ETA-mode `interpol_wind_eta` execution (`interpol_mod.f90:1590-1650`):
-  not part of the canonical #30 runtime-geometry boundary. W/interface sampling itself
-  is frozen above using direct FLEXPART `wzlev` geometry.
+  not part of the canonical #30 runtime-geometry boundary.
 - Logarithmic vertical interpolation (`log_interpol=.true.`): not active in the pinned
   build; `find_vert_vars` (`interpol_mod.f90:364-392`) is documented but unreachable.
 - Nesting (`ngrid > 0`), polar-overshoot pole handling (`find_ngrid_sp/dp`), and
@@ -429,8 +464,9 @@ than extending this contract.
   the actual compiler version and complete sorted linked-object set alongside the binary.
 - `fixtures/interpolation/*.json` — canonical sampling cases (schema
   `flexpart-gpu.interpolation-contract.v1`) with embedded golden values and provenance,
-  including `vertical-interface-wzlev` sourced from #30's direct FLEXPART
-  `wzlev`/`pinmconv` evidence and `real-era5-etex-temperature-column`,
+  including the `vertical-interface-wzlev` **handoff/primitive** fixture sourced
+  from #30's direct FLEXPART `wzlev`/`pinmconv` evidence (not end-to-end W production
+  parity) and `real-era5-etex-temperature-column`,
   which samples a real #29 temperature profile on #30 direct-oracle geometry.
 - `fixtures/meteorology/era5-etex-native-v1.json` plus its provenance and
   surface archive — real #29 source referenced by `era5-etex-real-column-v1`; #30 CI

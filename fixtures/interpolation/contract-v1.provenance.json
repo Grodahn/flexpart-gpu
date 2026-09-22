@@ -100,9 +100,55 @@
         "extraction_path": "scripts/vertical/extract_real_etex_column.py",
         "ci_gate_step": "2b",
         "pinned_oracle_evidence": "target/ci-gate/vertical-column/real-comparison-report.json",
-        "fixture_provenance_evidence": "target/ci-gate/vertical-column/real-column-fixture-provenance.json"
+        "fixture_provenance_evidence": "target/ci-gate/vertical-column/real-column-fixture-provenance.json",
+        "extraction_source_sha256": "bd1e9d8531ceabe99544a7e7659766d1642fcb576a0fdd505aa4c50886f3bdc0"
       },
-      "scope": "Checked-in real ERA5/ETEX source column used by #29 and transformed/validated by #30 against the pinned FLEXPART 11.1 direct routine oracle. #71 references this source as its required real sampling fixture; it does not duplicate provider decoding or vertical-transform ownership."
+      "scope": "Checked-in real ERA5/ETEX source column used by #29 and transformed/validated by #30 against the pinned FLEXPART 11.1 direct routine oracle. #71 references this source as its required real sampling fixture; it does not duplicate provider decoding or vertical-transform ownership.",
+      "semantics": {
+        "coordinates": {
+          "horizontal": "longitude/latitude cell centers in degrees",
+          "vertical": "hybrid_sigma_pressure",
+          "vertical_reference": "model_native"
+        },
+        "staggering": {
+          "wind_u": {
+            "horizontal": "cell_center",
+            "vertical": "level_center"
+          },
+          "wind_v": {
+            "horizontal": "cell_center",
+            "vertical": "level_center"
+          },
+          "temperature": {
+            "horizontal": "cell_center",
+            "vertical": "level_center"
+          },
+          "specific_humidity": {
+            "horizontal": "cell_center",
+            "vertical": "level_center"
+          },
+          "surface_pressure": {
+            "horizontal": "cell_center",
+            "vertical": "not_applicable"
+          }
+        },
+        "ordering": {
+          "vertical": "increasing",
+          "storage": "x_fastest"
+        },
+        "units": {
+          "wind_u": "meter_per_second",
+          "wind_v": "meter_per_second",
+          "temperature": "kelvin",
+          "specific_humidity": "kilogram_per_kilogram",
+          "surface_pressure": "pascal"
+        },
+        "time": {
+          "kind": "instantaneous_valid_time",
+          "timestamp": "1994-10-23T15:00:00Z",
+          "epoch_seconds": 782924400
+        }
+      }
     }
   ],
   "interface_vertical_source": {
@@ -114,5 +160,25 @@
     "value_field": "omega * pinmconv",
     "source_fixture": "fixtures/vertical/synthetic-column-v1.json",
     "source_motion": "fixtures/vertical/synthetic-omega-interface-v1.json"
+  },
+  "fixture_artifact": {
+    "path": "fixtures/interpolation/contract-v1.json",
+    "sha256": "c51bf31aaa58c9274ba4f4e057b2ed5d704b6df9c8f02756dd2ec4de3031c06b"
+  },
+  "generator_source": {
+    "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
+    "sha256": "3c548a5af90f9bfb22f1384b7a342797a0c3629bd93424511647afc1db60c6af"
+  },
+  "oracle_harness_source": {
+    "path": "scripts/interpolation/direct_oracle.sh",
+    "sha256": "c95d8cd2251f33ab0b17897227d00d4e9be7ea9de441359cf5a7c008703d6ea7"
+  },
+  "real_extraction_source": {
+    "path": "scripts/vertical/extract_real_etex_column.py",
+    "sha256": "bd1e9d8531ceabe99544a7e7659766d1642fcb576a0fdd505aa4c50886f3bdc0"
+  },
+  "reference_manifest": {
+    "path": "reference/flexpart-11.1.json",
+    "sha256": "2c13a87733098e385dc12f33d1bf5ca60ba275775f472ec279b8a0a234c3a464"
   }
 }

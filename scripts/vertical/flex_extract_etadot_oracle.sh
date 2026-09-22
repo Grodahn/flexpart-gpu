@@ -249,10 +249,10 @@ fi
 
 # 5. Run the same pinned calc_etadot executable on one complete real ERA5
 #    native-level case: 137/137 eta-dot levels over the checked-in 65x41 ETEX
-#    native-mini grid at 1994-10-23 15:00 UTC. The full eta-dot column,
-#    U/V/T/Q fields and 138-interface A/B coordinate are real ERA5; only the
-#    spectral ln(ps) carrier is explicitly borrowed from the pinned upstream
-#    calc_etadot fixture because the checked-in ERA5 surface field is gridded.
+#    native-mini grid at 1994-10-23 15:00 UTC. The selected column at
+#    48N, 2W uses real ERA5 ps, eta-dot, U/V/T/Q and the native 138-interface
+#    A/B coordinate. fort.12 is a mathematically constant spectral ln(ps)
+#    field constructed from that column's real surface pressure.
 REAL_ROOT="${OUTPUT_DIR}/real-era5-137"
 REAL_RUN="${REAL_ROOT}/oracle-run"
 REAL_JSON="${REAL_ROOT}/oracle-json"
@@ -271,8 +271,7 @@ if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run -
     python3 /workspace/flexpart-gpu/scripts/vertical/prepare_real_era5_etadot_oracle.py \
       --native-dir /workspace/flexpart-gpu/fixtures/etex/native-mini \
       --output-dir \$run \
-      --timestamp 1994-10-23T15:00:00 \
-      --spectral-lnsp-template /workspace/flex_extract/Testing/Installation/Calc_etadot/fort.12
+      --timestamp 1994-10-23T15:00:00
 
     cd \$run
     ln -sf \$exe calc_etadot
@@ -390,6 +389,10 @@ assert coverage["points_per_level"] == 65 * 41
 assert coverage["comparisons"] == 137 * 65 * 41
 assert coverage["failure_count"] == 0
 assert report["source_fixture"]["level_coverage"]["complete_native_column"] is True
+selected = coverage["selected_real_column"]
+assert selected["lon_deg"] == -2.0
+assert selected["lat_deg"] == 48.0
+assert selected["surface_pressure_strategy"] == "constant_spectral_lnps_from_real_era5_column"
 print(
     "full real ERA5 eta-dot oracle comparison: PASS "
     f"({coverage['comparisons']} values)"

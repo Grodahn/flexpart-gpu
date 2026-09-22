@@ -234,8 +234,13 @@ manifested LIB line, runs the example (must print
 `eta-dot-column-report` candidate, and compares the full 6x6 field x levels
 88-91 (36 points x 4 levels) against the oracle reference with f32-vs-f64
 tolerances (worst attributable relative error 3e-5, absolute 1e-7 Pa/s).
-Build and run logs, the extracted JSONs and the comparison report land in
-`target/ci-gate/flex-extract-oracle/`.
+Build and run logs, the extracted JSONs, `run-provenance.json` and the
+comparison report land in `target/ci-gate/flex-extract-oracle/`.
+`run-provenance.json` binds the concrete container image ID, compiler
+version, oracle executable hash, consumed fort.* hashes and fort.15 output
+hash to the comparison. The extracted oracle metadata identifies the pinned
+upstream Calc_etadot fixture as a native-model-level source and derives its
+valid time from the GRIB metadata rather than injecting a synthetic timestamp.
 
 Observed result (2026-09-21, Docker Desktop, `flex-extract:latest` built
 from `flexpart-fortran:latest` `sha256:cafb19c…` with gfortran 11.4.0):
@@ -247,6 +252,10 @@ the pinned commit hashes to sha256
 byte-identical to master) and is cross-checked by the comparison harness
 together with the ETAR transform source-snippet contract and the fort.4
 config.
+
+Only the `positive_eta_decreasing` raw eta-dot sign convention is accepted by
+the validated native contract. The opposite sign convention remains
+fail-closed until separately demonstrated against an independent oracle.
 
 ### CI wiring
 

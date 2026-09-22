@@ -128,6 +128,20 @@ def main():
     parser.add_argument("--example-dir", type=str, required=True)
     parser.add_argument("--output-dir", type=str, required=True)
     parser.add_argument("--valid-time-epoch-seconds", type=int, default=None)
+    parser.add_argument(
+        "--fixture-classification",
+        default="upstream_flex_extract_native_model_level",
+    )
+    parser.add_argument(
+        "--fixture-origin",
+        default="Testing/Installation/Calc_etadot at the pinned pristine flex_extract revision",
+    )
+    parser.add_argument(
+        "--expected-levels",
+        default="88/to/91",
+        help="Expected raw/oracle model-level coverage, e.g. 88/to/91 or 1/to/137",
+    )
+    parser.add_argument("--source-provenance", type=str, default=None)
     args = parser.parse_args()
 
     example_dir = args.example_dir
@@ -176,11 +190,29 @@ def main():
     levels = sorted({lvl for (_, lvl, _) in raw})
     raw_by_level = {lvl: vals for (_, lvl, vals) in raw}
     oracle_by_level = {lvl: vals for (_, lvl, vals) in oracle}
-    expected_first_levels = {88, 89, 90, 91}
-    if set(levels) != expected_first_levels:
+
+    try:
+        first_text, last_text = args.expected_levels.split("/to/")
+        expected_levels = set(range(int(first_text), int(last_text) + 1))
+    except Exception as error:
+        raise ValueError(
+            f"expected-levels must use FIRST/to/LAST notation: {args.expected_levels!r}"
+        ) from error
+
+    if set(levels) != expected_levels:
         raise ValueError(
             f"unexpected raw etadot level set {levels} "
-            f"(expected {sorted(expected_first_levels)} for the pinned example)"
+            f"(expected {sorted(expected_levels)})"
+        )
+    if set(oracle_by_level) != expected_levels:
+        raise ValueError(
+            f"unexpected oracle etadot level set {sorted(oracle_by_level)} "
+            f"(expected {sorted(expected_levels)})"
+        )
+    if min(expected_levels) < 1 or max(expected_levels) > nlev:
+        raise ValueError(
+            f"expected eta-dot levels {min(expected_levels)}..{max(expected_levels)} "
+            f"outside native model-level range 1..{nlev}"
         )
 
     motion_values = [0.0] * (nlev * nxy)
@@ -241,16 +273,23 @@ def main():
         "vertical_staggering": "level_center",
         "values": [float(v) for v in motion_values],
         "provenance": {
-            "source_id": "flex-extract-7.1.2-Calc_etadot-installation-example"
+            "source_id": args.fixture_classification
         },
     }
 
     reference = {
         "oracle_tag": "flex_extract-7.1.2-Calc_etadot-installation-example",
         "source_fixture": {
-            "classification": "upstream_flex_extract_native_model_level",
-            "origin": "Testing/Installation/Calc_etadot at the pinned pristine flex_extract revision",
+            "classification": args.fixture_classification,
+            "origin": args.fixture_origin,
             "raw_grib_metadata": raw_grib_metadata,
+            "level_coverage": {
+                "first": min(expected_levels),
+                "last": max(expected_levels),
+                "count": len(expected_levels),
+                "native_level_count": nlev,
+                "complete_native_column": expected_levels == set(range(1, nlev + 1)),
+            },
             "source_hashes_sha256": {
                 "fort.12": sha256_file(hybrid_path),
                 "fort.21": sha256_file(raw_path),
@@ -269,6 +308,18 @@ def main():
             str(lvl): [float(v) for v in oracle_by_level[lvl]] for lvl in levels
         },
     }
+
+    if args.source_provenance is not None:
+        source_provenance_path = args.source_provenance
+        if not os.path.isfile(source_provenance_path):
+            raise ValueError(f"source provenance missing: {source_provenance_path}")
+        with open(source_provenance_path, "r", encoding="utf-8") as source:
+            source_provenance = json.load(source)
+        reference["source_fixture"]["source_provenance"] = {
+            "path": source_provenance_path,
+            "sha256": sha256_file(source_provenance_path),
+            "content": source_provenance,
+        }
 
     snapshot_path = os.path.join(output_dir, "snapshot.json")
     motion_path = os.path.join(output_dir, "motion.json")

@@ -237,7 +237,7 @@ def main():
     motion = {
         "kind": "eta_coordinate_velocity",
         "unit": "per_second",
-        "sign": "positive_eta_decreasing",
+        "sign": "positive_eta_increasing",
         "vertical_staggering": "level_center",
         "values": [float(v) for v in motion_values],
         "provenance": {

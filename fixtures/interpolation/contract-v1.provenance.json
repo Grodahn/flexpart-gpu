@@ -21,25 +21,31 @@
       {
         "file": "src/com_mod.f90",
         "object": "src/com_mod.o",
-        "source_sha256": "b954ef4a0fde94c2b04ba649233f571614ae496e90de4dba5850a12e0810642d",
+        "source_sha256": "a25dce18fc3d4f3bbbf1b8c64e9b2629fb4e170540d350e555118ab9dd00bab3",
         "object_sha256": "1ef1b5ce24937f282ae66e3fc5d4c31335d80590217b144a3f32bee015830e10"
       },
       {
         "file": "src/par_mod.f90",
         "object": "src/par_mod.o",
-        "source_sha256": "422a6d58f0367039c45d960c02909904b2bb80bef2a0190915ec1be0e3b5cdf2",
+        "source_sha256": "3164314b5d7212ff5136b5605634fe3c34426aef1320c9fb499ded31f021a9db",
         "object_sha256": "00f941155f6dd16c90c6e7d16f8306cd9328f6e873ee132316fc4a6cf249c3c8"
+      },
+      {
+        "file": "src/point_mod.f90",
+        "object": "src/point_mod.o",
+        "source_sha256": "6cc06a4f0b06e970613edf5de361a1a22fc3e0d4894ce12e65b04c2f84cfe49f",
+        "object_sha256": "4a0694709e3e3ae7f5f263e1e1297f64dc47addd2a52d2dfff51688b6c2cbfde"
       },
       {
         "file": "src/windfields_mod.f90",
         "object": "src/windfields_mod.o",
-        "source_sha256": "d3c732a74884c6218ba09a36d6d99beef6340b4c99423313c868a2689fece81a",
+        "source_sha256": "440ec62b9a7b8f4534e913b2af2a41aabdf44072b3fe77edbc213866e698e7d1",
         "object_sha256": "156efe7bbb4fb3632b6162ef872a90f502f249f65b8056f46ff7171e279f2c9d"
       },
       {
         "file": "src/interpol_mod.f90",
         "object": "src/interpol_mod.o",
-        "source_sha256": "08727268302a79a20eee51826f4c7090966e0c585b215565a3ad0366b6934b41",
+        "source_sha256": "cc7ab1a55267971ca540d88d3992c613897e0a219da5b66fe2358b5eaeb9bf63",
         "object_sha256": "cd68b5c7ccb31634a93fbcbfaf472fe9e7062720dd7d2f1aba3f92422d93be62"
       }
     ],
@@ -67,7 +73,7 @@
     "real-era5-etex-temperature-column": "5679760f10c75679ecd597979b5caadfd3bf30debbbf9b0fa1fc6af1aa9e3771",
     "horizontal-geographic-interior": "1858607f1f5a976af7476f8754fd74bd84b5986f2eeeb32241378edf115fec6e"
   },
-  "scope": "The direct oracle executes point_mod::coordtrafo for geographic longitude/latitude-to-grid normalization before find_grid_indices/find_grid_distances/hor_interpol_4d. Existing vertical, temporal and accumulated-field interpolation routines remain frozen. W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output, and the real #29 ERA5/ETEX temperature column is sampled on #30 pinned level-height geometry. Golden values in contract-v1.json are direct pinned FLEXPART outputs.",
+  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules and calls point_mod::coordtrafo for geographic-to-grid normalization, then find_grid_indices/find_grid_distances/find_z_level_meters/find_vert_vars/hor_interpol_4d/temporal_interpolation/vert_interpol/interpol_rain directly on canonical synthetic grids. W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output as its vertical geometry/value source. The real #29 ERA5/ETEX temperature column is paired with #30's pinned FLEXPART level-height output and sampled by the same #71 vertical routines. Golden values in contract-v1.json are direct interpolation-oracle outputs.",
   "real_data_samples": [
     {
       "id": "era5-etex-real-column-v1",
@@ -174,7 +180,7 @@
   },
   "generator_source": {
     "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
-    "sha256": "6048f41f62d704f67b95067f50f1c769037f00edc5f0f46228fe72ba06b7ef27"
+    "sha256": "53d67b63399e98b683c6599d8616f813ff9866cbd689ff6e746efcb273d8ed6f"
   },
   "oracle_harness_source": {
     "path": "scripts/interpolation/direct_oracle.sh",

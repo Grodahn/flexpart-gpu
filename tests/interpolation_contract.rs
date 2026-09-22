@@ -618,6 +618,7 @@ fn contract_provenance_matches_fixture() {
     for expected in [
         "src/com_mod.f90",
         "src/par_mod.f90",
+        "src/point_mod.f90",
         "src/windfields_mod.f90",
         "src/interpol_mod.f90",
     ] {

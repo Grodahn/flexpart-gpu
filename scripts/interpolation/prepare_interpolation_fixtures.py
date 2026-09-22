@@ -300,6 +300,56 @@ def canonical_json_sha256(path: Path) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
+def load_oracle_build_metadata(binary: Path, manifest: dict) -> dict:
+    """Capture the actual driver compiler plus the complete link-input set."""
+    compiler_path = Path(str(binary) + ".compiler-version.txt")
+    linked_objects_path = Path(str(binary) + ".linked-objects.txt")
+    if not compiler_path.is_file():
+        raise ValueError(f"missing oracle compiler provenance: {compiler_path}")
+    if not linked_objects_path.is_file():
+        raise ValueError(f"missing oracle linked-object provenance: {linked_objects_path}")
+
+    compiler_version = compiler_path.read_text(encoding="utf-8").strip()
+    linked_objects = [
+        line.strip()
+        for line in linked_objects_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not compiler_version:
+        raise ValueError("empty oracle compiler provenance")
+    if not linked_objects:
+        raise ValueError("empty oracle linked-object provenance")
+    if linked_objects != sorted(linked_objects) or len(linked_objects) != len(set(linked_objects)):
+        raise ValueError("oracle linked-object provenance must be sorted and unique")
+    if "FLEXPART.o" in linked_objects or not all(name.endswith(".o") for name in linked_objects):
+        raise ValueError("invalid oracle linked-object set")
+
+    object_set_bytes = ("\n".join(linked_objects) + "\n").encode("utf-8")
+    profile = manifest["execution_profile"]
+    return {
+        "compiler_version": compiler_version,
+        "full_flexpart_object_build": profile["build"],
+        "container": profile["docker"],
+        "driver_compile_link": {
+            "compiler": "gfortran",
+            "compile_flags": ["-O0", "-I<oracle-src>", "-fopenmp", "-mcmodel=large"],
+            "driver": "scripts/interpolation/direct_interpolation_oracle.f90",
+            "objects": "sorted src/*.o excluding FLEXPART.o",
+            "link_flags": [
+                "-L/usr/lib/x86_64-linux-gnu",
+                "-Wl,-rpath=/usr/lib/x86_64-linux-gnu",
+                "-leccodes",
+                "-leccodes_f90",
+                "-lm",
+                "-lnetcdff",
+            ],
+        },
+        "linked_objects": linked_objects,
+        "linked_object_count": len(linked_objects),
+        "linked_object_set_sha256": hashlib.sha256(object_set_bytes).hexdigest(),
+    }
+
+
 def validate_interface_oracle_source(path: Path) -> None:
     """Verify the #30 direct FLEXPART W/interface evidence used by #71."""
     case = CASES["vertical-interface-wzlev"]
@@ -783,6 +833,7 @@ def main() -> None:
         if missing:
             raise ValueError(f"oracle binary missing symbols: {missing}")
         repo_root = Path(__file__).resolve().parents[2]
+        build_metadata = load_oracle_build_metadata(args.binary, manifest)
         provenance = {
             "schema": "flexpart-gpu.interpolation-contract-provenance.v1",
             "pinned_commit": pinned,
@@ -796,6 +847,12 @@ def main() -> None:
             "binary": {
                 "path": str(args.binary),
                 "sha256": sha256(args.binary),
+            },
+            "build": {
+                "compiler_version": build_metadata["compiler_version"],
+                "full_flexpart_object_build": build_metadata["full_flexpart_object_build"],
+                "container": build_metadata["container"],
+                "driver_compile_link": build_metadata["driver_compile_link"],
             },
             "fixture_artifact": {
                 "path": "fixtures/interpolation/contract-v1.json",
@@ -824,6 +881,9 @@ def main() -> None:
             },
             "linked_flexpart": {
                 "link_strategy": "all src/*.o except FLEXPART.o",
+                "linked_objects": build_metadata["linked_objects"],
+                "linked_object_count": build_metadata["linked_object_count"],
+                "linked_object_set_sha256": build_metadata["linked_object_set_sha256"],
                 "direct_routine_objects": [
                     {"file": "src/com_mod.f90", "object": "src/com_mod.o",
                      "source_sha256": sha256(src / "com_mod.f90"),

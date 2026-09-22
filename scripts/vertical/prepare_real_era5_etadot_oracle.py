@@ -21,7 +21,6 @@ import numpy as np
 TIMESTAMP = "1994-10-23T15:00:00"
 NATIVE_FILE = "era5-19941023-151821-ml.grib"
 ETADOT_FILE = "era5-19941023-151821-etadot.grib"
-SURFACE_FILE = "era5-surface-19941023-24.npz"
 LEVEL_COUNT = 137
 NX = 65
 NY = 41
@@ -180,34 +179,40 @@ def select_etadot(path: Path, date: int, hhmm: int, output_dir: Path):
     return metadata
 
 
-def write_lnsp(template_message: bytes, pv: np.ndarray, surface_pressure: np.ndarray,
-               date: int, hhmm: int, output_path: Path):
-    if surface_pressure.shape != (NY, NX):
-        raise ValueError(
-            f"surface pressure shape {surface_pressure.shape} != {(NY, NX)}"
-        )
-    if not np.isfinite(surface_pressure).all() or np.any(surface_pressure <= 0.0):
-        raise ValueError("surface pressure contains invalid values")
+def write_lnsp_from_spectral_template(template_path: Path, pv: np.ndarray,
+                                      date: int, hhmm: int, output_path: Path):
+    """Retain the pinned oracle's spectral ln(ps) representation with ERA5 PV.
 
-    handle = ec.codes_new_from_message(template_message)
-    try:
-        ec.codes_set_long(handle, "paramId", 152)
-        ec.codes_set_long(handle, "dataDate", date)
-        ec.codes_set_long(handle, "dataTime", hhmm)
-        ec.codes_set_long(handle, "level", 1)
-        ec.codes_set_array(handle, "pv", pv)
-        ec.codes_set_values(handle, np.log(surface_pressure).reshape(-1))
-        if ec.codes_get_long(handle, "Ni") != NX or ec.codes_get_long(handle, "Nj") != NY:
-            raise ValueError("generated lnsp grid dimensions changed unexpectedly")
-        if ec.codes_get_long(handle, "NV") != 2 * (LEVEL_COUNT + 1):
-            raise ValueError("generated lnsp message lost the 138-interface PV array")
-        values = np.asarray(ec.codes_get_values(handle))
-        if not np.isfinite(values).all():
-            raise ValueError("generated lnsp field contains non-finite values")
-        output_path.write_bytes(ec.codes_get_message(handle))
-    finally:
-        ec.codes_release(handle)
-
+    calc_etadot reads fort.12 through its spectral path even when META=1.
+    The real-data proof targets the full native eta-dot vertical recurrence,
+    so the surface-pressure carrier is kept as a separately pinned oracle
+    input while the 138-interface ERA5 A/B coefficients are replaced with the
+    real native coordinate used by the 137-level eta-dot profile.
+    """
+    with template_path.open("rb") as source:
+        handle = ec.codes_grib_new_from_file(source)
+        if handle is None:
+            raise ValueError(f"empty spectral lnsp template: {template_path}")
+        try:
+            if ec.codes_get(handle, "gridType") != "sh":
+                raise ValueError(
+                    f"lnsp template is not spectral: {ec.codes_get(handle, 'gridType')}"
+                )
+            if ec.codes_get_long(handle, "paramId") != 152:
+                raise ValueError(
+                    f"lnsp template has unexpected parameter "
+                    f"{ec.codes_get_long(handle, 'paramId')}"
+                )
+            if ec.codes_grib_new_from_file(source) is not None:
+                raise ValueError("spectral lnsp template must contain exactly one message")
+            ec.codes_set_long(handle, "dataDate", date)
+            ec.codes_set_long(handle, "dataTime", hhmm)
+            ec.codes_set_double_array(handle, "pv", pv)
+            if ec.codes_get_long(handle, "NV") != 2 * (LEVEL_COUNT + 1):
+                raise ValueError("spectral lnsp template did not accept 138-interface PV")
+            output_path.write_bytes(ec.codes_get_message(handle))
+        finally:
+            ec.codes_release(handle)
 
 def write_namelist(output_path: Path):
     output_path.write_text(
@@ -216,7 +221,7 @@ def write_namelist(output_path: Path):
   maxb = 41,
   mlevel = 137,
   mlevelist = "1/to/137",
-  mnauf = 639,
+  mnauf = 106,
   metapar = 77,
   rlo0 = -8.0,
   rlo1 = 8.0,
@@ -240,6 +245,7 @@ def main():
     parser.add_argument("--native-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--timestamp", default=TIMESTAMP)
+    parser.add_argument("--spectral-lnsp-template", type=Path, required=True)
     args = parser.parse_args()
 
     base = args.native_dir.resolve()
@@ -248,21 +254,22 @@ def main():
 
     native_record = verify_manifest_file(base, "request.json", NATIVE_FILE)
     etadot_record = verify_manifest_file(base, "request-etadot.json", ETADOT_FILE)
-    surface_record = verify_manifest_file(base, "surface-request.json", SURFACE_FILE)
-
     date, hhmm = timestamp_parts(args.timestamp)
     pv, template = select_model_messages(base / NATIVE_FILE, date, hhmm, out)
     eta_metadata = select_etadot(base / ETADOT_FILE, date, hhmm, out)
 
-    with np.load(base / SURFACE_FILE) as archive:
-        times = [value.decode() if isinstance(value, bytes) else str(value)
-                 for value in archive["times"]]
-        if args.timestamp not in times:
-            raise ValueError(f"timestamp {args.timestamp} not present in surface fixture")
-        idx = times.index(args.timestamp)
-        surface_pressure = np.asarray(archive["surface_pressure"][idx], dtype=np.float64)
+    spectral_template = args.spectral_lnsp_template.resolve()
+    if not spectral_template.is_file():
+        raise FileNotFoundError(spectral_template)
+    spectral_template_record = {
+        "path": str(spectral_template),
+        "bytes": spectral_template.stat().st_size,
+        "sha256": sha256(spectral_template),
+    }
 
-    write_lnsp(template, pv, surface_pressure, date, hhmm, out / "fort.12")
+    write_lnsp_from_spectral_template(
+        spectral_template, pv, date, hhmm, out / "fort.12"
+    )
     write_namelist(out / "fort.4")
 
     required = ["fort.4", "fort.10", "fort.11", "fort.12", "fort.17", "fort.21"]
@@ -285,10 +292,15 @@ def main():
             "interface_coefficients": len(pv) // 2,
         },
         "raw_eta_metadata": eta_metadata,
+        "surface_pressure_contract": (
+            "pinned upstream spectral ln(ps) carrier; native ERA5 138-interface "
+            "A/B coefficients replace only the PV array so calc_etadot exercises "
+            "the complete real 137-level eta-dot recurrence"
+        ),
         "sources": {
             "model_levels": native_record,
             "eta_dot": etadot_record,
-            "surface": surface_record,
+            "spectral_surface_pressure_template": spectral_template_record,
         },
         "generated_inputs": generated,
     }

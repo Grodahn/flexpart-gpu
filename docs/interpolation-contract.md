@@ -244,7 +244,36 @@ yint4 (ctwc) = 0.0025
 intiy1/intiy2 = -9999, -9999   (all four corners icmv -> CLOUD -9999 -9999)
 ```
 
-## 6. Interface-staggered vertical sampling (METRE mode)
+## 6. Real #29/#30 ERA5/ETEX sample
+
+The machine-readable contract includes one real sample descriptor,
+`era5-etex-real-column-v1`, anchored to the checked-in #29 canonical fixture
+`fixtures/meteorology/era5-etex-native-v1.json`.
+
+The frozen selection is the column at canonical `x=0, y=0`:
+
+- timestamp: `1994-10-23T15:00:00Z`;
+- longitude/latitude: `-2° / 48°`;
+- 137 native ERA5 hybrid levels;
+- represented fields: `wind_u`, `wind_v`, `temperature`,
+  `specific_humidity`, and `surface_pressure`.
+
+The descriptor records the SHA-256 of both the canonical #29 fixture and its checked-in
+surface archive. `prepare_interpolation_fixtures.py` recomputes those hashes and fails
+closed if either source drifts.
+
+#71 does not duplicate #30's vertical transformation. CI step 2b extracts exactly this
+real column through `scripts/vertical/extract_real_etex_column.py`, runs the #30
+vertical transform, and compares the resulting 137-level column against the pinned
+FLEXPART 11.1 direct-routine oracle. The contract records the corresponding
+`real-comparison-report.json` and real-column provenance paths as the oracle evidence
+for this real-data sample. Step 2c then requires the real-data descriptor to reproduce
+exactly together with the synthetic interpolation goldens.
+
+This satisfies the real #29/#30-compatible ERA5/ETEX fixture obligation without adding
+provider decoding or moving vertical-transform ownership into #71.
+
+## 7. Interface-staggered vertical sampling (METRE mode)
 
 Model-level sampling (`level_center`) is normative and proven by
 `find_z_level_meters` + `find_vert_vars` + `vert_interpol`.
@@ -255,7 +284,7 @@ execution path in the pinned METRE build**: `interpol_wind_meter`
 coordinate. This is recorded as an **unresolved/unsupported** semantic and blocks #73
 from claiming interface-staggered parity without a dedicated ETA-mode oracle build.
 
-## 7. Out-of-contract semantics (fail closed)
+## 8. Out-of-contract semantics (fail closed)
 
 The following are deliberately **not** frozen by #71; issue authors must treat them as
 unresolved and must not invent behavior:
@@ -273,7 +302,7 @@ unresolved and must not invent behavior:
 Any candidate implementation that needs these must open a follow-up oracle issue rather
 than extending this contract.
 
-## 8. Artifacts
+## 9. Artifacts
 
 - `scripts/interpolation/direct_interpolation_oracle.f90` — modes `horizontal`,
   `vertical`, `temporal`, `rain`; calls the pinned routines; versioned output header
@@ -281,4 +310,7 @@ than extending this contract.
 - `scripts/interpolation/direct_oracle.sh` — container build + run harness.
 - `fixtures/interpolation/*.json` — canonical sampling cases (schema
   `flexpart-gpu.interpolation-contract.v1`) with embedded golden values and provenance.
+- `fixtures/meteorology/era5-etex-native-v1.json` plus its provenance and
+  surface archive — real #29 source referenced by `era5-etex-real-column-v1`; #30 CI
+  supplies the pinned direct-routine vertical-oracle evidence for that selection.
 - `reference/flexpart-11.1.json` — pinned reference manifest.

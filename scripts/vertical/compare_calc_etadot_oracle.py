@@ -280,33 +280,70 @@ def main():
 
     per_level = {}
     row_overall = True
+    compact_report = classification == REAL_ERA5_CLASSIFICATION
+    overall_max_abs = 0.0
+    overall_max_rel = 0.0
+    failure_count = 0
+    failures = []
     for lvl in levels:
         k = lvl
         search = oracle["oracle_etadot_pa_s_xy_by_level"][str(lvl)]
         comparisons = []
         level_overall = True
+        level_max_abs = 0.0
+        level_max_rel = 0.0
+        level_failures = 0
         for y in range(ny):
             for x in range(nx):
                 point = y * nx + x
                 actual = values[k * nxy + point]
                 expected = search[point]
                 diff = abs(actual - expected)
+                relative = diff / abs(expected) if expected != 0.0 else (0.0 if diff == 0.0 else float("inf"))
                 limit = max(
                     PRESSURE_VELOCITY_ABS_TOL_PA_S,
                     PRESSURE_VELOCITY_REL_TOL * abs(expected),
                 )
                 passed = diff <= limit
                 level_overall = level_overall and passed
-                comparisons.append({
-                    "x": x,
-                    "y": y,
-                    "candidate_pa_s": actual,
-                    "oracle_pa_s": expected,
-                    "absolute_difference_pa_s": diff,
-                    "allowed_difference_pa_s": limit,
-                    "pass": passed,
-                })
-        per_level[str(lvl)] = {"comparisons": comparisons, "pass": level_overall}
+                level_max_abs = max(level_max_abs, diff)
+                level_max_rel = max(level_max_rel, relative)
+                overall_max_abs = max(overall_max_abs, diff)
+                overall_max_rel = max(overall_max_rel, relative)
+                if not passed:
+                    level_failures += 1
+                    failure_count += 1
+                    if len(failures) < 20:
+                        failures.append({
+                            "level": lvl,
+                            "x": x,
+                            "y": y,
+                            "candidate_pa_s": actual,
+                            "oracle_pa_s": expected,
+                            "absolute_difference_pa_s": diff,
+                            "relative_difference": relative,
+                            "allowed_difference_pa_s": limit,
+                        })
+                if not compact_report:
+                    comparisons.append({
+                        "x": x,
+                        "y": y,
+                        "candidate_pa_s": actual,
+                        "oracle_pa_s": expected,
+                        "absolute_difference_pa_s": diff,
+                        "allowed_difference_pa_s": limit,
+                        "pass": passed,
+                    })
+        level_report = {
+            "pass": level_overall,
+            "comparison_count": nxy,
+            "failure_count": level_failures,
+            "max_absolute_difference_pa_s": level_max_abs,
+            "max_relative_difference": level_max_rel,
+        }
+        if not compact_report:
+            level_report["comparisons"] = comparisons
+        per_level[str(lvl)] = level_report
         row_overall = row_overall and level_overall
 
     report = {
@@ -333,6 +370,11 @@ def main():
             "points_per_level": nxy,
             "comparisons": len(levels) * nxy,
             "complete_real_native_column": classification == REAL_ERA5_CLASSIFICATION,
+            "failure_count": failure_count,
+            "max_absolute_difference_pa_s": overall_max_abs,
+            "max_relative_difference": overall_max_rel,
+            "first_failures": failures,
+            "report_mode": "compact" if compact_report else "full",
         },
         "run_provenance": {
             "path": str(args.run_provenance),

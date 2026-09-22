@@ -389,6 +389,30 @@ fn contract_fixture_metadata_is_frozen() {
             );
         }
     }
+    let temporal = contract
+        .cases
+        .iter()
+        .find(|case| case.id == "temporal-bilinear")
+        .expect("temporal fixture");
+    assert_eq!(
+        temporal.semantics["time"]["primitive_outside_memory_window"],
+        "linear_extrapolation_no_range_guard"
+    );
+    assert_eq!(
+        temporal.semantics["time"]["production_call_path"],
+        serde_json::json!([
+            "getfields_mod::getfields",
+            "advance_mod::advance",
+            "interpol_mod::init_interpol",
+            "interpol_mod::find_time_vars",
+            "interpol_mod::temporal_interpolation"
+        ])
+    );
+    assert_eq!(
+        temporal.semantics["time"]["range_policy_owner"],
+        "caller/canonical API; Petterssen end-step guard is outside find_time_vars/temporal_interpolation"
+    );
+
     let rain = contract
         .cases
         .iter()
@@ -452,7 +476,7 @@ fn contract_provenance_matches_fixture() {
     );
     assert_eq!(
         provenance.fixture_artifact["sha256"],
-        "8286630800cfbf8c8f0b80f7f11e523631517c7999f1ff000da8286f18384b34"
+        "87dfb15ef021b43cb1c4e65902567fd8bf1c95951e479e10e2be807a021b5e6f"
     );
     assert_eq!(
         provenance.generator_source["path"],

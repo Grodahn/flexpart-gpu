@@ -35,7 +35,9 @@ if [ ! -x "${BUILD}/interpolation-oracle" ]; then
     -o "${BUILD}/interpolation-oracle"
 fi
 
-nm "${BUILD}/interpolation-oracle" | grep -q '__interpol_mod_MOD_interpol_rain'
-nm "${BUILD}/interpolation-oracle" | grep -q '__interpol_mod_MOD_find_vert_vars'
+NM_OUTPUT="${BUILD}/interpolation-oracle.nm"
+nm "${BUILD}/interpolation-oracle" > "${NM_OUTPUT}"
+grep -q '__interpol_mod_MOD_interpol_rain' "${NM_OUTPUT}"
+grep -q '__interpol_mod_MOD_find_vert_vars' "${NM_OUTPUT}"
 
 "${BUILD}/interpolation-oracle" "${INPUT}" "${OUTPUT}"

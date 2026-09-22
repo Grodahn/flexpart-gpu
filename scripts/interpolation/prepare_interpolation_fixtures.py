@@ -131,6 +131,86 @@ CASES = {
     },
 }
 
+CASE_SEMANTICS = {
+    "horizontal-interior": {
+        "coordinates": {
+            "horizontal": "canonical cell-center grid-index coordinates xt/yt",
+            "vertical": "kz is a 1-based FLEXPART model-level index",
+        },
+        "staggering": {"horizontal": "cell_center", "vertical": "level_center"},
+        "ordering": {"horizontal_storage": "x_fastest_then_y", "vertical": "single_level"},
+        "units": {"horizontal_query": "grid_cell", "vertical_query": "index", "value": "arbitrary_scalar"},
+        "time": {
+            "kind": "instantaneous_static_for_fixture",
+            "memory_slots": "same field copied to both FLEXPART memory slots",
+        },
+    },
+    "horizontal-periodic-wrap": {
+        "coordinates": {
+            "horizontal": "canonical cell-center grid-index coordinates xt/yt; periodic X adds a wrapped duplicate column",
+            "vertical": "kz is a 1-based FLEXPART model-level index",
+        },
+        "staggering": {"horizontal": "cell_center", "vertical": "level_center"},
+        "ordering": {"horizontal_storage": "x_fastest_then_y", "vertical": "single_level"},
+        "units": {"horizontal_query": "grid_cell", "vertical_query": "index", "value": "arbitrary_scalar"},
+        "time": {
+            "kind": "instantaneous_static_for_fixture",
+            "memory_slots": "same field copied to both FLEXPART memory slots",
+        },
+    },
+    "vertical-model-levels": {
+        "coordinates": {"horizontal": "not_applicable", "vertical": "metric height AGL"},
+        "staggering": {"horizontal": "not_applicable", "vertical": "level_center"},
+        "ordering": {"vertical": "bottom_to_top_increasing_height"},
+        "units": {"vertical_query": "meter", "value": "arbitrary_scalar"},
+        "time": {"kind": "not_applicable"},
+    },
+    "vertical-interface-wzlev": {
+        "coordinates": {"horizontal": "not_applicable", "vertical": "FLEXPART wzlev metric height AGL"},
+        "staggering": {"horizontal": "not_applicable", "vertical": "level_interface"},
+        "ordering": {"vertical": "bottom_to_top_increasing_height"},
+        "units": {"vertical_query": "meter", "value": "meter_per_second"},
+        "time": {"kind": "not_applicable"},
+    },
+    "temporal-bilinear": {
+        "coordinates": {"horizontal": "not_applicable", "vertical": "not_applicable"},
+        "staggering": {"horizontal": "not_applicable", "vertical": "not_applicable"},
+        "ordering": {"time": "memtime_1_then_memtime_2"},
+        "units": {"time": "second", "value": "arbitrary_scalar"},
+        "time": {
+            "kind": "instantaneous_two_member_linear",
+            "members": [0, 3600],
+            "endpoints_inclusive": True,
+        },
+    },
+    "rain-layer-fields": {
+        "coordinates": {
+            "horizontal": "canonical cell-center grid-index coordinates xt/yt",
+            "vertical": "kz is the 1-based layer selector consumed by interpol_rain",
+        },
+        "staggering": {"horizontal": "cell_center", "vertical": "surface_or_layer_field"},
+        "ordering": {
+            "horizontal_storage": "x_fastest_then_y",
+            "time": "field_time1_then_field_time2",
+        },
+        "units": {
+            "time": "second",
+            "lsprec": "millimeter_per_hour",
+            "convprec": "millimeter_per_hour",
+            "tcc": "dimensionless_fraction",
+            "tt": "kelvin",
+            "ctwc": "kilogram_per_kilogram",
+            "cloud_bounds": "model_level_index_or_icmv",
+        },
+        "time": {
+            "kind": "two_FLEXPART_memory_members",
+            "members": [0, 3600],
+            "precipitation_input_representation": "already_normalized_rate",
+            "reset_deaccumulation": "not_performed_here; owned_by_issue_75",
+        },
+    },
+}
+
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -263,10 +343,40 @@ def build_real_data_sample() -> dict:
             "native_levels": native_levels,
         },
         "represented_fields": source_provenance["represented_fields"],
+        "semantics": {
+            "coordinates": {
+                "horizontal": "longitude/latitude cell centers in degrees",
+                "vertical": canonical["vertical_coordinate"]["kind"],
+                "vertical_reference": canonical["vertical_coordinate"]["reference"],
+            },
+            "staggering": {
+                field["id"]: {
+                    "horizontal": field["horizontal_staggering"],
+                    "vertical": field["vertical_staggering"],
+                }
+                for field in canonical["fields"]
+                if field["id"] in source_provenance["represented_fields"]
+            },
+            "ordering": {
+                "vertical": canonical["vertical_coordinate"]["ordering"],
+                "storage": "x_fastest",
+            },
+            "units": {
+                field["id"]: field["unit"]
+                for field in canonical["fields"]
+                if field["id"] in source_provenance["represented_fields"]
+            },
+            "time": {
+                "kind": "instantaneous_valid_time",
+                "timestamp": slice_meta["timestamp"],
+                "epoch_seconds": slice_meta["epoch_seconds"],
+            },
+        },
         "compatibility": {
             "canonical_contract_issue": 29,
             "vertical_transform_issue": 30,
             "extraction_path": extraction_path,
+            "extraction_source_sha256": sha256(repo_root / extraction_path),
             "ci_gate_step": "2b",
             "pinned_oracle_evidence": (
                 "target/ci-gate/vertical-column/real-comparison-report.json"
@@ -411,6 +521,7 @@ def main() -> None:
             "input": case_file.read_text(encoding="utf-8").splitlines(),
             "golden": golden,
         }
+        fixture_case["semantics"] = CASE_SEMANTICS[name]
         for key in ("vertical_staggering", "source_oracle"):
             if key in case:
                 fixture_case[key] = case[key]
@@ -448,6 +559,7 @@ def main() -> None:
         missing = [name for name, sym in symbols_probe.items() if sym not in nm]
         if missing:
             raise ValueError(f"oracle binary missing symbols: {missing}")
+        repo_root = Path(__file__).resolve().parents[2]
         provenance = {
             "schema": "flexpart-gpu.interpolation-contract-provenance.v1",
             "pinned_commit": pinned,
@@ -462,12 +574,29 @@ def main() -> None:
                 "path": str(args.binary),
                 "sha256": sha256(args.binary),
             },
+            "fixture_artifact": {
+                "path": "fixtures/interpolation/contract-v1.json",
+                "sha256": sha256(args.out_fixture),
+            },
+            "generator_source": {
+                "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
+                "sha256": sha256(Path(__file__).resolve()),
+            },
             "driver_source": {
                 "path": "scripts/interpolation/direct_interpolation_oracle.f90",
-                "sha256": sha256(
-                    Path(__file__).resolve().parents[1] / "interpolation"
-                    / "direct_interpolation_oracle.f90"
-                ),
+                "sha256": sha256(repo_root / "scripts/interpolation/direct_interpolation_oracle.f90"),
+            },
+            "oracle_harness_source": {
+                "path": "scripts/interpolation/direct_oracle.sh",
+                "sha256": sha256(repo_root / "scripts/interpolation/direct_oracle.sh"),
+            },
+            "real_extraction_source": {
+                "path": "scripts/vertical/extract_real_etex_column.py",
+                "sha256": sha256(repo_root / "scripts/vertical/extract_real_etex_column.py"),
+            },
+            "reference_manifest": {
+                "path": "reference/flexpart-11.1.json",
+                "sha256": sha256(args.reference_manifest),
             },
             "linked_flexpart": {
                 "objects": [

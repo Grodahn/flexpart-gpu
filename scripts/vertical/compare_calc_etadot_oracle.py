@@ -35,7 +35,7 @@ MAX_ATTRIBUTED_REL_ERROR = 3.0e-5
 
 PINNED_CALC_ETADOT_SHA256 = "160F267F8741F23D13FDBA2F7A88F110BB131AA84AD7894FA43605258E55B0D9"
 PINNED_CALC_ETADOT_GIT_BLOB = "741eba91eab049df23a560219d0f2656a6cc9881"
-REAL_ERA5_CLASSIFICATION = "real_era5_etadot_full_native_column"
+REAL_ERA5_CLASSIFICATION = "real_era5_native_model_level_full_column"
 
 REQUIRED_TRANSFORM_SNIPPETS = (
     "P00=101325.",
@@ -215,17 +215,23 @@ def main():
             raise ValueError("real ERA5 oracle lacks pinned source provenance")
         if source_provenance.get("classification") != REAL_ERA5_CLASSIFICATION:
             raise ValueError("real ERA5 source provenance classification mismatch")
-        real_column = source_provenance.get("validated_real_column", {})
+        real_column = source_provenance.get("selected_column", {})
         if (
-            real_column.get("lon_deg") != -2.0
-            or real_column.get("lat_deg") != 48.0
-            or real_column.get("surface_pressure_strategy")
-            != "constant_spectral_lnps_from_real_era5_column"
+            real_column.get("longitude_deg") != -2.0
+            or real_column.get("latitude_deg") != 48.0
+            or real_column.get("model_levels") != 137
+            or real_column.get("level_coverage") != "1/to/137"
             or not isinstance(real_column.get("surface_pressure_pa"), (int, float))
         ):
             raise ValueError(
                 f"real ERA5 selected-column provenance is incomplete: {real_column!r}"
             )
+        profiles = real_column.get("profile_values", {})
+        if (
+            set(profiles) != {"77", "130", "131", "132", "133"}
+            or any(len(values) != 137 for values in profiles.values())
+        ):
+            raise ValueError("real ERA5 selected column does not contain all 137 native levels")
 
     run_provenance = json.loads(args.run_provenance.read_text(encoding="utf-8"))
     if run_provenance.get("schema") != "flexpart-gpu.etadot-oracle-run-provenance.v1":
@@ -257,15 +263,11 @@ def main():
             raise ValueError("real ERA5 oracle run provenance lacks fort.4")
         real_namgen = parse_namgen(fort4_path)
         real_expected = {
-            "maxl": 65,
-            "maxb": 41,
+            "maxl": 6,
+            "maxb": 6,
             "mlevel": 137,
             "mlevelist": "1/to/137",
-            "mnauf": int(
-                source_fixture["source_provenance"]["content"][
-                    "validated_real_column"
-                ]["spectral_truncation"]
-            ),
+            "mnauf": 106,
             "metapar": 77,
             "momega": 0,
             "momegadiff": 0,
@@ -344,20 +346,6 @@ def main():
             raise ValueError(
                 "real ERA5 spectral ln(ps) does not reconstruct the selected "
                 f"surface pressure: max error {max_ps_error} Pa"
-            )
-        selected_ps = float(
-            source_fixture["source_provenance"]["content"]["validated_real_column"][
-                "surface_pressure_pa"
-            ]
-        )
-        surface_pressures = oracle.get("surface_pressure_pa_xy", [])
-        if len(surface_pressures) != nxy:
-            raise ValueError("real ERA5 oracle surface-pressure field has wrong shape")
-        max_ps_error = max(abs(float(value) - selected_ps) for value in surface_pressures)
-        if max_ps_error > max(0.5, 1.0e-5 * selected_ps):
-            raise ValueError(
-                "calc_etadot spectral ln(ps) does not reproduce the selected "
-                f"real ERA5 column pressure: max error {max_ps_error} Pa"
             )
 
     values = candidate["result"]["values_interface_pa_s"]
@@ -461,7 +449,7 @@ def main():
             "selected_real_column": (
                 source_fixture.get("source_provenance", {})
                 .get("content", {})
-                .get("validated_real_column")
+                .get("selected_column")
                 if classification == REAL_ERA5_CLASSIFICATION
                 else None
             ),

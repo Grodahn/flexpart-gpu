@@ -121,7 +121,7 @@
     "real-era5-etex-temperature-column": "5679760f10c75679ecd597979b5caadfd3bf30debbbf9b0fa1fc6af1aa9e3771",
     "horizontal-geographic-interior": "1858607f1f5a976af7476f8754fd74bd84b5986f2eeeb32241378edf115fec6e"
   },
-  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules and calls point_mod::coordtrafo for geographic-to-grid normalization, then find_grid_indices/find_grid_distances/find_z_level_meters/find_vert_vars/hor_interpol_4d/temporal_interpolation/vert_interpol/interpol_rain directly on canonical synthetic grids. W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output as its vertical geometry/value source. The real #29 ERA5/ETEX temperature column is paired with #30's pinned FLEXPART level-height output and sampled by the same #71 vertical routines. Golden values in contract-v1.json are direct interpolation-oracle outputs.",
+  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules. The geographic case intentionally composes point_mod::coordtrafo with the horizontal interpolation primitives as an oracle exercise path; pristine production uses coordtrafo during release-point initialization, while runtime particle sampling enters interpol_mod::init_interpol with grid coordinates and then uses the horizontal primitives. Precipitation ingestion is crosswalked through getfields_mod::getfields -> windfields_mod::readwind_ecmwf/readwind_gfs -> lsprec/convprec, while production wet-deposition sampling is wetdepo_mod::wetdepo -> get_wetscav -> interpolation setup -> interpol_mod::interpol_rain. W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output as its vertical geometry/value source. The real #29 ERA5/ETEX temperature column is paired with #30's pinned FLEXPART level-height output and sampled by the same #71 vertical routines. Golden values in contract-v1.json are direct interpolation-oracle outputs.",
   "real_data_samples": [
     {
       "id": "era5-etex-real-column-v1",
@@ -224,11 +224,11 @@
   "fixture_artifact": {
     "path": "fixtures/interpolation/contract-v1.json",
     "hash_kind": "normalized_canonical_json_sha256",
-    "sha256": "6729843cbd59b0ac60e39e873fde179dbe7949f3191ee0ee7ba9deb443d45c70"
+    "sha256": "b1346ae8a741b9508237c9add53ba4bda865015046c209eaa10cbb78ccd5347d"
   },
   "generator_source": {
     "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
-    "sha256": "3d96779c4ac91b5099c4e5f4fad079c33dd65a3493107c34e3d576ca8e6d3606"
+    "sha256": "ebbcb78742514407e9b8146b71e64c4cf4ce1cbe460ac0281d7b69fa06139344"
   },
   "oracle_harness_source": {
     "path": "scripts/interpolation/direct_oracle.sh",

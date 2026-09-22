@@ -2041,7 +2041,8 @@ mod tests {
         assert!(matches!(
             error,
             VerticalTransformError::InvalidNativeVerticalMotion {
-                reason: "kind/unit/sign combination is not canonical for the declared representation"
+                reason:
+                    "kind/unit/sign combination is not canonical for the declared representation"
             }
         ));
     }
@@ -2049,26 +2050,26 @@ mod tests {
     #[test]
     fn eta_dot_production_path_remains_fail_closed_after_validation() {
         let snapshot = geometry_snapshot(VerticalOrdering::Increasing);
-            let native = NativeVerticalMotion {
-                kind: NativeVerticalMotionKind::EtaCoordinateVelocity,
-                unit: NativeVerticalMotionUnit::PerSecond,
+        let native = NativeVerticalMotion {
+            kind: NativeVerticalMotionKind::EtaCoordinateVelocity,
+            unit: NativeVerticalMotionUnit::PerSecond,
             sign: NativeVerticalMotionSign::PositiveEtaIncreasing,
-                vertical_staggering: VerticalStaggering::LevelCenter,
+            vertical_staggering: VerticalStaggering::LevelCenter,
                 values: vec![1.0e-5, 0.0, 3.0e-5, 0.0],
-                provenance: NativeVerticalMotionProvenance {
+            provenance: NativeVerticalMotionProvenance {
                 source_id: "validated-etadot-production-disabled".to_string(),
-                },
-            };
+            },
+        };
 
-            let error = reconstruct_vertical_geometry_with_motion(&snapshot, &native)
+        let error = reconstruct_vertical_geometry_with_motion(&snapshot, &native)
             .expect_err("validated eta-dot preprocessing must remain disabled in production");
-            assert!(matches!(
-                error,
-                VerticalTransformError::InvalidNativeVerticalMotion {
+        assert!(matches!(
+            error,
+            VerticalTransformError::InvalidNativeVerticalMotion {
                 reason: "eta-dot preprocessing is validation-only; production normalization remains disabled until explicitly enabled after #70"
-                }
-            ));
-        }
+            }
+        ));
+    }
 
     #[test]
     fn geometric_vertical_motion_is_identity_with_explicit_upward_semantics() {

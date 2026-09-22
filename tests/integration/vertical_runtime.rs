@@ -44,7 +44,7 @@ fn release_height_agl_and_asl_share_the_same_nonzero_terrain_transform() {
 
     let from_agl =
         resolve_release_height_at_column(runtime, 0, 0, 100.0, VerticalReference::AboveGroundLevel)
-            .expect("100 m AGL over 250 m terrain");
+    .expect("100 m AGL over 250 m terrain");
     assert_eq!(from_agl.height_agl_m, 100.0);
     assert_eq!(from_agl.height_asl_m, 350.0);
 
@@ -104,7 +104,7 @@ fn release_height_reference_is_never_inferred() {
 
     let error =
         resolve_release_height_at_column(runtime, 0, 0, 100.0, VerticalReference::ModelNative)
-            .expect_err("model-native release height must be rejected");
+    .expect_err("model-native release height must be rejected");
     assert!(matches!(
         error,
         VerticalTransformError::UnsupportedReleaseHeightReference {

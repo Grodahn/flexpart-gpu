@@ -21,6 +21,7 @@ Pass --offline (with pre-generated oracle-output files) to skip re-running the o
 import argparse
 import hashlib
 import json
+import math
 import re
 import subprocess
 from pathlib import Path
@@ -216,9 +217,23 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def normalize_json(value):
+    """Normalize insignificant JSON representation differences for semantic hashing."""
+    if isinstance(value, dict):
+        return {key: normalize_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [normalize_json(item) for item in value]
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("non-finite number cannot be part of the contract")
+        if value.is_integer():
+            return int(value)
+    return value
+
+
 def canonical_json_sha256(path: Path) -> str:
-    """Hash JSON semantically so insignificant object ordering/whitespace cannot drift provenance."""
-    value = json.loads(path.read_text(encoding="utf-8"))
+    """Hash normalized JSON so key order, whitespace and 0-vs-0.0 cannot drift provenance."""
+    value = normalize_json(json.loads(path.read_text(encoding="utf-8")))
     canonical = json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
@@ -585,7 +600,7 @@ def main() -> None:
             },
             "fixture_artifact": {
                 "path": "fixtures/interpolation/contract-v1.json",
-                "hash_kind": "canonical_json_sha256",
+                "hash_kind": "normalized_canonical_json_sha256",
                 "sha256": canonical_json_sha256(args.out_fixture),
             },
             "generator_source": {

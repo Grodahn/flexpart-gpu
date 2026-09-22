@@ -438,21 +438,31 @@ fi
 # ../flex_extract); otherwise the tier is reported as NOT_WIRED below. It
 # builds/runs in scratch dirs and leaves the checkout pristine.
 FLEXEXTRACT_ORACLE_STATUS="NOT_WIRED"
+FLEXEXTRACT_STATUS_FILE="${OUTPUT_DIR}/flex-extract-oracle-status.txt"
+rm -rf "${OUTPUT_DIR}/flex-extract-oracle"
+rm -f "${OUTPUT_DIR}/flex-extract-etadot.log" "${FLEXEXTRACT_STATUS_FILE}"
+printf '%s\n' "${FLEXEXTRACT_ORACLE_STATUS}" > "${FLEXEXTRACT_STATUS_FILE}"
 if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
   if [ -d "${FLEXEXTRACT_CHECKOUT}" ]; then
     log_info "Step 2c/6: pinned flex_extract calc_etadot oracle comparison..."
+    FLEXEXTRACT_ORACLE_STATUS="RUNNING"
+    printf '%s\n' "${FLEXEXTRACT_ORACLE_STATUS}" > "${FLEXEXTRACT_STATUS_FILE}"
     if ! "${PROJECT_ROOT}/scripts/vertical/flex_extract_etadot_oracle.sh" \
       --flex-extract-checkout "${FLEXEXTRACT_CHECKOUT}" \
       --output-dir "${OUTPUT_DIR}/flex-extract-oracle" 2>&1 \
       | tee "${OUTPUT_DIR}/flex-extract-etadot.log"; then
+      FLEXEXTRACT_ORACLE_STATUS="FAIL"
+      printf '%s\n' "${FLEXEXTRACT_ORACLE_STATUS}" > "${FLEXEXTRACT_STATUS_FILE}"
       fail "calc_etadot oracle tier failed (#70)"
     fi
     FLEXEXTRACT_ORACLE_STATUS="PASS"
+    printf '%s\n' "${FLEXEXTRACT_ORACLE_STATUS}" > "${FLEXEXTRACT_STATUS_FILE}"
   else
     log_warn "flex_extract checkout not found at ${FLEXEXTRACT_CHECKOUT}; calc_etadot oracle tier is NOT_WIRED"
   fi
 else
   FLEXEXTRACT_ORACLE_STATUS="NOT_RUN"
+  printf '%s\n' "${FLEXEXTRACT_ORACLE_STATUS}" > "${FLEXEXTRACT_STATUS_FILE}"
 fi
 # ---------------------------------------------------------------------------
 # 3. Prove a real software-WGPU adapter (fail-closed, no skip allowed).

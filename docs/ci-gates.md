@@ -53,10 +53,12 @@ Fail-closed steps:
     (#30): direct routine oracle plus conformance harness on synthetic and real
     ERA5/ETEX columns.
 2c. Regenerate and verify the interpolation oracle contract fixture (#71):
-    re-run `scripts/interpolation/direct_oracle.sh` for all five sampling cases
+    re-run `scripts/interpolation/direct_oracle.sh` for all six sampling cases
     in the pinned container, re-pack `fixtures/interpolation/contract-v1.json`
-    (+ provenance), require the regenerated goldens, output hashes and object
-    hashes to match the committed pack, and re-verify the goldens analytically
+    (+ provenance), require #30's direct FLEXPART `wzlev`/`pinmconv` source
+    evidence for the W/interface case to match its frozen hash, require the
+    regenerated goldens/output/object hashes to match the committed pack, and
+    re-verify the goldens analytically
     via `cargo test --test interpolation_contract`.
 3. Run `gpu-preflight --software`; require `software adapter: true` and
    `smoke test: PASS` (a skipped smoke test fails).

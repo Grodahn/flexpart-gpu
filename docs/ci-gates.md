@@ -84,7 +84,7 @@ Fail-closed step 2c (#70, calc_etadot preprocessing oracle):
   `eta-dot-column-report` candidate, and compares every grid point x level
   against the oracle field (f32-vs-f64 tolerances, worst attributable
   relative error ≤ 3e-5). The validated native contract is deliberately
-  narrowed to `positive_eta_decreasing`; the opposite sign convention remains
+  narrowed to `positive_eta_increasing`; the opposite sign convention remains
   fail-closed. The tier records `run-provenance.json` with the concrete image
   ID, compiler, oracle executable hash, consumed fort.* hashes and fort.15
   output hash. The checkout must stay pristine after the run.

@@ -245,7 +245,7 @@ CASE_SEMANTICS = {
     },
     "horizontal-periodic-wrap": {
         "coordinates": {
-            "horizontal": "canonical cell-center grid-index coordinates xt/yt; periodic X adds a wrapped duplicate column",
+            "horizontal": "canonical cell-center grid-index coordinates xt/yt on a reachable 4-cell global longitude layout (dx=90 degrees); periodic X adds a wrapped duplicate column",
             "vertical": "kz is a 1-based FLEXPART model-level index",
         },
         "staggering": {"horizontal": "cell_center", "vertical": "level_center"},

@@ -583,10 +583,11 @@ for key in (
 assert p["fixture_artifact"]["hash_kind"] == "normalized_canonical_json_sha256"
 assert p["fixture_artifact"]["sha256"] == canonical_json_sha256(sys.argv[1]), "committed contract hash mismatch"
 assert q["fixture_artifact"]["sha256"] == canonical_json_sha256(sys.argv[2]), "regenerated contract hash mismatch"
+assert p["linked_flexpart"]["link_strategy"] == q["linked_flexpart"]["link_strategy"], "link strategy drifted"
 assert p["linked_flexpart"]["routines"] == q["linked_flexpart"]["routines"], "routine list drifted"
-pa = {o["object"]: o["object_sha256"] for o in p["linked_flexpart"]["objects"]}
-qa = {o["object"]: o["object_sha256"] for o in q["linked_flexpart"]["objects"]}
-assert pa == qa, "linked object hashes drifted"
+pa = {o["object"]: o["object_sha256"] for o in p["linked_flexpart"]["direct_routine_objects"]}
+qa = {o["object"]: o["object_sha256"] for o in q["linked_flexpart"]["direct_routine_objects"]}
+assert pa == qa, "direct routine object hashes drifted"
 assert p["driver_source"]["sha256"] == q["driver_source"]["sha256"], "driver source drifted"
 print("interpolation contract fixture/provenance reproduced: OK")
 ' \

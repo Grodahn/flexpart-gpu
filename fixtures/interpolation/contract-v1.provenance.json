@@ -224,7 +224,7 @@
   },
   "generator_source": {
     "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
-    "sha256": "b89ee8ac134fb19a19a32e84d5509bd0ec01c7bedc395e14aba4cf6818e2e989"
+    "sha256": "207a16050deb19f652929f267f956c26971fd35eea238a8ad2210550859167fd"
   },
   "oracle_harness_source": {
     "path": "scripts/interpolation/direct_oracle.sh",

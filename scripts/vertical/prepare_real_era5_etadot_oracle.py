@@ -24,6 +24,11 @@ ETADOT_FILE = "era5-19941023-151821-etadot.grib"
 LEVEL_COUNT = 137
 NX = 65
 NY = 41
+REAL_COLUMN_LON_DEG = -2.0
+REAL_COLUMN_LAT_DEG = 48.0
+SOURCE_LON0_DEG = -8.0
+SOURCE_LAT0_DEG = 53.0
+SOURCE_DDEG = 0.25
 
 FORT_BY_PARAM = {
     130: "fort.11",  # temperature
@@ -235,7 +240,7 @@ def write_namelist(output_path: Path):
   metadiff = 0,
   mdpdeta = 1
 /
-""",
+""".format(spectral_truncation=spectral_truncation),
         encoding="utf-8",
     )
 
@@ -255,7 +260,7 @@ def main():
     native_record = verify_manifest_file(base, "request.json", NATIVE_FILE)
     etadot_record = verify_manifest_file(base, "request-etadot.json", ETADOT_FILE)
     date, hhmm = timestamp_parts(args.timestamp)
-    pv, template = select_model_messages(base / NATIVE_FILE, date, hhmm, out)
+    pv, _template = select_model_messages(base / NATIVE_FILE, date, hhmm, out)
     eta_metadata = select_etadot(base / ETADOT_FILE, date, hhmm, out)
 
     spectral_template = args.spectral_lnsp_template.resolve()

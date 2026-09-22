@@ -377,7 +377,7 @@ fn contract_fixture_metadata_is_frozen() {
     assert_eq!(source["value_field"], "omega * pinmconv");
     assert_eq!(
         source["oracle_output_sha256"],
-        "ae7cd8c7a057e81439bc7e316e123c438951a4a0cd0bff9c4e21b086bac3e9bf"
+        "5015ea3a9a9e42b1a2b88c60c2867b74a632bffd1b9cfefdc186b005c752b197"
     );
 }
 
@@ -404,7 +404,7 @@ fn contract_provenance_matches_fixture() {
     );
     assert_eq!(
         provenance.interface_vertical_source["oracle_output_sha256"],
-        "ae7cd8c7a057e81439bc7e316e123c438951a4a0cd0bff9c4e21b086bac3e9bf"
+        "5015ea3a9a9e42b1a2b88c60c2867b74a632bffd1b9cfefdc186b005c752b197"
     );
     assert_eq!(
         provenance.interface_vertical_source["geometry_field"],

@@ -65,23 +65,43 @@ yt = (lat_deg - ylat0_deg) / dy_deg_y
 ```
 
 Runtime particle meteorology sampling already operates in FLEXPART grid coordinates.
-A representative production wind-sampling path is:
+The pinned source is **not one linear stack**. The relevant direct `CALL` edges for
+the above-PBL meter-coordinate path are:
 
 ```
-advance_mod::advance
-  -> interpol_mod::init_interpol
-       -> find_grid_indices
-       -> find_grid_distances
-  -> interpol_mod::interpol_wind
-       -> hor_interpol_4d
+advance_mod::advance -> interpol_mod::init_interpol
+  init_interpol -> find_ngrid
+  init_interpol -> find_grid_indices
+  init_interpol -> find_grid_distances
+  init_interpol -> find_time_vars
+  init_interpol -> find_z_level
+
+advance_mod::advance -> advance_mod::adv_above_pbl
+  adv_above_pbl -> interpol_mod::interpol_wind
+    interpol_wind -> find_ngrid
+    interpol_wind -> find_grid_indices
+    interpol_wind -> find_grid_distances
+    interpol_wind -> find_time_vars
+    interpol_wind -> find_z_level_meters
+    interpol_wind -> interpol_wind_meter
+      interpol_wind_meter -> find_vert_vars
+      interpol_wind_meter -> hor_interpol
+      interpol_wind_meter -> vert_interpol
+      interpol_wind_meter -> temporal_interpolation
 ```
+
+Here `hor_interpol` is the generic interface; the 4-D wind-field calls resolve to
+`hor_interpol_4d`. Importantly, `init_interpol` and
+`adv_above_pbl -> interpol_wind` are sibling branches from `advance`; the latter
+recomputes grid/time interpolation state. The machine-readable contract therefore
+stores direct call edges rather than implying a synthetic sequence.
 
 The `horizontal-geographic-interior` direct oracle intentionally composes
 `coordtrafo -> find_grid_indices -> find_grid_distances -> hor_interpol_4d` so the
 geographic-to-grid mapping is exercised by pristine code before the interpolation
 primitive. That composition is therefore recorded as `oracle_exercise_path`, **not**
 as a pristine production call chain. The machine-readable fixture separately records
-`production_coordinate_initialization_path` and `production_sampling_path`.
+`production_direct_call_edges` plus the generic-interface resolution.
 
 FLEXPART computes the zonal step from the stored first/last longitudes
 (`gridcheck_ecmwf`, `windfields_mod.f90:572-718`):
@@ -257,20 +277,31 @@ routines with `itime` outside the two memory times performs linear
 
 ### Production caller path and range ownership
 
-The pinned FLEXPART call path separates interpolation math from wind-memory
-coverage policy:
+The pinned FLEXPART lifecycle separates wind-memory management from particle
+sampling. These are direct call edges, not a single stack:
 
 ```
-getfields_mod::getfields
-    -> maintains the wind fields / memtime entries held in memory
+timemanager_mod::timemanager -> getfields_mod::getfields
+timemanager_mod::timemanager -> advance_mod::advance
 
-advance_mod::advance
-    -> interpol_mod::init_interpol(itime, ...)
-        -> find_grid_indices / find_grid_distances
-        -> find_time_vars(itime)
-    -> interpol_* consumers
-        -> temporal_interpolation(...)
+advance_mod::advance -> interpol_mod::init_interpol
+init_interpol -> find_time_vars
+
+advance_mod::advance -> advance_mod::adv_above_pbl
+adv_above_pbl -> interpol_mod::interpol_wind
+interpol_wind -> find_time_vars
+interpol_wind -> interpol_wind_meter
+interpol_wind_meter -> temporal_interpolation
+
+advance_mod::advance -> advance_mod::petterssen_corr
+petterssen_corr -> interpol_mod::interpol_wind_short
+interpol_wind_short -> find_time_vars
+interpol_wind_short -> interpol_wind_meter
 ```
+
+Thus `getfields` and `advance` are sibling calls from `timemanager`.
+`temporal_interpolation` is reached inside the concrete interpolation consumers;
+it is not directly downstream of `init_interpol`.
 
 The Petterssen correction is a concrete caller-side example of this separation:
 `advance_mod::advance` checks that the predicted step end remains within the
@@ -312,30 +343,27 @@ in-memory members:
 ### Production ingest and sampling crosswalk
 
 The precipitation fields used by `interpol_rain` enter the two FLEXPART wind-memory
-slots through `getfields_mod::getfields`:
+slots through these direct calls:
 
 ```
-ECMWF:
-getfields_mod::getfields
-  -> windfields_mod::readwind_ecmwf
-  -> windfields_mod::{lsprec,convprec}
-
-GFS:
-getfields_mod::getfields
-  -> windfields_mod::readwind_gfs
-  -> windfields_mod::{lsprec,convprec}
+timemanager_mod::timemanager -> getfields_mod::getfields
+getfields_mod::getfields -> windfields_mod::readwind_ecmwf   # ECMWF
+getfields_mod::getfields -> windfields_mod::readwind_gfs     # GFS
 ```
 
-The production wet-deposition consumer reaches the interpolation routine through:
+Those readers populate the data fields `windfields_mod::lsprec` and
+`windfields_mod::convprec`; field names are not represented as call-graph nodes.
+
+The production wet-deposition consumer uses these direct calls:
 
 ```
-wetdepo_mod::wetdepo
-  -> wetdepo_mod::get_wetscav
-       -> interpol_mod::find_ngrid
-       -> find_grid_indices
-       -> find_grid_distances
-       -> find_z_level_meters        # eta=no build
-       -> interpol_rain
+timemanager_mod::timemanager -> wetdepo_mod::wetdepo
+wetdepo_mod::wetdepo -> wetdepo_mod::get_wetscav
+get_wetscav -> interpol_mod::find_ngrid
+get_wetscav -> interpol_mod::find_grid_indices
+get_wetscav -> interpol_mod::find_grid_distances
+get_wetscav -> interpol_mod::find_z_level_meters   # eta=no build
+get_wetscav -> interpol_mod::interpol_rain
 ```
 
 `get_wetscav` also nudges east/north border positions slightly into the mother grid

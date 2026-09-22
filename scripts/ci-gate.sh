@@ -290,8 +290,10 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
         -leccodes -leccodes_f90 -lm -lnetcdff \
         -o \"\$build/flexpart-vertical-routine-oracle\"
 
-      nm \"\$build/flexpart-vertical-routine-oracle\" \
-        | grep -q '__verttransform_mod_MOD_verttransform_ecmwf_heights'
+      nm \"\$build/flexpart-vertical-routine-oracle\" > \
+        \"\$build/flexpart-vertical-routine-oracle.nm\"
+      grep -q '__verttransform_mod_MOD_verttransform_ecmwf_heights' \
+        \"\$build/flexpart-vertical-routine-oracle.nm\"
       sha256sum \"\$oracle_src/verttransform_mod.o\" > \"\$build/verttransform_mod.o.sha256\"
       sha256sum \"\$oracle_src/windfields_mod.o\" > \"\$build/windfields_mod.o.sha256\"
 

@@ -310,6 +310,27 @@ fn contract_fixture_metadata_is_frozen() {
         contract.pinned_flexpart.version, "11.1",
         "contract must reference FLEXPART 11.1"
     );
+    assert_eq!(
+        contract.real_data_samples.len(),
+        1,
+        "contract must represent one real #29/#30 ERA5/ETEX sample"
+    );
+    let real = &contract.real_data_samples[0];
+    assert_eq!(real["id"], "era5-etex-real-column-v1");
+    assert_eq!(real["kind"], "era5_etex_vertical_column");
+    assert_eq!(real["selection"]["native_levels"], 137);
+    assert_eq!(
+        real["source"]["canonical_fixture"],
+        "fixtures/meteorology/era5-etex-native-v1.json"
+    );
+    assert_eq!(
+        real["compatibility"]["canonical_contract_issue"], 29,
+        "real sample must be anchored to the #29 canonical contract"
+    );
+    assert_eq!(
+        real["compatibility"]["vertical_transform_issue"], 30,
+        "real sample must use the #30 vertical-transform path"
+    );
 }
 
 #[test]
@@ -324,6 +345,15 @@ fn contract_provenance_matches_fixture() {
     assert_eq!(provenance.pinned_commit, FLEXPART_PINNED_COMMIT);
     assert!(provenance.checkout_clean, "oracle checkout must be clean");
     assert!(provenance.binary_entrypoint_present);
+    assert_eq!(
+        provenance.real_data_samples.len(),
+        1,
+        "provenance must carry the real #29/#30 ERA5/ETEX sample"
+    );
+    assert_eq!(
+        provenance.real_data_samples[0]["id"],
+        "era5-etex-real-column-v1"
+    );
 
     // The linked objects must name every module the oracle driver calls.
     let source_files: Vec<&str> = provenance
@@ -414,6 +444,7 @@ struct ContractFixture {
     schema: ContractSchema,
     pinned_flexpart: PinnedFlexpart,
     oracle_output_version: String,
+    real_data_samples: Vec<serde_json::Value>,
     cases: Vec<FixtureCase>,
 }
 
@@ -446,6 +477,7 @@ struct ContractProvenance {
     binary_entrypoint_present: bool,
     linked_flexpart: LinkedFlexpart,
     cases: std::collections::HashMap<String, String>,
+    real_data_samples: Vec<serde_json::Value>,
 }
 
 #[derive(Deserialize)]

@@ -1,0 +1,295 @@
+{
+  "schema": "flexpart-gpu.interpolation-contract-provenance.v1",
+  "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+  "checkout_clean": true,
+  "entrypoint_present": true,
+  "oracle": {
+    "name": "FLEXPART",
+    "version": "11.1",
+    "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8"
+  },
+  "driver_source": {
+    "path": "scripts/interpolation/direct_interpolation_oracle.f90",
+    "sha256": "026dc90a676906d1b656b73545f6a67f195a9d31e7d6d6c2681ac6f7803d2135"
+  },
+  "linked_flexpart": {
+    "link_strategy": "all src/*.o except FLEXPART.o",
+    "direct_routine_objects": [
+      {
+        "file": "src/com_mod.f90",
+        "object": "src/com_mod.o",
+        "source_sha256": "a25dce18fc3d4f3bbbf1b8c64e9b2629fb4e170540d350e555118ab9dd00bab3",
+        "object_sha256": "1ef1b5ce24937f282ae66e3fc5d4c31335d80590217b144a3f32bee015830e10"
+      },
+      {
+        "file": "src/par_mod.f90",
+        "object": "src/par_mod.o",
+        "source_sha256": "3164314b5d7212ff5136b5605634fe3c34426aef1320c9fb499ded31f021a9db",
+        "object_sha256": "00f941155f6dd16c90c6e7d16f8306cd9328f6e873ee132316fc4a6cf249c3c8"
+      },
+      {
+        "file": "src/point_mod.f90",
+        "object": "src/point_mod.o",
+        "source_sha256": "6cc06a4f0b06e970613edf5de361a1a22fc3e0d4894ce12e65b04c2f84cfe49f",
+        "object_sha256": "4a0694709e3e3ae7f5f263e1e1297f64dc47addd2a52d2dfff51688b6c2cbfde"
+      },
+      {
+        "file": "src/windfields_mod.f90",
+        "object": "src/windfields_mod.o",
+        "source_sha256": "440ec62b9a7b8f4534e913b2af2a41aabdf44072b3fe77edbc213866e698e7d1",
+        "object_sha256": "156efe7bbb4fb3632b6162ef872a90f502f249f65b8056f46ff7171e279f2c9d"
+      },
+      {
+        "file": "src/interpol_mod.f90",
+        "object": "src/interpol_mod.o",
+        "source_sha256": "cc7ab1a55267971ca540d88d3992c613897e0a219da5b66fe2358b5eaeb9bf63",
+        "object_sha256": "cd68b5c7ccb31634a93fbcbfaf472fe9e7062720dd7d2f1aba3f92422d93be62"
+      }
+    ],
+    "routines": [
+      "coordtrafo",
+      "find_grid_indices",
+      "find_grid_distances",
+      "find_time_vars",
+      "find_z_level_meters",
+      "find_vert_vars",
+      "hor_interpol_4d",
+      "hor_interpol_2d",
+      "temporal_interpolation",
+      "vert_interpol",
+      "interpol_rain"
+    ],
+    "linked_objects": [
+      "advance_mod.o",
+      "binary_output_mod.o",
+      "cbl_mod.o",
+      "chemistry_mod.o",
+      "class_gribfile_mod.o",
+      "cmapf_mod.o",
+      "com_mod.o",
+      "conv_mod.o",
+      "date_mod.o",
+      "drydepo_mod.o",
+      "emissions_mod.o",
+      "erf_mod.o",
+      "flux_mod.o",
+      "getfields_mod.o",
+      "initdomain_mod.o",
+      "initialise_mod.o",
+      "interpol_mod.o",
+      "mean_mod.o",
+      "netcdf_output_mod.o",
+      "outgrid_mod.o",
+      "output_mod.o",
+      "par_mod.o",
+      "particle_mod.o",
+      "pbl_profile_mod.o",
+      "plume_mod.o",
+      "point_mod.o",
+      "qvsat_mod.o",
+      "random_mod.o",
+      "readoptions_mod.o",
+      "receptor_mod.o",
+      "receptor_netcdf_mod.o",
+      "restart_mod.o",
+      "settling_mod.o",
+      "sort_mod.o",
+      "timemanager_mod.o",
+      "totals_mod.o",
+      "turbulence_mod.o",
+      "txt_output_mod.o",
+      "unc_mod.o",
+      "verttransform_mod.o",
+      "wetdepo_mod.o",
+      "windfields_mod.o",
+      "xmass_mod.o"
+    ],
+    "linked_object_count": 43,
+    "linked_object_set_sha256": "388d1f824306df30fc74fbedc6464e86602b6a93ba782e9e1dad20ffacc3327c"
+  },
+  "cases": {
+    "horizontal-interior": "9bfc39be93f5b743f1b2c46c5ea589c7cd2c9a6847dc9af24f638bc8abc68662",
+    "horizontal-periodic-wrap": "4da71b7aeded048f40d35ccccb2eafb09226c23fab40d8cf27f105b381061003",
+    "vertical-model-levels": "95f72332cb4b5e8e2878debaba12bb41f4a45234514687a86d7ec9e7abcc2520",
+    "temporal-bilinear": "ae44f1e5dba664011bb51029d2a58693d39f5aa975a00214baf6aa9cb5f92085",
+    "rain-layer-fields": "a0182f4ad823f67971a14304be7814021a09e52d93d21fc044308684508451d0",
+    "vertical-interface-wzlev": "f0ff2a2eca1b15f1574d9ee603a30a5fc6199cabcd800bfa2f0c009971c0e9c5",
+    "real-era5-etex-temperature-column": "5679760f10c75679ecd597979b5caadfd3bf30debbbf9b0fa1fc6af1aa9e3771",
+    "horizontal-geographic-interior": "1858607f1f5a976af7476f8754fd74bd84b5986f2eeeb32241378edf115fec6e"
+  },
+  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules. The geographic case intentionally composes point_mod::coordtrafo with the horizontal interpolation primitives as an oracle exercise path. Production behavior is crosswalked as direct CALL edges rather than synthetic linear stacks: release coordtrafo is called from read_options_and_initialise_flexpart; timemanager calls getfields and advance as siblings; advance calls init_interpol and adv_above_pbl; adv_above_pbl calls interpol_wind; interpol_wind performs its own grid/time/vertical setup and dispatches to interpol_wind_meter, which calls horizontal, vertical and temporal interpolation. Precipitation ingestion and wet-deposition sampling are likewise recorded as direct CALL edges, with lsprec/convprec named separately as data fields rather than pseudo-routines. W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output as its vertical geometry/value source. The real #29 ERA5/ETEX temperature column is paired with #30's pinned FLEXPART level-height output and sampled by the same #71 vertical routines. Golden values in contract-v1.json are direct interpolation-oracle outputs.",
+  "real_data_samples": [
+    {
+      "id": "era5-etex-real-column-v1",
+      "kind": "era5_etex_vertical_column",
+      "source": {
+        "canonical_fixture": "fixtures/meteorology/era5-etex-native-v1.json",
+        "canonical_fixture_sha256": "a88723556201302298e17ab01eba2bedd830bc29f99548f50f52d27805f28b13",
+        "canonical_provenance": "fixtures/meteorology/era5-etex-native-v1.provenance.json",
+        "surface_archive": "fixtures/etex/native-mini/era5-surface-19941023-24.npz",
+        "surface_archive_sha256": "88cd4dcb5e8ff89aeae6c065e3f2c2f75ad09c125f5d15290bfe7a56b059668d"
+      },
+      "selection": {
+        "canonical_x": 0,
+        "canonical_y": 0,
+        "source_lon_index": 24,
+        "source_lat_desc_index": 20,
+        "longitude_deg": -2,
+        "latitude_deg": 48,
+        "timestamp": "1994-10-23T15:00:00Z",
+        "epoch_seconds": 782924400,
+        "native_levels": 137
+      },
+      "represented_fields": [
+        "wind_u",
+        "wind_v",
+        "temperature",
+        "specific_humidity",
+        "surface_pressure"
+      ],
+      "compatibility": {
+        "canonical_contract_issue": 29,
+        "vertical_transform_issue": 30,
+        "extraction_path": "scripts/vertical/extract_real_etex_column.py",
+        "ci_gate_step": "2b",
+        "pinned_oracle_evidence": "target/ci-gate/vertical-column/real-comparison-report.json",
+        "fixture_provenance_evidence": "target/ci-gate/vertical-column/real-column-fixture-provenance.json",
+        "extraction_source_sha256": "bd1e9d8531ceabe99544a7e7659766d1642fcb576a0fdd505aa4c50886f3bdc0",
+        "interpolation_contract_issue": 71,
+        "interpolation_sampling_case": "real-era5-etex-temperature-column",
+        "interpolation_geometry_oracle_sha256": "7fe3f5fa17d0067464258c93efbe1bbf9cf2403b4d442191b08b6deb29e026a4"
+      },
+      "scope": "Checked-in real ERA5/ETEX source column used by #29 and transformed/validated by #30 against the pinned FLEXPART 11.1 direct routine oracle. #71 samples the real temperature profile on #30's pinned FLEXPART AGL geometry through find_z_level_meters/find_vert_vars/vert_interpol. Provider decoding and vertical-transform ownership remain in #29/#30.",
+      "semantics": {
+        "coordinates": {
+          "horizontal": "longitude/latitude cell centers in degrees",
+          "vertical": "hybrid_sigma_pressure",
+          "vertical_reference": "model_native"
+        },
+        "staggering": {
+          "wind_u": {
+            "horizontal": "cell_center",
+            "vertical": "level_center"
+          },
+          "wind_v": {
+            "horizontal": "cell_center",
+            "vertical": "level_center"
+          },
+          "temperature": {
+            "horizontal": "cell_center",
+            "vertical": "level_center"
+          },
+          "specific_humidity": {
+            "horizontal": "cell_center",
+            "vertical": "level_center"
+          },
+          "surface_pressure": {
+            "horizontal": "cell_center",
+            "vertical": "not_applicable"
+          }
+        },
+        "ordering": {
+          "vertical": "increasing",
+          "storage": "x_fastest"
+        },
+        "units": {
+          "wind_u": "meter_per_second",
+          "wind_v": "meter_per_second",
+          "temperature": "kelvin",
+          "specific_humidity": "kilogram_per_kilogram",
+          "surface_pressure": "pascal"
+        },
+        "time": {
+          "kind": "instantaneous_valid_time",
+          "timestamp": "1994-10-23T15:00:00Z",
+          "epoch_seconds": 782924400
+        }
+      }
+    }
+  ],
+  "interface_vertical_source": {
+    "producer_issue": 30,
+    "producer_driver": "scripts/vertical/direct_oracle_driver.f90",
+    "producer_routine": "verttransform_mod::verttransform_ecmwf_heights",
+    "oracle_output_sha256": "5015ea3a9a9e42b1a2b88c60c2867b74a632bffd1b9cfefdc186b005c752b197",
+    "geometry_field": "wzlev",
+    "value_field": "omega * pinmconv",
+    "source_fixture": "fixtures/vertical/synthetic-column-v1.json",
+    "source_motion": "fixtures/vertical/synthetic-omega-interface-v1.json"
+  },
+  "fixture_artifact": {
+    "path": "fixtures/interpolation/contract-v1.json",
+    "hash_kind": "normalized_canonical_json_sha256",
+    "sha256": "d537a239e69d609131abbddf870d0067272a6e675cd4c50ba059e223793cfaed"
+  },
+  "generator_source": {
+    "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
+    "sha256": "207a16050deb19f652929f267f956c26971fd35eea238a8ad2210550859167fd"
+  },
+  "oracle_harness_source": {
+    "path": "scripts/interpolation/direct_oracle.sh",
+    "sha256": "a21995d9c5af553d3de74e1303193372e112884de6a339e92d3e477627ac44a3"
+  },
+  "real_extraction_source": {
+    "path": "scripts/vertical/extract_real_etex_column.py",
+    "sha256": "bd1e9d8531ceabe99544a7e7659766d1642fcb576a0fdd505aa4c50886f3bdc0"
+  },
+  "reference_manifest": {
+    "path": "reference/flexpart-11.1.json",
+    "sha256": "2c13a87733098e385dc12f33d1bf5ca60ba275775f472ec279b8a0a234c3a464"
+  },
+  "real_vertical_source": {
+    "producer_issue": 30,
+    "producer_driver": "scripts/vertical/direct_oracle_driver.f90",
+    "producer_routine": "verttransform_mod::verttransform_ecmwf_heights",
+    "oracle_output_sha256": "7fe3f5fa17d0067464258c93efbe1bbf9cf2403b4d442191b08b6deb29e026a4",
+    "geometry_field": "level height_agl_m",
+    "value_field": "temperature",
+    "value_source": "fixtures/meteorology/era5-etex-native-v1.json",
+    "canonical_x": 0,
+    "canonical_y": 0,
+    "longitude_deg": -2,
+    "latitude_deg": 48,
+    "timestamp": "1994-10-23T15:00:00Z",
+    "epoch_seconds": 782924400
+  },
+  "build": {
+    "compiler_version": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+    "full_flexpart_object_build": {
+      "makefile": "src/makefile_gfortran",
+      "make_arguments": "eta=no arch=x86-64",
+      "fortran_compiler": "gfortran",
+      "optimization": "-O3",
+      "openmp_flag": "-fopenmp",
+      "arch_flag": "-march=x86-64",
+      "eta": "no",
+      "netcdf": "enabled (USE_NCF)"
+    },
+    "container": {
+      "image": "flexpart-fortran:latest",
+      "dockerfile": "docker/Dockerfile.fortran",
+      "compose_file": "docker/docker-compose.fortran.yml",
+      "base_image": "ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7",
+      "ubuntu_snapshot": "20260910T000000Z"
+    },
+    "driver_compile_link": {
+      "compiler": "gfortran",
+      "compile_flags": [
+        "-O0",
+        "-I<oracle-src>",
+        "-fopenmp",
+        "-mcmodel=large"
+      ],
+      "driver": "scripts/interpolation/direct_interpolation_oracle.f90",
+      "objects": "sorted src/*.o excluding FLEXPART.o",
+      "link_flags": [
+        "-L/usr/lib/x86_64-linux-gnu",
+        "-Wl,-rpath=/usr/lib/x86_64-linux-gnu",
+        "-leccodes",
+        "-leccodes_f90",
+        "-lm",
+        "-lnetcdff"
+      ]
+    }
+  }
+}

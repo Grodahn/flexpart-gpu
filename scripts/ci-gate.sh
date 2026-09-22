@@ -186,7 +186,14 @@ fi
 if [ -n "$(git -C "${ORACLE_CHECKOUT}" status --porcelain 2>/dev/null || true)" ]; then
   fail "Oracle checkout has uncommitted changes; the oracle must stay unmodified"
 fi
+
+# docker-compose.fortran.yml mounts FLEXPART_DIR at /workspace/flexpart. Bind it
+# explicitly to the exact checkout verified above so --oracle-checkout cannot
+# verify one tree while the direct routine/oracle drivers link against another.
+ORACLE_DOCKER_CHECKOUT="$(cd "${ORACLE_CHECKOUT}" && pwd -P)"
+export FLEXPART_DIR="${ORACLE_DOCKER_CHECKOUT}"
 log_info "Oracle pinned at ${ORACLE_ACTUAL} (clean)."
+log_info "Docker oracle mount: ${FLEXPART_DIR} -> /workspace/flexpart"
 
 # ---------------------------------------------------------------------------
 # 2. Build the oracle Docker image and Fortran executable (fail-closed).
@@ -223,6 +230,8 @@ else
       ${DOCKER_USER_ARGS} \
       flexpart-fortran bash -c "
         set -euo pipefail
+        container_oracle_head=\$(git -C /workspace/flexpart rev-parse HEAD)
+        test \"\$container_oracle_head\" = \"${PINNED_COMMIT}\"
         cd /workspace/flexpart/src
         make -f makefile_gfortran clean >/dev/null 2>&1 || true
         FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4 2>&1 | tail -5
@@ -474,6 +483,140 @@ else
   printf '%s\n' "${FLEXEXTRACT_ORACLE_STATUS}" > "${FLEXEXTRACT_STATUS_FILE}"
 fi
 # ---------------------------------------------------------------------------
+# 2d. Interpolation oracle contract fixture (#71, RISK-03.3G-10c1).
+# ---------------------------------------------------------------------------
+# The interpolation contract (docs/interpolation-contract.md) freezes the
+# behaviour of find_grid_indices / find_grid_distances / find_z_level_meters /
+# find_vert_vars / hor_interpol_4d / temporal_interpolation / vert_interpol /
+# interpol_rain on canonical synthetic grids. This step proves the committed
+# fixture pack (fixtures/interpolation/contract-v1.json + provenance) is
+# reproducible: regenerate inputs from the case definitions, run the direct
+# oracle in the pinned container, re-pack the fixture, and require the
+# regenerated goldens/provenance to match the committed ones. The committed
+# goldens are additionally re-verified analytically by the Rust test
+# tests/interpolation_contract.rs (cargo test runs it).
+if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
+  log_info "Step 2d/6: regenerate and verify the interpolation oracle contract fixture (#71)..."
+  INTERPOL_DIR="${OUTPUT_DIR}/interpolation"
+  # The direct-oracle harness intentionally reuses its binary across the eight
+  # cases within one run. Start every gate invocation from a clean interpolation
+  # directory so a local rerun can never combine current sources/provenance with
+  # a stale executable from an earlier checkout.
+  rm -rf "${INTERPOL_DIR}"
+  INTERPOL_BUILD_DIR="${INTERPOL_DIR}/oracle-build"
+  mkdir -p "${INTERPOL_DIR}" "${INTERPOL_BUILD_DIR}" "${INTERPOL_DIR}/oracle-output"
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/interpolation/prepare_interpolation_fixtures.py" \
+    --emit-inputs-only \
+    --input-dir "${INTERPOL_DIR}/oracle-input" \
+    --output-dir "${INTERPOL_DIR}/oracle-output" \
+    --binary "${INTERPOL_BUILD_DIR}/interpolation-oracle" \
+    --oracle-checkout "${ORACLE_CHECKOUT}" \
+    --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+    --vertical-routine-oracle-output "${OUTPUT_DIR}/vertical-column/routine-oracle-output.txt" \
+    --real-vertical-routine-oracle-output "${OUTPUT_DIR}/vertical-column/real-routine-oracle-output.txt" \
+    --out-fixture "${INTERPOL_DIR}/contract-v1.json"; then
+    fail "Emitting the #71 interpolation oracle case inputs failed"
+  fi
+
+  # Compile the direct driver against the pristine objects produced in Step 2 and
+  # run all sampling cases inside the pinned container.
+  if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
+    ${DOCKER_USER_ARGS} \
+    flexpart-fortran bash -c '
+      set -euo pipefail
+      for name in horizontal-interior horizontal-geographic-interior horizontal-periodic-wrap vertical-model-levels vertical-interface-wzlev temporal-bilinear rain-layer-fields real-era5-etex-temperature-column; do
+        bash /workspace/flexpart-gpu/scripts/interpolation/direct_oracle.sh \
+          /workspace/target/ci-gate/interpolation/oracle-build \
+          "/workspace/target/ci-gate/interpolation/oracle-input/${name}/${name}.txt" \
+          "/workspace/target/ci-gate/interpolation/oracle-output/${name}.out"
+      done
+    ' 2>&1 | tee "${INTERPOL_DIR}/oracle-build-run.log"; then
+    fail "Direct pinned FLEXPART #71 interpolation oracle build/run failed"
+  fi
+
+  # Re-pack the fixture and provenance from the fresh oracle outputs (also
+  # re-verifies the pinned clean checkout and the nm symbol entry points).
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/interpolation/prepare_interpolation_fixtures.py" \
+    --offline \
+    --input-dir "${INTERPOL_DIR}/oracle-input" \
+    --output-dir "${INTERPOL_DIR}/oracle-output" \
+    --binary "${INTERPOL_BUILD_DIR}/interpolation-oracle" \
+    --oracle-checkout "${ORACLE_CHECKOUT}" \
+    --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+    --vertical-routine-oracle-output "${OUTPUT_DIR}/vertical-column/routine-oracle-output.txt" \
+    --real-vertical-routine-oracle-output "${OUTPUT_DIR}/vertical-column/real-routine-oracle-output.txt" \
+    --out-fixture "${INTERPOL_DIR}/contract-v1.json" \
+    --out-provenance "${INTERPOL_DIR}/contract-v1.provenance.json"; then
+    fail "Repacking the #71 interpolation fixture/provenance failed"
+  fi
+
+  # The committed goldens and provenance sub-fields must be reproducible.
+  # Local executable path/hash is deliberately not frozen: compiler, source,
+  # linked-object and per-case output provenance are the reproducible evidence.
+  # Every semantic field (goldens, per-case output hashes, object hashes,
+  # routines, pinning, cleanliness) must match exactly.
+  if ! "${HOST_PYTHON}" -c '
+import hashlib, json, math, sys
+
+def normalize_json(value):
+    if isinstance(value, dict):
+        return {key: normalize_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [normalize_json(item) for item in value]
+    if isinstance(value, float):
+        assert math.isfinite(value), "non-finite contract number"
+        if value.is_integer():
+            return int(value)
+    return value
+
+def canonical_json_sha256(path):
+    value = normalize_json(json.load(open(path)))
+    canonical = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+committed = json.load(open(sys.argv[1]))
+regenerated = json.load(open(sys.argv[2]))
+assert normalize_json(committed) == normalize_json(regenerated), "full contract semantic drift"
+assert committed["schema"] == regenerated["schema"], "schema drift"
+assert committed["oracle_output_version"] == regenerated["oracle_output_version"]
+assert committed["pinned_flexpart"]["pinned_commit"] == regenerated["pinned_flexpart"]["pinned_commit"]
+assert committed["real_data_samples"] == regenerated["real_data_samples"], "real-data sample descriptor drifted"
+assert committed["cases"] == regenerated["cases"], "golden values drifted"
+p = json.load(open(sys.argv[3]))
+q = json.load(open(sys.argv[4]))
+assert "binary" not in p and "binary" not in q, "local executable hash/path must not be frozen"
+assert normalize_json(p) == normalize_json(q), "full provenance semantic drift"
+assert p["fixture_artifact"]["hash_kind"] == "normalized_canonical_json_sha256"
+assert p["fixture_artifact"]["sha256"] == canonical_json_sha256(sys.argv[1]), "committed contract hash mismatch"
+assert q["fixture_artifact"]["sha256"] == canonical_json_sha256(sys.argv[2]), "regenerated contract hash mismatch"
+for side in (p, q):
+    linked = side["linked_flexpart"]["linked_objects"]
+    assert linked == sorted(linked), "linked-object list must be sorted"
+    assert len(linked) == len(set(linked)) == side["linked_flexpart"]["linked_object_count"], "linked-object count mismatch"
+    digest = hashlib.sha256(("\n".join(linked) + "\n").encode("utf-8")).hexdigest()
+    assert digest == side["linked_flexpart"]["linked_object_set_sha256"], "linked-object set hash mismatch"
+print("interpolation contract fixture/provenance reproduced: OK")
+' \
+    "${PROJECT_ROOT}/fixtures/interpolation/contract-v1.json" \
+    "${INTERPOL_DIR}/contract-v1.json" \
+    "${PROJECT_ROOT}/fixtures/interpolation/contract-v1.provenance.json" \
+    "${INTERPOL_DIR}/contract-v1.provenance.json" 2>&1 | tee "${INTERPOL_DIR}/reproducibility-check.log"; then
+    fail "Regenerated #71 interpolation fixture/provenance does not match the committed pack"
+  fi
+
+  if ! cargo test --test interpolation_contract 2>&1 | tee "${INTERPOL_DIR}/fixture-validation.log"; then
+    fail "Rust #71 interpolation contract validation tests failed"
+  fi
+  if ! grep -q "test result: ok" "${INTERPOL_DIR}/fixture-validation.log"; then
+    fail "Interpolation contract validation log lacks 'test result: ok'"
+  fi
+  log_info "Interpolation contract fixture reproduced and goldens re-verified analytically."
+fi
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # 3. Prove a real software-WGPU adapter (fail-closed, no skip allowed).
 # ---------------------------------------------------------------------------
 log_info "Step 3/6: gpu-preflight on the software adapter..."
@@ -603,6 +746,14 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${OUTPUT_DIR}/vertical-column/real-comparison-report.json" \
     --artifact "${OUTPUT_DIR}/vertical-column/real-conformance-comparison-report.json" \
     --artifact "${OUTPUT_DIR}/vertical-column/real-column-fixture-provenance.json" \
+    --artifact "${OUTPUT_DIR}/interpolation/contract-v1.json" \
+    --artifact "${OUTPUT_DIR}/interpolation/contract-v1.provenance.json" \
+    --artifact "${OUTPUT_DIR}/interpolation/oracle-build/interpolation-oracle.compiler-version.txt" \
+    --artifact "${OUTPUT_DIR}/interpolation/oracle-build/interpolation-oracle.linked-objects.txt" \
+    --artifact "${OUTPUT_DIR}/interpolation/oracle-output/horizontal-geographic-interior.out" \
+    --artifact "${OUTPUT_DIR}/interpolation/oracle-output/real-era5-etex-temperature-column.out" \
+    --artifact "${OUTPUT_DIR}/vertical-column/real-routine-oracle-output.txt" \
+    --artifact "${OUTPUT_DIR}/interpolation/reproducibility-check.log" \
     --input "${PROJECT_ROOT}/reference/flex-extract.json" \
     --artifact "${OUTPUT_DIR}/flex-extract-etadot.log" \
     --artifact "${OUTPUT_DIR}/flex-extract-oracle/run-provenance.json" \

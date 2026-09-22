@@ -105,6 +105,22 @@ Fail-closed step 2c (#70, calc_etadot preprocessing oracle):
   consumed fort.* hashes, source manifests and fort.15 output hash. The
   checkout must stay pristine after the run.
 
+Fail-closed step 2d (#71, interpolation oracle contract):
+
+- Regenerate and verify all **eight** sampling cases with the pinned FLEXPART
+  11.1 objects. The `horizontal-geographic-interior` case starts from
+  longitude/latitude and calls the real pinned `point_mod::coordtrafo` before
+  `find_grid_indices`, `find_grid_distances` and `hor_interpol_4d`; this
+  makes the documented Lon/Lat -> grid mapping part of the oracle evidence
+  instead of a documentation-only formula. This is explicitly an **oracle exercise
+  path**, not a pristine production call chain: production `coordtrafo` is used for
+  release-point initialization, while runtime particle sampling enters the interpolation
+  layer in grid coordinates. The pack also retains the six
+  synthetic index/vertical/temporal/rain cases and the real
+  `real-era5-etex-temperature-column` case. CI re-packs
+  `fixtures/interpolation/contract-v1.json` plus provenance and fails on any
+  golden, source/object hash, routine-list, or semantic drift.
+
 Any missing adapter, skipped GPU test, missing oracle artifact, or failed
 comparison exits non-zero. Unwired corpus cases are listed as `NOT_WIRED`,
 never as `PASS`; no placeholder reports success.
@@ -165,6 +181,11 @@ traceable to one concrete run via `GITHUB_RUN_ID`/`GITHUB_SHA` (or
   (`verify.log`, `oracle-build-run.log`, `run-provenance.json`,
   `oracle-json/{snapshot,motion,oracle}.json`, `candidate.json`,
   `comparison-report.json`).
+- `interpolation/contract-v1.json`, `interpolation/contract-v1.provenance.json`,
+  `interpolation/oracle-build/interpolation-oracle.compiler-version.txt`,
+  `interpolation/oracle-build/interpolation-oracle.linked-objects.txt`, direct
+  oracle outputs (including `horizontal-geographic-interior.out`) and
+  `interpolation/reproducibility-check.log`.
 - `gpu-preflight.log`, `sw-wgpu-advection.log`.
 - `candidate-run.log`, `candidate-output.json`,
   `candidate-output-check.log`, `candidate-executable.sha256` (when built).

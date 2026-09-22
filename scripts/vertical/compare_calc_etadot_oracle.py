@@ -12,8 +12,8 @@ cross-checks that the checkout is exactly the pinned commit, that
 calc_etadot.f90 hashes to the pinned fingerprint, that the ETAR transform
 block still matches the harness contract and that the example namelist still
 selects the oracle configuration (META=1, METADIFF=0, MOMEGA=0, MDPDETA=1),
-then compares every point x level value with f32-vs-f64 pilot tolerances and
-writes a machine-readable comparison report.
+then compares every point x level value with the declared canonical-output
+tolerances and writes a machine-readable comparison report.
 
 Candidate indexing contract (validated against the oracle):
   * candidate interface index K == calc_etadot level K (both top-first);

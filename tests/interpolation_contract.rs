@@ -589,7 +589,7 @@ fn contract_provenance_matches_fixture() {
     );
     assert_eq!(
         provenance.fixture_artifact["sha256"],
-        "d261a6d5656a644db4bf3ba7bc29091c4da2477802b9553e7af461f3fe51fba6"
+        "6729843cbd59b0ac60e39e873fde179dbe7949f3191ee0ee7ba9deb443d45c70"
     );
     assert_eq!(
         provenance.generator_source["path"],

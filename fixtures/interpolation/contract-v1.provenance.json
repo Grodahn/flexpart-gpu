@@ -14,7 +14,7 @@
   },
   "driver_source": {
     "path": "scripts/interpolation/direct_interpolation_oracle.f90",
-    "sha256": "772bf7b925fabb40ebde70944b39d2a45e34d5aa6ae6e3c50b5ff7de20179c76"
+    "sha256": "026dc90a676906d1b656b73545f6a67f195a9d31e7d6d6c2681ac6f7803d2135"
   },
   "linked_flexpart": {
     "objects": [
@@ -44,6 +44,7 @@
       }
     ],
     "routines": [
+      "coordtrafo",
       "find_grid_indices",
       "find_grid_distances",
       "find_time_vars",
@@ -63,9 +64,10 @@
     "temporal-bilinear": "ae44f1e5dba664011bb51029d2a58693d39f5aa975a00214baf6aa9cb5f92085",
     "rain-layer-fields": "a0182f4ad823f67971a14304be7814021a09e52d93d21fc044308684508451d0",
     "vertical-interface-wzlev": "f0ff2a2eca1b15f1574d9ee603a30a5fc6199cabcd800bfa2f0c009971c0e9c5",
-    "real-era5-etex-temperature-column": "5679760f10c75679ecd597979b5caadfd3bf30debbbf9b0fa1fc6af1aa9e3771"
+    "real-era5-etex-temperature-column": "5679760f10c75679ecd597979b5caadfd3bf30debbbf9b0fa1fc6af1aa9e3771",
+    "horizontal-geographic-interior": "1858607f1f5a976af7476f8754fd74bd84b5986f2eeeb32241378edf115fec6e"
   },
-  "scope": "The driver links the pristine pinned FLEXPART 11.1 interpolation modules and calls find_grid_indices/find_grid_distances/find_z_level_meters/find_vert_vars/hor_interpol_4d/temporal_interpolation/vert_interpol/interpol_rain directly on canonical synthetic grids. W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output as its vertical geometry/value source. The real #29 ERA5/ETEX temperature column is paired with #30's pinned FLEXPART level-height output and sampled by the same #71 vertical routines. Golden values in contract-v1.json are direct interpolation-oracle outputs.",
+  "scope": "The direct oracle executes point_mod::coordtrafo for geographic longitude/latitude-to-grid normalization before find_grid_indices/find_grid_distances/hor_interpol_4d. Existing vertical, temporal and accumulated-field interpolation routines remain frozen. W/interface sampling uses #30 direct FLEXPART wzlev/pinmconv output, and the real #29 ERA5/ETEX temperature column is sampled on #30 pinned level-height geometry. Golden values in contract-v1.json are direct pinned FLEXPART outputs.",
   "real_data_samples": [
     {
       "id": "era5-etex-real-column-v1",
@@ -168,15 +170,15 @@
   "fixture_artifact": {
     "path": "fixtures/interpolation/contract-v1.json",
     "hash_kind": "normalized_canonical_json_sha256",
-    "sha256": "d261a6d5656a644db4bf3ba7bc29091c4da2477802b9553e7af461f3fe51fba6"
+    "sha256": "6729843cbd59b0ac60e39e873fde179dbe7949f3191ee0ee7ba9deb443d45c70"
   },
   "generator_source": {
     "path": "scripts/interpolation/prepare_interpolation_fixtures.py",
-    "sha256": "c38f385578a331ab032cd17b2e1cbc02b0a2628e5a2242faf10245610ea428c6"
+    "sha256": "6048f41f62d704f67b95067f50f1c769037f00edc5f0f46228fe72ba06b7ef27"
   },
   "oracle_harness_source": {
     "path": "scripts/interpolation/direct_oracle.sh",
-    "sha256": "c95d8cd2251f33ab0b17897227d00d4e9be7ea9de441359cf5a7c008703d6ea7"
+    "sha256": "63039987d0d5d7e981a4d2b4f473641cd8ee9c7ad04abad1847e21355124cfac"
   },
   "real_extraction_source": {
     "path": "scripts/vertical/extract_real_etex_column.py",

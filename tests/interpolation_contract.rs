@@ -563,6 +563,14 @@ fn contract_provenance_matches_fixture() {
     assert!(provenance.checkout_clean, "oracle checkout must be clean");
     assert!(provenance.binary_entrypoint_present);
     assert_eq!(
+        provenance.build["compiler_version"],
+        "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0"
+    );
+    assert_eq!(
+        provenance.build["driver_compile_link"]["compiler"],
+        "gfortran"
+    );
+    assert_eq!(
         provenance.real_data_samples.len(),
         1,
         "provenance must carry the real #29/#30 ERA5/ETEX sample"
@@ -622,6 +630,31 @@ fn contract_provenance_matches_fixture() {
     assert_eq!(
         provenance.linked_flexpart.link_strategy,
         "all src/*.o except FLEXPART.o"
+    );
+    assert_eq!(provenance.linked_flexpart.linked_object_count, 43);
+    assert_eq!(
+        provenance.linked_flexpart.linked_objects.len(),
+        provenance.linked_flexpart.linked_object_count
+    );
+    assert!(
+        provenance
+            .linked_flexpart
+            .linked_objects
+            .windows(2)
+            .all(|pair| pair[0] < pair[1]),
+        "linked-object provenance must be sorted and unique"
+    );
+    assert!(
+        !provenance
+            .linked_flexpart
+            .linked_objects
+            .iter()
+            .any(|name| name == "FLEXPART.o"),
+        "oracle driver must not link the FLEXPART main program"
+    );
+    assert_eq!(
+        provenance.linked_flexpart.linked_object_set_sha256,
+        "388d1f824306df30fc74fbedc6464e86602b6a93ba782e9e1dad20ffacc3327c"
     );
     // The hashed subset must name every module directly consumed by the oracle driver.
     let source_files: Vec<&str> = provenance
@@ -754,6 +787,7 @@ struct ContractProvenance {
     checkout_clean: bool,
     #[serde(rename = "entrypoint_present")]
     binary_entrypoint_present: bool,
+    build: serde_json::Value,
     linked_flexpart: LinkedFlexpart,
     cases: std::collections::HashMap<String, String>,
     real_data_samples: Vec<serde_json::Value>,
@@ -769,6 +803,9 @@ struct ContractProvenance {
 #[derive(Deserialize)]
 struct LinkedFlexpart {
     link_strategy: String,
+    linked_objects: Vec<String>,
+    linked_object_count: usize,
+    linked_object_set_sha256: String,
     direct_routine_objects: Vec<LinkedObject>,
     routines: Vec<String>,
 }

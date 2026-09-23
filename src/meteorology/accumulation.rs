@@ -297,7 +297,9 @@ pub struct AccumulationReport {
     pub derived_amount_unit: String,
     pub derived_rate_si_unit: String,
     pub derived_rate_handoff_unit: String,
-    /// How many failed rows were recorded (0 for a fully resolved sequence).
+    /// Overall report verdict, including sequence-level and oracle-coverage checks.
+    pub verdict: Verdict,
+    /// How many interval rows failed derivation or a requested oracle comparison.
     pub failed_rows: usize,
     /// One row per source observation, in observation order.
     pub intervals: Vec<IntervalEvidence>,
@@ -337,10 +339,10 @@ pub fn resolve_interval_sequence(
 /// Build a machine-readable report over `observations` without failing: rows
 /// carry the derived interval amount/rate or the fail-closed verdict.
 ///
-/// `oracle_reference_rate_mm_per_hour`, when provided, supplies one reference
-/// value per source observation; each row then records candidate vs reference
-/// and the `1e-6`-relative verdict. A shorter slice leaves later rows without
-/// comparison; entries beyond the observation count are ignored.
+/// `oracle_reference_rate_mm_per_hour`, when provided, must supply exactly one
+/// finite reference value per source observation; each row then records
+/// candidate vs reference and the `1e-6`-relative verdict. Missing or extra
+/// references fail the overall report rather than weakening the comparison.
 /// `field_identity` names the resolved field.
 ///
 /// Rows after a failed observation carry a failed verdict without derived
@@ -353,6 +355,7 @@ pub fn build_accumulation_report(
 ) -> AccumulationReport {
     let derived = derive_all(observations);
     let first_failure = derived.iter().position(Result::is_err);
+    let oracle_comparison_requested = oracle_reference_rate_mm_per_hour.is_some();
     let intervals = observations
         .iter()
         .enumerate()
@@ -369,6 +372,7 @@ pub fn build_accumulation_report(
                 observation,
                 outcome,
                 oracle_reference_rate_mm_per_hour.and_then(|refs| refs.get(index)),
+                oracle_comparison_requested,
             )
         })
         .collect::<Vec<IntervalEvidence>>();
@@ -377,6 +381,25 @@ pub fn build_accumulation_report(
         .iter()
         .filter(|row| matches!(row.verdict, Verdict::Failed(_)))
         .count();
+    let verdict = if observations.is_empty() {
+        Verdict::Failed(AccumulationError::EmptySequence.to_string())
+    } else if let Some(references) = oracle_reference_rate_mm_per_hour {
+        if references.len() != observations.len() {
+            Verdict::Failed(format!(
+                "oracle reference count {} does not match observation count {}",
+                references.len(),
+                observations.len()
+            ))
+        } else if failed_rows > 0 {
+            Verdict::Failed(format!("{failed_rows} interval report row(s) failed"))
+        } else {
+            Verdict::Passed
+        }
+    } else if failed_rows > 0 {
+        Verdict::Failed(format!("{failed_rows} interval report row(s) failed"))
+    } else {
+        Verdict::Passed
+    };
     AccumulationReport {
         schema: ACCUMULATION_CONTRACT_SCHEMA.to_string(),
         schema_version: ACCUMULATION_CONTRACT_VERSION,
@@ -385,6 +408,7 @@ pub fn build_accumulation_report(
         derived_amount_unit: SOURCE_UNIT.to_string(),
         derived_rate_si_unit: RATE_SI_UNIT.to_string(),
         derived_rate_handoff_unit: RATE_HANDOFF_UNIT.to_string(),
+        verdict,
         failed_rows,
         intervals,
     }
@@ -408,11 +432,12 @@ fn interval_evidence(
     observation: &AccumulatedObservation,
     outcome: RowOutcome<'_>,
     oracle_reference: Option<&f64>,
+    oracle_comparison_requested: bool,
 ) -> IntervalEvidence {
     let declared_interval_start_epoch_seconds = observation.reset_epoch_seconds;
     let declared_interval_end_epoch_seconds = observation.valid_time_epoch_seconds;
 
-    let (detected_reset, reset_applied, derived, verdict) = match outcome {
+    let (detected_reset, reset_applied, derived, mut verdict) = match outcome {
         RowOutcome::Derived((product, detected)) => {
             let detected_reset = *detected;
             let reset_applied = product.reset_applied;
@@ -447,6 +472,23 @@ fn interval_evidence(
             (Some(candidate), Some(reference)) => Some(matches_relative(candidate, *reference)),
             _ => None,
         };
+    if derived.is_some() && oracle_comparison_requested {
+        verdict = match (oracle_reference, matches_oracle_within_relative_tolerance) {
+            (None, _) => Verdict::Failed(format!(
+                "observation {index}: oracle reference rate is missing"
+            )),
+            (Some(reference), _) if !reference.is_finite() => Verdict::Failed(format!(
+                "observation {index}: oracle reference rate is not finite"
+            )),
+            (Some(reference), Some(false)) => Verdict::Failed(format!(
+                "observation {index}: candidate rate does not match oracle reference {reference} within relative tolerance {RELATIVE_TOLERANCE}"
+            )),
+            (Some(_), Some(true)) => Verdict::Passed,
+            (Some(_), None) => Verdict::Failed(format!(
+                "observation {index}: candidate rate is unavailable for oracle comparison"
+            )),
+        };
+    }
 
     IntervalEvidence {
         source_index: index,
@@ -861,6 +903,7 @@ mod tests {
             None,
         );
         assert_eq!(report.field_identity, "large_scale_precipitation");
+        assert_eq!(report.verdict, Verdict::Passed);
         assert_eq!(report.failed_rows, 0);
         assert_eq!(report.source_accumulated_unit, "kilogram_per_square_meter");
         assert_eq!(report.derived_rate_handoff_unit, "millimeter_per_hour");
@@ -900,6 +943,7 @@ mod tests {
             &[obs(1_800, 0, 1.0), obs(3_600, 0, 0.5)],
             None,
         );
+        assert!(matches!(report.verdict, Verdict::Failed(_)));
         assert_eq!(report.failed_rows, 1);
         let row = &report.intervals[1];
         assert_eq!(row.verdict, Verdict::Failed("observation 1: same-run accumulated amount decreased from 1 to 0.5 without a declared reset".to_string()));
@@ -922,6 +966,7 @@ mod tests {
             &[obs(1_800, 0, 1.0), obs(3_600, 0, 0.5), obs(5_400, 0, 5.0)],
             None,
         );
+        assert!(matches!(report.verdict, Verdict::Failed(_)));
         assert_eq!(report.failed_rows, 2);
         assert_eq!(report.intervals[0].verdict, Verdict::Passed);
         assert!(matches!(report.intervals[1].verdict, Verdict::Failed(_)));
@@ -958,6 +1003,7 @@ mod tests {
             ],
             Some(&[2.0, 8.0, 6.0]),
         );
+        assert_eq!(report.verdict, Verdict::Passed);
         for row in &report.intervals {
             assert_eq!(row.verdict, Verdict::Passed);
             assert_eq!(row.matches_oracle_within_relative_tolerance, Some(true));
@@ -980,6 +1026,64 @@ mod tests {
             mismatched.intervals[2].matches_oracle_within_relative_tolerance,
             Some(false)
         );
+        assert!(matches!(
+            mismatched.intervals[2].verdict,
+            Verdict::Failed(_)
+        ));
+        assert_eq!(mismatched.failed_rows, 1);
+        assert!(matches!(mismatched.verdict, Verdict::Failed(_)));
+        let json = serde_json::to_string(&mismatched).expect("mismatch report serializes");
+        assert!(json.contains("does not match oracle reference"));
+    }
+
+    #[test]
+    fn empty_report_fails_closed_at_report_level() {
+        let report = build_accumulation_report("large_scale_precipitation", &[], None);
+
+        assert_eq!(
+            report.verdict,
+            Verdict::Failed("accumulation sequence is empty".to_string())
+        );
+        assert_eq!(report.failed_rows, 0);
+        assert!(report.intervals.is_empty());
+        let json = serde_json::to_string(&report).expect("empty failure report serializes");
+        assert!(json.contains("accumulation sequence is empty"));
+    }
+
+    #[test]
+    fn requested_oracle_comparison_requires_complete_finite_references() {
+        let observations = [obs(1_800, 0, 1.0), obs(3_600, 0, 3.0)];
+
+        let missing =
+            build_accumulation_report("large_scale_precipitation", &observations, Some(&[2.0]));
+        assert!(matches!(missing.verdict, Verdict::Failed(_)));
+        assert_eq!(missing.failed_rows, 1);
+        assert!(matches!(missing.intervals[1].verdict, Verdict::Failed(_)));
+
+        let extra = build_accumulation_report(
+            "large_scale_precipitation",
+            &observations,
+            Some(&[2.0, 4.0, 6.0]),
+        );
+        assert_eq!(
+            extra.verdict,
+            Verdict::Failed(
+                "oracle reference count 3 does not match observation count 2".to_string()
+            )
+        );
+        assert_eq!(extra.failed_rows, 0);
+
+        let non_finite = build_accumulation_report(
+            "large_scale_precipitation",
+            &observations,
+            Some(&[2.0, f64::NAN]),
+        );
+        assert!(matches!(non_finite.verdict, Verdict::Failed(_)));
+        assert_eq!(non_finite.failed_rows, 1);
+        assert!(matches!(
+            non_finite.intervals[1].verdict,
+            Verdict::Failed(_)
+        ));
     }
 
     #[test]

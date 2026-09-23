@@ -418,6 +418,7 @@ fn declared_reset_contiguous_case_matches_expected_outcome() {
         &observations,
         Some(&oracle_rates),
     );
+    assert_eq!(report.verdict, Verdict::Passed);
     assert_eq!(report.failed_rows, 0);
     for (row, expected_interval) in report.intervals.iter().zip(&expected.intervals) {
         assert_eq!(row.verdict, Verdict::Passed);
@@ -464,6 +465,11 @@ fn fail_closed_cases_report_matching_errors() {
         );
 
         let report = build_accumulation_report(case.id.as_str(), &observations, None);
+        assert!(
+            matches!(report.verdict, Verdict::Failed(_)),
+            "case `{}` report must fail",
+            case.id
+        );
         assert_eq!(
             report.failed_rows, 1,
             "case `{}` must record exactly one failed row",

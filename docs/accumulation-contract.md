@@ -68,7 +68,10 @@ The resolver rejects, with no partial interval emitted:
 
 Every rejection is a typed `AccumulationError`; the machine-readable report
 carries a per-interval `verdict` (`passed`/`failed` + reason) instead of dropping
-silent rows.
+silent rows. The report also carries an overall verdict: an empty source
+sequence, incomplete oracle-reference coverage, or any failed derivation or
+requested oracle comparison makes the report fail closed. Omitting oracle
+references entirely is the explicit derivation-only report mode.
 
 ## Evidence
 

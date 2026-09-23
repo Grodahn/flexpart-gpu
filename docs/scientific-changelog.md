@@ -16,6 +16,34 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-23 — Canonical vertical sampling on the #30 runtime geometry (#73)
+**Impact**: numerics (new sampling path; no consumer migration)
+**Files**: `src/meteorology/vertical_sampling.rs` (new), `src/meteorology/mod.rs`,
+`tests/integration/vertical_sampling.rs` (new), `tests/integration.rs`
+**Validation**: `sample_vertical` consumes only
+`VerticalTransformResult::runtime_view()`/`VerticalRuntimeView` (#30) and
+reproduces the pinned METRE-mode primitive
+`find_z_level_meters -> find_vert_vars_lin -> vert_interpol`
+(`interpol_mod.f90:215-242,406-430,539-547`) on model-level geometry
+(`LevelCenter`) and on the FLEXPART-`wzlev`-compatible W/interface geometry
+(`LevelInterface`). Unit oracle evidence: `vertical-model-levels`,
+`vertical-interface-wzlev` and `real-era5-etex-temperature-column` (137-level)
+goldens match within 1e-4 relative / 1e-6 absolute, including levels, dz
+weights and bound flags. Integration evidence via the real #30 runtime view:
+synthetic linear profiles reproduce hand values to 1e-5 relative; both
+`Increasing`/`Decreasing` orderings with 2/3/5 levels; interface oracle
+matches through the public entrypoint with machine-readable reports under
+`target/vertical-sampling/` (field identity, reference, staggering, source
+heights/values, request, oracle/candidate values, tolerance, verdict).
+Explicit fail-closed: `ModelNative` reference, non-finite heights/values,
+shape mismatch, wrong center/interface association, unsupported fields,
+horizontal out-of-bounds, single-level center sampling and non-monotonic
+geometry. Documented divergence: interface sampling is the #71 primitive on
+the #30 handoff, not end-to-end `eta=no` W production parity
+(`verttransform_ecmwf_windfields -> interpol_wind -> interpol_wind_meter`),
+which remains blocked by #80; logarithmic interpolation, ETA mode, nesting
+and `numpf=3` remain unsupported.
+
 ### 2026-09-17 — Preserve constant gas dry deposition and reject excess species
 **Impact**: physics
 **Files**: `config/mod.rs`, `physics/species.rs`

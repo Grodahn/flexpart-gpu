@@ -4,6 +4,7 @@
 //! GRIB ids, NetCDF variable names, provider naming, or implicit unit/sign rules.
 
 pub mod vertical;
+pub mod vertical_sampling;
 
 use std::collections::BTreeSet;
 

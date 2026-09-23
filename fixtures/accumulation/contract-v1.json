@@ -1,0 +1,216 @@
+{
+  "schema": {
+    "id": "flexpart-gpu.accumulation-contract",
+    "version": 1
+  },
+  "tolerance_relative": 1.0e-6,
+  "source_accumulated_unit": "kilogram_per_square_meter",
+  "amount_unit": "kilogram_per_square_meter",
+  "rate_si_unit": "kilogram_per_square_meter_per_second",
+  "rate_handoff_unit": "millimeter_per_hour",
+  "seconds_per_hour": 3600.0,
+  "oracle_source": {
+    "issue": 71,
+    "fixture": "fixtures/interpolation/contract-v1.json",
+    "case_id": "rain-layer-fields",
+    "boundary": "FLEXPART interpol_rain consumes lsprec/convprec as already-normalized mm/h rates (accumulated values are deaccumulated upstream, a step owned by #75). #75 must deliver these exact rate grids from accumulated source amounts plus explicit interval/reset metadata. Golden sample reproduced below uses the frozen closed-form bilinear used by the #71 fixture."
+  },
+  "cases": [
+    {
+      "id": "rain-layer-fields-bilinear-rates",
+      "mode": "oracle_rate_handoff",
+      "grid": { "nx": 4, "ny": 3, "order": "x_fastest" },
+      "sample": {
+        "xt": 1.25,
+        "yt": 0.5,
+        "itime_epoch_seconds": 1800,
+        "memtime_epoch_seconds": [0, 3600]
+      },
+      "golden": {
+        "large_scale_precipitation_mm_per_hour": 159.75,
+        "convective_precipitation_mm_per_hour": 3.0,
+        "formula": "handoff = (bilinear(r1) * 1800.0 + bilinear(r2) * 1800.0) / 1200.0 with dtt = dt / 3 = 1200 s for 20-minute lead/offset halves, matching the #71 oracle arithmetic applied to the resolver-derived rate grids."
+      },
+      "fields": [
+        {
+          "id": "large_scale_precipitation",
+          "observations": [
+            {
+              "valid_time_epoch_seconds": 1800,
+              "reset_epoch_seconds": 0,
+              "amounts_kg_per_square_meter": [
+                0.0, 0.5, 1.0, 1.5,
+                2.0, 2.5, 3.0, 3.5,
+                4.0, 4.5, 5.0, 5.5
+              ]
+            },
+            {
+              "valid_time_epoch_seconds": 3600,
+              "reset_epoch_seconds": 0,
+              "amounts_kg_per_square_meter": [
+                50.0, 51.0, 52.0, 53.0,
+                54.0, 55.0, 56.0, 57.0,
+                58.0, 59.0, 60.0, 61.0
+              ]
+            }
+          ],
+          "expected_interval_amounts_kg_per_square_meter": [
+            [
+              0.0, 0.5, 1.0, 1.5,
+              2.0, 2.5, 3.0, 3.5,
+              4.0, 4.5, 5.0, 5.5
+            ],
+            [
+              50.0, 50.5, 51.0, 51.5,
+              52.0, 52.5, 53.0, 53.5,
+              54.0, 54.5, 55.0, 55.5
+            ]
+          ],
+          "expected_rates_mm_per_hour": [
+            [
+              0.0, 1.0, 2.0, 3.0,
+              4.0, 5.0, 6.0, 7.0,
+              8.0, 9.0, 10.0, 11.0
+            ],
+            [
+              100.0, 101.0, 102.0, 103.0,
+              104.0, 105.0, 106.0, 107.0,
+              108.0, 109.0, 110.0, 111.0
+            ]
+          ]
+        },
+        {
+          "id": "convective_precipitation",
+          "observations": [
+            {
+              "valid_time_epoch_seconds": 1800,
+              "reset_epoch_seconds": 0,
+              "amounts_kg_per_square_meter": [
+                0.25, 0.25, 0.25, 0.25,
+                0.25, 0.25, 0.25, 0.25,
+                0.25, 0.25, 0.25, 0.25
+              ]
+            },
+            {
+              "valid_time_epoch_seconds": 3600,
+              "reset_epoch_seconds": 0,
+              "amounts_kg_per_square_meter": [
+                1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0
+              ]
+            }
+          ],
+          "expected_interval_amounts_kg_per_square_meter": [
+            [
+              0.25, 0.25, 0.25, 0.25,
+              0.25, 0.25, 0.25, 0.25,
+              0.25, 0.25, 0.25, 0.25
+            ],
+            [
+              0.75, 0.75, 0.75, 0.75,
+              0.75, 0.75, 0.75, 0.75,
+              0.75, 0.75, 0.75, 0.75
+            ]
+          ],
+          "expected_rates_mm_per_hour": [
+            [
+              0.5, 0.5, 0.5, 0.5,
+              0.5, 0.5, 0.5, 0.5,
+              0.5, 0.5, 0.5, 0.5
+            ],
+            [
+              1.5, 1.5, 1.5, 1.5,
+              1.5, 1.5, 1.5, 1.5,
+              1.5, 1.5, 1.5, 1.5
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "continuous-run-with-declared-reset",
+      "mode": "declared_reset_contiguous",
+      "observations": [
+        { "valid_time_epoch_seconds": 1800, "reset_epoch_seconds": 0, "accumulated_amount_kg_per_square_meter": 10.0 },
+        { "valid_time_epoch_seconds": 3600, "reset_epoch_seconds": 1800, "accumulated_amount_kg_per_square_meter": 5.0 },
+        { "valid_time_epoch_seconds": 5400, "reset_epoch_seconds": 1800, "accumulated_amount_kg_per_square_meter": 9.0 }
+      ],
+      "expected": {
+        "total_amount_kg_per_square_meter": 19.0,
+        "detected_reset_count": 1,
+        "intervals": [
+          {
+            "interval_start_epoch_seconds": 0,
+            "interval_end_epoch_seconds": 1800,
+            "amount_kg_per_square_meter": 10.0,
+            "rate_mm_per_hour": 20.0,
+            "reset_applied": true,
+            "detected_reset": false
+          },
+          {
+            "interval_start_epoch_seconds": 1800,
+            "interval_end_epoch_seconds": 3600,
+            "amount_kg_per_square_meter": 5.0,
+            "rate_mm_per_hour": 10.0,
+            "reset_applied": true,
+            "detected_reset": true
+          },
+          {
+            "interval_start_epoch_seconds": 3600,
+            "interval_end_epoch_seconds": 5400,
+            "amount_kg_per_square_meter": 4.0,
+            "rate_mm_per_hour": 8.0,
+            "reset_applied": false,
+            "detected_reset": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "same-run-decrease-fails-closed",
+      "mode": "fail_closed",
+      "observations": [
+        { "valid_time_epoch_seconds": 1800, "reset_epoch_seconds": 0, "accumulated_amount_kg_per_square_meter": 1.0 },
+        { "valid_time_epoch_seconds": 3600, "reset_epoch_seconds": 0, "accumulated_amount_kg_per_square_meter": 0.5 }
+      ],
+      "expected_error": "negative_delta"
+    },
+    {
+      "id": "mid-window-reset-fails-closed",
+      "mode": "fail_closed",
+      "observations": [
+        { "valid_time_epoch_seconds": 1800, "reset_epoch_seconds": 0, "accumulated_amount_kg_per_square_meter": 1.0 },
+        { "valid_time_epoch_seconds": 3600, "reset_epoch_seconds": 1200, "accumulated_amount_kg_per_square_meter": 2.0 }
+      ],
+      "expected_error": "mid_window_reset"
+    },
+    {
+      "id": "uncovered-gap-fails-closed",
+      "mode": "fail_closed",
+      "observations": [
+        { "valid_time_epoch_seconds": 1800, "reset_epoch_seconds": 0, "accumulated_amount_kg_per_square_meter": 1.0 },
+        { "valid_time_epoch_seconds": 5400, "reset_epoch_seconds": 3600, "accumulated_amount_kg_per_square_meter": 2.0 }
+      ],
+      "expected_error": "uncovered_gap"
+    },
+    {
+      "id": "backwards-reset-fails-closed",
+      "mode": "fail_closed",
+      "observations": [
+        { "valid_time_epoch_seconds": 1800, "reset_epoch_seconds": 0, "accumulated_amount_kg_per_square_meter": 1.0 },
+        { "valid_time_epoch_seconds": 3600, "reset_epoch_seconds": -100, "accumulated_amount_kg_per_square_meter": 2.0 }
+      ],
+      "expected_error": "backwards_reset"
+    },
+    {
+      "id": "reset-not-before-valid-time-fails-closed",
+      "mode": "fail_closed",
+      "observations": [
+        { "valid_time_epoch_seconds": 1800, "reset_epoch_seconds": 0, "accumulated_amount_kg_per_square_meter": 1.0 },
+        { "valid_time_epoch_seconds": 3600, "reset_epoch_seconds": 3600, "accumulated_amount_kg_per_square_meter": 5.0 }
+      ],
+      "expected_error": "reset_not_before_valid_time"
+    }
+  ]
+}

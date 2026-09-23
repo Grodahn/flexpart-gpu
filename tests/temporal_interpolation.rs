@@ -572,6 +572,17 @@ fn test_temporal_fail_closed_cases() {
         })
     );
 
+    assert_eq!(
+        build_comparison_report(
+            "empty-queries",
+            FieldId::Temperature,
+            &report_refs,
+            Tolerance::new(ABS_TOL, REL_TOL),
+            &[],
+        ),
+        Err(TemporalError::EmptyOracleQueries)
+    );
+
     let mut restaggered = wind_snapshot(3600, 20.0);
     restaggered.fields[0].vertical_staggering = VerticalStaggering::LevelCenter;
     let stagger_series = [wind_snapshot(0, 10.0), restaggered];
@@ -611,6 +622,23 @@ fn test_temporal_fail_closed_cases() {
             field_id: FieldId::SensibleHeatFlux,
             temporal_policy: TemporalPolicy::SurfaceFluxRate
         })
+    );
+}
+
+#[test]
+fn test_temporal_wide_i64_timestamp_span_does_not_overflow() {
+    let snapshots = [wind_snapshot(i64::MIN, 10.0), wind_snapshot(i64::MAX, 20.0)];
+    let snapshot_refs: Vec<&Snapshot> = snapshots.iter().collect();
+
+    let sample = sample_field(FieldId::WindU, &snapshot_refs, gregorian(0))
+        .expect("all ordered i64 timestamps must be sampled without arithmetic overflow");
+    let (lower_weight, upper_weight) = sample.weights.normalized();
+
+    assert_close(lower_weight + upper_weight, 1.0, "wide-span weight sum");
+    assert_close(
+        f64::from(sample.values[0]),
+        15.0,
+        "wide-span interpolated value",
     );
 }
 

@@ -47,7 +47,7 @@ Other errors: `UnsupportedTemporalPolicy`, `InsufficientTemporalCoverage`,
 `MissingFieldSnapshot`, `NonInstantaneousSnapshot`, `InconsistentCalendar`,
 `CalendarMismatch`, `NonMonotonicTimestamps` (duplicates and descending),
 `InconsistentFieldShape`, `InconsistentStaggering`, `NonFiniteValue`,
-`OutOfBoundsElement`, `NonFiniteResult`.
+`OutOfBoundsElement`, `EmptyOracleQueries`, `NonFiniteResult`.
 
 ## Evaluation evidence
 
@@ -59,4 +59,4 @@ Other errors: `UnsupportedTemporalPolicy`, `InsufficientTemporalCoverage`,
 - Fail-closed matrix covers each rejection class; report driver runs
   end-to-end on both scenario fixtures and emits the machine-readable report
   schema `flexpart-gpu.temporal-interpolation-report` v1.
-- 7/7 tests in `tests/temporal_interpolation.rs`.
+- 8/8 tests in `tests/temporal_interpolation.rs`.

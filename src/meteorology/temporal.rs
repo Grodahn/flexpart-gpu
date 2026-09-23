@@ -225,6 +225,9 @@ pub enum TemporalError {
     /// Element index out of range for the sampled field.
     #[error("element index {element_index} exceeds field length {length}")]
     OutOfBoundsElement { element_index: usize, length: usize },
+    /// A comparison without oracle queries cannot provide validation evidence.
+    #[error("temporal comparison requires at least one oracle query")]
+    EmptyOracleQueries,
     /// The blended result is non-finite. Defensive guard: finite f32 inputs
     /// with `[0, 1]` weights cannot reach this, but the check protects the
     /// blend against future weight-scheme changes.
@@ -413,11 +416,14 @@ pub fn sample_field(
     let lower = &series[lower_index];
     let upper = &series[upper_index];
 
-    // Integer epoch seconds; exact in f64 well beyond the supported range.
+    // Calculate in i128 first so every ordered pair of public i64 timestamps
+    // remains overflow-safe before conversion to the interpolation precision.
+    let dt1_i128 = i128::from(request.epoch_seconds) - i128::from(lower.timestamp_epoch_seconds);
+    let dt2_i128 = i128::from(upper.timestamp_epoch_seconds) - i128::from(request.epoch_seconds);
     #[allow(clippy::cast_precision_loss)]
-    let dt1 = (request.epoch_seconds - lower.timestamp_epoch_seconds) as f64;
+    let dt1 = dt1_i128 as f64;
     #[allow(clippy::cast_precision_loss)]
-    let dt2 = (upper.timestamp_epoch_seconds - request.epoch_seconds) as f64;
+    let dt2 = dt2_i128 as f64;
     let span = dt1 + dt2;
     debug_assert!(span > 0.0 && dt1 >= 0.0 && dt2 >= 0.0);
     let inverse_span = 1.0 / span;
@@ -637,6 +643,9 @@ pub fn build_comparison_report(
     tolerance: Tolerance,
     queries: &[OracleQuery],
 ) -> Result<ComparisonReport, TemporalError> {
+    if queries.is_empty() {
+        return Err(TemporalError::EmptyOracleQueries);
+    }
     let series = extract_series(field_id, snapshots)?;
     let calendar = series[0].calendar;
     let length = series[0].values.len();

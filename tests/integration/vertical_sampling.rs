@@ -325,7 +325,7 @@ struct ComparisonRow {
     verdict: String,
 }
 
-fn write_report(case_id: &str, rows: &[ComparisonRow]) {
+fn write_report(case_id: &str, value_provenance: &str, rows: &[ComparisonRow]) {
     let dir = std::path::Path::new("target/vertical-sampling");
     std::fs::create_dir_all(dir).expect("create vertical-sampling report dir");
     let path = dir.join(format!("{case_id}.json"));
@@ -335,6 +335,7 @@ fn write_report(case_id: &str, rows: &[ComparisonRow]) {
         "runtime_boundary": "VerticalTransformResult::runtime_view()/VerticalRuntimeView (#30)",
         "implementation": "src/meteorology/vertical_sampling.rs::sample_vertical (#73)",
         "source_order": "canonical_storage_order_as_consumed_via_runtime_view",
+        "value_provenance": value_provenance,
         "production_w_note": "interface rows reproduce the #71 primitive on the #30 wzlev handoff; end-to-end eta=no W production parity is owned by blocking issue #80",
         "rows": rows,
     });
@@ -521,7 +522,11 @@ fn vertical_interface_oracle_matches_via_real_runtime_view_with_report() {
             verdict: verdict.to_string(),
         });
     }
-    write_report("vertical-interface-wzlev", &rows);
+    write_report(
+        "vertical-interface-wzlev",
+        "interface rows sample the #71 oracle's own W/interface values (omega*pinmconv) through the public entrypoint; only the geometry (interface AGL heights) is the real #30 runtime view. Independent oracle cross-check of the primitive lives in the unit tests against the same fixture.",
+        &rows,
+    );
 }
 
 #[test]
@@ -723,5 +728,9 @@ fn vertical_model_level_report_covers_real_runtime_view() {
     }
     assert_eq!(nx, 1);
     assert!(!map.is_empty());
-    write_report("vertical-model-level-regression", &rows);
+    write_report(
+        "vertical-model-level-regression",
+        "model-level regression re-asserts the candidate (oracle_value == candidate_value); the independent oracle cross-check lives in the unit tests against the vertical-model-levels and real-era5 goldens.",
+        &rows,
+    );
 }

@@ -211,7 +211,17 @@ pub fn sample_vertical(
         });
     }
 
-    if staggering == VerticalStaggering::LevelCenter && nz < 2 {
+    let required_nz = match staggering {
+        VerticalStaggering::LevelCenter => 2,
+        VerticalStaggering::LevelInterface => 1,
+        VerticalStaggering::NotApplicable => {
+            return Err(VerticalSamplingError::WrongStaggering {
+                field,
+                requested: staggering,
+            });
+        }
+    };
+    if nz < required_nz {
         return Err(VerticalSamplingError::InsufficientLevels { nz });
     }
 

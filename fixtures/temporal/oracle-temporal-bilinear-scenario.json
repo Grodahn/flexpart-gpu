@@ -1,0 +1,51 @@
+{
+  "schema": {
+    "id": "flexpart-gpu.temporal-interpolation-scenario",
+    "version": 1
+  },
+  "scenario_id": "oracle-temporal-bilinear",
+  "field_id": "wind_u",
+  "snapshot_paths": [
+    "oracle-temporal-bilinear/t0.json",
+    "oracle-temporal-bilinear/t3600.json"
+  ],
+  "tolerance": {
+    "absolute": 1.0e-6,
+    "relative": 1.0e-5
+  },
+  "queries": [
+    {
+      "requested_time_epoch_seconds": 0,
+      "element_index": 0,
+      "oracle_value": 10.0,
+      "oracle_dts": {
+        "dt1_seconds": 0.0,
+        "dt2_seconds": 3600.0,
+        "inverse_span_per_second": 0.00027777778450399637
+      },
+      "expected_application": "first_endpoint"
+    },
+    {
+      "requested_time_epoch_seconds": 1800,
+      "element_index": 0,
+      "oracle_value": 15.0,
+      "oracle_dts": {
+        "dt1_seconds": 1800.0,
+        "dt2_seconds": 1800.0,
+        "inverse_span_per_second": 0.00027777778450399637
+      },
+      "expected_application": "linear_interior"
+    },
+    {
+      "requested_time_epoch_seconds": 3600,
+      "element_index": 0,
+      "oracle_value": 20.0,
+      "oracle_dts": {
+        "dt1_seconds": 3600.0,
+        "dt2_seconds": 0.0,
+        "inverse_span_per_second": 0.00027777778450399637
+      },
+      "expected_application": "last_endpoint"
+    }
+  ]
+}

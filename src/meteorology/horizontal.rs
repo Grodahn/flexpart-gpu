@@ -21,12 +21,6 @@ use super::{HorizontalGrid, HorizontalStaggering, LongitudeDomain};
 
 /// Tolerance for canonical grid-closure checks, matching #29 schema validation.
 const GRID_TOLERANCE_DEG: f64 = 1.0e-9;
-/// Tolerance for snapping floating-point grid coordinates to a supported edge.
-///
-/// Values beyond this tolerance outside the supported domain fail closed
-/// instead of being clamped or wrapped.
-const DOMAIN_TOLERANCE: f64 = 1.0e-9;
-
 /// Bilinear horizontal sample with full oracle-traceable evidence.
 ///
 /// `weights` are `[p1, p2, p3, p4]` in FLEXPART order:
@@ -63,16 +57,22 @@ pub enum HorizontalError {
     #[error("inconsistent horizontal grid metadata: {reason}")]
     InconsistentGridMetadata { reason: &'static str },
     /// Only cell-center staggering is frozen by #71.
-    #[error("unsupported horizontal staggering: {staggering:?}; only cell_center is frozen by #71")]
-    UnsupportedStaggering {
-        staggering: HorizontalStaggering,
-    },
+    #[error(
+        "unsupported horizontal staggering: {staggering:?}; only cell_center is frozen by #71"
+    )]
+    UnsupportedStaggering { staggering: HorizontalStaggering },
     /// Non-finite or physically impossible coordinate.
     #[error("impossible horizontal coordinate: {reason}")]
     ImpossibleCoordinate { reason: &'static str },
     /// Valid Earth coordinate outside the supported canonical domain.
     #[error("horizontal coordinate out of supported domain: xt={xt}, yt={yt}")]
     OutOfDomain { xt: f64, yt: f64 },
+    /// Longitude is not represented by the grid's declared convention.
+    #[error("longitude {lon_deg} is outside declared convention {longitude_domain:?}")]
+    LongitudeOutsideConvention {
+        lon_deg: f64,
+        longitude_domain: LongitudeDomain,
+    },
     /// Field value count does not match `nx * ny` for cell-center storage.
     #[error("horizontal field shape mismatch: expected {expected} values, got {actual}")]
     ShapeMismatch { expected: usize, actual: usize },
@@ -125,7 +125,9 @@ pub fn validate_horizontal_grid(grid: &HorizontalGrid) -> Result<bool, Horizonta
     }
 
     let (lon_min, lon_max, origin_valid) = match grid.longitude_domain {
-        LongitudeDomain::Minus180To180 => (-180.0, 180.0, (-180.0..=180.0).contains(&grid.xlon0_deg)),
+        LongitudeDomain::Minus180To180 => {
+            (-180.0, 180.0, (-180.0..=180.0).contains(&grid.xlon0_deg))
+        }
         LongitudeDomain::ZeroTo360 => (0.0, 360.0, (0.0..360.0).contains(&grid.xlon0_deg)),
     };
     if !origin_valid {
@@ -147,7 +149,8 @@ pub fn validate_horizontal_grid(grid: &HorizontalGrid) -> Result<bool, Horizonta
         let east_edge = grid.xlon0_deg + (grid.nx.saturating_sub(1) as f64 + 0.5) * grid.dx_deg;
         if west_edge < lon_min - GRID_TOLERANCE_DEG || east_edge > lon_max + GRID_TOLERANCE_DEG {
             return Err(HorizontalError::InconsistentGridMetadata {
-                reason: "regional grid must fit inside its longitude domain without crossing the seam",
+                reason:
+                    "regional grid must fit inside its longitude domain without crossing the seam",
             });
         }
     }
@@ -172,7 +175,7 @@ pub fn grid_index_to_lonlat(grid: &HorizontalGrid, xt: f64, yt: f64) -> (f64, f6
 /// (`offset = x + nx * y`). Only [`HorizontalStaggering::CellCenter`] is
 /// supported; face staggering is not frozen by #71 and fails closed.
 ///
-/// Supported domain (after `DOMAIN_TOLERANCE` edge snapping):
+/// Supported domain:
 /// non-periodic `0 <= xt <= nx-1`, `0 <= yt <= ny-1`;
 /// periodic `0 <= xt < nx`, `0 <= yt <= ny-1`.
 /// Anything else fails with [`HorizontalError::OutOfDomain`] rather than
@@ -210,24 +213,18 @@ pub fn sample_horizontal(
         });
     }
 
-    let (xt_snapped, yt_snapped) = snap_to_supported_domain(xt, yt, nx, ny, is_periodic_x)?;
+    validate_supported_domain(xt, yt, nx, ny, is_periodic_x)?;
 
     // For xt >= 0 truncation equals floor; negatives are already rejected.
-    let ix = xt_snapped.floor() as usize;
-    let jy = yt_snapped.floor() as usize;
+    let ix = xt.floor() as usize;
+    let jy = yt.floor() as usize;
     if ix >= nx || jy >= ny {
-        return Err(HorizontalError::OutOfDomain {
-            xt: xt_snapped,
-            yt: yt_snapped,
-        });
+        return Err(HorizontalError::OutOfDomain { xt, yt });
     }
-    let ddx = xt_snapped - ix as f64;
-    let ddy = yt_snapped - jy as f64;
+    let ddx = xt - ix as f64;
+    let ddy = yt - jy as f64;
     if !(0.0..=1.0).contains(&ddx) || !(0.0..=1.0).contains(&ddy) {
-        return Err(HorizontalError::OutOfDomain {
-            xt: xt_snapped,
-            yt: yt_snapped,
-        });
+        return Err(HorizontalError::OutOfDomain { xt, yt });
     }
 
     // North edge: FLEXPART temporary fix `if (jyp >= nymax) jyp = jyp - 1`.
@@ -239,10 +236,7 @@ pub fn sample_horizontal(
     // unreachable because out-of-domain `xt` already failed.
     let ixp = if is_periodic_x {
         if ix + 1 > nx {
-            return Err(HorizontalError::OutOfDomain {
-                xt: xt_snapped,
-                yt: yt_snapped,
-            });
+            return Err(HorizontalError::OutOfDomain { xt, yt });
         }
         ix + 1
     } else if ix + 1 >= nx {
@@ -260,7 +254,9 @@ pub fn sample_horizontal(
     let value_01 = field_at(field_values, nx, ny, ix, jyp, is_periodic_x)?;
     let value_11 = field_at(field_values, nx, ny, ixp, jyp, is_periodic_x)?;
 
-    let value_f64 = weights[0] * value_00 + weights[1] * value_10 + weights[2] * value_01
+    let value_f64 = weights[0] * value_00
+        + weights[1] * value_10
+        + weights[2] * value_01
         + weights[3] * value_11;
     if !value_f64.is_finite() {
         return Err(HorizontalError::NonFiniteResult);
@@ -274,8 +270,8 @@ pub fn sample_horizontal(
 
     Ok(HorizontalSample {
         value,
-        xt: xt_snapped,
-        yt: yt_snapped,
+        xt,
+        yt,
         ix,
         jy,
         ixp,
@@ -330,6 +326,16 @@ pub fn sample_horizontal_geographic(
             reason: "geographic to grid mapping overflowed",
         });
     }
+    let longitude_in_declared_convention = match grid.longitude_domain {
+        LongitudeDomain::Minus180To180 => (-180.0..=180.0).contains(&lon_deg),
+        LongitudeDomain::ZeroTo360 => (0.0..360.0).contains(&lon_deg),
+    };
+    if !longitude_in_declared_convention {
+        return Err(HorizontalError::LongitudeOutsideConvention {
+            lon_deg,
+            longitude_domain: grid.longitude_domain,
+        });
+    }
     sample_horizontal(grid, field_values, staggering, xt, yt)
 }
 
@@ -337,38 +343,27 @@ fn grid_close(actual: f64, expected: f64) -> bool {
     (actual - expected).abs() <= GRID_TOLERANCE_DEG
 }
 
-fn snap_to_supported_domain(
+fn validate_supported_domain(
     xt: f64,
     yt: f64,
     nx: usize,
     ny: usize,
     is_periodic_x: bool,
-) -> Result<(f64, f64), HorizontalError> {
+) -> Result<(), HorizontalError> {
     let nx_f = nx as f64;
     let ny_f = ny as f64;
 
-    let xt_snapped = if xt >= 0.0 && (is_periodic_x && xt < nx_f || !is_periodic_x && xt <= nx_f - 1.0)
-    {
-        xt
-    } else if (-DOMAIN_TOLERANCE..0.0).contains(&xt) {
-        0.0
-    } else if !is_periodic_x && xt > nx_f - 1.0 && xt <= nx_f - 1.0 + DOMAIN_TOLERANCE {
-        nx_f - 1.0
-    } else {
+    let x_is_supported =
+        xt >= 0.0 && (is_periodic_x && xt < nx_f || !is_periodic_x && xt <= nx_f - 1.0);
+    if !x_is_supported {
         return Err(HorizontalError::OutOfDomain { xt, yt });
-    };
+    }
 
-    let yt_snapped = if yt >= 0.0 && yt <= ny_f - 1.0 {
-        yt
-    } else if (-DOMAIN_TOLERANCE..0.0).contains(&yt) {
-        0.0
-    } else if yt > ny_f - 1.0 && yt <= ny_f - 1.0 + DOMAIN_TOLERANCE {
-        ny_f - 1.0
-    } else {
+    if yt < 0.0 || yt > ny_f - 1.0 {
         return Err(HorizontalError::OutOfDomain { xt, yt });
-    };
+    }
 
-    Ok((xt_snapped, yt_snapped))
+    Ok(())
 }
 
 fn field_at(
@@ -397,10 +392,12 @@ fn field_at(
         });
     };
     let offset = stored_x + nx * jy;
-    let raw = *field_values.get(offset).ok_or(HorizontalError::ShapeMismatch {
-        expected: nx * ny,
-        actual: field_values.len(),
-    })?;
+    let raw = *field_values
+        .get(offset)
+        .ok_or(HorizontalError::ShapeMismatch {
+            expected: nx * ny,
+            actual: field_values.len(),
+        })?;
     if !raw.is_finite() {
         return Err(HorizontalError::NonFiniteValue { index: offset });
     }
@@ -477,14 +474,8 @@ mod tests {
             .flat_map(|y| (0..4).map(move |x| 7.0 + 2.0 * x as f32 + 3.0 * y as f32))
             .collect();
         for (xt, yt) in [(0.0, 0.0), (1.25, 0.5), (2.5, 1.5), (2.9, 1.0), (0.4, 2.0)] {
-            let sample = sample_horizontal(
-                &grid,
-                &field,
-                HorizontalStaggering::CellCenter,
-                xt,
-                yt,
-            )
-            .expect("linear interior query must succeed");
+            let sample = sample_horizontal(&grid, &field, HorizontalStaggering::CellCenter, xt, yt)
+                .expect("linear interior query must succeed");
             assert_relative(sample.value, 7.0 + 2.0 * xt + 3.0 * yt);
         }
     }
@@ -521,8 +512,14 @@ mod tests {
     #[test]
     fn test_horizontal_periodic_seam_uses_duplicate_column() {
         let grid = periodic_grid();
-        let sample = sample_horizontal(&grid, &oracle_field(), HorizontalStaggering::CellCenter, 3.2, 1.5)
-            .expect("periodic seam query must succeed");
+        let sample = sample_horizontal(
+            &grid,
+            &oracle_field(),
+            HorizontalStaggering::CellCenter,
+            3.2,
+            1.5,
+        )
+        .expect("periodic seam query must succeed");
         assert_eq!((sample.ix, sample.jy, sample.ixp, sample.jyp), (3, 1, 4, 2));
         assert!(sample.is_periodic_x);
         assert_relative(sample.value, 355.0);
@@ -539,8 +536,14 @@ mod tests {
             dy_deg: 0.25,
             longitude_domain: LongitudeDomain::Minus180To180,
         };
-        let direct = sample_horizontal(&grid, &oracle_field(), HorizontalStaggering::CellCenter, 1.25, 0.5)
-            .expect("direct grid query must succeed");
+        let direct = sample_horizontal(
+            &grid,
+            &oracle_field(),
+            HorizontalStaggering::CellCenter,
+            1.25,
+            0.5,
+        )
+        .expect("direct grid query must succeed");
         let geographic = sample_horizontal_geographic(
             &grid,
             &oracle_field(),

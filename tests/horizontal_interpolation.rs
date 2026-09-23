@@ -9,8 +9,7 @@
 
 use flexpart_gpu::meteorology::{
     horizontal::{
-        grid_index_to_lonlat, sample_horizontal, sample_horizontal_geographic,
-        HorizontalError,
+        grid_index_to_lonlat, sample_horizontal, sample_horizontal_geographic, HorizontalError,
     },
     HorizontalGrid, HorizontalStaggering, LongitudeDomain,
 };
@@ -62,6 +61,8 @@ struct SourceGrid {
     dx_deg: f64,
     dy_deg: f64,
     periodic_x: bool,
+    longitude_domain: LongitudeDomain,
+    staggering: HorizontalStaggering,
 }
 
 #[derive(Debug, Serialize)]
@@ -105,17 +106,14 @@ fn read_field(input: &[String], cursor: &mut usize, count: usize) -> Vec<f32> {
     input[start..*cursor]
         .iter()
         .map(|line| {
-            line.trim().parse::<f32>().unwrap_or_else(|_| {
-                panic!("invalid f32 field value: {line:?}")
-            })
+            line.trim()
+                .parse::<f32>()
+                .unwrap_or_else(|_| panic!("invalid f32 field value: {line:?}"))
         })
         .collect()
 }
 
-fn check_horizontal_case(
-    case: &serde_json::Value,
-    rows: &mut Vec<ComparisonRow>,
-) {
+fn check_horizontal_case(case: &serde_json::Value, rows: &mut Vec<ComparisonRow>) {
     let case_id = case["id"].as_str().expect("case id").to_string();
     let input = case["input"].as_array().expect("input array");
     let input: Vec<String> = input
@@ -144,14 +142,8 @@ fn check_horizontal_case(
         let xt = parse_f64(&query_tokens[0], "xt");
         let yt = parse_f64(&query_tokens[1], "yt");
 
-        let sample = sample_horizontal(
-            &grid,
-            &field,
-            HorizontalStaggering::CellCenter,
-            xt,
-            yt,
-        )
-        .unwrap_or_else(|err| panic!("{case_id} query {index} must sample: {err:?}"));
+        let sample = sample_horizontal(&grid, &field, HorizontalStaggering::CellCenter, xt, yt)
+            .unwrap_or_else(|err| panic!("{case_id} query {index} must sample: {err:?}"));
 
         let oracle_indices = query["INDICES"].as_array().expect("INDICES");
         let oracle_indices: [usize; 4] = [
@@ -202,6 +194,8 @@ fn check_horizontal_case(
                 dx_deg: grid.dx_deg,
                 dy_deg: grid.dy_deg,
                 periodic_x: sample.is_periodic_x,
+                longitude_domain: grid.longitude_domain,
+                staggering: HorizontalStaggering::CellCenter,
             },
             sample_lon_deg: lon,
             sample_lat_deg: lat,
@@ -219,10 +213,7 @@ fn check_horizontal_case(
     }
 }
 
-fn check_geographic_case(
-    case: &serde_json::Value,
-    rows: &mut Vec<ComparisonRow>,
-) {
+fn check_geographic_case(case: &serde_json::Value, rows: &mut Vec<ComparisonRow>) {
     let case_id = case["id"].as_str().expect("case id").to_string();
     let input = case["input"].as_array().expect("input array");
     let input: Vec<String> = input
@@ -248,14 +239,9 @@ fn check_geographic_case(
         let lon = parse_f64(&query_tokens[0], "lon");
         let lat = parse_f64(&query_tokens[1], "lat");
 
-        let sample = sample_horizontal_geographic(
-            &grid,
-            &field,
-            HorizontalStaggering::CellCenter,
-            lon,
-            lat,
-        )
-        .unwrap_or_else(|err| panic!("{case_id} query {index} must sample: {err:?}"));
+        let sample =
+            sample_horizontal_geographic(&grid, &field, HorizontalStaggering::CellCenter, lon, lat)
+                .unwrap_or_else(|err| panic!("{case_id} query {index} must sample: {err:?}"));
 
         let oracle_lon = query["LONLAT"][0].as_f64().expect("LONLAT lon");
         let oracle_lat = query["LONLAT"][1].as_f64().expect("LONLAT lat");
@@ -322,6 +308,8 @@ fn check_geographic_case(
                 dx_deg: grid.dx_deg,
                 dy_deg: grid.dy_deg,
                 periodic_x: sample.is_periodic_x,
+                longitude_domain: grid.longitude_domain,
+                staggering: HorizontalStaggering::CellCenter,
             },
             sample_lon_deg: lon,
             sample_lat_deg: lat,
@@ -355,14 +343,8 @@ fn check_synthetic_linear_rows(rows: &mut Vec<ComparisonRow>) {
         .collect();
     for (xt, yt) in [(0.0, 0.0), (1.25, 0.5), (2.5, 1.5), (2.9, 2.0), (0.4, 1.0)] {
         let expected = 7.0 + 2.0 * xt + 3.0 * yt;
-        let sample = sample_horizontal(
-            &grid,
-            &field,
-            HorizontalStaggering::CellCenter,
-            xt,
-            yt,
-        )
-        .expect("synthetic linear query must succeed");
+        let sample = sample_horizontal(&grid, &field, HorizontalStaggering::CellCenter, xt, yt)
+            .expect("synthetic linear query must succeed");
         assert_close(
             f64::from(sample.value),
             expected,
@@ -380,6 +362,8 @@ fn check_synthetic_linear_rows(rows: &mut Vec<ComparisonRow>) {
                 dx_deg: grid.dx_deg,
                 dy_deg: grid.dy_deg,
                 periodic_x: sample.is_periodic_x,
+                longitude_domain: grid.longitude_domain,
+                staggering: HorizontalStaggering::CellCenter,
             },
             sample_lon_deg: lon,
             sample_lat_deg: lat,
@@ -448,7 +432,10 @@ fn test_horizontal_candidate_matches_frozen_oracle() {
         serde_json::from_str(&std::fs::read_to_string(&out_path).expect("read report"))
             .expect("report must be valid JSON");
     let report_rows = report_value["rows"].as_array().expect("rows");
-    assert!(!report_rows.is_empty(), "comparison report must not be empty");
+    assert!(
+        !report_rows.is_empty(),
+        "comparison report must not be empty"
+    );
     for row in report_rows {
         for key in [
             "field_identity",
@@ -464,12 +451,15 @@ fn test_horizontal_candidate_matches_frozen_oracle() {
             "tolerance",
             "verdict",
         ] {
-            assert!(
-                row.get(key).is_some(),
-                "comparison row must record {key}"
-            );
+            assert!(row.get(key).is_some(), "comparison row must record {key}");
         }
         assert_eq!(row["verdict"], "pass");
+        for key in ["longitude_domain", "staggering"] {
+            assert!(
+                row["source_grid"].get(key).is_some(),
+                "source grid must record {key}"
+            );
+        }
     }
 }
 
@@ -487,7 +477,17 @@ fn test_horizontal_unsupported_cases_fail_closed() {
     let field = vec![1.0_f32; 12];
 
     // Out-of-domain grid indices fail instead of clamping or wrapping.
-    for (xt, yt) in [(-0.5, 1.0), (1.0, -0.5), (4.0, 1.0), (1.0, 3.0), (3.001, 1.0)] {
+    for (xt, yt) in [
+        (-0.5, 1.0),
+        (-5.0e-10, 1.0),
+        (1.0, -0.5),
+        (1.0, -5.0e-10),
+        (4.0, 1.0),
+        (1.0, 3.0),
+        (3.001, 1.0),
+        (3.0 + 5.0e-10, 1.0),
+        (1.0, 2.0 + 5.0e-10),
+    ] {
         assert!(
             matches!(
                 sample_horizontal(&grid, &field, HorizontalStaggering::CellCenter, xt, yt),
@@ -508,19 +508,19 @@ fn test_horizontal_unsupported_cases_fail_closed() {
         longitude_domain: LongitudeDomain::Minus180To180,
     };
     assert!(matches!(
-        sample_horizontal(&periodic, &field, HorizontalStaggering::CellCenter, 4.0, 1.0),
+        sample_horizontal(
+            &periodic,
+            &field,
+            HorizontalStaggering::CellCenter,
+            4.0,
+            1.0
+        ),
         Err(HorizontalError::OutOfDomain { .. })
     ));
 
     // Face staggering is not frozen by #71.
     assert!(matches!(
-        sample_horizontal(
-            &grid,
-            &[0.0_f32; 15],
-            HorizontalStaggering::XFace,
-            1.0,
-            1.0
-        ),
+        sample_horizontal(&grid, &[0.0_f32; 15], HorizontalStaggering::XFace, 1.0, 1.0),
         Err(HorizontalError::UnsupportedStaggering { .. })
     ));
 
@@ -548,5 +548,27 @@ fn test_horizontal_unsupported_cases_fail_closed() {
     assert!(matches!(
         sample_horizontal_geographic(&grid, &field, HorizontalStaggering::CellCenter, 0.0, 95.0),
         Err(HorizontalError::ImpossibleCoordinate { .. })
+    ));
+
+    // Longitudes outside the declared convention fail even when their raw
+    // numeric mapping would land inside a periodic grid.
+    let periodic_zero_origin = HorizontalGrid {
+        nx: 4,
+        ny: 3,
+        xlon0_deg: 0.0,
+        ylat0_deg: 0.0,
+        dx_deg: 90.0,
+        dy_deg: 1.0,
+        longitude_domain: LongitudeDomain::Minus180To180,
+    };
+    assert!(matches!(
+        sample_horizontal_geographic(
+            &periodic_zero_origin,
+            &field,
+            HorizontalStaggering::CellCenter,
+            270.0,
+            1.0
+        ),
+        Err(HorizontalError::LongitudeOutsideConvention { .. })
     ));
 }

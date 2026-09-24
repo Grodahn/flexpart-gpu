@@ -137,6 +137,17 @@ fail() {
   exit 1
 }
 
+unexpected_error() {
+  local status="$?"
+  local line="${BASH_LINENO[0]:-unknown}"
+  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    printf '::error title=Unexpected technical gate failure::scripts/ci-gate.sh line %s exited with status %s\n' \
+      "${line}" "${status}"
+  fi
+  exit "${status}"
+}
+trap unexpected_error ERR
+
 # ---------------------------------------------------------------------------
 # 0. Build environment and revisions (provenance, always recorded).
 # ---------------------------------------------------------------------------

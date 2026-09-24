@@ -122,6 +122,9 @@ log_info "Allow-listed CI cases: ${CI_CASE_ALLOWLIST}"
 
 fail() {
   log_error "$*"
+  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    printf '::error title=Technical validation gate::%s\n' "$*"
+  fi
   "${HOST_PYTHON}" "${SCRIPT_DIR}/ci-gate-report.py" \
     --output "${OUTPUT_DIR}/ci-gate-report.json" \
     --project-root "${PROJECT_ROOT}" \
@@ -643,6 +646,7 @@ required = {
 for row in rows:
     assert required <= row.keys(), f"missing report fields: {sorted(required - row.keys())}"
     assert row["verdict"] == "PASS", "non-passing vertical comparison row"
+print("vertical-sampling comparison report: PASS")
 ' "${VERTICAL_SAMPLING_REPORT}" 2>&1 | tee "${VERTICAL_SAMPLING_DIR}/report-validation.log"; then
   fail "Vertical-sampling comparison report validation failed"
 fi

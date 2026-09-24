@@ -42,7 +42,9 @@ The Rust implementation lives in src/meteorology/mod.rs.
   eta-dot representations must remain outside the physics boundary until normalized.
 - Precipitation is represented as water-equivalent interval total in kg/m2, or as an
   explicit accumulation with reset metadata. A scalar with unknown accumulation window
-  is invalid.
+  is invalid. Deriving interval amounts/rates from `AccumulatedSinceReset` fields is
+  owned by #75; the canonical rules and fail-closed cases are documented in
+  `docs/accumulation-contract.md`.
 - Hybrid coordinates carry the native **interface/half-level** A/B coefficients, an explicit
   reference surface pressure used only to make serialized reference pressures checkable, and an
   explicit dependency on canonical surface_pressure. #30 owns reconstruction at the actual local
@@ -130,7 +132,7 @@ that follow add scientific provenance and interpolation notes on top of this mac
 | `wind_v10m` | 10-m northward wind | readwind -> `v10` | X,Y; m/s northward + | instantaneous | continuous 2-D | `pbl_profile` fallback / near-surface diagnosis |
 | `temperature2m` | 2-m air temperature | readwind -> `tt2` | X,Y; K | instantaneous | continuous 2-D | PBL; Emanuel convection; dry deposition |
 | `dewpoint2m` | 2-m dew-point temperature | readwind -> `td2` | X,Y; K | instantaneous | continuous 2-D | PBL; Emanuel convection; dry-deposition RH derivation |
-| `large_scale_precipitation` | water-equivalent large-scale precipitation amount over a known interval | readwind -> `lsprec`; FLEXPART internal forcing is converted to mm/h before `interpol_rain` | X,Y; kg/m2 interval amount, non-negative | interval total or accumulation with explicit reset | #31 alone converts amount to interval rate and applies FLEXPART-compatible rain interpolation | wet deposition; dry-deposition precipitation forcing |
+| `large_scale_precipitation` | water-equivalent large-scale precipitation amount over a known interval | readwind -> `lsprec`; FLEXPART internal forcing is converted to mm/h before `interpol_rain` | X,Y; kg/m2 interval amount, non-negative | interval total or accumulation with explicit reset | #75 converts amount to interval rate; #31 applies FLEXPART-compatible rain interpolation | wet deposition; dry-deposition precipitation forcing |
 | `convective_precipitation` | water-equivalent convective precipitation amount over a known interval | readwind -> `convprec`; internal forcing converted to mm/h | X,Y; kg/m2 interval amount, non-negative | interval total or accumulation with explicit reset | same special rain class as LSP | wet deposition; dry deposition. **Not** an Emanuel-convection input |
 | `total_cloud_cover` | grid-cell total cloud fraction | readwind -> `tcc`; `wetdepo_mod::get_wetscav -> interpol_rain` returns `cc` | X,Y; fraction [0,1] | instantaneous | wet-deposition rain/cloud interpolation class | wet deposition |
 | `cloud_total_water` | total cloud-water mixing ratio (liquid + ice); phase is not encoded in this field | readwind may supply separate CLWC/CIWC or combined QC; `verttransform_ecmwf_cloud` combines separate fields before cloud integration | X,Y,Z level center; kg/kg, non-negative | instantaneous | #32 normalizes provider representation to total water; #30 normalizes vertical geometry | wet-deposition cloud-state derivation |

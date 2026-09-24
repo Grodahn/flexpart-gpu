@@ -84,7 +84,12 @@ fn tokens(line: &str) -> Vec<String> {
     line.split_whitespace().map(str::to_string).collect()
 }
 
-fn grid_from_tokens(nx: usize, ny: usize, grid_tokens: &[String]) -> HorizontalGrid {
+fn grid_from_tokens(
+    nx: usize,
+    ny: usize,
+    grid_tokens: &[String],
+    longitude_domain: LongitudeDomain,
+) -> HorizontalGrid {
     HorizontalGrid {
         nx,
         ny,
@@ -92,7 +97,7 @@ fn grid_from_tokens(nx: usize, ny: usize, grid_tokens: &[String]) -> HorizontalG
         ylat0_deg: parse_f64(&grid_tokens[1], "ylat0"),
         dx_deg: parse_f64(&grid_tokens[2], "dx"),
         dy_deg: parse_f64(&grid_tokens[3], "dy"),
-        longitude_domain: LongitudeDomain::Minus180To180,
+        longitude_domain,
     }
 }
 
@@ -127,7 +132,12 @@ fn check_horizontal_case(case: &serde_json::Value, rows: &mut Vec<ComparisonRow>
     let nx: usize = dims[0].parse().expect("nx");
     let ny: usize = dims[1].parse().expect("ny");
     let grid_tokens = tokens(&input[2]);
-    let grid = grid_from_tokens(nx, ny, &grid_tokens);
+    let longitude_domain = if case_id == "horizontal-periodic-wrap" {
+        LongitudeDomain::ZeroTo360
+    } else {
+        LongitudeDomain::Minus180To180
+    };
+    let grid = grid_from_tokens(nx, ny, &grid_tokens, longitude_domain);
     let mut cursor = 4;
     let field = read_field(&input, &mut cursor, nx * ny);
     let nquery: usize = input[cursor].parse().expect("nquery");
@@ -227,7 +237,7 @@ fn check_geographic_case(case: &serde_json::Value, rows: &mut Vec<ComparisonRow>
     let nx: usize = dims[0].parse().expect("nx");
     let ny: usize = dims[1].parse().expect("ny");
     let grid_tokens = tokens(&input[2]);
-    let grid = grid_from_tokens(nx, ny, &grid_tokens);
+    let grid = grid_from_tokens(nx, ny, &grid_tokens, LongitudeDomain::Minus180To180);
     let mut cursor = 4;
     let field = read_field(&input, &mut cursor, nx * ny);
     let nquery: usize = input[cursor].parse().expect("nquery");
@@ -459,6 +469,21 @@ fn test_horizontal_candidate_matches_frozen_oracle() {
                 row["source_grid"].get(key).is_some(),
                 "source grid must record {key}"
             );
+        }
+        let sample_lon_deg = row["sample_lon_deg"].as_f64().expect("sample longitude");
+        match row["source_grid"]["longitude_domain"]
+            .as_str()
+            .expect("longitude domain")
+        {
+            "minus180_to180" => assert!(
+                (-180.0..=180.0).contains(&sample_lon_deg),
+                "reported longitude must satisfy minus180_to180"
+            ),
+            "zero_to360" => assert!(
+                (0.0..360.0).contains(&sample_lon_deg),
+                "reported longitude must satisfy zero_to360"
+            ),
+            domain => panic!("unexpected longitude domain {domain}"),
         }
     }
 }

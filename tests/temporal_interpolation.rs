@@ -677,4 +677,38 @@ fn test_temporal_report_binary_produces_machine_readable_reports() {
             "{scenario} must emit rows"
         );
     }
+
+    let source_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures")
+        .join("temporal")
+        .join("oracle-temporal-bilinear-scenario.json");
+    let mut unsupported: Value =
+        serde_json::from_str(&std::fs::read_to_string(&source_path).expect("read source scenario"))
+            .expect("parse source scenario");
+    unsupported["schema"]["version"] = Value::from(2);
+    let unsupported_path = output_dir.path().join("unsupported-version.json");
+    std::fs::write(
+        &unsupported_path,
+        serde_json::to_vec_pretty(&unsupported).expect("encode unsupported scenario"),
+    )
+    .expect("write unsupported scenario");
+
+    let unsupported_output = output_dir.path().join("unsupported-version-report.json");
+    let result = Command::new(env!("CARGO_BIN_EXE_temporal-interpolation-report"))
+        .arg(&unsupported_path)
+        .arg(&unsupported_output)
+        .output()
+        .expect("run report binary with unsupported scenario version");
+    assert!(
+        !result.status.success(),
+        "unsupported version must fail closed"
+    );
+    assert!(
+        String::from_utf8_lossy(&result.stderr).contains("unexpected scenario schema version 2"),
+        "failure must identify the unsupported schema version"
+    );
+    assert!(
+        !unsupported_output.exists(),
+        "unsupported version must not emit a passing report"
+    );
 }

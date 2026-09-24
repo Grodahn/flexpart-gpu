@@ -1,13 +1,14 @@
-use std::{env, fs, path::PathBuf};
+use std::{collections::BTreeSet, env, fs, path::PathBuf};
 
 use anyhow::{bail, Context, Result};
 use flexpart_gpu::meteorology::{
     temporal::{build_comparison_report, OracleQuery, Tolerance, CANDIDATE_DESCRIPTION},
-    FieldId, SchemaIdentity, Snapshot,
+    FieldId, Requirements, SchemaIdentity, Snapshot,
 };
 use serde::Deserialize;
 
-pub const SCENARIO_SCHEMA_ID: &str = "flexpart-gpu.temporal-interpolation-scenario";
+const SCENARIO_SCHEMA_ID: &str = "flexpart-gpu.temporal-interpolation-scenario";
+const SCENARIO_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Deserialize)]
 struct Scenario {
@@ -46,7 +47,16 @@ fn main() -> Result<()> {
             scenario.schema.id
         );
     }
+    if scenario.schema.version != SCENARIO_SCHEMA_VERSION {
+        bail!(
+            "unexpected scenario schema version {} (expected {SCENARIO_SCHEMA_VERSION})",
+            scenario.schema.version
+        );
+    }
 
+    let requirements = Requirements {
+        required_fields: BTreeSet::from([scenario.field_id]),
+    };
     let mut snapshots: Vec<Snapshot> = Vec::with_capacity(scenario.snapshot_paths.len());
     for path in &scenario.snapshot_paths {
         let resolved = scenario_dir.join(path);
@@ -54,6 +64,9 @@ fn main() -> Result<()> {
             .with_context(|| format!("read snapshot {}", resolved.display()))?;
         let snapshot: Snapshot = serde_json::from_str(&bytes)
             .with_context(|| format!("parse snapshot {}", resolved.display()))?;
+        snapshot
+            .validate(&requirements)
+            .with_context(|| format!("validate canonical snapshot {}", resolved.display()))?;
         snapshots.push(snapshot);
     }
     let snapshot_refs: Vec<&Snapshot> = snapshots.iter().collect();

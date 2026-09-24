@@ -14,6 +14,9 @@ Provides `flexpart_gpu::meteorology::temporal`:
 - machine-readable comparison report types and `build_comparison_report`
 - `src/bin/temporal-interpolation-report.rs` report driver
 
+The report driver accepts scenario schema version 1 only and validates every
+loaded snapshot against the canonical #29 contract before comparison.
+
 Only instantaneous fields are in scope. Static fields, accumulated-field rate
 sampling and precipitation `interpol_rain` semantics are owned elsewhere (#75)
 and fail closed here.

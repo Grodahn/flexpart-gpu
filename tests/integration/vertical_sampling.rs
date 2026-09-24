@@ -2,22 +2,17 @@
 //!
 //! These tests exercise the public `sample_vertical` entrypoint against real
 //! #30 runtime views (`VerticalTransformResult::runtime_view()`). Oracle
-//! primitive equivalence for all three #71 vertical fixtures is proven by the
-//! unit tests in `src/meteorology/vertical_sampling.rs`; the interface case is
-//! additionally proven here end-to-end because its oracle heights are the #30
-//! `wzlev` handoff from the same synthetic column.
+//! primitive equivalence for the model-level #71 vertical fixtures is proven
+//! by the unit tests in `src/meteorology/vertical_sampling.rs`.
 //!
-//! The interface path reproduces the pinned primitive on the #30 handoff only.
-//! End-to-end `eta=no` W production parity remains blocked by #80.
+//! Interface-staggered vertical motion fails closed until #80 resolves the
+//! pristine `eta=no` W production semantics.
 
 use std::collections::BTreeMap;
 
 use flexpart_gpu::meteorology::{
-    vertical::{
-        reconstruct_vertical_geometry, reconstruct_vertical_geometry_with_motion,
-        NativeVerticalMotion,
-    },
-    vertical_sampling::{sample_vertical, VerticalSample, VerticalSamplingError},
+    vertical::reconstruct_vertical_geometry,
+    vertical_sampling::{sample_vertical, VerticalSamplingError},
     Axis, Calendar, Field, FieldId, FieldTime, HorizontalGrid, HorizontalStaggering,
     LongitudeDomain, SchemaIdentity, SignConvention, Snapshot, StorageOrder, TemporalKind, Unit,
     VerticalCoordinate, VerticalCoordinateKind, VerticalOrdering, VerticalReference,
@@ -311,6 +306,7 @@ struct ComparisonRow {
     staggering: String,
     ordering: String,
     level_count: usize,
+    source_level_indices_canonical_0based: Vec<usize>,
     source_heights_agl_m: Vec<f32>,
     source_values: Vec<f32>,
     requested_height_agl_m: f32,
@@ -325,8 +321,13 @@ struct ComparisonRow {
     verdict: String,
 }
 
-fn write_report(case_id: &str, value_provenance: &str, rows: &[ComparisonRow]) {
-    let dir = std::path::Path::new("target/vertical-sampling");
+fn write_report(
+    case_id: &str,
+    value_provenance: &str,
+    rows: &[ComparisonRow],
+) -> std::path::PathBuf {
+    assert!(!rows.is_empty(), "comparison reports must contain rows");
+    let dir = std::path::Path::new("target/ci-gate/vertical-sampling");
     std::fs::create_dir_all(dir).expect("create vertical-sampling report dir");
     let path = dir.join(format!("{case_id}.json"));
     let report = serde_json::json!({
@@ -336,7 +337,7 @@ fn write_report(case_id: &str, value_provenance: &str, rows: &[ComparisonRow]) {
         "implementation": "src/meteorology/vertical_sampling.rs::sample_vertical (#73)",
         "source_order": "canonical_storage_order_as_consumed_via_runtime_view",
         "value_provenance": value_provenance,
-        "production_w_note": "interface rows reproduce the #71 primitive on the #30 wzlev handoff; end-to-end eta=no W production parity is owned by blocking issue #80",
+        "interface_vertical_motion": "BLOCKED_BY_ISSUE_80",
         "rows": rows,
     });
     std::fs::write(
@@ -344,189 +345,12 @@ fn write_report(case_id: &str, value_provenance: &str, rows: &[ComparisonRow]) {
         serde_json::to_string_pretty(&report).expect("serialize report"),
     )
     .expect("write comparison report");
-}
-
-fn contract_case(id: &str) -> serde_json::Value {
-    let source = include_str!("../../fixtures/interpolation/contract-v1.json");
-    let contract: serde_json::Value =
-        serde_json::from_str(source).expect("parse interpolation contract");
-    contract["cases"]
-        .as_array()
-        .expect("cases")
-        .iter()
-        .find(|case| case["id"] == id)
-        .unwrap_or_else(|| panic!("oracle case {id}"))
-        .clone()
-}
-
-#[test]
-fn vertical_interface_oracle_matches_via_real_runtime_view_with_report() {
-    let snapshot: Snapshot = serde_json::from_str(include_str!(
-        "../../fixtures/vertical/synthetic-column-v1.json"
-    ))
-    .expect("synthetic #30 fixture must parse");
-    let omega: NativeVerticalMotion = serde_json::from_str(include_str!(
-        "../../fixtures/vertical/synthetic-omega-interface-v1.json"
-    ))
-    .expect("omega fixture must parse");
-    let geometry =
-        reconstruct_vertical_geometry_with_motion(&snapshot, &omega).expect("geometry with motion");
-    let runtime = geometry.runtime_view().expect("runtime view");
-    let (nx, _, nz) = runtime.dimensions();
-    assert_eq!((nx, nz), (1, 3));
-
-    let case = contract_case("vertical-interface-wzlev");
-    let oracle_heights: Vec<f64> = {
-        let input = case["input"].as_array().expect("input");
-        let nlevel: usize = input[1]
-            .as_str()
-            .expect("nlevel")
-            .trim()
-            .parse()
-            .expect("nlevel");
-        assert_eq!(nlevel, nz + 1);
-        (0..nlevel)
-            .map(|k| {
-                input[2 + k]
-                    .as_str()
-                    .expect("height")
-                    .trim()
-                    .parse::<f64>()
-                    .expect("height")
-            })
-            .collect()
-    };
-    let oracle_values: Vec<f64> = {
-        let input = case["input"].as_array().expect("input");
-        let nlevel: usize = input[1]
-            .as_str()
-            .expect("nlevel")
-            .trim()
-            .parse()
-            .expect("nlevel");
-        let nvalues: usize = input[2 + nlevel]
-            .as_str()
-            .expect("nvalues")
-            .trim()
-            .parse()
-            .expect("n");
-        assert_eq!(nvalues, nlevel);
-        (0..nvalues)
-            .map(|k| {
-                input[2 + nlevel + 1 + k]
-                    .as_str()
-                    .expect("value")
-                    .trim()
-                    .parse::<f64>()
-                    .expect("value")
-            })
-            .collect()
-    };
-
-    let ordering = runtime.provenance().source_vertical_ordering;
-    assert_eq!(ordering, VerticalOrdering::Increasing);
-    for (physical, oracle_height) in oracle_heights.iter().enumerate() {
-        let canonical = nz - physical;
-        let runtime_height = f64::from(
-            runtime
-                .interface(0, 0, canonical)
-                .expect("interface")
-                .height_agl_m,
-        );
-        let diff = (runtime_height - oracle_height).abs();
-        let tolerance = 0.02 + 1.0e-5 * oracle_height.abs();
-        assert!(
-            diff <= tolerance,
-            "rust #30 interface height must match oracle handoff input: physical {physical} rust {runtime_height} oracle {oracle_height}"
-        );
-    }
-
-    let values_f32: Vec<f32> = oracle_values.iter().map(|v| *v as f32).collect();
-    // Oracle lists heights/values bottom-to-top (physical). The public
-    // `sample_vertical` entrypoint expects canonical storage order, which for
-    // the Increasing #30 snapshot is top-to-bottom, i.e. reversed.
-    // Both arrays below are therefore reversed together into canonical order.
-    let mut canonical_values = vec![0.0_f32; values_f32.len()];
-    let mut canonical_heights = vec![0.0_f32; oracle_heights.len()];
-    for (physical, (height, value)) in oracle_heights.iter().zip(values_f32.iter()).enumerate() {
-        let canonical = nz - physical;
-        canonical_values[canonical] = *value;
-        canonical_heights[canonical] = *height as f32;
-    }
-    let values_f32 = canonical_values;
-    let goldens = case["golden"]["queries"].as_array().expect("goldens");
-    let input = case["input"].as_array().expect("input");
-    let nlevel: usize = input[1]
-        .as_str()
-        .expect("nlevel")
-        .trim()
-        .parse()
-        .expect("nlevel");
-    let query_base = 2 + nlevel + 1 + nlevel + 1;
-    let mut rows = Vec::with_capacity(goldens.len());
-    for (index, golden) in goldens.iter().enumerate() {
-        let tokens: Vec<&str> = input[query_base + index]
-            .as_str()
-            .expect("query line")
-            .split_whitespace()
-            .collect();
-        assert_eq!(tokens[0], "1", "interface queries carry coordinate id 1");
-        let zt: f64 = tokens[1].parse().expect("zt");
-        let sample: VerticalSample = sample_vertical(
-            runtime,
-            FieldId::VerticalVelocity,
-            VerticalStaggering::LevelInterface,
-            &values_f32,
-            0,
-            0,
-            zt as f32,
-            VerticalReference::AboveGroundLevel,
-        )
-        .expect("interface oracle sample");
-        let oracle_value = golden["VALUE"][0].as_f64().expect("oracle value");
-        let tolerance = 1.0e-6 + 1.0e-4 * oracle_value.abs();
-        let diff = (f64::from(sample.value) - oracle_value).abs();
-        let verdict = if diff <= tolerance { "PASS" } else { "FAIL" };
-        assert_eq!(
-            verdict, "PASS",
-            "interface query {index} zt={zt}: candidate {} vs oracle {oracle_value}",
-            sample.value
-        );
-        let indz = golden["LEVELS"][0].as_u64().expect("indz");
-        let indzp = golden["LEVELS"][1].as_u64().expect("indzp");
-        assert_eq!(sample.lower_physical_index + 1, indz as usize);
-        assert_eq!(sample.upper_physical_index + 1, indzp as usize);
-        rows.push(ComparisonRow {
-            field_identity: "vertical_velocity".to_string(),
-            vertical_reference: "above_ground_level".to_string(),
-            staggering: "level_interface".to_string(),
-            ordering: format!("{ordering:?}"),
-            level_count: nz,
-            source_heights_agl_m: canonical_heights.clone(),
-            source_values: values_f32.clone(),
-            requested_height_agl_m: zt as f32,
-            oracle_value,
-            oracle_levels_1based: (indz, indzp),
-            oracle_weights_dz1_dz2: (
-                golden["DZ"][0].as_f64().expect("dz1"),
-                golden["DZ"][1].as_f64().expect("dz2"),
-            ),
-            candidate_value: sample.value,
-            candidate_levels_physical_0based: (
-                sample.lower_physical_index,
-                sample.upper_physical_index,
-            ),
-            candidate_weights_upper_lower: (sample.weight_upper, sample.weight_lower),
-            tolerance_abs: 1.0e-6,
-            tolerance_rel: 1.0e-4,
-            verdict: verdict.to_string(),
-        });
-    }
-    write_report(
-        "vertical-interface-wzlev",
-        "interface rows sample the #71 oracle's own W/interface values (omega*pinmconv) through the public entrypoint; only the geometry (interface AGL heights) is the real #30 runtime view. Independent oracle cross-check of the primitive lives in the unit tests against the same fixture.",
-        &rows,
+    assert!(path.is_file(), "comparison report must exist after writing");
+    assert!(
+        std::fs::metadata(&path).expect("report metadata").len() > 0,
+        "comparison report must not be empty"
     );
+    path
 }
 
 #[test]
@@ -638,6 +462,32 @@ fn vertical_sampling_fails_closed_on_unsupported_states() {
         ),
         Err(VerticalSamplingError::UnsupportedField { .. })
     ));
+    assert_eq!(
+        sample_vertical(
+            runtime,
+            FieldId::VerticalVelocity,
+            VerticalStaggering::LevelCenter,
+            &[],
+            0,
+            0,
+            100.0,
+            VerticalReference::AboveGroundLevel
+        ),
+        Err(VerticalSamplingError::MissingRuntimeVerticalMotion)
+    );
+    assert_eq!(
+        sample_vertical(
+            runtime,
+            FieldId::VerticalVelocity,
+            VerticalStaggering::LevelInterface,
+            &[],
+            0,
+            0,
+            100.0,
+            VerticalReference::AboveGroundLevel
+        ),
+        Err(VerticalSamplingError::InterfaceVerticalMotionBlocked)
+    );
 
     let single = snapshot_ordered(VerticalOrdering::Decreasing, 1);
     let single_geometry = reconstruct_vertical_geometry(&single).expect("nz=1 geometry");
@@ -671,11 +521,13 @@ fn vertical_model_level_report_covers_real_runtime_view() {
     let heights = physical_heights_center(runtime);
     let values = linear_center_values(&heights, ordering, 0.015, 4.0);
     let mut map = BTreeMap::new();
+    let mut canonical_heights = vec![0.0_f32; nz];
     for (physical, height) in heights.iter().enumerate() {
         let canonical = match ordering {
             VerticalOrdering::Increasing => nz - 1 - physical,
             VerticalOrdering::Decreasing => physical,
         };
+        canonical_heights[canonical] = *height;
         map.insert(canonical, (*height, values[canonical]));
     }
     let mut rows = Vec::new();
@@ -703,7 +555,8 @@ fn vertical_model_level_report_covers_real_runtime_view() {
             staggering: "level_center".to_string(),
             ordering: format!("{ordering:?}"),
             level_count: nz,
-            source_heights_agl_m: heights.clone(),
+            source_level_indices_canonical_0based: (0..nz).collect(),
+            source_heights_agl_m: canonical_heights.clone(),
             source_values: values.clone(),
             requested_height_agl_m: query,
             oracle_value: f64::from(sample.value),
@@ -728,9 +581,18 @@ fn vertical_model_level_report_covers_real_runtime_view() {
     }
     assert_eq!(nx, 1);
     assert!(!map.is_empty());
-    write_report(
+    let report_path = write_report(
         "vertical-model-level-regression",
         "model-level regression re-asserts the candidate (oracle_value == candidate_value); the independent oracle cross-check lives in the unit tests against the vertical-model-levels and real-era5 goldens.",
         &rows,
+    );
+    let report: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(report_path).expect("read retained comparison report"),
+    )
+    .expect("parse retained comparison report");
+    assert_eq!(report["interface_vertical_motion"], "BLOCKED_BY_ISSUE_80");
+    assert_eq!(
+        report["rows"].as_array().expect("comparison rows").len(),
+        rows.len()
     );
 }

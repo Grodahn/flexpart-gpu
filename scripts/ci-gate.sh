@@ -616,6 +616,38 @@ print("interpolation contract fixture/provenance reproduced: OK")
   log_info "Interpolation contract fixture reproduced and goldens re-verified analytically."
 fi
 # ---------------------------------------------------------------------------
+# 2e. Canonical model-level vertical sampling and retained report.
+# Interface-staggered motion intentionally fails closed until issue #80.
+# ---------------------------------------------------------------------------
+VERTICAL_SAMPLING_DIR="${OUTPUT_DIR}/vertical-sampling"
+mkdir -p "${VERTICAL_SAMPLING_DIR}"
+if ! cargo test --lib meteorology::vertical_sampling::tests 2>&1 | tee "${VERTICAL_SAMPLING_DIR}/unit-tests.log"; then
+  fail "Rust #73 vertical-sampling unit tests failed"
+fi
+if ! cargo test --test integration vertical_sampling 2>&1 | tee "${VERTICAL_SAMPLING_DIR}/integration-tests.log"; then
+  fail "Rust #73 vertical-sampling integration tests failed"
+fi
+VERTICAL_SAMPLING_REPORT="${VERTICAL_SAMPLING_DIR}/vertical-model-level-regression.json"
+test -s "${VERTICAL_SAMPLING_REPORT}" || fail "Vertical-sampling comparison report is missing or empty"
+if ! "${HOST_PYTHON}" -c '
+import json, sys
+report = json.load(open(sys.argv[1], encoding="utf-8"))
+assert report["interface_vertical_motion"] == "BLOCKED_BY_ISSUE_80"
+rows = report["rows"]
+assert rows, "comparison report has no rows"
+required = {
+    "field_identity", "vertical_reference", "staggering", "ordering",
+    "source_level_indices_canonical_0based", "source_heights_agl_m",
+    "requested_height_agl_m", "verdict",
+}
+for row in rows:
+    assert required <= row.keys(), f"missing report fields: {sorted(required - row.keys())}"
+    assert row["verdict"] == "PASS", "non-passing vertical comparison row"
+' "${VERTICAL_SAMPLING_REPORT}" 2>&1 | tee "${VERTICAL_SAMPLING_DIR}/report-validation.log"; then
+  fail "Vertical-sampling comparison report validation failed"
+fi
+
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # 3. Prove a real software-WGPU adapter (fail-closed, no skip allowed).
 # ---------------------------------------------------------------------------
@@ -754,6 +786,8 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${OUTPUT_DIR}/interpolation/oracle-output/real-era5-etex-temperature-column.out" \
     --artifact "${OUTPUT_DIR}/vertical-column/real-routine-oracle-output.txt" \
     --artifact "${OUTPUT_DIR}/interpolation/reproducibility-check.log" \
+    --artifact "${OUTPUT_DIR}/vertical-sampling/vertical-model-level-regression.json" \
+    --artifact "${OUTPUT_DIR}/vertical-sampling/report-validation.log" \
     --input "${PROJECT_ROOT}/reference/flex-extract.json" \
     --artifact "${OUTPUT_DIR}/flex-extract-etadot.log" \
     --artifact "${OUTPUT_DIR}/flex-extract-oracle/run-provenance.json" \

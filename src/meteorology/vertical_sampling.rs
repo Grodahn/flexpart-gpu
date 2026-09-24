@@ -12,14 +12,11 @@
 //! the pinned build) and `interpol_mod.f90:539-547` (`vert_interpol`).
 //!
 //! Model-level (`LevelCenter`) fields interpolate on the #30 model-level AGL
-//! geometry. Interface-staggered (`LevelInterface`) vertical motion
-//! interpolates on the #30 FLEXPART-`wzlev`-compatible W/interface AGL geometry.
-//! The interface path reproduces the pinned primitive
-//! `find_z_level_meters -> find_vert_vars -> vert_interpol` on the #30 handoff
-//! frozen by #71 (`vertical-interface-wzlev`). It is explicitly **not**
-//! end-to-end evidence for pristine FLEXPART's `eta=no` two-stage W production
-//! path (`verttransform_ecmwf_windfields -> interpol_wind ->
-//! interpol_wind_meter`), which remains owned by blocking oracle issue #80.
+//! geometry. Interface-staggered (`LevelInterface`) vertical motion remains
+//! fail-closed until #80 freezes pristine FLEXPART's `eta=no` two-stage W
+//! production path (`verttransform_ecmwf_windfields -> interpol_wind ->
+//! interpol_wind_meter`). The narrower #71 `vertical-interface-wzlev` fixture
+//! is not sufficient to select candidate production semantics.
 //!
 //! Horizontal interpolation (#72), temporal interpolation (#74),
 //! accumulated-field handling (#75), 4D composition (#76), consumer migration
@@ -81,6 +78,15 @@ pub enum VerticalSamplingError {
         field: FieldId,
         requested: VerticalStaggering,
     },
+    /// W/interface production semantics are unresolved until issue #80 completes.
+    #[error("interface-staggered vertical-motion sampling is blocked by issue #80")]
+    InterfaceVerticalMotionBlocked,
+    /// Canonical vertical velocity must come from the same #30 runtime transform.
+    #[error("vertical velocity is absent from the #30 runtime transform")]
+    MissingRuntimeVerticalMotion,
+    /// Callers must not recombine external vertical-motion values with runtime geometry.
+    #[error("vertical velocity values must come from the #30 runtime transform")]
+    ExternalVerticalMotionValues,
     /// Value count does not match the runtime column geometry for the requested staggering.
     #[error(
         "vertical field shape mismatch for {field:?}: expected {expected} values, got {actual}"
@@ -117,13 +123,12 @@ pub enum VerticalSamplingError {
 
 /// Sample one vertical column on the authoritative #30 runtime geometry.
 ///
-/// `values` holds the complete canonical volume in X-fastest `[x,y,z]` order
-/// with `z` following the Snapshot's declared storage ordering: length
-/// `nx*ny*nz` for `LevelCenter`, `nx*ny*(nz+1)` for `LevelInterface`. Only the
-/// requested `(x, y)` column is read. `field` identifies the canonical field
-/// for staggering validation and comparison evidence; `staggering` selects the
-/// geometry (model-level heights for centers, W/interface heights for
-/// interfaces) and must agree with `field`.
+/// For ordinary model-level fields, `values` holds the complete canonical
+/// volume in X-fastest `[x,y,z]` order with `z` following the Snapshot's
+/// declared storage ordering and length `nx*ny*nz`. For `VerticalVelocity`,
+/// `values` must be empty: values and retained staggering are read from the
+/// same #30 runtime transform as the geometry, preventing callers from
+/// recombining independently derived motion and heights.
 ///
 /// `reference` must be `AboveGroundLevel` or `AboveMeanSeaLevel`.
 /// ASL requests resolve through the column's local #30 terrain
@@ -169,6 +174,23 @@ pub fn sample_vertical(
 
     validate_field_and_staggering(field, staggering)?;
 
+    let values = if field == FieldId::VerticalVelocity {
+        if !values.is_empty() {
+            return Err(VerticalSamplingError::ExternalVerticalMotionValues);
+        }
+        let motion = runtime
+            .vertical_velocity()
+            .ok_or(VerticalSamplingError::MissingRuntimeVerticalMotion)?;
+        let retained = motion.vertical_staggering();
+        if retained == VerticalStaggering::LevelInterface {
+            return Err(VerticalSamplingError::InterfaceVerticalMotionBlocked);
+        }
+        debug_assert_eq!(retained, VerticalStaggering::LevelCenter);
+        motion.values_ms()
+    } else {
+        values
+    };
+
     let (nx, ny, nz) = runtime.dimensions();
     let horizontal = nx
         .checked_mul(ny)
@@ -177,32 +199,13 @@ pub fn sample_vertical(
             expected: usize::MAX,
             actual: values.len(),
         })?;
-    let expected = match staggering {
-        VerticalStaggering::LevelCenter => {
-            horizontal
-                .checked_mul(nz)
-                .ok_or(VerticalSamplingError::ShapeMismatch {
-                    field,
-                    expected: usize::MAX,
-                    actual: values.len(),
-                })?
-        }
-        VerticalStaggering::LevelInterface => {
-            horizontal
-                .checked_mul(nz + 1)
-                .ok_or(VerticalSamplingError::ShapeMismatch {
-                    field,
-                    expected: usize::MAX,
-                    actual: values.len(),
-                })?
-        }
-        VerticalStaggering::NotApplicable => {
-            return Err(VerticalSamplingError::WrongStaggering {
-                field,
-                requested: staggering,
-            });
-        }
-    };
+    let expected = horizontal
+        .checked_mul(nz)
+        .ok_or(VerticalSamplingError::ShapeMismatch {
+            field,
+            expected: usize::MAX,
+            actual: values.len(),
+        })?;
     if values.len() != expected {
         return Err(VerticalSamplingError::ShapeMismatch {
             field,
@@ -211,22 +214,12 @@ pub fn sample_vertical(
         });
     }
 
-    let required_nz = match staggering {
-        VerticalStaggering::LevelCenter => 2,
-        VerticalStaggering::LevelInterface => 1,
-        VerticalStaggering::NotApplicable => {
-            return Err(VerticalSamplingError::WrongStaggering {
-                field,
-                requested: staggering,
-            });
-        }
-    };
-    if nz < required_nz {
+    if nz < 2 {
         return Err(VerticalSamplingError::InsufficientLevels { nz });
     }
 
     let ordering = runtime.provenance().source_vertical_ordering;
-    let column = collect_physical_column(runtime, field, staggering, values, x, y, ordering)?;
+    let column = collect_physical_column(runtime, field, values, x, y, ordering)?;
     validate_physical_column(x, y, &column)?;
 
     Ok(interpolate_flexpart_meter_mode(&column, resolved_agl_m))
@@ -247,14 +240,10 @@ fn validate_field_and_staggering(
     if !is_vertically_sampled(field) {
         return Err(VerticalSamplingError::UnsupportedField { field });
     }
-    let supported = match field {
-        FieldId::VerticalVelocity => matches!(
-            staggering,
-            VerticalStaggering::LevelCenter | VerticalStaggering::LevelInterface
-        ),
-        _ => staggering == VerticalStaggering::LevelCenter,
-    };
-    if !supported {
+    if field == FieldId::VerticalVelocity && staggering == VerticalStaggering::LevelInterface {
+        return Err(VerticalSamplingError::InterfaceVerticalMotionBlocked);
+    }
+    if staggering != VerticalStaggering::LevelCenter {
         return Err(VerticalSamplingError::WrongStaggering {
             field,
             requested: staggering,
@@ -283,87 +272,43 @@ fn is_vertically_sampled(field: FieldId) -> bool {
 fn collect_physical_column(
     runtime: VerticalRuntimeView<'_>,
     field: FieldId,
-    staggering: VerticalStaggering,
     values: &[f32],
     x: usize,
     y: usize,
     ordering: VerticalOrdering,
 ) -> Result<Vec<PhysicalEntry>, VerticalSamplingError> {
     let (nx, ny, nz) = runtime.dimensions();
-    match staggering {
-        VerticalStaggering::LevelCenter => {
-            let mut column = Vec::with_capacity(nz);
-            for physical in 0..nz {
-                let canonical = match ordering {
-                    VerticalOrdering::Increasing => nz - 1 - physical,
-                    VerticalOrdering::Decreasing => physical,
-                };
-                let height_agl_m = runtime.level(x, y, canonical)?.height_agl_m;
-                let flat = volume_offset(x, y, canonical, nx, ny);
-                let value =
-                    values
-                        .get(flat)
-                        .copied()
-                        .ok_or(VerticalSamplingError::ShapeMismatch {
-                            field,
-                            expected: nx * ny * nz,
-                            actual: values.len(),
-                        })?;
-                if !value.is_finite() {
-                    return Err(VerticalSamplingError::NonFiniteFieldValue {
-                        field,
-                        x,
-                        y,
-                        index: canonical,
-                    });
-                }
-                column.push(PhysicalEntry {
-                    height_agl_m,
-                    value,
-                    canonical_index: canonical,
-                });
-            }
-            Ok(column)
+    let mut column = Vec::with_capacity(nz);
+    for physical in 0..nz {
+        let canonical = match ordering {
+            VerticalOrdering::Increasing => nz - 1 - physical,
+            VerticalOrdering::Decreasing => physical,
+        };
+        let height_agl_m = runtime.level(x, y, canonical)?.height_agl_m;
+        let flat = volume_offset(x, y, canonical, nx, ny);
+        let value = values
+            .get(flat)
+            .copied()
+            .ok_or(VerticalSamplingError::ShapeMismatch {
+                field,
+                expected: nx * ny * nz,
+                actual: values.len(),
+            })?;
+        if !value.is_finite() {
+            return Err(VerticalSamplingError::NonFiniteFieldValue {
+                field,
+                x,
+                y,
+                index: canonical,
+            });
         }
-        VerticalStaggering::LevelInterface => {
-            let mut column = Vec::with_capacity(nz + 1);
-            for physical in 0..=nz {
-                let canonical = match ordering {
-                    VerticalOrdering::Increasing => nz - physical,
-                    VerticalOrdering::Decreasing => physical,
-                };
-                let height_agl_m = runtime.interface(x, y, canonical)?.height_agl_m;
-                let flat = volume_offset(x, y, canonical, nx, ny);
-                let value =
-                    values
-                        .get(flat)
-                        .copied()
-                        .ok_or(VerticalSamplingError::ShapeMismatch {
-                            field,
-                            expected: nx * ny * (nz + 1),
-                            actual: values.len(),
-                        })?;
-                if !value.is_finite() {
-                    return Err(VerticalSamplingError::NonFiniteFieldValue {
-                        field,
-                        x,
-                        y,
-                        index: canonical,
-                    });
-                }
-                column.push(PhysicalEntry {
-                    height_agl_m,
-                    value,
-                    canonical_index: canonical,
-                });
-            }
-            Ok(column)
-        }
-        VerticalStaggering::NotApplicable => Err(VerticalSamplingError::WrongStaggering {
-            field,
-            requested: staggering,
-        }),
+        column.push(PhysicalEntry {
+            height_agl_m,
+            value,
+            canonical_index: canonical,
+        });
     }
+    Ok(column)
 }
 
 fn validate_physical_column(
@@ -483,7 +428,8 @@ mod tests {
     use crate::meteorology::{
         vertical::{
             reconstruct_vertical_geometry, reconstruct_vertical_geometry_with_motion,
-            NativeVerticalMotion,
+            NativeVerticalMotion, NativeVerticalMotionKind, NativeVerticalMotionProvenance,
+            NativeVerticalMotionSign, NativeVerticalMotionUnit,
         },
         Snapshot,
     };
@@ -558,7 +504,7 @@ mod tests {
     }
 
     #[test]
-    fn interface_linear_profile_uses_w_geometry() {
+    fn interface_vertical_motion_fails_closed_until_issue_80() {
         let snapshot = synthetic_snapshot();
         let omega: NativeVerticalMotion = serde_json::from_str(include_str!(
             "../../fixtures/vertical/synthetic-omega-interface-v1.json"
@@ -567,64 +513,73 @@ mod tests {
         let geometry = reconstruct_vertical_geometry_with_motion(&snapshot, &omega)
             .expect("geometry with motion");
         let runtime = geometry.runtime_view().expect("runtime view");
-        let (nx, _, nz) = runtime.dimensions();
-
-        let mut heights = Vec::with_capacity(nz + 1);
-        for physical in 0..=nz {
-            let canonical = nz - physical;
-            heights.push(
-                runtime
-                    .interface(0, 0, canonical)
-                    .expect("interface")
-                    .height_agl_m,
-            );
-        }
-        assert_eq!(heights[0], 0.0);
-        assert!(heights.windows(2).all(|pair| pair[1] > pair[0]));
-
-        let slope = 2.5e-5_f32;
-        let intercept = 0.02_f32;
-        let mut values = vec![0.0_f32; nx * (nz + 1)];
-        for physical in 0..=nz {
-            let canonical = nz - physical;
-            values[volume_offset(0, 0, canonical, nx, 1)] = intercept + slope * heights[physical];
-        }
-
-        let query = 0.5 * (heights[1] + heights[2]);
-        let sample = sample_vertical(
+        let result = sample_vertical(
             runtime,
             FieldId::VerticalVelocity,
             VerticalStaggering::LevelInterface,
-            &values,
+            &[],
             0,
             0,
-            query,
-            VerticalReference::AboveGroundLevel,
-        )
-        .expect("interface linear sample");
-        let expected = intercept + slope * query;
-        let tolerance = 2.0e-5_f32.max(expected.abs() * 1.0e-5);
-        assert!(
-            (sample.value - expected).abs() <= tolerance,
-            "interface linear profile must use W geometry"
-        );
-
-        let mismatched = sample_vertical(
-            runtime,
-            FieldId::Temperature,
-            VerticalStaggering::LevelInterface,
-            &values,
-            0,
-            0,
-            query,
+            100.0,
             VerticalReference::AboveGroundLevel,
         );
         assert_eq!(
-            mismatched,
-            Err(VerticalSamplingError::WrongStaggering {
-                field: FieldId::Temperature,
-                requested: VerticalStaggering::LevelInterface
-            })
+            result,
+            Err(VerticalSamplingError::InterfaceVerticalMotionBlocked)
+        );
+    }
+
+    #[test]
+    fn center_vertical_motion_is_sourced_from_runtime_transform() {
+        let snapshot = synthetic_snapshot();
+        let motion = NativeVerticalMotion {
+            kind: NativeVerticalMotionKind::GeometricVelocity,
+            unit: NativeVerticalMotionUnit::MeterPerSecond,
+            sign: NativeVerticalMotionSign::PositiveUpward,
+            vertical_staggering: VerticalStaggering::LevelCenter,
+            values: vec![0.3, 0.2, 0.1],
+            provenance: NativeVerticalMotionProvenance {
+                source_id: "vertical-sampling-center-test".to_string(),
+            },
+        };
+        let geometry = reconstruct_vertical_geometry_with_motion(&snapshot, &motion)
+            .expect("geometry with center motion");
+        let runtime = geometry.runtime_view().expect("runtime view");
+        let (_, _, nz) = runtime.dimensions();
+        let lower_height = runtime
+            .level(0, 0, nz - 1)
+            .expect("lowest level")
+            .height_agl_m;
+        let upper_height = runtime
+            .level(0, 0, nz - 2)
+            .expect("next level")
+            .height_agl_m;
+        let sample = sample_vertical(
+            runtime,
+            FieldId::VerticalVelocity,
+            VerticalStaggering::LevelCenter,
+            &[],
+            0,
+            0,
+            lower_height.midpoint(upper_height),
+            VerticalReference::AboveGroundLevel,
+        )
+        .expect("runtime-owned center motion sample");
+        assert!((sample.value - 0.15).abs() <= 1.0e-6);
+
+        let external_values = sample_vertical(
+            runtime,
+            FieldId::VerticalVelocity,
+            VerticalStaggering::LevelCenter,
+            &[9.0, 9.0, 9.0],
+            0,
+            0,
+            lower_height,
+            VerticalReference::AboveGroundLevel,
+        );
+        assert_eq!(
+            external_values,
+            Err(VerticalSamplingError::ExternalVerticalMotionValues)
         );
     }
 
@@ -868,11 +823,6 @@ mod tests {
     #[test]
     fn model_level_primitive_matches_flexpart_oracle() {
         check_vertical_oracle_case("vertical-model-levels", 0);
-    }
-
-    #[test]
-    fn interface_primitive_matches_flexpart_oracle_on_wzlev_handoff() {
-        check_vertical_oracle_case("vertical-interface-wzlev", 1);
     }
 
     #[test]

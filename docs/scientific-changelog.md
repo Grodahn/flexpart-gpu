@@ -16,6 +16,22 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-23 — Canonical temporal interpolation for instantaneous fields (#74)
+**Impact**: numerics (instantaneous meteorology sampling now goes through a
+canonical, fail-closed contract)
+**Files**: `src/meteorology/temporal.rs`, `src/meteorology/mod.rs`,
+`src/bin/temporal-interpolation-report.rs`, `tests/temporal_interpolation.rs`,
+`fixtures/temporal/`
+**Validation**: `sample_field` reproduces the pinned FLEXPART 11.1
+`temporal_interpolation` primitive (memtime bracket, `dt1`/`dt2` edge weights,
+`dtt` prefactor) on the frozen #71 `temporal-bilinear` case at ITIME
+0/1800/3600, including the exact closed-form dts values. A synthetic
+time-linear temperature field matches hand-computed values to relative
+tolerance 1e-5 (f32-representable arithmetic); 7/7 integration tests pass.
+Documented divergence: requests outside the first/last snapshot coverage fail
+closed with `BeforeFirstCoverage`/`AfterLastCoverage`, whereas the raw
+FLEXPART primitive extrapolates without a range guard.
+
 ### 2026-09-23 — Canonical vertical sampling on the #30 runtime geometry (#73)
 **Impact**: numerics (new sampling path; no consumer migration)
 **Files**: `src/meteorology/vertical_sampling.rs` (new), `src/meteorology/mod.rs`,

@@ -1,0 +1,55 @@
+{
+  "schema": {
+    "id": "flexpart-gpu.temporal-interpolation-scenario",
+    "version": 1
+  },
+  "scenario_id": "synthetic-linear",
+  "field_id": "temperature",
+  "snapshot_paths": [
+    "synthetic-linear/t0.json",
+    "synthetic-linear/t1800.json",
+    "synthetic-linear/t3600.json"
+  ],
+  "tolerance": {
+    "absolute": 1.0e-6,
+    "relative": 1.0e-5
+  },
+  "queries": [
+    {
+      "requested_time_epoch_seconds": 0,
+      "element_index": 0,
+      "oracle_value": 270.0,
+      "expected_application": "first_endpoint"
+    },
+    {
+      "requested_time_epoch_seconds": 900,
+      "element_index": 0,
+      "oracle_value": 271.25,
+      "expected_application": "linear_interior"
+    },
+    {
+      "requested_time_epoch_seconds": 900,
+      "element_index": 1,
+      "oracle_value": 285.0,
+      "expected_application": "linear_interior"
+    },
+    {
+      "requested_time_epoch_seconds": 900,
+      "element_index": 2,
+      "oracle_value": 298.75,
+      "expected_application": "linear_interior"
+    },
+    {
+      "requested_time_epoch_seconds": 1800,
+      "element_index": 1,
+      "oracle_value": 290.0,
+      "expected_application": "exact_source_timestamp"
+    },
+    {
+      "requested_time_epoch_seconds": 3600,
+      "element_index": 2,
+      "oracle_value": 325.0,
+      "expected_application": "last_endpoint"
+    }
+  ]
+}

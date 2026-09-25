@@ -1,0 +1,40 @@
+{
+  "schema": {
+    "id": "flexpart-gpu.canonical-meteorology",
+    "version": 1
+  },
+  "horizontal_grid": {
+    "nx": 1,
+    "ny": 1,
+    "xlon0_deg": 6.0,
+    "ylat0_deg": 50.0,
+    "dx_deg": 0.25,
+    "dy_deg": 0.25,
+    "longitude_domain": "minus180_to180"
+  },
+  "vertical_coordinate": {
+    "kind": "pressure",
+    "reference": "model_native",
+    "ordering": "increasing",
+    "level_values": [50000.0, 70000.0, 90000.0],
+    "interface_values": [40000.0, 60000.0, 80000.0, 100000.0]
+  },
+  "fields": [
+    {
+      "id": "temperature",
+      "shape": [1, 1, 3],
+      "axis_order": ["x", "y", "z"],
+      "storage_order": "x_fastest",
+      "unit": "kelvin",
+      "sign": "signed_scalar",
+      "horizontal_staggering": "cell_center",
+      "vertical_staggering": "level_center",
+      "time": {
+        "calendar": "gregorian",
+        "kind": "instantaneous",
+        "valid_time_epoch_seconds": 3600
+      },
+      "values": [275.0, 300.0, 325.0]
+    }
+  ]
+}

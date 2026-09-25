@@ -319,10 +319,20 @@ pub fn sample_horizontal_geographic(
             reason: "spacing must be finite and positive",
         });
     }
-    let raw_xt = (lon_deg - grid.xlon0_deg) / grid.dx_deg;
-    let raw_yt = (lat_deg - grid.ylat0_deg) / grid.dy_deg;
-    let xt = snap_exact_geographic_boundary(raw_xt, lon_deg, grid.xlon0_deg, grid.dx_deg, grid.nx);
-    let yt = snap_exact_geographic_boundary(raw_yt, lat_deg, grid.ylat0_deg, grid.dy_deg, grid.ny);
+    let xt = snap_exact_geographic_boundary(
+        (lon_deg - grid.xlon0_deg) / grid.dx_deg,
+        lon_deg,
+        grid.xlon0_deg,
+        grid.dx_deg,
+        grid.nx,
+    );
+    let yt = snap_exact_geographic_boundary(
+        (lat_deg - grid.ylat0_deg) / grid.dy_deg,
+        lat_deg,
+        grid.ylat0_deg,
+        grid.dy_deg,
+        grid.ny,
+    );
     if !xt.is_finite() || !yt.is_finite() {
         return Err(HorizontalError::ImpossibleCoordinate {
             reason: "geographic to grid mapping overflowed",

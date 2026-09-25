@@ -9,9 +9,7 @@ Use this skill when the task is to create or refine issue contracts. Do not load
 
 ## Issue Definition & Task Slicing
 
-When creating, refining, or implementing GitHub issues, optimize for **small, atomic,
-independently verifiable claims**, not for broad feature descriptions. An issue should
-ideally prove one thing.
+When creating or refining GitHub issues, optimize for **small, atomic, independently\nverifiable claims**, not for broad feature descriptions. An issue should ideally prove one thing.
 
 ### Split aggressively at verification boundaries
 

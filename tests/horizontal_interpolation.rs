@@ -23,6 +23,10 @@ fn tolerance(oracle: f64) -> f64 {
     ABS_TOL + REL_TOL * oracle.abs()
 }
 
+fn is_close(candidate: f64, oracle: f64) -> bool {
+    (candidate - oracle).abs() <= tolerance(oracle)
+}
+
 fn assert_close(candidate: f64, oracle: f64, what: &str) {
     let diff = (candidate - oracle).abs();
     let allowed = tolerance(oracle);
@@ -70,7 +74,25 @@ struct ComparisonReport {
     contract: String,
     candidate: String,
     tolerance_rule: String,
+    verdict: String,
+    failed_rows: usize,
     rows: Vec<ComparisonRow>,
+}
+
+fn comparison_passes(
+    candidate_indices: [usize; 4],
+    oracle_indices: [usize; 4],
+    candidate_weights: [f64; 4],
+    oracle_weights: [f64; 4],
+    candidate_value: f64,
+    oracle_value: f64,
+) -> bool {
+    candidate_indices == oracle_indices
+        && candidate_weights
+            .iter()
+            .zip(oracle_weights)
+            .all(|(candidate, oracle)| is_close(*candidate, oracle))
+        && is_close(candidate_value, oracle_value)
 }
 
 fn parse_f64(token: &str, what: &str) -> f64 {
@@ -172,24 +194,14 @@ fn check_horizontal_case(case: &serde_json::Value, rows: &mut Vec<ComparisonRow>
         let oracle_value = query["VALUE"][0].as_f64().expect("VALUE");
         let candidate_value = f64::from(sample.value);
 
-        assert_eq!(
-            [sample.ix, sample.jy, sample.ixp, sample.jyp],
+        let candidate_indices = [sample.ix, sample.jy, sample.ixp, sample.jyp];
+        let passed = comparison_passes(
+            candidate_indices,
             oracle_indices,
-            "{case_id} query {index}: cell selection must match oracle"
-        );
-        for (axis, (candidate_weight, oracle_weight)) in
-            sample.weights.iter().zip(oracle_weights.iter()).enumerate()
-        {
-            assert_close(
-                *candidate_weight,
-                *oracle_weight,
-                &format!("{case_id} query {index} weight {axis}"),
-            );
-        }
-        assert_close(
+            sample.weights,
+            oracle_weights,
             candidate_value,
             oracle_value,
-            &format!("{case_id} query {index} value"),
         );
 
         let (lon, lat) = grid_index_to_lonlat(&grid, sample.xt, sample.yt);
@@ -211,14 +223,14 @@ fn check_horizontal_case(case: &serde_json::Value, rows: &mut Vec<ComparisonRow>
             sample_lat_deg: lat,
             sample_xt: sample.xt,
             sample_yt: sample.yt,
-            candidate_indices: [sample.ix, sample.jy, sample.ixp, sample.jyp],
+            candidate_indices,
             oracle_indices,
             candidate_weights: sample.weights,
             oracle_weights,
             oracle_value,
             candidate_value,
             tolerance: tolerance(oracle_value),
-            verdict: "pass".to_string(),
+            verdict: if passed { "pass" } else { "fail" }.to_string(),
         });
     }
 }
@@ -287,24 +299,14 @@ fn check_geographic_case(case: &serde_json::Value, rows: &mut Vec<ComparisonRow>
         let oracle_value = query["VALUE"][0].as_f64().expect("VALUE");
         let candidate_value = f64::from(sample.value);
 
-        assert_eq!(
-            [sample.ix, sample.jy, sample.ixp, sample.jyp],
+        let candidate_indices = [sample.ix, sample.jy, sample.ixp, sample.jyp];
+        let passed = comparison_passes(
+            candidate_indices,
             oracle_indices,
-            "{case_id} query {index}: cell selection must match oracle"
-        );
-        for (axis, (candidate_weight, oracle_weight)) in
-            sample.weights.iter().zip(oracle_weights.iter()).enumerate()
-        {
-            assert_close(
-                *candidate_weight,
-                *oracle_weight,
-                &format!("{case_id} query {index} weight {axis}"),
-            );
-        }
-        assert_close(
+            sample.weights,
+            oracle_weights,
             candidate_value,
             oracle_value,
-            &format!("{case_id} query {index} value"),
         );
 
         rows.push(ComparisonRow {
@@ -325,14 +327,14 @@ fn check_geographic_case(case: &serde_json::Value, rows: &mut Vec<ComparisonRow>
             sample_lat_deg: lat,
             sample_xt: sample.xt,
             sample_yt: sample.yt,
-            candidate_indices: [sample.ix, sample.jy, sample.ixp, sample.jyp],
+            candidate_indices,
             oracle_indices,
             candidate_weights: sample.weights,
             oracle_weights,
             oracle_value,
             candidate_value,
             tolerance: tolerance(oracle_value),
-            verdict: "pass".to_string(),
+            verdict: if passed { "pass" } else { "fail" }.to_string(),
         });
     }
 }
@@ -355,10 +357,15 @@ fn check_synthetic_linear_rows(rows: &mut Vec<ComparisonRow>) {
         let expected = 7.0 + 2.0 * xt + 3.0 * yt;
         let sample = sample_horizontal(&grid, &field, HorizontalStaggering::CellCenter, xt, yt)
             .expect("synthetic linear query must succeed");
-        assert_close(
-            f64::from(sample.value),
+        let candidate_value = f64::from(sample.value);
+        let candidate_indices = [sample.ix, sample.jy, sample.ixp, sample.jyp];
+        let passed = comparison_passes(
+            candidate_indices,
+            candidate_indices,
+            sample.weights,
+            sample.weights,
+            candidate_value,
             expected,
-            &format!("synthetic linear ({xt}, {yt})"),
         );
         let (lon, lat) = grid_index_to_lonlat(&grid, sample.xt, sample.yt);
         rows.push(ComparisonRow {
@@ -379,20 +386,29 @@ fn check_synthetic_linear_rows(rows: &mut Vec<ComparisonRow>) {
             sample_lat_deg: lat,
             sample_xt: sample.xt,
             sample_yt: sample.yt,
-            candidate_indices: [sample.ix, sample.jy, sample.ixp, sample.jyp],
-            oracle_indices: [sample.ix, sample.jy, sample.ixp, sample.jyp],
+            candidate_indices,
+            oracle_indices: candidate_indices,
             candidate_weights: sample.weights,
             oracle_weights: sample.weights,
             oracle_value: expected,
-            candidate_value: f64::from(sample.value),
+            candidate_value,
             tolerance: tolerance(expected),
-            verdict: "pass".to_string(),
+            verdict: if passed { "pass" } else { "fail" }.to_string(),
         });
     }
 }
 
 #[test]
 fn test_horizontal_candidate_matches_frozen_oracle() {
+    let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join("horizontal-comparison-report.json");
+    match std::fs::remove_file(&out_path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => panic!("remove stale comparison report: {error}"),
+    }
+
     let source = include_str!("../fixtures/interpolation/contract-v1.json");
     let contract: serde_json::Value =
         serde_json::from_str(source).expect("parse interpolation contract");
@@ -423,16 +439,16 @@ fn test_horizontal_candidate_matches_frozen_oracle() {
 
     check_synthetic_linear_rows(&mut rows);
 
+    let failed_rows = rows.iter().filter(|row| row.verdict == "fail").count();
     let report = ComparisonReport {
         contract: "fixtures/interpolation/contract-v1.json".to_string(),
         candidate: "meteorology::horizontal::sample_horizontal[_geographic]".to_string(),
         tolerance_rule: "ABS_TOL 1e-6 + REL_TOL 1e-5 * |oracle|".to_string(),
+        verdict: if failed_rows == 0 { "pass" } else { "fail" }.to_string(),
+        failed_rows,
         rows,
     };
     let encoded = serde_json::to_string_pretty(&report).expect("serialize report");
-    let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join("horizontal-comparison-report.json");
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent).expect("create target dir");
     }
@@ -463,7 +479,6 @@ fn test_horizontal_candidate_matches_frozen_oracle() {
         ] {
             assert!(row.get(key).is_some(), "comparison row must record {key}");
         }
-        assert_eq!(row["verdict"], "pass");
         for key in ["longitude_domain", "staggering"] {
             assert!(
                 row["source_grid"].get(key).is_some(),
@@ -486,6 +501,23 @@ fn test_horizontal_candidate_matches_frozen_oracle() {
             domain => panic!("unexpected longitude domain {domain}"),
         }
     }
+    assert_eq!(
+        report_value["verdict"], "pass",
+        "horizontal comparison report contains failed rows"
+    );
+    assert_eq!(report_value["failed_rows"], 0);
+}
+
+#[test]
+fn test_horizontal_comparison_verdict_detects_mismatch() {
+    assert!(!comparison_passes(
+        [0, 0, 1, 1],
+        [0, 0, 1, 1],
+        [0.25; 4],
+        [0.25; 4],
+        1.1,
+        1.0,
+    ));
 }
 
 #[test]

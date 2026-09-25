@@ -319,8 +319,10 @@ pub fn sample_horizontal_geographic(
             reason: "spacing must be finite and positive",
         });
     }
-    let xt = (lon_deg - grid.xlon0_deg) / grid.dx_deg;
-    let yt = (lat_deg - grid.ylat0_deg) / grid.dy_deg;
+    let raw_xt = (lon_deg - grid.xlon0_deg) / grid.dx_deg;
+    let raw_yt = (lat_deg - grid.ylat0_deg) / grid.dy_deg;
+    let xt = snap_geographic_boundary(raw_xt, lon_deg, grid.xlon0_deg, grid.dx_deg, grid.nx);
+    let yt = snap_geographic_boundary(raw_yt, lat_deg, grid.ylat0_deg, grid.dy_deg, grid.ny);
     if !xt.is_finite() || !yt.is_finite() {
         return Err(HorizontalError::ImpossibleCoordinate {
             reason: "geographic to grid mapping overflowed",
@@ -341,6 +343,23 @@ pub fn sample_horizontal_geographic(
 
 fn grid_close(actual: f64, expected: f64) -> bool {
     (actual - expected).abs() <= GRID_TOLERANCE_DEG
+}
+
+fn snap_geographic_boundary(
+    grid_index: f64,
+    coordinate_deg: f64,
+    origin_deg: f64,
+    spacing_deg: f64,
+    point_count: usize,
+) -> f64 {
+    let last_index = point_count.saturating_sub(1) as f64;
+    if grid_close(coordinate_deg, origin_deg) {
+        0.0
+    } else if grid_close(coordinate_deg, origin_deg + last_index * spacing_deg) {
+        last_index
+    } else {
+        grid_index
+    }
 }
 
 fn validate_supported_domain(
@@ -554,6 +573,56 @@ mod tests {
         .expect("geographic query must succeed");
         assert_eq!(direct, geographic);
         assert_relative(geographic.value, 230.0);
+    }
+
+    #[test]
+    fn test_horizontal_geographic_exact_last_center_snaps_roundoff() {
+        let grid = HorizontalGrid {
+            nx: 4,
+            ny: 3,
+            xlon0_deg: -2.0,
+            ylat0_deg: 48.0,
+            dx_deg: 0.1,
+            dy_deg: 0.1,
+            longitude_domain: LongitudeDomain::Minus180To180,
+        };
+        let field = vec![1.0_f32; grid.nx * grid.ny];
+        let sample = sample_horizontal_geographic(
+            &grid,
+            &field,
+            HorizontalStaggering::CellCenter,
+            -1.7,
+            48.2,
+        )
+        .expect("the exact last cell center must remain inside the grid");
+
+        assert_eq!((sample.xt, sample.yt), (3.0, 2.0));
+        assert_eq!((sample.ix, sample.jy), (3, 2));
+    }
+
+    #[test]
+    fn test_horizontal_geographic_beyond_edge_tolerance_fails_closed() {
+        let grid = HorizontalGrid {
+            nx: 4,
+            ny: 3,
+            xlon0_deg: -2.0,
+            ylat0_deg: 48.0,
+            dx_deg: 0.1,
+            dy_deg: 0.1,
+            longitude_domain: LongitudeDomain::Minus180To180,
+        };
+        let field = vec![1.0_f32; grid.nx * grid.ny];
+
+        assert!(matches!(
+            sample_horizontal_geographic(
+                &grid,
+                &field,
+                HorizontalStaggering::CellCenter,
+                -1.7 + 2.0 * GRID_TOLERANCE_DEG,
+                48.2,
+            ),
+            Err(HorizontalError::OutOfDomain { .. })
+        ));
     }
 
     #[test]

@@ -198,12 +198,12 @@ fn linear_center_values(
 ) -> Vec<f32> {
     let nz = heights.len();
     let mut values = vec![0.0_f32; nz];
-    for physical in 0..nz {
+    for (physical, height) in heights.iter().copied().enumerate() {
         let canonical = match ordering {
             VerticalOrdering::Increasing => nz - 1 - physical,
             VerticalOrdering::Decreasing => physical,
         };
-        values[canonical] = intercept + slope * heights[physical];
+        values[canonical] = intercept + slope * height;
     }
     values
 }

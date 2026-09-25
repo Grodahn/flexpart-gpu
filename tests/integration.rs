@@ -21,3 +21,5 @@ mod species_nuclide;
 
 #[path = "integration/vertical_runtime.rs"]
 mod vertical_runtime;
+#[path = "integration/vertical_sampling.rs"]
+mod vertical_sampling;

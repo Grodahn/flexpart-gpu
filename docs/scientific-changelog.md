@@ -32,6 +32,32 @@ Documented divergence: requests outside the first/last snapshot coverage fail
 closed with `BeforeFirstCoverage`/`AfterLastCoverage`, whereas the raw
 FLEXPART primitive extrapolates without a range guard.
 
+### 2026-09-23 — Canonical vertical sampling on the #30 runtime geometry (#73)
+**Impact**: numerics (new sampling path; no consumer migration)
+**Files**: `src/meteorology/vertical_sampling.rs` (new), `src/meteorology/mod.rs`,
+`tests/integration/vertical_sampling.rs` (new), `tests/integration.rs`
+**Validation**: `sample_vertical` consumes only
+`VerticalTransformResult::runtime_view()`/`VerticalRuntimeView` (#30) and
+reproduces the pinned METRE-mode primitive
+`find_z_level_meters -> find_vert_vars_lin -> vert_interpol`
+(`interpol_mod.f90:215-242,406-430,539-547`) on model-level geometry
+(`LevelCenter`). Unit oracle evidence: `vertical-model-levels` and
+`real-era5-etex-temperature-column` (137-level) goldens match within 1e-4
+relative / 1e-6 absolute, including levels, dz weights and bound flags.
+Integration evidence via the real #30 runtime view: synthetic linear profiles
+reproduce hand values to 1e-5 relative and both `Increasing`/`Decreasing`
+orderings with 2/3/5 levels are covered. Machine-readable reports are retained
+under `target/ci-gate/vertical-sampling/`, validated fail-closed, included in
+the CI artifact upload and hashed by the technical-gate run manifest.
+Explicit fail-closed: `ModelNative` reference, non-finite heights/values,
+shape mismatch, wrong center/interface association, unsupported fields,
+horizontal out-of-bounds, single-level center sampling and non-monotonic
+geometry. Canonical center-staggered vertical velocity is sourced directly
+from the same #30 runtime transform as its geometry; caller-supplied motion is
+rejected. Interface-staggered vertical motion is not implemented and fails
+closed until #80 resolves the end-to-end `eta=no` W production semantics.
+Logarithmic interpolation, ETA mode, nesting and `numpf=3` remain unsupported.
+
 ### 2026-09-17 — Preserve constant gas dry deposition and reject excess species
 **Impact**: physics
 **Files**: `config/mod.rs`, `physics/species.rs`

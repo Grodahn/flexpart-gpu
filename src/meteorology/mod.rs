@@ -7,6 +7,7 @@ pub mod accumulation;
 pub mod horizontal;
 pub mod temporal;
 pub mod vertical;
+pub mod vertical_sampling;
 
 use std::collections::BTreeSet;
 

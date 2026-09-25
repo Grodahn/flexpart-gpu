@@ -34,7 +34,10 @@ jobs:
           cd flexpart-gpu
           cargo test --lib meteorology::tests
           cargo test --lib meteorology::vertical::tests
+          cargo test --lib meteorology::vertical_sampling::tests
           cargo test --test integration vertical_runtime
+          cargo test --test integration vertical_sampling
+          test -s target/ci-gate/vertical-sampling/vertical-model-level-regression.json
           cargo test --test meteorology_contract
           python3 scripts/test_oracle_run_manifest.py
 

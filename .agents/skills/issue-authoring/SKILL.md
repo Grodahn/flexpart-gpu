@@ -34,7 +34,7 @@ not as one implementation task.
 The following rules are intended to prevent review-driven scope expansion and long
 implementation/correction loops:
 
-1. **One issue owns one fachlich coherent contract.**
+1. **One issue owns one semantically coherent contract.**
    Define one behavioral or scientific contract that can be implemented and verified as
    a unit. If the issue needs several independently provable contracts, split it or make
    it a sub-epic with child issues.

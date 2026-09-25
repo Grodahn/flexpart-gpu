@@ -37,7 +37,7 @@ Use this skill for pull-request reviews, including reviews where confirmed findi
 ## Verification economy
 
 1. First run tests directly covering changed or repaired behavior.
-2. Run `rustfmt` and `cargo clippy` as required by the repository.
+2. Run `cargo fmt --all -- --check` and `cargo clippy` as required by the repository.
 3. Run the broader required test suite once after the repair is stable.
 4. Do not rerun a passing check unless relevant code changed afterward.
 5. Capture successful command output compactly.

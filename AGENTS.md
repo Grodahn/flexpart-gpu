@@ -106,6 +106,35 @@ proof unless the owning issue explicitly defines CPU parity as normative.
 
 ---
 
+## Required Agent Workflows
+
+Workflow-specific instructions live under `.agents/skills/` and are mandatory when applicable:
+
+- For implementing an issue or scoped code change, invoke `$implementation`.
+- For reviewing a pull request, including review-and-repair work, invoke `$code-review`.
+- For creating, refining, splitting, or re-scoping GitHub issues, invoke `$issue-authoring`.
+- A PR review that includes repairs uses `$code-review` alone unless a distinct implementation task is explicitly requested.
+- Do not reopen, quote, or summarize this `AGENTS.md` when it has already been injected or provided by the harness.
+
+## Agent Execution Efficiency
+
+Minimize model/tool round trips and command output without weakening correctness or scientific verification.
+
+- Batch independent repository and GitHub inspections where practical.
+- Prefer targeted searches, bounded snippets, filenames, diff statistics, failing assertions, and the last relevant failure lines.
+- Do not emit full issue bodies, full diffs, complete API responses, complete successful test logs, or complete CI logs unless they are specifically needed to diagnose a failure.
+- Make related in-scope changes together rather than repeatedly alternating between inspection, editing, and broad verification.
+- Run the narrowest tests that can falsify the changed behavior first. Run broader required verification once after the implementation is stable.
+- Do not rerun a passing check unless relevant code changed afterward.
+- On failure, inspect only the relevant failing test, step, or log section before widening the investigation.
+- Distinguish failures caused by the requested change from established unrelated baseline or infrastructure failures.
+- When CI confirmation is part of the task, poll no more frequently than once per 60 seconds and request concise status fields.
+- Normally push once after local verification passes. Repush only when a subsequent failure is caused by the current change.
+- Prefer one autonomous agent run for one bounded task. Do not create extra agents or approval pauses unless the task requires them.
+- Do not optimize against an arbitrary maximum number of tool calls; minimize redundant calls while preserving correctness and required evidence.
+
+---
+
 ## Issue Definition & Task Slicing
 
 When creating, refining, or implementing GitHub issues, optimize for **small, atomic,

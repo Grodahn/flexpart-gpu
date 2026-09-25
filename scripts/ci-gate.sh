@@ -122,9 +122,6 @@ log_info "Allow-listed CI cases: ${CI_CASE_ALLOWLIST}"
 
 fail() {
   log_error "$*"
-  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-    printf '::error title=Technical validation gate::%s\n' "$*"
-  fi
   "${HOST_PYTHON}" "${SCRIPT_DIR}/ci-gate-report.py" \
     --output "${OUTPUT_DIR}/ci-gate-report.json" \
     --project-root "${PROJECT_ROOT}" \
@@ -136,17 +133,6 @@ fail() {
   log_error "CI gate: TECHNICAL_FAIL"
   exit 1
 }
-
-unexpected_error() {
-  local status="$?"
-  local line="${BASH_LINENO[0]:-unknown}"
-  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-    printf '::error title=Unexpected technical gate failure::scripts/ci-gate.sh line %s exited with status %s\n' \
-      "${line}" "${status}"
-  fi
-  exit "${status}"
-}
-trap unexpected_error ERR
 
 # ---------------------------------------------------------------------------
 # 0. Build environment and revisions (provenance, always recorded).

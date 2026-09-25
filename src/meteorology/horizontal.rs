@@ -321,8 +321,8 @@ pub fn sample_horizontal_geographic(
     }
     let raw_xt = (lon_deg - grid.xlon0_deg) / grid.dx_deg;
     let raw_yt = (lat_deg - grid.ylat0_deg) / grid.dy_deg;
-    let xt = snap_geographic_boundary(raw_xt, lon_deg, grid.xlon0_deg, grid.dx_deg, grid.nx);
-    let yt = snap_geographic_boundary(raw_yt, lat_deg, grid.ylat0_deg, grid.dy_deg, grid.ny);
+    let xt = snap_exact_geographic_boundary(raw_xt, lon_deg, grid.xlon0_deg, grid.dx_deg, grid.nx);
+    let yt = snap_exact_geographic_boundary(raw_yt, lat_deg, grid.ylat0_deg, grid.dy_deg, grid.ny);
     if !xt.is_finite() || !yt.is_finite() {
         return Err(HorizontalError::ImpossibleCoordinate {
             reason: "geographic to grid mapping overflowed",
@@ -345,7 +345,7 @@ fn grid_close(actual: f64, expected: f64) -> bool {
     (actual - expected).abs() <= GRID_TOLERANCE_DEG
 }
 
-fn snap_geographic_boundary(
+fn snap_exact_geographic_boundary(
     grid_index: f64,
     coordinate_deg: f64,
     origin_deg: f64,
@@ -353,9 +353,11 @@ fn snap_geographic_boundary(
     point_count: usize,
 ) -> f64 {
     let last_index = point_count.saturating_sub(1) as f64;
-    if grid_close(coordinate_deg, origin_deg) {
+    // Only exact geographic endpoints may repair division roundoff; applying
+    // metadata tolerances here would silently clamp real sample coordinates.
+    if coordinate_deg == origin_deg {
         0.0
-    } else if grid_close(coordinate_deg, origin_deg + last_index * spacing_deg) {
+    } else if coordinate_deg == origin_deg + last_index * spacing_deg {
         last_index
     } else {
         grid_index
@@ -601,7 +603,7 @@ mod tests {
     }
 
     #[test]
-    fn test_horizontal_geographic_beyond_edge_tolerance_fails_closed() {
+    fn test_horizontal_geographic_outside_edge_fails_within_metadata_tolerance() {
         let grid = HorizontalGrid {
             nx: 4,
             ny: 3,
@@ -623,6 +625,42 @@ mod tests {
             ),
             Err(HorizontalError::OutOfDomain { .. })
         ));
+
+        assert!(matches!(
+            sample_horizontal_geographic(
+                &grid,
+                &field,
+                HorizontalStaggering::CellCenter,
+                -1.7 + 0.5 * GRID_TOLERANCE_DEG,
+                48.2,
+            ),
+            Err(HorizontalError::OutOfDomain { .. })
+        ));
+    }
+
+    #[test]
+    fn test_horizontal_geographic_fine_spacing_does_not_snap_interior_point() {
+        let grid = HorizontalGrid {
+            nx: 4,
+            ny: 3,
+            xlon0_deg: 0.0,
+            ylat0_deg: 0.0,
+            dx_deg: 0.5 * GRID_TOLERANCE_DEG,
+            dy_deg: 1.0,
+            longitude_domain: LongitudeDomain::Minus180To180,
+        };
+        let field = vec![1.0_f32; grid.nx * grid.ny];
+        let sample = sample_horizontal_geographic(
+            &grid,
+            &field,
+            HorizontalStaggering::CellCenter,
+            grid.dx_deg,
+            1.0,
+        )
+        .expect("an interior grid point must not snap to the origin");
+
+        assert_eq!(sample.xt, 1.0);
+        assert_eq!(sample.ix, 1);
     }
 
     #[test]

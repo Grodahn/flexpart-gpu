@@ -4,6 +4,7 @@
 //! GRIB ids, NetCDF variable names, provider naming, or implicit unit/sign rules.
 
 pub mod accumulation;
+pub mod horizontal;
 pub mod vertical;
 
 use std::collections::BTreeSet;

@@ -39,7 +39,7 @@ Use the narrowest verification that can falsify the current change.
 1. Run tests directly covering the changed behavior while iterating.
 2. Do not run the full suite after every edit.
 3. Batch related fixes before re-testing.
-4. Once targeted tests are stable, run `rustfmt` and `cargo clippy` as required by the repository.
+4. Once targeted tests are stable, run `cargo fmt --all -- --check` and `cargo clippy` as required by the repository.
 5. Run the required broader test suite once after the implementation is stable.
 6. Do not rerun a passing check unless relevant code changed afterward.
 7. On failure, inspect only the relevant failing assertion, test, or final log section before widening the investigation.

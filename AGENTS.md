@@ -58,13 +58,23 @@ official FLEXPART development team.
 - No `unwrap()` in library code. Use `expect("reason")` only when the invariant
   is proven and documented.
 
-### WGSL Shader Conventions
+### GPU and WGSL contract
 
+- **Before implementing or reviewing GPU code, read and obey `docs/GPU_CONTRACT.md`.**
+  Once established by #91, that file is the normative repository-level contract for GPU
+  runtime, device memory/transfers, dispatch/error semantics, numerical policy, proof of
+  actual device execution, and oracle comparison.
+- Do not introduce a ticket-local GPU runtime, hidden host/device transfers, or silent CPU
+  fallback that conflicts with `docs/GPU_CONTRACT.md`.
+- The pinned FLEXPART oracle named by the owning issue is authoritative for scientific
+  parity. Existing Rust CPU implementations may be used diagnostically during migration,
+  but a separate CPU reference implementation is not a general prerequisite for GPU work.
 - One compute kernel per file in `src/shaders/`.
 - Name the file after the physical process: `advection.wgsl`, `hanna_turbulence.wgsl`.
 - Group bindings logically: group 0 = particles, group 1 = wind field, group 2 = parameters.
 - Comment the physical equation being implemented at the top of each kernel.
-- Use `f32` throughout (justified: Monte Carlo convergence dominates over float precision).
+- Follow the precision policy in `docs/GPU_CONTRACT.md`; do not assume a repository-wide
+  tolerance or precision rule independently of that contract and the owning issue.
 
 ---
 
@@ -204,16 +214,19 @@ verifiable problem, prefer a follow-up issue/PR rather than silently expanding s
 
 ### What Must Be Tested
 
-1. **Physics kernels** (CPU reference): every GPU kernel has a CPU-side reference
-   implementation tested against known analytical solutions or FLEXPART Fortran output.
-2. **Interpolation**: trilinear wind interpolation tested against hand-computed values
-   on a small synthetic grid.
+1. **Physics kernels**: validate GPU kernels against the authoritative oracle/evidence named
+   by the owning issue. A Rust CPU reference may be retained or used for diagnostics when
+   useful, but is not required merely because a GPU kernel exists.
+2. **Interpolation**: validate the relevant GPU interpolation path against the pinned
+   FLEXPART interpolation oracle and fixtures owned by the corresponding issue.
 3. **Turbulence (Hanna)**: verify sigma_u, sigma_v, sigma_w, TL against published
    tables for stable/neutral/unstable conditions.
-4. **Particle conservation**: total particle mass must be conserved (within f32 tolerance)
-   when deposition is disabled.
-5. **GPU vs CPU parity**: after each kernel port, run both paths on the same input
-   and assert max relative error < 1e-4.
+4. **Particle conservation**: total particle mass must be conserved within the tolerance
+   declared by the owning numerical/scientific contract when deposition is disabled.
+5. **GPU parity**: prove actual GPU/device execution and compare it directly against the
+   authoritative oracle using the tolerance declared by `docs/GPU_CONTRACT.md` and the
+   owning issue. CPU/GPU comparison may be additional migration evidence, not the normative
+   scientific verdict unless an issue explicitly makes it so.
 
 ### Test Organization
 
@@ -260,10 +273,12 @@ renaming).
 ### Per-task protocol
 
 1. Read this file before starting any task.
-2. When creating or refining issues, follow **Issue Definition & Task Slicing** above before implementation starts.
-3. For benchmarking/performance tasks, read `docs/benchmarks.md` first and follow
+2. When implementing or reviewing GPU code, read `docs/GPU_CONTRACT.md` before changing code;
+   if #91 has not yet established it, GPU implementation work is blocked.
+3. When creating or refining issues, follow **Issue Definition & Task Slicing** above before implementation starts.
+4. For benchmarking/performance tasks, read `docs/benchmarks.md` first and follow
    its methodology (scenario sizing, warm-up/sample settings, and GPU/CPU recipe separation).
-4. Read the referenced Fortran source to understand the algorithm being ported.
-5. Write tests before or alongside the implementation (not after).
-6. Run `cargo clippy` and `cargo test` before marking a task as done.
-7. Document any deviation from the Fortran reference in `docs/scientific-changelog.md`.
+5. Read the referenced Fortran source to understand the algorithm being ported.
+6. Write tests before or alongside the implementation (not after).
+7. Run `cargo clippy` and `cargo test` before marking a task as done.
+8. Document any deviation from the Fortran reference in `docs/scientific-changelog.md`.

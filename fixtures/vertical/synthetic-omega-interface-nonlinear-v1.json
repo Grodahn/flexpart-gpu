@@ -1,0 +1,12 @@
+{
+  "kind": "pressure_velocity_omega",
+  "unit": "pascal_per_second",
+  "sign": "positive_pressure_increasing",
+  "vertical_staggering": "level_interface",
+  "values": [0.0, -0.25, -1.5, -0.4],
+  "profile_shape": "deliberately_non_linear",
+  "provenance": {
+    "source_id": "synthetic-omega-interface-nonlinear-v1",
+    "producer_issue": 80
+  }
+}

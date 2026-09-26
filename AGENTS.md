@@ -68,135 +68,32 @@ official FLEXPART development team.
 
 ---
 
-## Issue Definition & Task Slicing
+## Required Agent Workflows
 
-When creating, refining, or implementing GitHub issues, optimize for **small, atomic,
-independently verifiable claims**, not for broad feature descriptions. An issue should
-ideally prove one thing.
+Workflow-specific instructions live under `.agents/skills/` and are mandatory when applicable:
 
-### Split aggressively at verification boundaries
+- For implementing an issue or scoped code change, invoke `$implementation`.
+- For reviewing a pull request, including review-and-repair work, invoke `$code-review`.
+- For creating, refining, splitting, or re-scoping GitHub issues, invoke `$issue-authoring`.
+- A PR review that includes repairs uses `$code-review` alone unless a distinct implementation task is explicitly requested.
+- Do not reopen, quote, or summarize this `AGENTS.md` when it has already been injected or provided by the harness.
 
-Do **not** combine multiple independent claims such as:
+## Agent Execution Efficiency
 
-- build/reproducibility infrastructure;
-- input-equivalence or unit-conversion logic;
-- raw-output capture/decoding;
-- comparison semantics;
-- provenance/manifests;
-- CI orchestration;
-- scientific parity of a physical process.
+Minimize model/tool round trips and command output without weakening correctness or scientific verification.
 
-If each claim can fail independently, prefer separate issues with explicit dependencies.
-A large child issue that contains several such tracks should be treated as a sub-epic,
-not as one implementation task.
-
-### Issue-authoring hard rules
-
-The following rules are intended to prevent review-driven scope expansion and long
-implementation/correction loops:
-
-1. **One issue owns one fachlich coherent contract.**
-   Define one behavioral or scientific contract that can be implemented and verified as
-   a unit. If the issue needs several independently provable contracts, split it or make
-   it a sub-epic with child issues.
-
-2. **Separate contract definition, data migration, and consumer adoption.**
-   Defining a schema/API, migrating existing fixtures/data, updating all consumers, and
-   removing compatibility fallbacks are different verification boundaries. Do not bundle
-   them into one implementation issue unless they are genuinely inseparable and the issue
-   names the exact combined proof obligation.
-
-3. **Do not use open-ended negative acceptance criteria.**
-   Requirements such as "no hidden defaults", "all ambiguity removed", or "fully
-   equivalent" are not finite unless the issue enumerates the concrete defaults,
-   ambiguities, or fields in scope. Treat newly discovered semantics outside that list as
-   follow-up work unless they invalidate the current issue's stated claim.
-
-4. **Make normative references executable and unambiguous.**
-   When parity with FLEXPART or another oracle is required, state exactly what counts as
-   the normative reference: pinned revision, routine/binary/artifact, invocation path,
-   inputs, and comparison. A reimplementation of the same equations is not an independent
-   oracle unless the issue explicitly says that it is sufficient.
-
-5. **Specify downstream handoff surfaces concretely.**
-   Avoid wording such as "usable by #N" without defining what #N receives. Name the
-   required API/artifact fields, ownership of interpolation/conversion/validation,
-   mutability/lifetime expectations where relevant, and fail-closed behavior. Downstream
-   code should not need to reconstruct semantics that this issue owns.
-
-6. **Resolve scientific or architectural unknowns before implementation.**
-   If a required conversion, reference behavior, data provenance, or oracle semantics are
-   not independently known, create a prerequisite research/decision/oracle issue first.
-   The implementation issue may explicitly fail closed on the unresolved path rather than
-   inventing behavior during coding.
-
-7. **Give implementation agents an explicit stop rule.**
-   If implementation discovers that satisfying the issue would require a new
-   physics-relevant semantic, a previously unnamed runtime consumer, a new external data
-   source/reference, or ownership of another issue's contract, stop expanding the current
-   scope. Record the dependency or create a follow-up issue. Expand the current issue only
-   when the newly discovered work is necessary to make its original claim correct.
-
-These rules favor **decision and proof boundaries** over line-count or component boundaries.
-A small diff can still contain several independent claims; a larger diff can be acceptable
-when it proves one tightly bounded contract.
-
-### Every acceptance criterion needs a proof obligation
-
-For each acceptance criterion, define how completion is demonstrated. Prefer an explicit
-mapping of:
-
-`requirement -> implementation surface -> test/check -> required artifact/result`
-
-Avoid vague criteria such as "reproducible", "equivalent", "validated", "works in CI",
-or "parity achieved" unless the issue also states exactly what evidence makes that claim true.
-
-Examples:
-
-- "Equivalent inputs" must identify the canonical source of truth, required unit conversions,
-  normalized fields to compare, and a fail-closed equality/audit check.
-- "Reproducible oracle build" must state pinned revisions/environment, required hashes and
-  the postcondition that the oracle checkout remains clean after build/run.
-- "Workflow succeeds" must state which missing/stale artifacts or failed subprocesses make
-  the workflow exit non-zero.
-- "Scientific parity" must name the production path, cases/ensembles, metrics, thresholds,
-  uncertainty treatment, and raw evidence required for the verdict.
-
-### Test the production path when the claim is about production behavior
-
-An isolated kernel/helper test is not evidence for end-to-end production-path behavior.
-Issues and PRs must state whether evidence is:
-
-- analytical/unit-level;
-- isolated kernel-level;
-- production-path integration;
-- paired FLEXPART-11.1 oracle validation;
-- observational validation.
-
-Do not substitute a lower validation level for a higher one unless the issue explicitly
-allows it.
-
-### Fail closed
-
-Validation, CI, comparison, and provenance workflows must never turn missing prerequisites,
-skipped execution, absent adapters, absent oracle outputs, stale artifacts, decoder failures,
-or incomplete metrics into a successful result. Candidate-only execution may exist as an
-explicit mode, but it must not be reported as paired validation.
-
-### Define artifact and provenance contracts explicitly
-
-If an issue depends on generated files or manifests, enumerate the required consumed inputs
-and produced outputs. For scientific comparisons, this normally includes the case/config
-source, derived oracle/candidate inputs, meteorology, executable/revision identity, seeds,
-adapter provenance, raw outputs, decoded outputs, comparison report, and hashes where
-reproducibility requires them.
-
-### Keep PRs aligned with issue boundaries
-
-A PR should normally satisfy one atomic issue or one clearly stated slice of a sub-epic.
-Do not claim completion of adjacent scientific or infrastructure issues merely because the
-same branch contains partial work for them. If review reveals a separate independently
-verifiable problem, prefer a follow-up issue/PR rather than silently expanding scope.
+- Batch independent repository and GitHub inspections where practical.
+- Prefer targeted searches, bounded snippets, filenames, diff statistics, failing assertions, and the last relevant failure lines.
+- Do not emit full issue bodies, full diffs, complete API responses, complete successful test logs, or complete CI logs unless they are specifically needed to diagnose a failure.
+- Make related in-scope changes together rather than repeatedly alternating between inspection, editing, and broad verification.
+- Run the narrowest tests that can falsify the changed behavior first. Run broader required verification once after the implementation is stable.
+- Do not rerun a passing check unless relevant code changed afterward.
+- On failure, inspect only the relevant failing test, step, or log section before widening the investigation.
+- Distinguish failures caused by the requested change from established unrelated baseline or infrastructure failures.
+- When CI confirmation is part of the task, poll no more frequently than once per 60 seconds and request concise status fields.
+- Normally push once after local verification passes. Repush only when a subsequent failure is caused by the current change.
+- Prefer one autonomous agent run for one bounded task. Do not create extra agents or approval pauses unless the task requires them.
+- Do not optimize against an arbitrary maximum number of tool calls; minimize redundant calls while preserving correctness and required evidence.
 
 ---
 
@@ -259,11 +156,11 @@ renaming).
 
 ### Per-task protocol
 
-1. Read this file before starting any task.
-2. When creating or refining issues, follow **Issue Definition & Task Slicing** above before implementation starts.
-3. For benchmarking/performance tasks, read `docs/benchmarks.md` first and follow
+1. Use the mandatory workflow skill named in **Required Agent Workflows** when applicable.
+2. For benchmarking/performance tasks, read `docs/benchmarks.md` first and follow
    its methodology (scenario sizing, warm-up/sample settings, and GPU/CPU recipe separation).
-4. Read the referenced Fortran source to understand the algorithm being ported.
-5. Write tests before or alongside the implementation (not after).
-6. Run `cargo clippy` and `cargo test` before marking a task as done.
-7. Document any deviation from the Fortran reference in `docs/scientific-changelog.md`.
+3. Read the referenced Fortran source when needed to understand the algorithm being ported.
+4. Write tests before or alongside the implementation (not after).
+5. Once the implementation is stable, run the required final `cargo clippy` and `cargo test`
+   verification as described by the applicable workflow skill.
+6. Document any deviation from the Fortran reference in `docs/scientific-changelog.md`.

@@ -28,6 +28,25 @@ For any task that implements, modifies, composes, or reviews GPU execution code,
 GPU architecture, memory/transfer, execution/error, numerical, and verification contract once
 established by #91.
 
+**Scientific production calculations are GPU-by-default.** Any issue that implements a
+physics-relevant or numerical calculation used by the supported production path must execute
+that calculation on the GPU and satisfy `docs/GPU_CONTRACT.md`, including proof of actual
+device execution and the issue-owned authoritative oracle/validation evidence.
+
+A CPU implementation does not satisfy such an issue merely because the issue omits the word
+"GPU". CPU-only completion is permitted only when the issue explicitly defines the work as a
+CPU reference implementation, oracle generation, validation tooling, research/decision work,
+data/provider infrastructure, or another non-production calculation.
+
+Silent CPU fallback must never turn an unsupported or failed GPU production path into successful
+execution. Existing CPU implementations may remain temporarily for migration diagnostics where
+explicitly useful, but they are not the normative production implementation unless the owning
+issue explicitly says otherwise.
+
+When an issue is ambiguous about whether a calculation belongs to the production GPU path,
+resolve that ambiguity at the issue/architecture level before implementation rather than
+defaulting to CPU.
+
 Do not introduce ticket-local GPU runtime abstractions, hidden host/device transfers, silent CPU
 fallbacks, or numerical policies that conflict with `docs/GPU_CONTRACT.md`. If a task requires a
 GPU-contract change, stop that path and update the owning contract issue/document explicitly

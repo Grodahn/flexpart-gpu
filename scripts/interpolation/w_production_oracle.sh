@@ -16,23 +16,28 @@ if [ -z "${objects}" ]; then
   exit 1
 fi
 
-gfortran -O0 -I"${ORACLE_SRC}" -fopenmp -mcmodel=large -c "${DRIVER}" \
-  -o "${BUILD}/w-production-oracle-driver.o"
-# The cross-reference table retains which object references each pristine
-# symbol, complementing the symbol-presence and runtime-output checks.
-# shellcheck disable=SC2046
-gfortran -fopenmp -mcmodel=large "${BUILD}/w-production-oracle-driver.o" ${objects} \
-  -L/usr/lib/x86_64-linux-gnu -Wl,-rpath=/usr/lib/x86_64-linux-gnu \
-  -Wl,-Map="${BUILD}/w-production-oracle.link-map",--cref \
-  -leccodes -leccodes_f90 -lm -lnetcdff -o "${BINARY}"
+(
+  cd "${BUILD}"
+  gfortran -O0 -I"${ORACLE_SRC}" -fopenmp -mcmodel=large -c "${DRIVER}" \
+    -o w-production-oracle-driver.o
+  # The cross-reference table retains which object references each pristine
+  # symbol, complementing the symbol-presence and runtime-output checks. Using
+  # build-relative names keeps the retained evidence independent of its parent
+  # artifact directory.
+  # shellcheck disable=SC2046
+  gfortran -fopenmp -mcmodel=large w-production-oracle-driver.o ${objects} \
+    -L/usr/lib/x86_64-linux-gnu -Wl,-rpath=/usr/lib/x86_64-linux-gnu \
+    -Wl,-Map=w-production-oracle.link-map,--cref \
+    -leccodes -leccodes_f90 -lm -lnetcdff -o w-production-oracle
 
-gfortran --version | sed -n '1p' > "${BUILD}/compiler-identity.txt"
-printf '%s\n' ${objects} | sed "s#^${ORACLE_SRC}/##" > "${BUILD}/linked-objects.txt"
-nm "${BINARY}" > "${BUILD}/w-production-oracle.nm"
-{
-  objdump -d --disassemble=MAIN__ "${BINARY}"
-  objdump -d --disassemble=__interpol_mod_MOD_interpol_wind "${BINARY}"
-} > "${BUILD}/w-production-oracle.call-sites"
+  gfortran --version | sed -n '1p' > compiler-identity.txt
+  printf '%s\n' ${objects} | sed "s#^${ORACLE_SRC}/##" > linked-objects.txt
+  nm w-production-oracle > w-production-oracle.nm
+  {
+    objdump -d --disassemble=MAIN__ w-production-oracle
+    objdump -d --disassemble=__interpol_mod_MOD_interpol_wind w-production-oracle
+  } > w-production-oracle.call-sites
+)
 
 grep -q '__verttransform_mod_MOD_verttransform_ecmwf_heights' "${BUILD}/w-production-oracle.nm"
 grep -q '__verttransform_mod_MOD_verttransform_ecmwf_windfields' "${BUILD}/w-production-oracle.nm"

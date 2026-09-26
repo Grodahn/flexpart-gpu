@@ -16,6 +16,23 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-26 — Freeze pristine interface-W production sampling (#80)
+**Impact**: none (oracle evidence only; candidate interface-W sampling remains blocked)
+**Files**: `scripts/interpolation/w_production_oracle.f90`,
+`scripts/interpolation/w_production_oracle.sh`,
+`scripts/interpolation/prepare_w_production_oracle.py`,
+`fixtures/interpolation/w-production-oracle-v1.json`,
+`fixtures/vertical/synthetic-omega-interface-nonlinear-v1.json`
+**Validation**: The pinned, clean FLEXPART 11.1 `eta=no` objects directly execute
+`verttransform_ecmwf_heights -> verttransform_ecmwf_windfields -> ww on height[]
+-> interpol_wind -> interpol_wind_meter`. Linked symbol and call-site evidence is
+retained. A nonlinear interface-omega profile covers both boundaries and three
+strict-interior heights. Direct #30-interface interpolation is not equivalent to
+the pristine two-stage path: the maximum observed absolute difference is
+`0.057038949297001734 m/s` under the declared `1e-6 m/s` absolute plus `1e-5`
+relative tolerance. The canonical checked-in ERA5/ETEX fixture has no vertical
+motion, so no real W sample is claimed and no provider/#70 scope was added.
+
 ### 2026-09-23 — Canonical temporal interpolation for instantaneous fields (#74)
 **Impact**: numerics (instantaneous meteorology sampling now goes through a
 canonical, fail-closed contract)

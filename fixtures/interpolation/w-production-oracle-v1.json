@@ -1,0 +1,354 @@
+{
+  "schema": {
+    "id": "flexpart-gpu.w-production-oracle",
+    "version": 1
+  },
+  "issue": 80,
+  "conclusion": "not_equivalent",
+  "conclusion_statement": "Direct interpolation on the #30 W/interface runtime geometry differs from pristine FLEXPART's verttransform_ecmwf_windfields -> height[] -> interpol_wind_meter result.",
+  "oracle_path": [
+    "pressure velocity / interface W",
+    "verttransform_mod::verttransform_ecmwf_heights",
+    "verttransform_mod::verttransform_ecmwf_windfields",
+    "windfields_mod::ww on height[]",
+    "interpol_mod::interpol_wind (eta=no)",
+    "interpol_mod::interpol_wind_meter",
+    "final sampled W"
+  ],
+  "tolerances": {
+    "formula": "abs(pristine-direct) <= absolute_m_s + relative*max(abs(pristine),abs(direct))",
+    "absolute_m_s": 1e-06,
+    "relative": 1e-05
+  },
+  "maximum_absolute_difference_m_s": 0.057038949297001734,
+  "synthetic_case": {
+    "profile": "deliberately_non_linear_interface_omega",
+    "source_snapshot": "fixtures/vertical/synthetic-column-v1.json",
+    "source_motion": "fixtures/vertical/synthetic-omega-interface-nonlinear-v1.json",
+    "input_sha256": "629c86e5e2e3087b4699e915d5a76f15b99fa54cafc5e27e7e2193cb71e19192",
+    "snapshot_sha256": "db5b2b2b86622d6e985d6b434b12e3dd7269a8605eec70d5b88792886a3f25fe",
+    "motion_sha256": "30a6a0e7201286b73eddba7d792b133ab3a49460a3d0d213ab88fc5e8c1594b8",
+    "native_levels": 3,
+    "model_grid": [
+      {
+        "index_bottom_to_top": 1,
+        "height_m_agl": 0.0,
+        "w_m_s": 0.03608842194080353
+      },
+      {
+        "index_bottom_to_top": 2,
+        "height_m_agl": 902.2105712890625,
+        "w_m_s": 0.08883307874202728
+      },
+      {
+        "index_bottom_to_top": 3,
+        "height_m_agl": 3007.3740234375,
+        "w_m_s": 0.09782634675502777
+      },
+      {
+        "index_bottom_to_top": 4,
+        "height_m_agl": 5720.36328125,
+        "w_m_s": -0.0
+      }
+    ],
+    "interface_grid": [
+      {
+        "index_bottom_to_top": 1,
+        "height_m_agl": 0.0,
+        "w_m_s": 0.03608842194080353,
+        "omega_pa_s": -0.4000000059604645
+      },
+      {
+        "index_bottom_to_top": 2,
+        "height_m_agl": 1954.792236328125,
+        "w_m_s": 0.15036866068840027,
+        "omega_pa_s": -1.5
+      },
+      {
+        "index_bottom_to_top": 3,
+        "height_m_agl": 4363.86865234375,
+        "w_m_s": 0.030113454908132553,
+        "omega_pa_s": -0.25
+      },
+      {
+        "index_bottom_to_top": 4,
+        "height_m_agl": 7076.8583984375,
+        "w_m_s": -0.0,
+        "omega_pa_s": 0.0
+      }
+    ],
+    "queries": [
+      {
+        "query": 1,
+        "kind": 0,
+        "classification": "lower_boundary",
+        "model_bracket_bottom_to_top": 1,
+        "fraction": 0.0,
+        "particle_height_m_agl": 0.0,
+        "pristine_w_m_s": 0.03608842194080353
+      },
+      {
+        "query": 2,
+        "kind": 1,
+        "classification": "strict_interior",
+        "model_bracket_bottom_to_top": 1,
+        "fraction": 0.25,
+        "particle_height_m_agl": 225.55264282226562,
+        "pristine_w_m_s": 0.04927458614110947
+      },
+      {
+        "query": 3,
+        "kind": 1,
+        "classification": "strict_interior",
+        "model_bracket_bottom_to_top": 2,
+        "fraction": 0.5,
+        "particle_height_m_agl": 1954.7923583984375,
+        "pristine_w_m_s": 0.09332970529794693
+      },
+      {
+        "query": 4,
+        "kind": 1,
+        "classification": "strict_interior",
+        "model_bracket_bottom_to_top": 3,
+        "fraction": 0.75,
+        "particle_height_m_agl": 5042.1162109375,
+        "pristine_w_m_s": 0.024456575512886047
+      },
+      {
+        "query": 5,
+        "kind": 2,
+        "classification": "upper_flexpart_height_boundary",
+        "model_bracket_bottom_to_top": 3,
+        "fraction": 1.0,
+        "particle_height_m_agl": 5720.36328125,
+        "pristine_w_m_s": 0.0
+      }
+    ],
+    "comparisons": [
+      {
+        "query": 1,
+        "kind": 0,
+        "classification": "lower_boundary",
+        "model_bracket_bottom_to_top": 1,
+        "fraction": 0.0,
+        "particle_height_m_agl": 0.0,
+        "pristine_w_m_s": 0.03608842194080353,
+        "direct_interface_w_m_s": 0.03608842194080353,
+        "pristine_minus_direct_m_s": 0.0,
+        "tolerance_m_s": 1.3608842194080353e-06,
+        "equivalent": true
+      },
+      {
+        "query": 2,
+        "kind": 1,
+        "classification": "strict_interior",
+        "model_bracket_bottom_to_top": 1,
+        "fraction": 0.25,
+        "particle_height_m_agl": 225.55264282226562,
+        "pristine_w_m_s": 0.04927458614110947,
+        "direct_interface_w_m_s": 0.04927458535646036,
+        "pristine_minus_direct_m_s": 7.846491095753194e-10,
+        "tolerance_m_s": 1.4927458614110947e-06,
+        "equivalent": true
+      },
+      {
+        "query": 3,
+        "kind": 1,
+        "classification": "strict_interior",
+        "model_bracket_bottom_to_top": 2,
+        "fraction": 0.5,
+        "particle_height_m_agl": 1954.7923583984375,
+        "pristine_w_m_s": 0.09332970529794693,
+        "direct_interface_w_m_s": 0.15036865459494866,
+        "pristine_minus_direct_m_s": -0.057038949297001734,
+        "tolerance_m_s": 2.5036865459494867e-06,
+        "equivalent": false
+      },
+      {
+        "query": 4,
+        "kind": 1,
+        "classification": "strict_interior",
+        "model_bracket_bottom_to_top": 3,
+        "fraction": 0.75,
+        "particle_height_m_agl": 5042.1162109375,
+        "pristine_w_m_s": 0.024456575512886047,
+        "direct_interface_w_m_s": 0.02258508982615185,
+        "pristine_minus_direct_m_s": 0.0018714856867341964,
+        "tolerance_m_s": 1.2445657551288605e-06,
+        "equivalent": false
+      },
+      {
+        "query": 5,
+        "kind": 2,
+        "classification": "upper_flexpart_height_boundary",
+        "model_bracket_bottom_to_top": 3,
+        "fraction": 1.0,
+        "particle_height_m_agl": 5720.36328125,
+        "pristine_w_m_s": 0.0,
+        "direct_interface_w_m_s": 0.015056730163961408,
+        "pristine_minus_direct_m_s": -0.015056730163961408,
+        "tolerance_m_s": 1.150567301639614e-06,
+        "equivalent": false
+      }
+    ]
+  },
+  "real_data_obligation": {
+    "canonical_fixture": "fixtures/meteorology/era5-etex-native-v1.json",
+    "fixture_sha256": "b48447864fa2db4d61d8141a852099977dc78c729c9bb46d3b320c5f75dffec0",
+    "vertical_motion_fields_present": [],
+    "status": "not_available_in_checked_in_canonical_fixture",
+    "scope_result": "The checked-in #29/#30 canonical ERA5/ETEX fixture contains thermodynamic fields but no vertical-motion field; #80 therefore retains synthetic direct-oracle proof and does not add provider decoding or eta-dot preprocessing."
+  },
+  "provenance": {
+    "oracle": {
+      "name": "FLEXPART",
+      "version": "11.1",
+      "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+      "checkout_clean": true
+    },
+    "build": {
+      "compiler_identity": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+      "oracle_build_profile": {
+        "makefile": "src/makefile_gfortran",
+        "make_arguments": "eta=no arch=x86-64",
+        "fortran_compiler": "gfortran",
+        "optimization": "-O3",
+        "openmp_flag": "-fopenmp",
+        "arch_flag": "-march=x86-64",
+        "eta": "no",
+        "netcdf": "enabled (USE_NCF)"
+      },
+      "driver_compile": {
+        "compile_flags": [
+          "-O0",
+          "-fopenmp",
+          "-mcmodel=large"
+        ],
+        "link_strategy": "all pristine src/*.o except FLEXPART.o",
+        "coordinate_mode": "eta=no"
+      },
+      "driver_source": "scripts/interpolation/w_production_oracle.f90",
+      "driver_sha256": "c325c1da654d2bc433fe217445742f226c7f1a63c9dff339d017c9e67442223b",
+      "harness_source": "scripts/interpolation/w_production_oracle.sh",
+      "harness_sha256": "a1e687c4ba94b84317c845074cbf67f92a6024de070c767f1b197aa2f2faa3fb",
+      "packer_source": "scripts/interpolation/prepare_w_production_oracle.py",
+      "packer_sha256": "dfb37b60c68e903bfab7f141339a48128a281c7d468ac0709801388063a370af",
+      "reference_manifest_sha256": "f74dc7136bbf507d2585d91dbb6a180dadf0b8fb5b6f38bd07f4cee83d14b5d7",
+      "binary_sha256": "9e2ff66ab93a815cd90011943042e23ecf3f44a8ce000de9db819d02f9ef4c95",
+      "oracle_output_sha256": "730c08209e4ffd7f7c941926846e53bc9cd30b2b255d69eaf3b21e40337c2671"
+    },
+    "linked_flexpart": {
+      "strategy": "all pristine src/*.o except FLEXPART.o",
+      "objects": [
+        "advance_mod.o",
+        "binary_output_mod.o",
+        "cbl_mod.o",
+        "chemistry_mod.o",
+        "class_gribfile_mod.o",
+        "cmapf_mod.o",
+        "com_mod.o",
+        "conv_mod.o",
+        "date_mod.o",
+        "drydepo_mod.o",
+        "emissions_mod.o",
+        "erf_mod.o",
+        "flux_mod.o",
+        "getfields_mod.o",
+        "initdomain_mod.o",
+        "initialise_mod.o",
+        "interpol_mod.o",
+        "mean_mod.o",
+        "netcdf_output_mod.o",
+        "outgrid_mod.o",
+        "output_mod.o",
+        "par_mod.o",
+        "particle_mod.o",
+        "pbl_profile_mod.o",
+        "plume_mod.o",
+        "point_mod.o",
+        "qvsat_mod.o",
+        "random_mod.o",
+        "readoptions_mod.o",
+        "receptor_mod.o",
+        "receptor_netcdf_mod.o",
+        "restart_mod.o",
+        "settling_mod.o",
+        "sort_mod.o",
+        "timemanager_mod.o",
+        "totals_mod.o",
+        "turbulence_mod.o",
+        "txt_output_mod.o",
+        "unc_mod.o",
+        "verttransform_mod.o",
+        "wetdepo_mod.o",
+        "windfields_mod.o",
+        "xmass_mod.o"
+      ],
+      "object_list_sha256": "388d1f824306df30fc74fbedc6464e86602b6a93ba782e9e1dad20ffacc3327c",
+      "direct_routine_objects": [
+        {
+          "path": "src/verttransform_mod.f90",
+          "source_sha256": "78a0f0a809929707fe2ed503419819b12f9d6ba76074c2f9f0bfade1612b9053",
+          "object": "verttransform_mod.o",
+          "object_sha256": "8982cfd03a7e232a32eeee45a905cd1afc2662236dce7dce66db440293e7ff90"
+        },
+        {
+          "path": "src/interpol_mod.f90",
+          "source_sha256": "08727268302a79a20eee51826f4c7090966e0c585b215565a3ad0366b6934b41",
+          "object": "interpol_mod.o",
+          "object_sha256": "cd68b5c7ccb31634a93fbcbfaf472fe9e7062720dd7d2f1aba3f92422d93be62"
+        },
+        {
+          "path": "src/windfields_mod.f90",
+          "source_sha256": "d3c732a74884c6218ba09a36d6d99beef6340b4c99423313c868a2689fece81a",
+          "object": "windfields_mod.o",
+          "object_sha256": "156efe7bbb4fb3632b6162ef872a90f502f249f65b8056f46ff7171e279f2c9d"
+        }
+      ],
+      "required_symbols": {
+        "verttransform_ecmwf_heights": "__verttransform_mod_MOD_verttransform_ecmwf_heights",
+        "verttransform_ecmwf_windfields": "__verttransform_mod_MOD_verttransform_ecmwf_windfields",
+        "interpol_wind": "__interpol_mod_MOD_interpol_wind",
+        "interpol_wind_meter": "__interpol_mod_MOD_interpol_wind_meter"
+      },
+      "verified_call_edges": [
+        {
+          "caller": "MAIN__",
+          "callee": "__verttransform_mod_MOD_verttransform_ecmwf_heights",
+          "caller_address": "0xa6df",
+          "callee_address": "0x15f870",
+          "verified_in_linked_executable": true
+        },
+        {
+          "caller": "MAIN__",
+          "callee": "__verttransform_mod_MOD_verttransform_ecmwf_windfields",
+          "caller_address": "0xa6df",
+          "callee_address": "0x160760",
+          "verified_in_linked_executable": true
+        },
+        {
+          "caller": "MAIN__",
+          "callee": "__interpol_mod_MOD_interpol_wind",
+          "caller_address": "0xa6df",
+          "callee_address": "0xa1140",
+          "verified_in_linked_executable": true
+        },
+        {
+          "caller": "__interpol_mod_MOD_interpol_wind",
+          "callee": "__interpol_mod_MOD_interpol_wind_meter",
+          "caller_address": "0xa1140",
+          "callee_address": "0x9edc0",
+          "verified_in_linked_executable": true
+        }
+      ],
+      "nm_sha256": "c80f611e7942b79607a54e527f2a8befab909d692962f06efe79511cace7c839",
+      "call_sites_sha256": "1982f42ea8f0e5785dd6c2a6aa5d0dda96bf8b32c96cdabaa88914d82360e622",
+      "link_map_sha256": "8070f6ccf0a0018cba54fb003acbf53c34dcb6b9e64b5335a5678d89f12dfbf0"
+    }
+  },
+  "handoff_to_issue_73": {
+    "status": "blocked_pending_review_and_merge_of_issue_80",
+    "required_behavior": "Reproduce the frozen pristine two-stage production result or document an intentional canonical divergence with separate candidate/oracle expectations.",
+    "interface_vertical_motion_block_removed": false
+  }
+}

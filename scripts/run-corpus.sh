@@ -148,6 +148,30 @@ require_pinned_fortran() {
   log_info "Fortran oracle pinned at ${pinned} (clean)"
 }
 
+# Build the image before compiling the pinned oracle. The explicit return on
+# image-build failure is required because callers disable errexit while they
+# capture the complete transcript.
+oracle_build_pinned() {
+  local force_clean="$1"
+  local -a build_command=(
+    docker compose -f "${FORTRAN_COMPOSE_FILE}" build
+  )
+  if [ "${force_clean}" = "1" ]; then
+    build_command+=(--no-cache)
+  fi
+  build_command+=(flexpart-fortran)
+
+  "${build_command[@]}" || return
+  docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran bash -c "
+    set -euo pipefail
+    cd /workspace/flexpart/src
+    make -f makefile_gfortran clean >/dev/null 2>&1 || true
+    FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4
+    test -x FLEXPART
+    rm -f gitversion.txt
+  "
+}
+
 # Reuse the existing Docker/Fortran build only when every relevant immutable
 # input, the retained image, and the retained executable still match.  A miss
 # runs the historical pinned build path and records its exact identity.
@@ -178,37 +202,11 @@ oracle_prepare_cached() {
   fi
 
   log_info "Oracle build cache: REBUILD (${cache_key}); full log: ${ORACLE_BUILD_LOG}"
-  local no_cache=""
-  if [ "${ORACLE_REBUILD}" = "1" ]; then
-    no_cache="--no-cache"
-  fi
   set +e
   if [ "${ORACLE_VERBOSE}" = "1" ]; then
-    {
-      # shellcheck disable=SC2086
-      docker compose -f "${FORTRAN_COMPOSE_FILE}" build ${no_cache} flexpart-fortran
-      docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran bash -c "
-        set -euo pipefail
-        cd /workspace/flexpart/src
-        make -f makefile_gfortran clean >/dev/null 2>&1 || true
-        FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4
-        test -x FLEXPART
-        rm -f gitversion.txt
-      "
-    } 2>&1 | tee "${ORACLE_BUILD_LOG}"
+    oracle_build_pinned "${ORACLE_REBUILD}" 2>&1 | tee "${ORACLE_BUILD_LOG}"
   else
-    {
-      # shellcheck disable=SC2086
-      docker compose -f "${FORTRAN_COMPOSE_FILE}" build ${no_cache} flexpart-fortran
-      docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran bash -c "
-        set -euo pipefail
-        cd /workspace/flexpart/src
-        make -f makefile_gfortran clean >/dev/null 2>&1 || true
-        FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4
-        test -x FLEXPART
-        rm -f gitversion.txt
-      "
-    } > "${ORACLE_BUILD_LOG}" 2>&1
+    oracle_build_pinned "${ORACLE_REBUILD}" > "${ORACLE_BUILD_LOG}" 2>&1
   fi
   local build_status=$?
   set -e

@@ -80,6 +80,12 @@ def main():
         dest="case_id",
         help="Hash and report only this canonical case id for a focused run.",
     )
+    parser.add_argument(
+        "--oracle-dependency-case",
+        action="append",
+        default=[],
+        help="Additional oracle case consumed by a focused comparison.",
+    )
     args = parser.parse_args()
 
     reference = json.loads(Path(args.oracle_manifest).read_text(encoding="utf-8"))
@@ -91,6 +97,14 @@ def main():
     known_case_ids = {entry["id"] for entry in corpus_index["cases"]}
     if args.case_id and args.case_id not in known_case_ids:
         raise SystemExit(f"unknown corpus case: {args.case_id}")
+    if args.oracle_dependency_case and not args.case_id:
+        raise SystemExit("--oracle-dependency-case requires --case")
+    unknown_dependencies = set(args.oracle_dependency_case) - known_case_ids
+    if unknown_dependencies:
+        raise SystemExit(
+            f"unknown oracle dependency case: {sorted(unknown_dependencies)[0]}"
+        )
+    focused_input_cases = [args.case_id, *args.oracle_dependency_case] if args.case_id else []
 
     candidate_dir = Path(args.candidate_dir)
     candidate_files = hash_tree(
@@ -99,7 +113,15 @@ def main():
     if not candidate_files:
         raise SystemExit(f"missing candidate artifacts under {candidate_dir}")
     oracle_dir = Path(args.oracle_dir)
-    oracle_files = hash_tree(oracle_dir / args.case_id if args.case_id else oracle_dir)
+    if args.case_id:
+        oracle_files = {}
+        for case_id in focused_input_cases:
+            case_files = hash_tree(oracle_dir / case_id)
+            if not case_files:
+                raise SystemExit(f"missing oracle artifacts under {oracle_dir / case_id}")
+            oracle_files.update(case_files)
+    else:
+        oracle_files = hash_tree(oracle_dir)
 
     # Actually consumed inputs: versioned case definitions, thresholds and
     # Fortran fixtures; generated meteorology; both executables; report.
@@ -112,10 +134,15 @@ def main():
         if root:
             root_path = Path(root)
             if args.case_id and label == "cases":
-                case_file = root_path / f"{args.case_id}.json"
-                tree = {str(case_file.resolve()): digest(case_file)} if case_file.is_file() else {}
+                tree = {}
+                for case_id in focused_input_cases:
+                    case_file = root_path / f"{case_id}.json"
+                    if case_file.is_file():
+                        tree[str(case_file.resolve())] = digest(case_file)
             elif args.case_id:
-                tree = hash_tree(root_path / args.case_id)
+                tree = {}
+                for case_id in focused_input_cases:
+                    tree.update(hash_tree(root_path / case_id))
             else:
                 tree = hash_tree(root_path)
             if tree:
@@ -163,7 +190,6 @@ def main():
     manifest = {
         "status": "PROVENANCE_ONLY_NO_PARITY_VERDICT",
         "corpus_version": corpus_index.get("version"),
-        "cases": [args.case_id] if args.case_id else sorted(seeds),
         "input_audit": "INPUT_EQUIVALENCE_NOT_DEMONSTRATED remains in force for ETEX mini; "
         "no green corpus metric overrides it.",
         "oracle": oracle,

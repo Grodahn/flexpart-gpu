@@ -44,6 +44,8 @@ class OracleBuildCacheTest(unittest.TestCase):
             executable.write_bytes(b"oracle-v1")
             identity = oracle_build_cache.cache_identity(project, oracle)
             metadata = root / "build.json"
+            build_log = root / "build.log"
+            build_log.write_text("successful build\n")
             metadata.write_text(
                 json.dumps(
                     {
@@ -51,6 +53,7 @@ class OracleBuildCacheTest(unittest.TestCase):
                         "identity": identity,
                         "docker_image_id": "sha256:image",
                         "oracle_executable_sha256": oracle_build_cache.sha256(executable),
+                        "build_log_sha256": oracle_build_cache.sha256(build_log),
                     }
                 )
             )
@@ -61,6 +64,30 @@ class OracleBuildCacheTest(unittest.TestCase):
                 oracle_build_cache.validate(metadata, identity, "sha256:other", executable)
             )
             executable.write_bytes(b"oracle-v2")
+            self.assertFalse(
+                oracle_build_cache.validate(metadata, identity, "sha256:image", executable)
+            )
+
+    @mock.patch.object(oracle_build_cache, "git_head", return_value="a" * 40)
+    def test_validation_rejects_missing_build_log(self, _git_head):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, oracle = self.create_inputs(root)
+            executable = oracle / "src" / "FLEXPART"
+            executable.write_bytes(b"oracle-v1")
+            identity = oracle_build_cache.cache_identity(project, oracle)
+            metadata = root / "build.json"
+            metadata.write_text(
+                json.dumps(
+                    {
+                        "schema": oracle_build_cache.SCHEMA,
+                        "identity": identity,
+                        "docker_image_id": "sha256:image",
+                        "oracle_executable_sha256": oracle_build_cache.sha256(executable),
+                        "build_log_sha256": "missing",
+                    }
+                )
+            )
             self.assertFalse(
                 oracle_build_cache.validate(metadata, identity, "sha256:image", executable)
             )
@@ -85,6 +112,27 @@ class AgentValidationTest(unittest.TestCase):
         for name, command in commands[-3:]:
             self.assertIn("--case", command, name)
             self.assertIn("WIND-UNI-002", command, name)
+
+    def test_deposition_comparison_declares_and_runs_oracle_calibration(self):
+        commands = agent_validation.commands_for(
+            "comparison", "DRY-007", Path("comparison.json")
+        )
+        by_name = dict(commands)
+        self.assertIn("oracle-calibration", by_name)
+        self.assertIn("input-audit-calibration", by_name)
+        self.assertIn("ADV-ANA-001", by_name["oracle-calibration"])
+        self.assertEqual(
+            by_name["comparison"][
+                by_name["comparison"].index("--oracle-calibration-case") + 1
+            ],
+            "ADV-ANA-001",
+        )
+        self.assertEqual(
+            by_name["manifest"][
+                by_name["manifest"].index("--oracle-dependency-case") + 1
+            ],
+            "ADV-ANA-001",
+        )
 
     def test_failure_tail_is_bounded(self):
         output = "\n".join(f"line {number}" for number in range(100))

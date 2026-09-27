@@ -19,6 +19,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_CASE = "ADV-ANA-001"
+ORACLE_CALIBRATION_CASES = {
+    "DRY-007": "ADV-ANA-001",
+    "WET-008": "ADV-ANA-001",
+}
 BLOCKED_MARKERS = (
     "docker is required",
     "docker daemon",
@@ -60,85 +64,119 @@ def commands_for(check: str, case_id: str, report: Path) -> list[tuple[str, list
     oracle = [bash, str(REPO / "scripts" / "run-corpus.sh"), "oracle", case_id]
     if check == "oracle":
         return [("oracle", oracle)]
+    calibration_case = ORACLE_CALIBRATION_CASES.get(case_id)
     manifest = report.with_name("run-manifest.json")
-    return [
+    commands = [
         (
             "candidate",
             [bash, str(REPO / "scripts" / "run-corpus.sh"), "candidate", case_id, "10"],
         ),
-        ("oracle", oracle),
-        (
-            "input-audit",
-            [
-                sys.executable,
-                str(REPO / "scripts" / "corpus" / "audit_corpus_inputs.py"),
-                "--candidate-dir",
-                str(REPO / "target" / "corpus" / "candidate"),
-                "--oracle-dir",
-                str(REPO / "target" / "corpus" / "oracle"),
-                "--require-oracle",
-                "--case",
-                case_id,
-            ],
-        ),
-        (
-            "comparison",
-            [
-                sys.executable,
-                str(REPO / "scripts" / "corpus" / "compare_corpus.py"),
-                "--candidate-dir",
-                str(REPO / "target" / "corpus" / "candidate"),
-                "--oracle-dir",
-                str(REPO / "target" / "corpus" / "oracle"),
-                "--output",
-                str(report),
-                "--case",
-                case_id,
-            ],
-        ),
-        (
-            "manifest",
-            [
-                sys.executable,
-                str(REPO / "scripts" / "corpus" / "write_corpus_manifest.py"),
-                "--output",
-                str(manifest),
-                "--corpus-index",
-                str(REPO / "fixtures" / "corpus" / "corpus.json"),
-                "--oracle-manifest",
-                str(REPO / "reference" / "flexpart-11.1.json"),
-                "--oracle-checkout",
-                os.environ.get("FLEXPART_DIR", str(REPO.parent / "flexpart")),
-                "--candidate-checkout",
-                str(REPO),
-                "--candidate-dir",
-                str(REPO / "target" / "corpus" / "candidate"),
-                "--oracle-dir",
-                str(REPO / "target" / "corpus" / "oracle"),
-                "--report",
-                str(report),
-                "--cases-dir",
-                str(REPO / "fixtures" / "corpus" / "cases"),
-                "--fortran-fixtures",
-                str(REPO / "fixtures" / "corpus" / "fortran"),
-                "--thresholds",
-                str(REPO / "fixtures" / "corpus" / "thresholds.json"),
-                "--meteo-dir",
-                str(REPO / "target" / "corpus" / "meteo"),
-                "--candidate-exe",
-                str(
-                    REPO
-                    / "target"
-                    / "release"
-                    / ("corpus-run.exe" if os.name == "nt" else "corpus-run")
-                ),
-                "--oracle-exe",
-                str(Path(os.environ.get("FLEXPART_DIR", str(REPO.parent / "flexpart"))) / "src" / "FLEXPART"),
-                "--case",
-                case_id,
-            ],
-        ),
     ]
+    if calibration_case:
+        commands.extend(
+            [
+                (
+                    "oracle-calibration",
+                    [
+                        bash,
+                        str(REPO / "scripts" / "run-corpus.sh"),
+                        "oracle",
+                        calibration_case,
+                    ],
+                ),
+                (
+                    "input-audit-calibration",
+                    [
+                        sys.executable,
+                        str(REPO / "scripts" / "corpus" / "audit_corpus_inputs.py"),
+                        "--oracle-dir",
+                        str(REPO / "target" / "corpus" / "oracle"),
+                        "--require-oracle",
+                        "--case",
+                        calibration_case,
+                    ],
+                ),
+            ]
+        )
+    commands.extend(
+        [
+            ("oracle", oracle),
+            (
+                "input-audit",
+                [
+                    sys.executable,
+                    str(REPO / "scripts" / "corpus" / "audit_corpus_inputs.py"),
+                    "--candidate-dir",
+                    str(REPO / "target" / "corpus" / "candidate"),
+                    "--oracle-dir",
+                    str(REPO / "target" / "corpus" / "oracle"),
+                    "--require-oracle",
+                    "--case",
+                    case_id,
+                ],
+            ),
+        ]
+    )
+    comparison = [
+        sys.executable,
+        str(REPO / "scripts" / "corpus" / "compare_corpus.py"),
+        "--candidate-dir",
+        str(REPO / "target" / "corpus" / "candidate"),
+        "--oracle-dir",
+        str(REPO / "target" / "corpus" / "oracle"),
+        "--output",
+        str(report),
+        "--case",
+        case_id,
+    ]
+    manifest_command = [
+        sys.executable,
+        str(REPO / "scripts" / "corpus" / "write_corpus_manifest.py"),
+        "--output",
+        str(manifest),
+        "--corpus-index",
+        str(REPO / "fixtures" / "corpus" / "corpus.json"),
+        "--oracle-manifest",
+        str(REPO / "reference" / "flexpart-11.1.json"),
+        "--oracle-checkout",
+        os.environ.get("FLEXPART_DIR", str(REPO.parent / "flexpart")),
+        "--candidate-checkout",
+        str(REPO),
+        "--candidate-dir",
+        str(REPO / "target" / "corpus" / "candidate"),
+        "--oracle-dir",
+        str(REPO / "target" / "corpus" / "oracle"),
+        "--report",
+        str(report),
+        "--cases-dir",
+        str(REPO / "fixtures" / "corpus" / "cases"),
+        "--fortran-fixtures",
+        str(REPO / "fixtures" / "corpus" / "fortran"),
+        "--thresholds",
+        str(REPO / "fixtures" / "corpus" / "thresholds.json"),
+        "--meteo-dir",
+        str(REPO / "target" / "corpus" / "meteo"),
+        "--candidate-exe",
+        str(
+            REPO
+            / "target"
+            / "release"
+            / ("corpus-run.exe" if os.name == "nt" else "corpus-run")
+        ),
+        "--oracle-exe",
+        str(
+            Path(os.environ.get("FLEXPART_DIR", str(REPO.parent / "flexpart")))
+            / "src"
+            / "FLEXPART"
+        ),
+        "--case",
+        case_id,
+    ]
+    if calibration_case:
+        comparison.extend(["--oracle-calibration-case", calibration_case])
+        manifest_command.extend(["--oracle-dependency-case", calibration_case])
+    commands.extend([("comparison", comparison), ("manifest", manifest_command)])
+    return commands
 
 
 def bounded_tail(output: str, lines: int = 30) -> list[str]:
@@ -184,6 +222,8 @@ def main() -> None:
 
     started = time.monotonic()
     stage_results = []
+    oracle_cache_statuses = []
+    cache_status_path = REPO / "target" / "corpus" / "oracle-build-status.json"
     state = "PASS"
     diagnostic_tail: list[str] = []
     for stage_name, command in commands_for(args.check, args.case_id, report):
@@ -206,29 +246,49 @@ def main() -> None:
         log_path.write_text(combined, encoding="utf-8")
         if args.verbose and combined:
             print(combined, file=sys.stderr, end="" if combined.endswith("\n") else "\n")
-        stage_results.append(
-            {
-                "stage": stage_name,
-                "exit_code": exit_code,
-                "elapsed_seconds": round(time.monotonic() - stage_started, 3),
-                "log_bytes": len(combined.encode("utf-8")),
-                "log": str(log_path.resolve()),
-            }
-        )
+        stage_result = {
+            "stage": stage_name,
+            "exit_code": exit_code,
+            "elapsed_seconds": round(time.monotonic() - stage_started, 3),
+            "log_bytes": len(combined.encode("utf-8")),
+            "log": str(log_path.resolve()),
+        }
+        cache_status_error = None
+        if exit_code == 0 and stage_name in ("oracle", "oracle-calibration"):
+            try:
+                cache_status = json.loads(cache_status_path.read_text(encoding="utf-8"))
+                if (
+                    not isinstance(cache_status, dict)
+                    or cache_status.get("schema")
+                    != "flexpart-gpu.oracle-build-status.v1"
+                    or cache_status.get("status") not in ("REUSED", "REBUILT")
+                ):
+                    raise ValueError("unexpected schema or status")
+                stage_result["build_cache"] = cache_status
+                oracle_cache_statuses.append(cache_status)
+            except (OSError, ValueError) as error:
+                cache_status_error = f"invalid cache status {cache_status_path}: {error}"
+        stage_results.append(stage_result)
         if exit_code != 0:
             state = "ERROR" if exit_code == 127 else classify_failure(combined)
             diagnostic_tail = bounded_tail(combined)
             break
+        if cache_status_error:
+            state = "ERROR"
+            diagnostic_tail = [cache_status_error]
+            break
+        if args.clean and stage_name == "oracle-calibration":
+            environment["ORACLE_REBUILD"] = "0"
 
     reference = json.loads((REPO / "reference" / "flexpart-11.1.json").read_text(encoding="utf-8"))
-    cache_status_path = REPO / "target" / "corpus" / "oracle-build-status.json"
-    cache_status = None
-    if cache_status_path.is_file():
-        try:
-            cache_status = json.loads(cache_status_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            state = "ERROR"
-            diagnostic_tail = [f"invalid cache status: {cache_status_path}"]
+    cache_status = next(
+        (
+            status
+            for status in oracle_cache_statuses
+            if status.get("status") == "REBUILT"
+        ),
+        oracle_cache_statuses[-1] if oracle_cache_statuses else None,
+    )
     candidate_revision = "unknown"
     candidate_dirty = None
     try:
@@ -244,6 +304,11 @@ def main() -> None:
     ]
     scientific_verdict = "NOT_EVALUATED"
     if args.check == "comparison":
+        calibration_case = ORACLE_CALIBRATION_CASES.get(args.case_id)
+        if calibration_case:
+            evidence.append(
+                str((REPO / "target" / "corpus" / "oracle" / calibration_case).resolve())
+            )
         evidence.extend(
             [
                 str((REPO / "target" / "corpus" / "candidate" / args.case_id).resolve()),
@@ -251,7 +316,11 @@ def main() -> None:
                 str(report.with_name("run-manifest.json").resolve()),
             ]
         )
-        if report.is_file():
+        comparison_completed = any(
+            stage["stage"] == "comparison" and stage["exit_code"] == 0
+            for stage in stage_results
+        )
+        if comparison_completed and report.is_file():
             scientific_verdict = json.loads(report.read_text(encoding="utf-8")).get(
                 "status", "NOT_EVALUATED"
             )

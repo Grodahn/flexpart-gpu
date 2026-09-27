@@ -63,12 +63,16 @@ def validate(metadata_path: Path, identity: dict, image_id: str, executable: Pat
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return False
+    build_log = metadata_path.with_name("build.log")
     return (
-        metadata.get("schema") == SCHEMA
+        isinstance(metadata, dict)
+        and metadata.get("schema") == SCHEMA
         and metadata.get("identity") == identity
         and metadata.get("docker_image_id") == image_id
         and executable.is_file()
         and metadata.get("oracle_executable_sha256") == sha256(executable)
+        and build_log.is_file()
+        and metadata.get("build_log_sha256") == sha256(build_log)
     )
 
 
@@ -101,6 +105,7 @@ def main() -> None:
         "docker_image": "flexpart-fortran:latest",
         "docker_image_id": args.image_id,
         "oracle_executable_sha256": sha256(args.executable),
+        "build_log_sha256": sha256(args.metadata.with_name("build.log")),
     }
     args.metadata.parent.mkdir(parents=True, exist_ok=True)
     args.metadata.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")

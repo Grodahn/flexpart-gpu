@@ -36,6 +36,12 @@ run the gate required by the owning issue. In particular, this focused command
 does not replace `scripts/ci-gate.sh`, `scripts/run-corpus.sh all`, or the #60/#61
 production/CI orchestration once those issues require them.
 
+Focused deposition comparisons also run and audit `ADV-ANA-001`, the inert
+same-grid oracle case already consumed by the existing budget calibration.
+The comparison is restricted to the requested case plus that declared
+dependency, and the focused manifest hashes both oracle input/output trees.
+This prevents unrelated retained oracle results from changing a focused run.
+
 ## Retained artifacts
 
 - Compact summary and complete stage logs:
@@ -66,7 +72,8 @@ of these identities match:
 - pinned checkout `src/makefile_gfortran` SHA-256;
 - literal build arguments `FC=gfortran eta=no arch=x86-64 -j4`;
 - resolved Docker image ID;
-- retained FLEXPART executable SHA-256.
+- retained FLEXPART executable SHA-256;
+- retained full build-log SHA-256.
 
 A missing or malformed record, missing image/executable, changed hash, changed
 revision, or explicit `--clean` produces a rebuild. The normal path performs no

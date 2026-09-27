@@ -2,52 +2,158 @@
 
 > **Status: NOT YET NORMATIVE — issue #91 is open.**
 >
-> This document is the designated repository-level GPU contract. Issue #91 owns its completion and must replace the unresolved sections below with verified decisions before #87, #88, #89, or #90 begins implementation. Until #91 is complete, dependent GPU-port work must not infer or invent missing policy.
+> This document is the designated repository-level GPU contract. Issue #91 owns its completion and verification before #87, #88, #89, or #90 begins implementation. Until #91 is complete, dependent GPU-port work must not infer or invent missing policy.
 
 ## Authority
 
 Once #91 is completed, this document is normative for implementation, modification, composition, and review of GPU calculation code in FLEXPART-GPU.
 
+Issue #91 audits the existing GPU implementation against this contract, closes verified infrastructure gaps, and makes the established architecture explicit. It must not introduce a parallel GPU architecture where the existing implementation already provides a suitable shared mechanism.
+
 The pinned FLEXPART oracle owned by the relevant scientific issue is authoritative for scientific parity when it provides adequate coverage. Existing CPU implementations may be used as migration diagnostics, but a separate CPU reference implementation is not a general prerequisite and CPU/GPU agreement does not replace required FLEXPART-oracle evidence.
 
-## Decisions owned by #91
+## Established GPU architecture
 
-#91 must finalize and document at least:
+FLEXPART-GPU uses:
 
-- GPU runtime/backend and supported execution environment;
-- kernel implementation and dispatch model;
-- host/device memory ownership and lifetime model;
-- explicit transfer and synchronization rules;
-- policy for keeping data device-resident across composed calculation stages;
-- floating-point precision and numerical comparison policy;
-- NaN, infinity, invalid-input and fail-closed behavior;
-- GPU initialization, dispatch and execution error propagation;
-- prohibition and detection of silent CPU fallback;
-- proof that tests actually executed the intended GPU/device path;
-- reusable pinned-FLEXPART-oracle-to-GPU comparison procedure;
-- machine-readable evidence/provenance required from GPU validation.
+- Rust for host-side orchestration;
+- `wgpu` as the GPU runtime and portability layer;
+- WGSL compute shaders for GPU calculation kernels;
+- the existing `GpuContext` as the central owner of `wgpu::Device`, `wgpu::Queue`, and adapter information;
+- the existing shared GPU buffer infrastructure as the default basis for GPU-resident data.
 
-## Invariants already fixed by #91
+All supported GPU calculation paths must integrate with this architecture.
 
-These requirements may not be weakened by downstream GPU-port issues:
+Downstream issues must not introduce an independent GPU runtime, device/queue ownership model, shader runtime, or parallel generic buffer-management architecture unless an existing mechanism is demonstrated to be insufficient and the architectural change is explicitly documented here.
 
-1. Supported production GPU calculations must actually execute on the GPU/device.
-2. Silent CPU fallback is prohibited for paths declared GPU-supported.
-3. Host/device transfers must be explicit; downstream APIs must not hide unnecessary `GPU -> CPU -> GPU` round trips.
-4. The architecture must permit meteorological data to remain device-resident across #87–#90 and the later #76 composition.
-5. Scientific correctness is established against the relevant pinned FLEXPART oracle within the declared tolerance, not merely by agreement with a Rust CPU implementation.
-6. GPU validation must record enough machine-readable evidence to distinguish numerical success from skipped or CPU-fallback execution.
+## Execution and dispatch model
 
-## Unresolved until #91 implementation
+The established composable execution pattern separates command encoding from submission:
 
-The following are intentionally not guessed here:
+1. resource preparation and validation;
+2. `encode_*` functions encode GPU work into a caller-provided `wgpu::CommandEncoder` without submitting or waiting;
+3. reusable `dispatch_*` convenience functions may create an encoder, call the corresponding encode path, submit the command buffer, and synchronize when their API contract requires completion;
+4. composed production paths should prefer encode-level composition so consecutive GPU stages can share a command flow without intermediate host synchronization or readback.
 
-- final backend/runtime decision and supported adapters;
-- concrete buffer/layout abstractions;
-- concrete dispatch API;
-- exact precision policy and tolerances;
-- exact synchronization strategy;
+New composable GPU calculation stages should follow this separation unless a documented technical constraint requires otherwise.
+
+Synchronization must not be introduced merely as an implementation convenience. It must correspond to an actual dependency, host-visible result requirement, validation boundary, or resource-lifetime requirement.
+
+## Device-resident data flow
+
+GPU-resident data is the default between composed GPU calculation stages.
+
+The intended meteorological path is:
+
+`canonical meteorology -> GPU upload -> #87 -> #88 -> #89/#90 -> downstream GPU calculations`
+
+Once meteorological data has entered the GPU calculation pipeline, intermediate results required only by subsequent GPU stages must remain device-resident.
+
+Unnecessary `GPU -> CPU -> GPU` round trips are prohibited.
+
+Host readback is permitted only when the host genuinely consumes the result, for explicit diagnostics/validation, final output, or another documented boundary.
+
+Issues #87–#90 must therefore produce and consume GPU resources that can be composed directly by the later integration work in #76.
+
+## Buffer, transfer, and resource ownership
+
+The existing shared GPU buffer infrastructure is the starting point for new GPU-resident meteorological resources.
+
+The established storage-buffer baseline uses explicit GPU storage resources with transfer capability. Host-to-device updates are explicit queue writes or explicit resource creation from host data. Device-to-host readback is explicit and uses a dedicated staging resource and mapping step; calculation APIs must not hide readback as part of ordinary GPU-stage composition.
+
+Existing long-lived resource types such as `WindBuffers`, `ParticleBuffers`, and related GPU buffer wrappers demonstrate the intended ownership model: GPU resources are created outside individual kernel invocations and can be reused across dispatches.
+
+Issue #91 must audit whether the existing buffer abstractions can represent the resources required by #87–#90 without unnecessary copies or readbacks. New buffer abstractions may be introduced only for requirements not adequately represented by the existing infrastructure.
+
+Buffer ownership and lifetime must make it possible to reuse uploaded meteorological fields across calculation stages and, where scientifically valid, across repeated particle calculations.
+
+Exact meteorological field layouts remain owned by the corresponding scientific implementation issues where they depend on algorithm-specific requirements. They must nevertheless conform to this execution contract.
+
+## GPU versus software execution
+
+A production path declared GPU-supported must execute its calculation kernels through the configured `wgpu` device. Silent substitution with a separate CPU implementation is prohibited.
+
+A software `wgpu` adapter may execute the real WGSL shader path for functional testing where explicitly allowed. Such execution must be distinguishable from hardware-GPU execution and must never be reported as hardware-GPU performance evidence.
+
+Validation evidence must record enough adapter information to determine which execution path was actually used.
+
+## Error handling and fail-closed behavior
+
+GPU initialization, resource creation, shader/pipeline creation, encoding, dispatch, synchronization, and readback failures must propagate explicitly.
+
+A failed GPU path must not silently:
+
+- invoke a CPU implementation;
+- skip the calculation;
+- return placeholder data;
+- downgrade scientific validation requirements.
+
+Where required semantics are unresolved, implementation must fail closed rather than invent behavior.
+
+## Numerical policy
+
+Scientific correctness is determined against the pinned FLEXPART oracle relevant to the calculation being implemented.
+
+Agreement with a Rust CPU implementation is useful for migration diagnostics but is not sufficient scientific validation.
+
+Precision choices, NaN/Inf handling, invalid-input behavior, and comparison tolerances must follow the relevant FLEXPART semantics and the scientific contract of the implementing issue.
+
+Issue #91 must define repository-wide numerical rules where they are infrastructure-level concerns. Algorithm-specific tolerances must not be guessed by #91.
+
+## Execution evidence
+
+GPU validation must produce machine-readable evidence sufficient to establish that:
+
+- the intended WGSL calculation path was dispatched;
+- execution was not silently replaced by a CPU implementation;
+- the selected adapter/backend is identifiable;
+- hardware-GPU execution can be distinguished from software-adapter execution;
+- the FLEXPART oracle and comparison configuration are identifiable;
+- the numerical result satisfies the declared tolerance.
+
+A passing test that skipped GPU execution is not GPU validation.
+
+## Relationship to downstream issues
+
+Issue #91 owns the common GPU execution infrastructure and this contract.
+
+Issues #87–#90 own their respective scientific algorithms and GPU kernels. They must use the architecture defined here rather than independently deciding:
+
+- GPU runtime/backend architecture;
+- device/queue ownership;
+- generic buffer-management strategy;
+- fallback policy;
+- execution-evidence semantics;
+- generic GPU/host transfer policy.
+
+Issue #76 owns composition of the completed stages into the meteorological GPU pipeline.
+
+Issue #77 may optimize or refactor that integrated pipeline, but must preserve this contract unless an explicit architectural change updates this document.
+
+## Completion criteria for issue #91
+
+Issue #91 is complete when:
+
+1. the existing GPU implementation has been audited against this contract;
+2. existing mechanisms have been reused wherever suitable;
+3. verified infrastructure gaps required by #87–#90 have been closed;
+4. no competing GPU architecture has been introduced unnecessarily;
+5. device-resident composition of #87–#90 is architecturally possible;
+6. silent CPU fallback is prevented or detectable;
+7. GPU execution can be demonstrated through machine-readable evidence;
+8. repository-wide numerical, error-propagation, and validation rules owned by #91 are finalized;
+9. remaining algorithm-specific decisions are explicitly delegated to their owning issues rather than guessed here.
+
+After completion of #91, this document is normative for subsequent GPU implementation and review.
+
+## Remaining decisions owned by #91
+
+The following must still be resolved from verified repository/oracle requirements during #91 rather than guessed in advance:
+
+- exact repository-wide floating-point precision policy where not already scientifically constrained;
+- repository-wide NaN/infinity/invalid-input policy where not owned by a scientific issue;
 - exact GPU execution-evidence schema;
-- exact CI GPU availability/skip/failure policy.
+- exact CI hardware-GPU/software-adapter availability, skip, and failure policy;
+- any concrete meteorological resource abstraction proven necessary by the #87–#90 requirements and not already covered by existing GPU buffer infrastructure.
 
-#87–#90 must not start implementation until these items are resolved and #91 is completed.
+#87–#90 must not start implementation until these remaining foundation items are resolved and #91 is completed.

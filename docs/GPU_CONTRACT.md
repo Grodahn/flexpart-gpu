@@ -2,7 +2,7 @@
 
 > **Status: NOT YET NORMATIVE — issue #91 is open.**
 >
-> This document is the designated repository-level GPU contract. Issue #91 owns its completion and verification before #87, #88, #89, or #90 begins implementation. Until #91 is complete, dependent GPU-port work must not infer or invent missing policy.
+> This document is the designated repository-level GPU contract. Issue #91 owns its completion and verification before dependent GPU-port work begins. Until #91 is complete, downstream GPU work must not infer or invent missing policy.
 
 ## Authority
 
@@ -39,31 +39,33 @@ New composable GPU calculation stages should follow this separation unless a doc
 
 Synchronization must not be introduced merely as an implementation convenience. It must correspond to an actual dependency, host-visible result requirement, validation boundary, or resource-lifetime requirement.
 
-## Device-resident data flow
+## End-to-end device-resident calculation path
 
-GPU-resident data is the default between composed GPU calculation stages.
+GPU-resident data is the default between composed GPU calculation stages, not only inside the meteorology port.
 
-The intended meteorological path is:
+The intended production direction is:
 
-`canonical meteorology -> GPU upload -> #87 -> #88 -> #89/#90 -> downstream GPU calculations`
+`canonical meteorology -> GPU upload -> #87 -> #88 -> #89/#90 -> #76 4D composition -> #77 production physics/particle GPU pipeline -> explicit host/output boundary`
 
-Once meteorological data has entered the GPU calculation pipeline, intermediate results required only by subsequent GPU stages must remain device-resident.
+Once data has entered a GPU calculation pipeline, intermediate results consumed only by later GPU stages must remain device-resident.
 
-Unnecessary `GPU -> CPU -> GPU` round trips are prohibited.
+Unnecessary `GPU -> CPU -> GPU` round trips are prohibited across the complete composed production path. Host readback is permitted only when the host genuinely consumes the result, for explicit diagnostics/validation, final output, or another documented boundary.
 
-Host readback is permitted only when the host genuinely consumes the result, for explicit diagnostics/validation, final output, or another documented boundary.
+Issues #87–#90 must produce and consume GPU resources that can be composed directly by #76. Issue #76 must compose those stages through GPU-resource/encode-level interfaces rather than requiring host materialization between stages. Issue #77 must be able to connect the composed meteorology path to production GPU physics/particle consumers without an architectural requirement for intermediate CPU readback.
 
-Issues #87–#90 must therefore produce and consume GPU resources that can be composed directly by the later integration work in #76.
+This is an interface and composition requirement, not permission for #91 to implement #76 or #77 functionality.
+
+The same principle applies to later GPU calculation stages: new APIs must not make host materialization a mandatory boundary when both producer and consumer execute on the GPU.
 
 ## Buffer, transfer, and resource ownership
 
-The existing shared GPU buffer infrastructure is the starting point for new GPU-resident meteorological resources.
+The existing shared GPU buffer infrastructure is the starting point for new GPU-resident meteorological and downstream calculation resources.
 
 The established storage-buffer baseline uses explicit GPU storage resources with transfer capability. Host-to-device updates are explicit queue writes or explicit resource creation from host data. Device-to-host readback is explicit and uses a dedicated staging resource and mapping step; calculation APIs must not hide readback as part of ordinary GPU-stage composition.
 
 Existing long-lived resource types such as `WindBuffers`, `ParticleBuffers`, and related GPU buffer wrappers demonstrate the intended ownership model: GPU resources are created outside individual kernel invocations and can be reused across dispatches.
 
-Issue #91 must audit whether the existing buffer abstractions can represent the resources required by #87–#90 without unnecessary copies or readbacks. New buffer abstractions may be introduced only for requirements not adequately represented by the existing infrastructure.
+Issue #91 must audit whether the existing buffer abstractions and composition model can support #87–#90, #76 integration, and handoff into #77 without unnecessary copies, readbacks, or synchronization. New generic abstractions may be introduced only for requirements not adequately represented by the existing infrastructure.
 
 Buffer ownership and lifetime must make it possible to reuse uploaded meteorological fields across calculation stages and, where scientifically valid, across repeated particle calculations.
 
@@ -115,20 +117,15 @@ A passing test that skipped GPU execution is not GPU validation.
 
 ## Relationship to downstream issues
 
-Issue #91 owns the common GPU execution infrastructure and this contract.
+Issue #91 owns the common GPU execution infrastructure and this repo-wide contract.
 
-Issues #87–#90 own their respective scientific algorithms and GPU kernels. They must use the architecture defined here rather than independently deciding:
+Issues #87–#90 own their respective scientific algorithms and GPU kernels. They must use the architecture defined here rather than independently deciding GPU runtime/backend architecture, device/queue ownership, generic buffer-management strategy, fallback policy, execution-evidence semantics, or generic GPU/host transfer policy.
 
-- GPU runtime/backend architecture;
-- device/queue ownership;
-- generic buffer-management strategy;
-- fallback policy;
-- execution-evidence semantics;
-- generic GPU/host transfer policy.
+Issue #76 owns composition of the completed meteorological stages into the 4D meteorological GPU pipeline. Its implementation must preserve device residency and compose GPU-stage interfaces without mandatory intermediate host readback.
 
-Issue #76 owns composition of the completed stages into the meteorological GPU pipeline.
+Issue #77 owns migration/integration of production physics consumers. It must be able to consume the composed GPU meteorology path directly on-device where the producer and consumer are GPU stages. It may optimize or refactor the integrated pipeline, but must preserve this contract unless an explicit architectural change updates this document.
 
-Issue #77 may optimize or refactor that integrated pipeline, but must preserve this contract unless an explicit architectural change updates this document.
+Later GPU work is governed by the same rules; this contract is not limited to #87–#90.
 
 ## Completion criteria for issue #91
 
@@ -136,9 +133,9 @@ Issue #91 is complete when:
 
 1. the existing GPU implementation has been audited against this contract;
 2. existing mechanisms have been reused wherever suitable;
-3. verified infrastructure gaps required by #87–#90 have been closed;
+3. verified shared-infrastructure gaps required for the downstream GPU pipeline have been closed;
 4. no competing GPU architecture has been introduced unnecessarily;
-5. device-resident composition of #87–#90 is architecturally possible;
+5. device-resident composition of #87–#90 through #76 and handoff into #77 is architecturally possible without mandatory intermediate host readback;
 6. silent CPU fallback is prevented or detectable;
 7. GPU execution can be demonstrated through machine-readable evidence;
 8. repository-wide numerical, error-propagation, and validation rules owned by #91 are finalized;
@@ -154,6 +151,6 @@ The following must still be resolved from verified repository/oracle requirement
 - repository-wide NaN/infinity/invalid-input policy where not owned by a scientific issue;
 - exact GPU execution-evidence schema;
 - exact CI hardware-GPU/software-adapter availability, skip, and failure policy;
-- any concrete meteorological resource abstraction proven necessary by the #87–#90 requirements and not already covered by existing GPU buffer infrastructure.
+- any concrete shared resource/composition abstraction proven necessary for the downstream GPU pipeline and not already covered by existing GPU infrastructure.
 
-#87–#90 must not start implementation until these remaining foundation items are resolved and #91 is completed.
+Dependent GPU-port implementation must not invent these remaining foundation items before #91 is completed.

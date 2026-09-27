@@ -121,6 +121,22 @@ Fail-closed step 2d (#71, interpolation oracle contract):
   `fixtures/interpolation/contract-v1.json` plus provenance and fails on any
   golden, source/object hash, routine-list, or semantic drift.
 
+Fail-closed step 2e (#80, interface-W production oracle):
+
+- Build `scripts/interpolation/w_production_oracle.f90` against all pristine
+  FLEXPART 11.1 objects except the model main program. The driver executes
+  `verttransform_ecmwf_heights`, `verttransform_ecmwf_windfields`, and public
+  `interpol_wind` in the `eta=no` build; linked call-site evidence verifies that
+  `interpol_wind` reaches private `interpol_wind_meter`.
+- Run the deliberately nonlinear interface-omega fixture at both boundaries and
+  three strict-interior particle heights. Recompute direct interpolation on the
+  #30 interface geometry, retain both results and fail if the complete committed
+  report (inputs, intermediate `ww`, outputs, tolerances, verdict, hashes, compiler,
+  linked objects, symbols, and calls) does not reproduce exactly.
+- The frozen conclusion is `not_equivalent`. The checked-in canonical ERA5/ETEX
+  fixture has no vertical-motion field, so this step records that conditional
+  limitation instead of adding provider decoding or #70 eta-dot preprocessing.
+
 Any missing adapter, skipped GPU test, missing oracle artifact, or failed
 comparison exits non-zero. Unwired corpus cases are listed as `NOT_WIRED`,
 never as `PASS`; no placeholder reports success.
@@ -186,6 +202,9 @@ traceable to one concrete run via `GITHUB_RUN_ID`/`GITHUB_SHA` (or
   `interpolation/oracle-build/interpolation-oracle.linked-objects.txt`, direct
   oracle outputs (including `horizontal-geographic-interior.out`) and
   `interpolation/reproducibility-check.log`.
+- `w-production-oracle/w-production-oracle-v1.json`, raw oracle input/output,
+  compiler and linked-object identities, `nm` symbols, extracted call sites,
+  linker cross-reference map, fixture-validation log, and reproducibility log.
 - `gpu-preflight.log`, `sw-wgpu-advection.log`.
 - `candidate-run.log`, `candidate-output.json`,
   `candidate-output-check.log`, `candidate-executable.sha256` (when built).

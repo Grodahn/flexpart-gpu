@@ -616,8 +616,76 @@ print("interpolation contract fixture/provenance reproduced: OK")
   log_info "Interpolation contract fixture reproduced and goldens re-verified analytically."
 fi
 # ---------------------------------------------------------------------------
-# 2e. Canonical model-level vertical sampling and retained report.
-# Interface-staggered motion intentionally fails closed until issue #80.
+# 2e. End-to-end eta=no interface-W production oracle (#80).
+# ---------------------------------------------------------------------------
+if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
+  log_info "Step 2e/6: regenerate and verify the end-to-end W production oracle (#80)..."
+  W_PRODUCTION_DIR="${OUTPUT_DIR}/w-production-oracle"
+  rm -rf "${W_PRODUCTION_DIR}"
+  mkdir -p "${W_PRODUCTION_DIR}/oracle-build"
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/interpolation/prepare_w_production_oracle.py" \
+    --snapshot "${PROJECT_ROOT}/fixtures/vertical/synthetic-column-v1.json" \
+    --motion "${PROJECT_ROOT}/fixtures/vertical/synthetic-omega-interface-nonlinear-v1.json" \
+    --oracle-input "${W_PRODUCTION_DIR}/oracle-input.txt" \
+    --emit-input-only; then
+    fail "Preparing the #80 nonlinear interface-W oracle input failed"
+  fi
+
+  if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
+    ${DOCKER_USER_ARGS} \
+    flexpart-fortran bash \
+      /workspace/flexpart-gpu/scripts/interpolation/w_production_oracle.sh \
+      /workspace/target/ci-gate/w-production-oracle/oracle-build \
+      /workspace/target/ci-gate/w-production-oracle/oracle-input.txt \
+      /workspace/target/ci-gate/w-production-oracle/oracle-output.txt \
+      2>&1 | tee "${W_PRODUCTION_DIR}/oracle-build-run.log"; then
+    fail "Direct pinned FLEXPART #80 W production oracle build/run failed"
+  fi
+
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/interpolation/prepare_w_production_oracle.py" \
+    --snapshot "${PROJECT_ROOT}/fixtures/vertical/synthetic-column-v1.json" \
+    --motion "${PROJECT_ROOT}/fixtures/vertical/synthetic-omega-interface-nonlinear-v1.json" \
+    --oracle-input "${W_PRODUCTION_DIR}/oracle-input.txt" \
+    --oracle-output "${W_PRODUCTION_DIR}/oracle-output.txt" \
+    --oracle-checkout "${ORACLE_CHECKOUT}" \
+    --reference-manifest "${PROJECT_ROOT}/reference/flexpart-11.1.json" \
+    --binary "${W_PRODUCTION_DIR}/oracle-build/w-production-oracle" \
+    --driver "${PROJECT_ROOT}/scripts/interpolation/w_production_oracle.f90" \
+    --harness "${PROJECT_ROOT}/scripts/interpolation/w_production_oracle.sh" \
+    --nm-output "${W_PRODUCTION_DIR}/oracle-build/w-production-oracle.nm" \
+    --call-sites "${W_PRODUCTION_DIR}/oracle-build/w-production-oracle.call-sites" \
+    --link-map "${W_PRODUCTION_DIR}/oracle-build/w-production-oracle.link-map" \
+    --linked-objects "${W_PRODUCTION_DIR}/oracle-build/linked-objects.txt" \
+    --compiler-identity "${W_PRODUCTION_DIR}/oracle-build/compiler-identity.txt" \
+    --real-fixture "${PROJECT_ROOT}/fixtures/meteorology/era5-etex-native-v1.json" \
+    --report "${W_PRODUCTION_DIR}/w-production-oracle-v1.json"; then
+    fail "Packing the #80 W production oracle evidence failed"
+  fi
+
+  if ! "${HOST_PYTHON}" -c '
+import json, sys
+committed = json.load(open(sys.argv[1], encoding="utf-8"))
+regenerated = json.load(open(sys.argv[2], encoding="utf-8"))
+assert committed == regenerated, "#80 W production oracle evidence drifted"
+assert regenerated["conclusion"] in {"equivalent", "not_equivalent"}
+assert all(edge["verified_in_linked_executable"] for edge in regenerated["provenance"]["linked_flexpart"]["verified_call_edges"])
+print("W production oracle fixture reproduced: OK")
+' \
+    "${PROJECT_ROOT}/fixtures/interpolation/w-production-oracle-v1.json" \
+    "${W_PRODUCTION_DIR}/w-production-oracle-v1.json" \
+    2>&1 | tee "${W_PRODUCTION_DIR}/reproducibility-check.log"; then
+    fail "Regenerated #80 W production evidence does not match the committed report"
+  fi
+  if ! cargo test --test w_production_oracle 2>&1 | tee "${W_PRODUCTION_DIR}/fixture-validation.log"; then
+    fail "Rust #80 W production oracle validation tests failed"
+  fi
+  log_info "Pinned #80 W production oracle reproduced with a retained equivalence verdict."
+fi
+
+# ---------------------------------------------------------------------------
+# 2f. Canonical model-level vertical sampling and retained report.
+# Interface-staggered motion remains fail-closed until #80 is reviewed/merged.
 # ---------------------------------------------------------------------------
 VERTICAL_SAMPLING_DIR="${OUTPUT_DIR}/vertical-sampling"
 mkdir -p "${VERTICAL_SAMPLING_DIR}"
@@ -787,6 +855,14 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${OUTPUT_DIR}/interpolation/oracle-output/real-era5-etex-temperature-column.out" \
     --artifact "${OUTPUT_DIR}/vertical-column/real-routine-oracle-output.txt" \
     --artifact "${OUTPUT_DIR}/interpolation/reproducibility-check.log" \
+    --artifact "${OUTPUT_DIR}/w-production-oracle/w-production-oracle-v1.json" \
+    --artifact "${OUTPUT_DIR}/w-production-oracle/oracle-output.txt" \
+    --artifact "${OUTPUT_DIR}/w-production-oracle/oracle-build/compiler-identity.txt" \
+    --artifact "${OUTPUT_DIR}/w-production-oracle/oracle-build/linked-objects.txt" \
+    --artifact "${OUTPUT_DIR}/w-production-oracle/oracle-build/w-production-oracle.nm" \
+    --artifact "${OUTPUT_DIR}/w-production-oracle/oracle-build/w-production-oracle.call-sites" \
+    --artifact "${OUTPUT_DIR}/w-production-oracle/oracle-build/w-production-oracle.link-map" \
+    --artifact "${OUTPUT_DIR}/w-production-oracle/reproducibility-check.log" \
     --artifact "${OUTPUT_DIR}/vertical-sampling/vertical-model-level-regression.json" \
     --artifact "${OUTPUT_DIR}/vertical-sampling/report-validation.log" \
     --input "${PROJECT_ROOT}/reference/flex-extract.json" \

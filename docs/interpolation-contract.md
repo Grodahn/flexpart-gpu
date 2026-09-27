@@ -3,7 +3,7 @@
 Status: frozen reference for issues #72 (horizontal), #73 (vertical), #74 (temporal),
 and #75 (accumulated-field interval/rate normalization).
 
-For #73, model-level meter-coordinate sampling is frozen as direct FLEXPART oracle evidence. The `vertical-interface-wzlev` case freezes the #30 W/interface **handoff geometry/staggering and primitive interpolation behavior only**. Issue #80 now separately freezes pristine FLEXPART's complete `eta=no` W production path and demonstrates that direct interface sampling is not equivalent for the supported nonlinear case. The #73 W/interface implementation remains blocked until the #80 evidence is reviewed and merged.
+For #73, model-level meter-coordinate sampling is frozen as direct FLEXPART oracle evidence. The `vertical-interface-wzlev` case freezes the #30 W/interface **handoff geometry/staggering and primitive interpolation behavior only**. Issue #80 now separately freezes pristine FLEXPART's complete `eta=no` W production path and demonstrates that direct interface sampling is not equivalent for the supported nonlinear case. The #73 W/interface implementation remains blocked until it reproduces the frozen two-stage result or documents an intentional canonical divergence.
 
 This document freezes the *normative* interpolation behavior that the downstream
 interpolation implementation issues must reproduce or explicitly diverge from.

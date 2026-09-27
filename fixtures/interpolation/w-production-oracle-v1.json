@@ -232,7 +232,7 @@
       "harness_source": "scripts/interpolation/w_production_oracle.sh",
       "harness_sha256": "a1e687c4ba94b84317c845074cbf67f92a6024de070c767f1b197aa2f2faa3fb",
       "packer_source": "scripts/interpolation/prepare_w_production_oracle.py",
-      "packer_sha256": "0dc3bae9d7091e871fd04bcdb2f5eca3cbabdd6f81b9ec294be100a4e8d71855",
+      "packer_sha256": "39ecf78eeb158a1a13e4f691f58b032709c0cba8593577e75ec9d1d31b29bb8e",
       "reference_manifest_sha256": "2c13a87733098e385dc12f33d1bf5ca60ba275775f472ec279b8a0a234c3a464",
       "binary_sha256": "9e2ff66ab93a815cd90011943042e23ecf3f44a8ce000de9db819d02f9ef4c95",
       "oracle_output_sha256": "730c08209e4ffd7f7c941926846e53bc9cd30b2b255d69eaf3b21e40337c2671"
@@ -347,7 +347,7 @@
     }
   },
   "handoff_to_issue_73": {
-    "status": "blocked_pending_review_and_merge_of_issue_80",
+    "status": "oracle_frozen_direct_sampling_not_equivalent",
     "required_behavior": "Reproduce the frozen pristine two-stage production result or document an intentional canonical divergence with separate candidate/oracle expectations.",
     "interface_vertical_motion_block_removed": false
   }

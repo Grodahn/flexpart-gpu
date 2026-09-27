@@ -407,7 +407,7 @@ def build_report(args: argparse.Namespace) -> dict:
             },
         },
         "handoff_to_issue_73": {
-            "status": "blocked_pending_review_and_merge_of_issue_80",
+            "status": "oracle_frozen_direct_sampling_not_equivalent",
             "required_behavior": (
                 "Reproduce the frozen pristine two-stage production result or document an "
                 "intentional canonical divergence with separate candidate/oracle expectations."

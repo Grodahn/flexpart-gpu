@@ -199,7 +199,7 @@ fn test_w_production_oracle_real_data_and_issue_73_boundaries_are_explicit() {
         .contains("does not add provider decoding or eta-dot preprocessing"));
     assert_eq!(
         report["handoff_to_issue_73"]["status"],
-        "blocked_pending_review_and_merge_of_issue_80"
+        "oracle_frozen_direct_sampling_not_equivalent"
     );
     assert_eq!(
         report["handoff_to_issue_73"]["interface_vertical_motion_block_removed"],

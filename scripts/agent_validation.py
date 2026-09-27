@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+"""Compact agent-facing entry point for the existing corpus validation path.
+
+Successful runs print one JSON object. Complete subprocess output and all
+scientific artifacts remain on disk. Use ``--verbose`` to mirror full stage
+logs to the terminal, or ``--clean`` to force the pinned Docker/oracle build.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+REPO = Path(__file__).resolve().parents[1]
+DEFAULT_CASE = "ADV-ANA-001"
+BLOCKED_MARKERS = (
+    "docker is required",
+    "docker daemon",
+    "docker api",
+    "permission denied while trying to connect",
+    "not a git checkout",
+    "fortran checkout not found",
+    "could not find the pinned oracle",
+)
+
+
+def git_value(*arguments: str) -> str:
+    """Read candidate identity while tolerating sandbox ownership boundaries."""
+    resolved = REPO.resolve().as_posix()
+    result = subprocess.run(
+        ["git", "-c", f"safe.directory={resolved}", "-C", resolved, *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def canonical_cases() -> set[str]:
+    """Return case ids owned by the existing corpus manifest."""
+    index = json.loads(
+        (REPO / "fixtures" / "corpus" / "corpus.json").read_text(encoding="utf-8")
+    )
+    return {entry["id"] for entry in index["cases"]}
+
+
+def commands_for(check: str, case_id: str, report: Path) -> list[tuple[str, list[str]]]:
+    """Build the minimal stage list without duplicating validation semantics."""
+    default_bash = "bash"
+    windows_git_bash = Path(r"C:\Program Files\Git\bin\bash.exe")
+    if os.name == "nt" and windows_git_bash.is_file():
+        default_bash = str(windows_git_bash)
+    bash = os.environ.get("BASH", default_bash)
+    oracle = [bash, str(REPO / "scripts" / "run-corpus.sh"), "oracle", case_id]
+    if check == "oracle":
+        return [("oracle", oracle)]
+    manifest = report.with_name("run-manifest.json")
+    return [
+        (
+            "candidate",
+            [bash, str(REPO / "scripts" / "run-corpus.sh"), "candidate", case_id, "10"],
+        ),
+        ("oracle", oracle),
+        (
+            "input-audit",
+            [
+                sys.executable,
+                str(REPO / "scripts" / "corpus" / "audit_corpus_inputs.py"),
+                "--candidate-dir",
+                str(REPO / "target" / "corpus" / "candidate"),
+                "--oracle-dir",
+                str(REPO / "target" / "corpus" / "oracle"),
+                "--require-oracle",
+                "--case",
+                case_id,
+            ],
+        ),
+        (
+            "comparison",
+            [
+                sys.executable,
+                str(REPO / "scripts" / "corpus" / "compare_corpus.py"),
+                "--candidate-dir",
+                str(REPO / "target" / "corpus" / "candidate"),
+                "--oracle-dir",
+                str(REPO / "target" / "corpus" / "oracle"),
+                "--output",
+                str(report),
+                "--case",
+                case_id,
+            ],
+        ),
+        (
+            "manifest",
+            [
+                sys.executable,
+                str(REPO / "scripts" / "corpus" / "write_corpus_manifest.py"),
+                "--output",
+                str(manifest),
+                "--corpus-index",
+                str(REPO / "fixtures" / "corpus" / "corpus.json"),
+                "--oracle-manifest",
+                str(REPO / "reference" / "flexpart-11.1.json"),
+                "--oracle-checkout",
+                os.environ.get("FLEXPART_DIR", str(REPO.parent / "flexpart")),
+                "--candidate-checkout",
+                str(REPO),
+                "--candidate-dir",
+                str(REPO / "target" / "corpus" / "candidate"),
+                "--oracle-dir",
+                str(REPO / "target" / "corpus" / "oracle"),
+                "--report",
+                str(report),
+                "--cases-dir",
+                str(REPO / "fixtures" / "corpus" / "cases"),
+                "--fortran-fixtures",
+                str(REPO / "fixtures" / "corpus" / "fortran"),
+                "--thresholds",
+                str(REPO / "fixtures" / "corpus" / "thresholds.json"),
+                "--meteo-dir",
+                str(REPO / "target" / "corpus" / "meteo"),
+                "--candidate-exe",
+                str(
+                    REPO
+                    / "target"
+                    / "release"
+                    / ("corpus-run.exe" if os.name == "nt" else "corpus-run")
+                ),
+                "--oracle-exe",
+                str(Path(os.environ.get("FLEXPART_DIR", str(REPO.parent / "flexpart"))) / "src" / "FLEXPART"),
+                "--case",
+                case_id,
+            ],
+        ),
+    ]
+
+
+def bounded_tail(output: str, lines: int = 30) -> list[str]:
+    """Keep failure diagnostics actionable without dumping full transcripts."""
+    return output.splitlines()[-lines:]
+
+
+def classify_failure(output: str) -> str:
+    """Distinguish absent prerequisites from an executed validation failure."""
+    lowered = output.lower()
+    if any(marker in lowered for marker in BLOCKED_MARKERS):
+        return "BLOCKED"
+    return "FAIL"
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", choices=("oracle", "comparison"), default="comparison")
+    parser.add_argument("--case", dest="case_id", default=DEFAULT_CASE)
+    parser.add_argument("--clean", action="store_true", help="Force a no-cache image/oracle rebuild.")
+    parser.add_argument("--verbose", action="store_true", help="Mirror complete stage logs to stderr.")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Summary/log directory (default: target/agent-validation/<case>).",
+    )
+    args = parser.parse_args()
+
+    if args.case_id not in canonical_cases():
+        parser.error(f"unknown corpus case: {args.case_id}")
+    if args.case_id == "REPEAT-009":
+        parser.error("REPEAT-009 has no pinned oracle counterpart")
+
+    output_dir = args.output_dir or REPO / "target" / "agent-validation" / args.case_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report = output_dir / "comparison-report.json"
+    summary_path = output_dir / "summary.json"
+    environment = os.environ.copy()
+    if args.clean:
+        environment["ORACLE_REBUILD"] = "1"
+    if args.verbose:
+        environment["ORACLE_VERBOSE"] = "1"
+
+    started = time.monotonic()
+    stage_results = []
+    state = "PASS"
+    diagnostic_tail: list[str] = []
+    for stage_name, command in commands_for(args.check, args.case_id, report):
+        stage_started = time.monotonic()
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=REPO,
+                env=environment,
+                capture_output=True,
+                text=True,
+                errors="replace",
+            )
+            exit_code = completed.returncode
+            combined = completed.stdout + completed.stderr
+        except OSError as error:
+            exit_code = 127
+            combined = f"could not start {stage_name}: {error}\n"
+        log_path = output_dir / f"{stage_name}.log"
+        log_path.write_text(combined, encoding="utf-8")
+        if args.verbose and combined:
+            print(combined, file=sys.stderr, end="" if combined.endswith("\n") else "\n")
+        stage_results.append(
+            {
+                "stage": stage_name,
+                "exit_code": exit_code,
+                "elapsed_seconds": round(time.monotonic() - stage_started, 3),
+                "log_bytes": len(combined.encode("utf-8")),
+                "log": str(log_path.resolve()),
+            }
+        )
+        if exit_code != 0:
+            state = "ERROR" if exit_code == 127 else classify_failure(combined)
+            diagnostic_tail = bounded_tail(combined)
+            break
+
+    reference = json.loads((REPO / "reference" / "flexpart-11.1.json").read_text(encoding="utf-8"))
+    cache_status_path = REPO / "target" / "corpus" / "oracle-build-status.json"
+    cache_status = None
+    if cache_status_path.is_file():
+        try:
+            cache_status = json.loads(cache_status_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            state = "ERROR"
+            diagnostic_tail = [f"invalid cache status: {cache_status_path}"]
+    candidate_revision = "unknown"
+    candidate_dirty = None
+    try:
+        candidate_revision = git_value("rev-parse", "HEAD")
+        candidate_dirty = bool(git_value("status", "--porcelain"))
+    except subprocess.SubprocessError as error:
+        if state == "PASS":
+            state = "ERROR"
+            diagnostic_tail = [f"candidate revision unavailable: {error}"]
+
+    evidence = [
+        str((REPO / "target" / "corpus" / "oracle" / args.case_id).resolve()),
+    ]
+    scientific_verdict = "NOT_EVALUATED"
+    if args.check == "comparison":
+        evidence.extend(
+            [
+                str((REPO / "target" / "corpus" / "candidate" / args.case_id).resolve()),
+                str(report.resolve()),
+                str(report.with_name("run-manifest.json").resolve()),
+            ]
+        )
+        if report.is_file():
+            scientific_verdict = json.loads(report.read_text(encoding="utf-8")).get(
+                "status", "NOT_EVALUATED"
+            )
+
+    summary = {
+        "schema": "flexpart-gpu.agent-validation-summary.v1",
+        "state": state,
+        "check": args.check,
+        "case_id": args.case_id,
+        "candidate": {"revision": candidate_revision, "worktree_dirty": candidate_dirty},
+        "oracle": {
+            "kind": "FLEXPART-11.1-pristine",
+            "pinned_commit": reference["pinned_commit"],
+            "build_cache": cache_status,
+        },
+        "scientific_verdict": scientific_verdict,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+        "manual_commands": 1,
+        "terminal_output": {"mode": "compact-json", "bytes": 0},
+        "stages": stage_results,
+        "evidence": evidence,
+        "summary": str(summary_path.resolve()),
+    }
+    if diagnostic_tail:
+        summary["diagnostic_tail"] = diagnostic_tail
+    while True:
+        compact = json.dumps(summary, separators=(",", ":")) + "\n"
+        compact_bytes = len(compact.encode("utf-8"))
+        if summary["terminal_output"]["bytes"] == compact_bytes:
+            break
+        summary["terminal_output"]["bytes"] = compact_bytes
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    print(compact, end="")
+    raise SystemExit(0 if state == "PASS" else 1)
+
+
+if __name__ == "__main__":
+    main()

@@ -288,6 +288,11 @@ def main():
     parser.add_argument("--candidate-dir", required=True)
     parser.add_argument("--oracle-dir", required=False, default=None)
     parser.add_argument("--output", required=True)
+    parser.add_argument(
+        "--case",
+        dest="case_id",
+        help="Report only this canonical case id (focused agent/review runs).",
+    )
     args = parser.parse_args()
 
     candidate_dir = Path(args.candidate_dir)
@@ -296,6 +301,9 @@ def main():
     corpus_index = json.loads((repo_root / "fixtures" / "corpus" / "corpus.json").read_text(encoding="utf-8"))
     thresholds = json.loads((repo_root / "fixtures" / "corpus" / "thresholds.json").read_text(encoding="utf-8"))
     closure_tolerance = thresholds["thresholds"]["budget_closure_rel"]["value"]
+    known_case_ids = {case["id"] for case in corpus_index["cases"]}
+    if args.case_id and args.case_id not in known_case_ids:
+        raise SystemExit(f"unknown corpus case: {args.case_id}")
 
     report = {
         "status": "DIAGNOSTIC_NO_PARITY_VERDICT",
@@ -306,6 +314,8 @@ def main():
     oracle_summaries = load_oracle_summaries(oracle_dir) if oracle_dir is not None else {}
     for case in corpus_index["cases"]:
         case_id = case["id"]
+        if args.case_id and case_id != args.case_id:
+            continue
         if case["status"] != "implemented":
             report["cases"][case_id] = {
                 "status": "blocked",

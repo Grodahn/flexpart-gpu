@@ -75,6 +75,11 @@ def main():
     parser.add_argument("--meteo-dir", default=None)
     parser.add_argument("--candidate-exe", default=None)
     parser.add_argument("--oracle-exe", default=None)
+    parser.add_argument(
+        "--case",
+        dest="case_id",
+        help="Hash and report only this canonical case id for a focused run.",
+    )
     args = parser.parse_args()
 
     reference = json.loads(Path(args.oracle_manifest).read_text(encoding="utf-8"))
@@ -83,13 +88,18 @@ def main():
         raise SystemExit("oracle checkout is not the pinned unmodified FLEXPART source")
     candidate = git_state(Path(args.candidate_checkout))
     corpus_index = json.loads(Path(args.corpus_index).read_text(encoding="utf-8"))
+    known_case_ids = {entry["id"] for entry in corpus_index["cases"]}
+    if args.case_id and args.case_id not in known_case_ids:
+        raise SystemExit(f"unknown corpus case: {args.case_id}")
 
     candidate_dir = Path(args.candidate_dir)
-    candidate_files = hash_tree(candidate_dir)
+    candidate_files = hash_tree(
+        candidate_dir / args.case_id if args.case_id else candidate_dir
+    )
     if not candidate_files:
         raise SystemExit(f"missing candidate artifacts under {candidate_dir}")
     oracle_dir = Path(args.oracle_dir)
-    oracle_files = hash_tree(oracle_dir)
+    oracle_files = hash_tree(oracle_dir / args.case_id if args.case_id else oracle_dir)
 
     # Actually consumed inputs: versioned case definitions, thresholds and
     # Fortran fixtures; generated meteorology; both executables; report.
@@ -100,7 +110,14 @@ def main():
         ("meteo", args.meteo_dir),
     ):
         if root:
-            tree = hash_tree(Path(root))
+            root_path = Path(root)
+            if args.case_id and label == "cases":
+                case_file = root_path / f"{args.case_id}.json"
+                tree = {str(case_file.resolve()): digest(case_file)} if case_file.is_file() else {}
+            elif args.case_id:
+                tree = hash_tree(root_path / args.case_id)
+            else:
+                tree = hash_tree(root_path)
             if tree:
                 inputs_sha256[label] = tree
     if args.thresholds:
@@ -123,7 +140,8 @@ def main():
     # Adapter and seeds come from the candidate per-seed outputs themselves.
     adapters = set()
     seeds = {}
-    for path in sorted(candidate_dir.rglob("seed_*.json")):
+    seed_root = candidate_dir / args.case_id if args.case_id else candidate_dir
+    for path in sorted(seed_root.rglob("seed_*.json")):
         try:
             seed = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
@@ -145,6 +163,7 @@ def main():
     manifest = {
         "status": "PROVENANCE_ONLY_NO_PARITY_VERDICT",
         "corpus_version": corpus_index.get("version"),
+        "cases": [args.case_id] if args.case_id else sorted(seeds),
         "input_audit": "INPUT_EQUIVALENCE_NOT_DEMONSTRATED remains in force for ETEX mini; "
         "no green corpus metric overrides it.",
         "oracle": oracle,

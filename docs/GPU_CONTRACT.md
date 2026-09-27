@@ -2,13 +2,15 @@
 
 > **Status: NOT YET NORMATIVE — issue #91 is open.**
 >
-> This document is the designated repository-level GPU contract. Issue #91 owns its completion and verification before dependent GPU-port work begins. Until #91 is complete, downstream GPU work must not infer or invent missing policy.
+> This document is the designated repository-level GPU contract. Issue #91 owns its completion and verification before dependent calculative GPU work begins. Until #91 is complete, downstream GPU work must not infer or invent missing policy.
 
 ## Authority
 
-Once #91 is completed, this document is normative for implementation, modification, composition, and review of GPU calculation code in FLEXPART-GPU.
+Once #91 is completed, this document is normative for implementation, modification, composition, integration, and review of GPU calculation code in FLEXPART-GPU.
 
 Issue #91 audits the existing GPU implementation against this contract, closes verified infrastructure gaps, and makes the established architecture explicit. It must not introduce a parallel GPU architecture where the existing implementation already provides a suitable shared mechanism.
+
+The repository-wide data/calculation-flow map is documented in [`GPU_PIPELINE.md`](GPU_PIPELINE.md). That file is the required architectural companion to this contract: it shows the current and target pipeline, resource residency, transfer boundaries and issue ownership. This contract remains authoritative if the documents ever conflict. Any architectural change that alters the repository-wide GPU data flow must keep both documents consistent.
 
 The pinned FLEXPART oracle owned by the relevant scientific issue is authoritative for scientific parity when it provides adequate coverage. Existing CPU implementations may be used as migration diagnostics, but a separate CPU reference implementation is not a general prerequisite and CPU/GPU agreement does not replace required FLEXPART-oracle evidence.
 
@@ -43,11 +45,13 @@ Synchronization must not be introduced merely as an implementation convenience. 
 
 GPU-resident data is the default between composed GPU calculation stages, not only inside the meteorology port.
 
-The intended production direction is:
+At contract level, the intended production direction is:
 
-`canonical meteorology -> GPU upload -> #87 -> #88 -> #89/#90 -> #76 4D composition -> #77 production physics/particle GPU pipeline -> explicit host/output boundary`
+`canonical meteorology + derived runtime geometry -> explicit GPU resource upload -> GPU-resident canonical meteorology operations (#87/#88/#89 and #90-derived accumulated-field resources) -> #76 composition -> #77 production-consumer integration -> downstream GPU physics/particle pipeline -> explicit host/output boundary`
 
-Once data has entered a GPU calculation pipeline, intermediate results consumed only by later GPU stages must remain device-resident.
+This notation describes architectural ownership and residency, **not** one universal scientific call stack. #76 must compose the relevant operations in the order required by each owning scientific contract and the pinned FLEXPART oracle. In particular, accumulated-field interval/reset transformation is a distinct field-class boundary rather than an ordinary fourth interpolation stage. The detailed flow and current-to-target migration map are in [`GPU_PIPELINE.md`](GPU_PIPELINE.md).
+
+Once data has entered a GPU calculation pipeline, intermediate results required only by later GPU stages must remain device-resident.
 
 Unnecessary `GPU -> CPU -> GPU` round trips are prohibited across the complete composed production path. Host readback is permitted only when the host genuinely consumes the result, for explicit diagnostics/validation, final output, or another documented boundary.
 
@@ -65,7 +69,7 @@ The established storage-buffer baseline uses explicit GPU storage resources with
 
 Existing long-lived resource types such as `WindBuffers`, `ParticleBuffers`, and related GPU buffer wrappers demonstrate the intended ownership model: GPU resources are created outside individual kernel invocations and can be reused across dispatches.
 
-Issue #91 must audit whether the existing buffer abstractions and composition model can support #87–#90, #76 integration, and handoff into #77 without unnecessary copies, readbacks, or synchronization. New generic abstractions may be introduced only for requirements not adequately represented by the existing infrastructure.
+Issue #91 must audit whether the existing buffer abstractions and composition model can support the repository-wide resource lifetimes described in `GPU_PIPELINE.md`, including #87–#90, #76 integration, handoff into #77, and later calculative GPU work, without unnecessary copies, readbacks, or synchronization. New generic abstractions may be introduced only for requirements not adequately represented by the existing infrastructure.
 
 Buffer ownership and lifetime must make it possible to reuse uploaded meteorological fields across calculation stages and, where scientifically valid, across repeated particle calculations.
 
@@ -121,7 +125,7 @@ Issue #91 owns the common GPU execution infrastructure and this repo-wide contra
 
 Issues #87–#90 own their respective scientific algorithms and GPU kernels. They must use the architecture defined here rather than independently deciding GPU runtime/backend architecture, device/queue ownership, generic buffer-management strategy, fallback policy, execution-evidence semantics, or generic GPU/host transfer policy.
 
-Issue #76 owns composition of the completed meteorological stages into the 4D meteorological GPU pipeline. Its implementation must preserve device residency and compose GPU-stage interfaces without mandatory intermediate host readback.
+Issue #76 owns composition of the completed meteorological stages into the canonical 4D meteorological GPU path. Its implementation must preserve device residency and compose GPU-stage interfaces without mandatory intermediate host readback. It must not infer a universal operation order from the architecture diagram; field-specific order and branching come from the owning scientific contracts/oracles.
 
 Issue #77 owns migration/integration of production physics consumers. It must be able to consume the composed GPU meteorology path directly on-device where the producer and consumer are GPU stages. It may optimize or refactor the integrated pipeline, but must preserve this contract unless an explicit architectural change updates this document.
 
@@ -135,11 +139,12 @@ Issue #91 is complete when:
 2. existing mechanisms have been reused wherever suitable;
 3. verified shared-infrastructure gaps required for the downstream GPU pipeline have been closed;
 4. no competing GPU architecture has been introduced unnecessarily;
-5. device-resident composition of #87–#90 through #76 and handoff into #77 is architecturally possible without mandatory intermediate host readback;
-6. silent CPU fallback is prevented or detectable;
-7. GPU execution can be demonstrated through machine-readable evidence;
-8. repository-wide numerical, error-propagation, and validation rules owned by #91 are finalized;
-9. remaining algorithm-specific decisions are explicitly delegated to their owning issues rather than guessed here.
+5. `GPU_PIPELINE.md` reflects the verified current architecture, the target repository-wide data flow, and the intended host/device boundaries without inventing algorithm-specific semantics;
+6. device-resident composition of #87–#90 through #76 and handoff into #77 is architecturally possible without mandatory intermediate host readback;
+7. silent CPU fallback is prevented or detectable;
+8. GPU execution can be demonstrated through machine-readable evidence;
+9. repository-wide numerical, error-propagation, and validation rules owned by #91 are finalized;
+10. remaining algorithm-specific decisions are explicitly delegated to their owning issues rather than guessed here.
 
 After completion of #91, this document is normative for subsequent GPU implementation and review.
 

@@ -24,6 +24,12 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def canonical_text_sha256(path: Path) -> str:
+    """Hash text provenance independently of checkout newline conversion."""
+    normalized = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(normalized).hexdigest()
+
+
 def git(checkout: Path, *arguments: str) -> str:
     safe_checkout = checkout.resolve().as_posix()
     return subprocess.run(
@@ -111,7 +117,8 @@ def emit_input(snapshot_path: Path, motion_path: Path, output_path: Path) -> Non
     lines.append(str(len(queries)))
     lines.extend(f"{kind} {level} {fraction}" for kind, level, fraction in queries)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    with output_path.open("w", encoding="utf-8", newline="\n") as output_file:
+        output_file.write("\n".join(lines) + "\n")
 
 
 def parse_oracle_output(path: Path) -> dict:
@@ -300,7 +307,7 @@ def build_report(args: argparse.Namespace) -> dict:
     direct_objects = [
         {
             "path": source,
-            "source_sha256": sha256(args.oracle_checkout / source),
+            "source_sha256": canonical_text_sha256(args.oracle_checkout / source),
             "object": Path(source).with_suffix(".o").name,
             "object_sha256": sha256(args.oracle_checkout / "src" / Path(source).with_suffix(".o").name),
         }
@@ -343,15 +350,15 @@ def build_report(args: argparse.Namespace) -> dict:
             "profile": "deliberately_non_linear_interface_omega",
             "source_snapshot": "fixtures/vertical/synthetic-column-v1.json",
             "source_motion": "fixtures/vertical/synthetic-omega-interface-nonlinear-v1.json",
-            "input_sha256": sha256(args.oracle_input),
-            "snapshot_sha256": sha256(args.snapshot),
-            "motion_sha256": sha256(args.motion),
+            "input_sha256": canonical_text_sha256(args.oracle_input),
+            "snapshot_sha256": canonical_text_sha256(args.snapshot),
+            "motion_sha256": canonical_text_sha256(args.motion),
             **parsed,
             "comparisons": comparisons,
         },
         "real_data_obligation": {
             "canonical_fixture": "fixtures/meteorology/era5-etex-native-v1.json",
-            "fixture_sha256": sha256(args.real_fixture),
+            "fixture_sha256": canonical_text_sha256(args.real_fixture),
             "vertical_motion_fields_present": real_motion_fields,
             "status": "not_available_in_checked_in_canonical_fixture" if not real_motion_fields else "available",
             "scope_result": (
@@ -378,12 +385,12 @@ def build_report(args: argparse.Namespace) -> dict:
                     "coordinate_mode": "eta=no",
                 },
                 "driver_source": "scripts/interpolation/w_production_oracle.f90",
-                "driver_sha256": sha256(args.driver),
+                "driver_sha256": canonical_text_sha256(args.driver),
                 "harness_source": "scripts/interpolation/w_production_oracle.sh",
-                "harness_sha256": sha256(args.harness),
+                "harness_sha256": canonical_text_sha256(args.harness),
                 "packer_source": "scripts/interpolation/prepare_w_production_oracle.py",
-                "packer_sha256": sha256(Path(__file__).resolve()),
-                "reference_manifest_sha256": sha256(args.reference_manifest),
+                "packer_sha256": canonical_text_sha256(Path(__file__).resolve()),
+                "reference_manifest_sha256": canonical_text_sha256(args.reference_manifest),
                 "binary_sha256": sha256(args.binary),
                 "oracle_output_sha256": sha256(args.oracle_output),
             },

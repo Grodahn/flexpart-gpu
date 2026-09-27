@@ -25,8 +25,8 @@
     "profile": "deliberately_non_linear_interface_omega",
     "source_snapshot": "fixtures/vertical/synthetic-column-v1.json",
     "source_motion": "fixtures/vertical/synthetic-omega-interface-nonlinear-v1.json",
-    "input_sha256": "629c86e5e2e3087b4699e915d5a76f15b99fa54cafc5e27e7e2193cb71e19192",
-    "snapshot_sha256": "db5b2b2b86622d6e985d6b434b12e3dd7269a8605eec70d5b88792886a3f25fe",
+    "input_sha256": "6666b14c7cb5e5e38a0ab4b7f3a20162d37792b6d52fdc0c78b5e2da7bcb57ac",
+    "snapshot_sha256": "21b93661a3e9c101aae1967ad1050fe13c67a8b77704638f165fec1be9f732f2",
     "motion_sha256": "30a6a0e7201286b73eddba7d792b133ab3a49460a3d0d213ab88fc5e8c1594b8",
     "native_levels": 3,
     "model_grid": [
@@ -194,7 +194,7 @@
   },
   "real_data_obligation": {
     "canonical_fixture": "fixtures/meteorology/era5-etex-native-v1.json",
-    "fixture_sha256": "b48447864fa2db4d61d8141a852099977dc78c729c9bb46d3b320c5f75dffec0",
+    "fixture_sha256": "a88723556201302298e17ab01eba2bedd830bc29f99548f50f52d27805f28b13",
     "vertical_motion_fields_present": [],
     "status": "not_available_in_checked_in_canonical_fixture",
     "scope_result": "The checked-in #29/#30 canonical ERA5/ETEX fixture contains thermodynamic fields but no vertical-motion field; #80 therefore retains synthetic direct-oracle proof and does not add provider decoding or eta-dot preprocessing."
@@ -232,8 +232,8 @@
       "harness_source": "scripts/interpolation/w_production_oracle.sh",
       "harness_sha256": "a1e687c4ba94b84317c845074cbf67f92a6024de070c767f1b197aa2f2faa3fb",
       "packer_source": "scripts/interpolation/prepare_w_production_oracle.py",
-      "packer_sha256": "dfb37b60c68e903bfab7f141339a48128a281c7d468ac0709801388063a370af",
-      "reference_manifest_sha256": "f74dc7136bbf507d2585d91dbb6a180dadf0b8fb5b6f38bd07f4cee83d14b5d7",
+      "packer_sha256": "0dc3bae9d7091e871fd04bcdb2f5eca3cbabdd6f81b9ec294be100a4e8d71855",
+      "reference_manifest_sha256": "2c13a87733098e385dc12f33d1bf5ca60ba275775f472ec279b8a0a234c3a464",
       "binary_sha256": "9e2ff66ab93a815cd90011943042e23ecf3f44a8ce000de9db819d02f9ef4c95",
       "oracle_output_sha256": "730c08209e4ffd7f7c941926846e53bc9cd30b2b255d69eaf3b21e40337c2671"
     },
@@ -288,19 +288,19 @@
       "direct_routine_objects": [
         {
           "path": "src/verttransform_mod.f90",
-          "source_sha256": "78a0f0a809929707fe2ed503419819b12f9d6ba76074c2f9f0bfade1612b9053",
+          "source_sha256": "7d7ba231f960779dc63f19073103c489441da116cec12c6b8875dc06a5b7422c",
           "object": "verttransform_mod.o",
           "object_sha256": "8982cfd03a7e232a32eeee45a905cd1afc2662236dce7dce66db440293e7ff90"
         },
         {
           "path": "src/interpol_mod.f90",
-          "source_sha256": "08727268302a79a20eee51826f4c7090966e0c585b215565a3ad0366b6934b41",
+          "source_sha256": "cc7ab1a55267971ca540d88d3992c613897e0a219da5b66fe2358b5eaeb9bf63",
           "object": "interpol_mod.o",
           "object_sha256": "cd68b5c7ccb31634a93fbcbfaf472fe9e7062720dd7d2f1aba3f92422d93be62"
         },
         {
           "path": "src/windfields_mod.f90",
-          "source_sha256": "d3c732a74884c6218ba09a36d6d99beef6340b4c99423313c868a2689fece81a",
+          "source_sha256": "440ec62b9a7b8f4534e913b2af2a41aabdf44072b3fe77edbc213866e698e7d1",
           "object": "windfields_mod.o",
           "object_sha256": "156efe7bbb4fb3632b6162ef872a90f502f249f65b8056f46ff7171e279f2c9d"
         }

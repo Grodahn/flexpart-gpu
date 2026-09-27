@@ -15,6 +15,13 @@ fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+fn canonical_text_sha256_hex(bytes: &[u8]) -> String {
+    let normalized = String::from_utf8_lossy(bytes)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
+    sha256_hex(normalized.as_bytes())
+}
+
 fn as_f64(value: &Value, context: &str) -> f64 {
     value
         .as_f64()
@@ -102,8 +109,14 @@ fn test_w_production_oracle_contract_is_complete_and_not_equivalent() {
     }
 
     let synthetic = &report["synthetic_case"];
-    assert_eq!(synthetic["snapshot_sha256"], sha256_hex(SNAPSHOT));
-    assert_eq!(synthetic["motion_sha256"], sha256_hex(MOTION));
+    assert_eq!(
+        synthetic["snapshot_sha256"],
+        canonical_text_sha256_hex(SNAPSHOT)
+    );
+    assert_eq!(
+        synthetic["motion_sha256"],
+        canonical_text_sha256_hex(MOTION)
+    );
     let motion: Value = serde_json::from_slice(MOTION).expect("nonlinear motion fixture");
     assert_eq!(motion["profile_shape"], "deliberately_non_linear");
     let omega = motion["values"].as_array().expect("omega values");
@@ -168,7 +181,10 @@ fn test_w_production_oracle_contract_is_complete_and_not_equivalent() {
 fn test_w_production_oracle_real_data_and_issue_73_boundaries_are_explicit() {
     let report: Value = serde_json::from_str(REPORT).expect("#80 report must parse");
     let real = &report["real_data_obligation"];
-    assert_eq!(real["fixture_sha256"], sha256_hex(REAL_FIXTURE));
+    assert_eq!(
+        real["fixture_sha256"],
+        canonical_text_sha256_hex(REAL_FIXTURE)
+    );
     assert_eq!(
         real["vertical_motion_fields_present"],
         serde_json::json!([])
@@ -190,4 +206,12 @@ fn test_w_production_oracle_real_data_and_issue_73_boundaries_are_explicit() {
         false
     );
     assert!(VERTICAL_SAMPLING_SOURCE.contains("InterfaceVerticalMotionBlocked"));
+}
+
+#[test]
+fn test_w_production_oracle_text_hashes_are_newline_independent() {
+    assert_eq!(
+        canonical_text_sha256_hex(b"first\nsecond\n"),
+        canonical_text_sha256_hex(b"first\r\nsecond\r\n")
+    );
 }

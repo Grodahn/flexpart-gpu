@@ -13,6 +13,8 @@ Complete documentation for the `flexpart-gpu` project.
 
 | Document | Description |
 |----------|-------------|
+| [GPU_CONTRACT.md](GPU_CONTRACT.md) | Normative repository-wide GPU execution, composition, transfer and validation contract |
+| [GPU_PIPELINE.md](GPU_PIPELINE.md) | Current and target end-to-end GPU data/calculation flow, residency and issue ownership |
 | [architecture.md](architecture.md) | Project structure, CPU/GPU split, data flow |
 | [science/](science/README.md) | Scientific foundations (Langevin, Hanna, deposition, coordinates) |
 | [science/simulation-flow.md](science/simulation-flow.md) | Step-by-step execution flow of a timestep |

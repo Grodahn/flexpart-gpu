@@ -3,7 +3,7 @@
 Status: frozen reference for issues #72 (horizontal), #73 (vertical), #74 (temporal),
 and #75 (accumulated-field interval/rate normalization).
 
-For #73, model-level meter-coordinate sampling is frozen as direct FLEXPART oracle evidence. The `vertical-interface-wzlev` case freezes the #30 W/interface **handoff geometry/staggering and primitive interpolation behavior only**; it is not end-to-end evidence for pristine FLEXPART's `eta=no` W production path. That remaining production-path oracle is tracked by #80 and blocks W/interface implementation in #73.
+For #73, model-level meter-coordinate sampling is frozen as direct FLEXPART oracle evidence. The `vertical-interface-wzlev` case freezes the #30 W/interface **handoff geometry/staggering and primitive interpolation behavior only**. Issue #80 now separately freezes pristine FLEXPART's complete `eta=no` W production path and demonstrates that direct interface sampling is not equivalent for the supported nonlinear case. The #73 W/interface implementation remains blocked until the #80 evidence is reviewed and merged.
 
 This document freezes the *normative* interpolation behavior that the downstream
 interpolation implementation issues must reproduce or explicitly diverge from.
@@ -526,12 +526,34 @@ primitive, but does not directly execute this full two-stage path. Because two
 successive interpolations are not generally equivalent to one direct interpolation
 for an arbitrary non-linear profile, no end-to-end W parity claim is made here.
 
-Issue #80 owns the missing direct production-path oracle. It must deliberately include
-a non-linear W profile, execute the pristine
-`verttransform_ecmwf_windfields -> interpol_wind/interpol_wind_meter` path, and
-determine whether #73 may sample `VerticalRuntimeView` W/interface geometry directly
-or must reproduce the pristine two-stage result. **The W/interface portion of #73 is
-blocked on #80.**
+Issue #80 freezes that production path in
+`fixtures/interpolation/w-production-oracle-v1.json`. Its deliberately nonlinear
+interface-omega profile is executed through the compiled pristine routines and sampled
+at the lower and upper boundaries plus three strict-interior heights. The retained
+linked-executable evidence verifies these call edges:
+
+```
+driver -> verttransform_ecmwf_heights
+driver -> verttransform_ecmwf_windfields
+driver -> interpol_wind
+interpol_wind -> interpol_wind_meter
+```
+
+The result is **not equivalent**. The largest observed absolute difference between
+the pristine two-stage result and direct interpolation on the #30 interface geometry
+is `0.057038949297001734 m/s`, compared with the declared combined absolute/relative
+tolerance (`1e-6 m/s`, `1e-5`). The upper production-grid boundary also differs:
+pristine FLEXPART returns `0 m/s`, while direct interface interpolation returns
+`0.015056730163961408 m/s`.
+
+Therefore #73 must reproduce the frozen two-stage result, or document an intentional
+canonical divergence with separate candidate and oracle expectations. This issue does
+not implement that change and does not remove `InterfaceVerticalMotionBlocked`.
+
+The checked-in canonical ERA5/ETEX fixture contains the #29/#30 thermodynamic column
+but no vertical-motion field. The #80 report records
+`not_available_in_checked_in_canonical_fixture` and retains the synthetic direct-oracle
+proof without adding provider decoding or eta-dot preprocessing.
 
 The current fixture remains normative for its narrower claim: #30 W/interface
 geometry/staggering, units/order, and the behavior of the pinned primitive
@@ -545,10 +567,10 @@ unresolved and must not invent behavior:
 - `numpf = 3` temporally-equidistant precipitation scheme
   (`interpol_mod.f90:1317-1340`): dead in the pinned `numpf=1` build. Freezing it
   requires a separate `numpf=3` oracle build.
-- End-to-end meter-coordinate W production sampling (`verttransform_ecmwf_windfields`
-  -> `interpol_wind` -> `interpol_wind_meter`): not frozen by #71. The current
-  `vertical-interface-wzlev` case is a #30 handoff/primitive fixture only. #80 owns
-  the production-path oracle and blocks the W/interface portion of #73.
+- End-to-end meter-coordinate W production sampling remains outside #71. The separate
+  #80 report freezes it and concludes that direct #30-interface sampling is not
+  equivalent. The `vertical-interface-wzlev` case remains a #30 handoff/primitive
+  fixture only.
 - Native ETA-mode `interpol_wind_eta` execution (`interpol_mod.f90:1590-1650`):
   not part of the canonical #30 runtime-geometry boundary.
 - Logarithmic vertical interpolation (`log_interpol=.true.`): not active in the pinned

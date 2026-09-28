@@ -245,21 +245,21 @@ pub fn dispatch_convective_mixing_gpu(
     Ok(())
 }
 
-/// Workflow helper that updates a CPU particle store via GPU when available.
+/// Workflow helper that updates a CPU particle store through the required GPU path.
 ///
-/// Returns:
-/// - `Ok(Some(new_heights))` when a GPU adapter exists and the kernel runs.
-/// - `Ok(None)` when no GPU adapter is available.
+/// A missing adapter is returned as an explicit error; it is never represented
+/// as a successful skipped calculation.
+///
+/// # Errors
+///
+/// Returns [`GpuConvectionWorkflowError`] when GPU initialization, dispatch,
+/// or readback fails.
 pub async fn apply_convective_mixing_step_workflow(
     particles: &mut ParticleStore,
     level_interfaces_m: &[f32],
     matrix: &ConvectiveRedistributionMatrix,
-) -> Result<Option<Vec<f32>>, GpuConvectionWorkflowError> {
-    let ctx = match GpuContext::new().await {
-        Ok(ctx) => ctx,
-        Err(GpuError::NoAdapter) => return Ok(None),
-        Err(err) => return Err(err.into()),
-    };
+) -> Result<Vec<f32>, GpuConvectionWorkflowError> {
+    let ctx = GpuContext::new().await?;
 
     let gpu_particles = ParticleBuffers::from_store(&ctx, particles);
     dispatch_convective_mixing_gpu(&ctx, &gpu_particles, level_interfaces_m, matrix)?;
@@ -271,7 +271,7 @@ pub async fn apply_convective_mixing_step_workflow(
         .iter()
         .map(|particle| particle.pos_z)
         .collect();
-    Ok(Some(heights))
+    Ok(heights)
 }
 
 #[cfg(test)]
@@ -370,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn workflow_api_gracefully_skips_without_adapter() {
+    fn test_convection_workflow_runs_or_fails_explicitly() {
         let inputs = SimplifiedEmanuelInputs {
             level_interfaces_m: vec![0.0, 500.0, 1_500.0, 3_000.0],
             convective_precip_mm_h: 8.0,
@@ -394,14 +394,10 @@ mod tests {
             &mut store,
             &column.level_interfaces_m,
             &matrix,
-        ))
-        .expect("workflow call should succeed");
-
+        ));
         match result {
-            Some(new_heights) => {
-                assert_eq!(new_heights.len(), 2);
-            }
-            None => {
+            Ok(new_heights) => assert_eq!(new_heights.len(), 2),
+            Err(GpuConvectionWorkflowError::Gpu(GpuError::NoAdapter)) => {
                 let after: Vec<f32> = store
                     .as_slice()
                     .iter()
@@ -409,6 +405,7 @@ mod tests {
                     .collect();
                 assert_eq!(after, baseline);
             }
+            Err(error) => panic!("unexpected workflow error: {error}"),
         }
     }
 }

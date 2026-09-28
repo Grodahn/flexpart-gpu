@@ -32,7 +32,8 @@ pub struct GpuAdapterOptions {
     /// (`force_fallback_adapter: true`).
     pub force_software_fallback: bool,
     /// Optional backend override forwarded through `WGPU_BACKEND`.
-    /// `None` leaves backend selection to `wgpu` defaults.
+    /// `None` leaves the current environment unchanged; `auto` clears an
+    /// existing override so `wgpu` can use its defaults.
     pub backend_override: Option<String>,
 }
 

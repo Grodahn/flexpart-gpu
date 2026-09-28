@@ -142,8 +142,11 @@ scripts/gpu-preflight.sh nvidia
 How to interpret the result:
 
 - If adapter shows your physical GPU (for example NVIDIA), you are using real GPU.
-- If adapter shows `llvmpipe` / `Cpu`, you are running on CPU fallback.
-- `compose` can use either real GPU or CPU fallback depending on host/container GPU exposure.
+- If the adapter shows `llvmpipe` / `Cpu`, you are using a software WGSL
+  adapter: the real shader path executes, but this is not hardware-GPU or
+  performance evidence.
+- `compose` can use either a hardware GPU or software WGSL adapter depending on
+  host/container GPU exposure.
 - `nvidia` is the preferred Docker mode when you want to force NVIDIA GPU access.
 
 ## 10) Further reading

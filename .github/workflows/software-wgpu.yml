@@ -21,6 +21,28 @@ jobs:
           icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
           test -n "$icd"
           echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+      - name: Prove H2D, WGSL arithmetic, D2H, and adapter provenance
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-gate
+          cargo run --bin gpu-preflight -- --software --json-output target/ci-gate/gpu-preflight.json 2>&1 | tee target/ci-gate/gpu-preflight.log
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          record = json.loads(Path("target/ci-gate/gpu-preflight.json").read_text(encoding="utf-8"))
+          assert record["schema"] == {
+              "id": "flexpart-gpu.gpu-preflight",
+              "version": 1,
+          }
+          assert record["status"] == "passed"
+          report = record["report"]
+          assert report["adapter"]["adapter_class"] == "software_wgsl"
+          assert report["smoke_test"]["status"] == "passed"
+          assert report["smoke_test"]["actual_value"] == report["smoke_test"]["expected_value"]
+          assert record["failure"] is None
+          assert record["skip_reason"] is None
+          PY
       - name: Run required software WGSL advection smoke test
         run: |
           set -euo pipefail
@@ -67,6 +89,8 @@ jobs:
         with:
           name: software-wgpu-smoke-${{ github.run_id }}
           path: |
+            target/ci-gate/gpu-preflight.json
+            target/ci-gate/gpu-preflight.log
             target/ci-gate/sw-wgpu-advection.log
             target/ci-gate/corpus-subset.log
           retention-days: 30

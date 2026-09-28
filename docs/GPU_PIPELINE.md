@@ -1,6 +1,7 @@
 # GPU Calculation Pipeline Overview
 
-> **Status:** architectural companion to [`GPU_CONTRACT.md`](GPU_CONTRACT.md).
+> **Status:** maintained architecture map established by issue #91 and
+> architectural companion to [`GPU_CONTRACT.md`](GPU_CONTRACT.md).
 >
 > `GPU_CONTRACT.md` is the normative repository-wide contract. This document maps how data and calculations are expected to flow through the repository. If the two ever conflict, `GPU_CONTRACT.md` wins and both documents must be reconciled.
 
@@ -11,7 +12,8 @@ This document provides one end-to-end view of the calculative GPU architecture i
 It distinguishes:
 
 - the currently implemented production path;
-- the target canonical meteorology-to-physics path being established by #91, #87–#90, #76 and #77;
+- the target canonical meteorology-to-physics path constrained by #91 and
+  implemented by #87–#90, #76 and #77;
 - host/device ownership and transfer boundaries;
 - reusable GPU composition boundaries;
 - explicit output/validation readback boundaries.
@@ -32,7 +34,7 @@ The pipeline is **not** a claim that pristine FLEXPART is one linear call stack.
 
 ## Current implemented production path
 
-As of 2026-09-27, the production time loop already demonstrates the repository's intended GPU composition style, but it still uses the pre-#76 meteorology interfaces in several places.
+As audited on 2026-09-28, the production time loop already demonstrates the repository's intended GPU composition style, but it still uses the pre-#76 meteorology interfaces in several places.
 
 Current high-level flow:
 
@@ -81,8 +83,31 @@ Important existing architectural facts:
 - Wind brackets are uploaded when the meteorological bracket changes rather than materializing a fresh host-side wind field for every particle step.
 - The production path already avoids mandatory particle readback every timestep when host synchronization is disabled.
 - Validation may split fused production stages into separate kernels without changing the production architecture.
+- Standalone interpolation, RNG, CBL, convection, and output helpers are
+  explicit standalone/host/validation boundaries, not production composition
+  surfaces. An owning integration ticket must add an encode/resource surface
+  before inserting one between composed GPU stages.
+- `FLEXPART_GPU_PBL_CPU=1` is an explicit migration/diagnostic override. A run using it is not evidence that the GPU PBL path executed.
 
 This current path is evidence for the architecture; it is **not** the final canonical meteorology integration boundary.
+
+### Verified current implementation surfaces
+
+| Concern | Current surface | Residency/transfer consequence |
+| --- | --- | --- |
+| Runtime | `gpu::GpuContext` | One device/queue/adapter owner for the run |
+| Particle state | `gpu::ParticleBuffers` | Persistent device state; incremental release H2D; named diagnostic/output D2H |
+| Wind brackets | `gpu::DualWindBuffers` / `WindBuffers` | Uploaded on bracket/resource change and reused by advection |
+| PBL state | `gpu::PblBuffers` and `SurfaceFieldBuffer` | Persistent/double-buffered resources used by composed turbulence stages |
+| Composed calculation | `simulation::timeloop` plus stage `encode_*` APIs | Multiple dependent stages share a caller-owned encoder and submission |
+| Standalone completion | stage `dispatch_*` helpers | May submit/wait; not used as a forced handoff between composed stages |
+| Readback | typed `download_*` helpers via MAP_READ staging | Explicit host boundary only |
+| Execution evidence | `gpu::evidence` and `gpu-preflight --json-output` | Separates WGSL execution, adapter class, skip/failure, and numerical verdict |
+
+The #91 audit did not find a need for another runtime, command graph, or generic
+buffer layer. The existing owner structs can hold #87–#90 resources for their
+scientifically valid lifetimes; those tickets still own the concrete field
+layouts and bind groups.
 
 ## Target repository-wide pipeline
 
@@ -199,6 +224,7 @@ Consequences:
 - stage-to-stage host waits must not be introduced merely for implementation convenience;
 - a `device.poll`/mapping wait belongs at a host-visible synchronization/readback boundary, not in an ordinary device-resident handoff;
 - resource lifetime must span the consumers that need the data rather than forcing reconstruction or re-upload per stage.
+- initialization, dispatch preparation, mapping, and readback failures propagate as errors; a missing required adapter is not a successful skip.
 
 ## Resource lifetime model
 
@@ -212,7 +238,9 @@ The target resource lifetime is deliberately coarse-grained:
 - **per-step uniforms and query parameters:** timestep/dispatch lifetime;
 - **readback staging resources:** explicit validation/output lifetime only.
 
-#91 must audit whether existing shared buffer abstractions are sufficient for these lifetimes before introducing a new generic resource layer.
+The #91 audit confirmed that existing shared buffer abstractions are sufficient
+for these lifetimes; future work must demonstrate a repository-wide gap before
+introducing a new generic resource layer.
 
 ## Production consumer families
 
@@ -242,6 +270,7 @@ Processes that do not require meteorological sampling, such as a purely paramete
 | Physics consumers | Several kernels still own specialized field access/forcing paths | #77 migrates applicable consumers to canonical GPU meteorology access |
 | Particle state | Persistent GPU buffers already exist | Preserve device residency across production timesteps |
 | Output | GPU gridding + explicit host output is already present | Preserve as an intentional D2H boundary |
+| Evidence | Text logs and issue-specific reports existed; #91 added common typed execution/comparison evidence | Every calculative ticket records WGSL path, adapter class, hashes, oracle, tolerances, and separate execution/numerical verdicts |
 
 ## Issue ownership map
 

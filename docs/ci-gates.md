@@ -9,7 +9,7 @@ scientific parity and does not close Issue #6.
 
 | Job | Workflow | What it proves |
 |-----|----------|----------------|
-| `software-wgpu` | `.github/workflows/software-wgpu.yml` | Real WGSL advection (`SW-WGPU-ADVECTION-001`, 4096 particles, +10 m/s, 3600 s, 36.0 ± 0.2 km) on Mesa Lavapipe. Fails on a missing software adapter, a skipped test, or a missing result; uploads its log as an artifact. |
+| `software-wgpu` | `.github/workflows/software-wgpu.yml` | Versioned H2D/WGSL/D2H preflight evidence plus real WGSL advection (`SW-WGPU-ADVECTION-001`, 4096 particles, +10 m/s, 3600 s, 36.0 ± 0.2 km) on Mesa Lavapipe. Fails on a missing software adapter, skipped execution, missing/invalid JSON evidence, or a missing result; uploads evidence and logs. |
 | `technical-gate` | `.github/workflows/validation-gate.yml` | Small deterministic technical gate via `scripts/ci-gate.sh`: pinned clean oracle verification, oracle Docker build and Fortran compile, `gpu-preflight --software`, the analytical `SW-WGPU-ADVECTION-001` case, and a 1000-particle synthetic candidate smoke on the software adapter, with input/output/provenance checks and machine-readable reports. Fails on any missing adapter, skipped GPU test, missing oracle artifact, or failed comparison; uploads `target/ci-gate/` as an artifact. |
 
 ### Local only (reproducible, not per-PR)
@@ -17,7 +17,7 @@ scientific parity and does not close Issue #6.
 | Command | Prerequisites | What it does |
 |---------|---------------|--------------|
 | `cargo run --bin reference-check -- verify --checkout ../flexpart` | Git, no Fortran needed | Fail-closed pin and cleanliness check of the oracle checkout. |
-| `cargo run --bin gpu-preflight -- --software` | Rust, Vulkan software rasterizer (Lavapipe on Linux, WARP on Windows) | Proves a real software-WGSL adapter and runs the tiny compute smoke test. |
+| `cargo run --bin gpu-preflight -- --software --json-output target/gpu-preflight.json` | Rust, Vulkan software rasterizer (Lavapipe on Linux, WARP on Windows) | Proves explicit H2D, WGSL arithmetic, D2H, result verification, and adapter provenance in the versioned `flexpart-gpu.gpu-preflight` schema. |
 | `FLEXPART_GPU_SOFTWARE=1 cargo test --test integration software_advection` | Same as above | Analytical displacement check, no oracle needed. |
 | `scripts/compare-fortran.sh compose validate` | Docker + Compose, pinned `../flexpart`, Cargo, Python 3 + NumPy | Full synthetic oracle-versus-candidate comparison (10 000 particles, 6 h, 32×32 grid): builds the oracle image, compiles FLEXPART, generates synthetic GRIB, runs both models, compares averaged concentration windows, writes `target/validation/comparison_report.json` and `run_manifest.json`. |
 | `scripts/run-etex.sh mini` | Docker + Compose, Cargo, Python 3 + NumPy, checked-in `fixtures/etex/native-mini/` | Paired ETEX-1 mini run from six native ERA5 snapshots (12 h, 48 GPU steps, four three-hour windows, 108 observation matches). No ERA5 download needed. Repeatable without manual file editing. |
@@ -49,8 +49,9 @@ Fail-closed steps:
 2. Build `flexpart-fortran:latest` and compile `FLEXPART` with
    `make -f makefile_gfortran eta=no arch=x86-64`; require the executable,
    hash it, and require the checkout to stay clean (`gitversion.txt` removed).
-3. Run `gpu-preflight --software`; require `software adapter: true` and
-   `smoke test: PASS` (a skipped smoke test fails).
+3. Run `gpu-preflight --software --json-output ...`; require overall `passed`,
+   adapter class `software_wgsl`, smoke status `passed`, and equal expected/actual
+   values in the JSON record. Text markers remain diagnostic only.
 4. Run `SW-WGPU-ADVECTION-001` with `--exact`; require `test result: ok`,
    `1 passed`, and the analytical marker (a filtered-out or skipped test fails).
 5. Run `fortran-validation` with `PARTICLES=1000`, `SYNC_READBACK=1`,
@@ -205,7 +206,7 @@ traceable to one concrete run via `GITHUB_RUN_ID`/`GITHUB_SHA` (or
 - `w-production-oracle/w-production-oracle-v1.json`, raw oracle input/output,
   compiler and linked-object identities, `nm` symbols, extracted call sites,
   linker cross-reference map, fixture-validation log, and reproducibility log.
-- `gpu-preflight.log`, `sw-wgpu-advection.log`.
+- `gpu-preflight.json`, `gpu-preflight.log`, `sw-wgpu-advection.log`.
 - `candidate-run.log`, `candidate-output.json`,
   `candidate-output-check.log`, `candidate-executable.sha256` (when built).
 - `ci-gate.log` (full console transcript).

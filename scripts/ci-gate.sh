@@ -724,8 +724,30 @@ log_info "Step 3/6: gpu-preflight on the software adapter..."
 export FLEXPART_GPU_SOFTWARE="1"
 export WGPU_BACKEND="${WGPU_BACKEND:-vulkan}"
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
-if ! cargo run --bin gpu-preflight -- --software 2>&1 | tee "${OUTPUT_DIR}/gpu-preflight.log"; then
+if ! cargo run --bin gpu-preflight -- --software \
+  --json-output "${OUTPUT_DIR}/gpu-preflight.json" 2>&1 | tee "${OUTPUT_DIR}/gpu-preflight.log"; then
   fail "gpu-preflight on the software adapter failed (missing adapter or smoke failure)"
+fi
+if ! "${HOST_PYTHON}" - "${OUTPUT_DIR}/gpu-preflight.json" <<'PY'
+import json
+import sys
+
+record = json.load(open(sys.argv[1], encoding="utf-8"))
+assert record["schema"] == {
+    "id": "flexpart-gpu.gpu-preflight",
+    "version": 1,
+}
+assert record["status"] == "passed"
+report = record["report"]
+assert report is not None
+assert report["adapter"]["adapter_class"] == "software_wgsl"
+assert report["smoke_test"]["status"] == "passed"
+assert report["smoke_test"]["actual_value"] == report["smoke_test"]["expected_value"]
+assert record["failure"] is None
+assert record["skip_reason"] is None
+PY
+then
+  fail "Machine-readable GPU preflight evidence is missing or invalid"
 fi
 if ! grep -q "software adapter: true" "${OUTPUT_DIR}/gpu-preflight.log"; then
   fail "Preflight did not select a software adapter (expected 'software adapter: true')"
@@ -841,6 +863,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${CANDIDATE_LOG}" \
     --artifact "${OUTPUT_DIR}/sw-wgpu-advection.log" \
     --artifact "${OUTPUT_DIR}/gpu-preflight.log" \
+    --artifact "${OUTPUT_DIR}/gpu-preflight.json" \
     --artifact "${OUTPUT_DIR}/vertical-column/comparison-report.json" \
     --artifact "${OUTPUT_DIR}/vertical-column/conformance-comparison-report.json" \
     --artifact "${OUTPUT_DIR}/vertical-column/routine-oracle-provenance.json" \

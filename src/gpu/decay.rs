@@ -266,10 +266,10 @@ pub async fn apply_decay_step_gpu(
     dispatch_decay_gpu(ctx, particles, params)
 }
 
-/// Workflow helper that updates a CPU particle store via GPU when available.
+/// Workflow helper that updates a CPU particle store through the required GPU path.
 ///
-/// Returns `Ok(true)` when a GPU adapter exists and the kernel runs,
-/// `Ok(false)` when no GPU adapter is available (graceful skip).
+/// A missing adapter is returned as an explicit error; it is never represented
+/// as a successful skipped calculation.
 ///
 /// # Errors
 ///
@@ -277,12 +277,8 @@ pub async fn apply_decay_step_gpu(
 pub async fn apply_decay_step_workflow(
     particles: &mut ParticleStore,
     params: DecayStepParams,
-) -> Result<bool, GpuDecayWorkflowError> {
-    let ctx = match GpuContext::new().await {
-        Ok(ctx) => ctx,
-        Err(GpuError::NoAdapter) => return Ok(false),
-        Err(err) => return Err(err.into()),
-    };
+) -> Result<(), GpuDecayWorkflowError> {
+    let ctx = GpuContext::new().await?;
 
     let gpu_particles = ParticleBuffers::from_store(&ctx, particles);
     apply_decay_step_gpu(&ctx, &gpu_particles, params).await?;
@@ -291,7 +287,7 @@ pub async fn apply_decay_step_workflow(
     particles.as_mut_slice().copy_from_slice(&updated_particles);
     particles.recount_active();
 
-    Ok(true)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -397,7 +393,7 @@ mod tests {
     }
 
     #[test]
-    fn workflow_api_gracefully_skips_without_adapter() {
+    fn test_decay_workflow_runs_or_fails_explicitly() {
         let mut store = ParticleStore::with_capacity(2);
         store
             .add(particle_at(0.5, 0.5, 1.0, [1.0; MAX_SPECIES]))
@@ -413,15 +409,18 @@ mod tests {
                 dt_seconds: 30.0,
                 decay_constants_s_inv: [0.01, 0.0, 0.0, 0.0],
             },
-        ))
-        .expect("workflow api should not fail on missing adapter");
-
-        if result {
-            assert!(store.as_slice()[0].mass[0] < initial[0][0]);
-            assert!((store.as_slice()[0].mass[1] - initial[0][1]).abs() < f32::EPSILON);
-        } else {
-            let after: Vec<[f32; MAX_SPECIES]> = store.as_slice().iter().map(|p| p.mass).collect();
-            assert_eq!(after, initial);
+        ));
+        match result {
+            Ok(()) => {
+                assert!(store.as_slice()[0].mass[0] < initial[0][0]);
+                assert!((store.as_slice()[0].mass[1] - initial[0][1]).abs() < f32::EPSILON);
+            }
+            Err(GpuDecayWorkflowError::Gpu(GpuError::NoAdapter)) => {
+                let after: Vec<[f32; MAX_SPECIES]> =
+                    store.as_slice().iter().map(|p| p.mass).collect();
+                assert_eq!(after, initial);
+            }
+            Err(error) => panic!("unexpected workflow error: {error}"),
         }
     }
 }

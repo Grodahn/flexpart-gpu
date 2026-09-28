@@ -76,7 +76,7 @@ def git_revision(checkout):
     return {"commit": commit, "dirty": bool(status)}
 
 
-def parse_adapter(preflight_log):
+def parse_adapter(preflight_log, preflight_json):
     info = {
         "name": None,
         "backend": None,
@@ -84,7 +84,32 @@ def parse_adapter(preflight_log):
         "is_software": None,
         "fallback_requested": None,
         "preflight_log": str(preflight_log) if preflight_log else None,
+        "preflight_json": str(preflight_json) if preflight_json else None,
     }
+    json_path = Path(preflight_json) if preflight_json else None
+    if json_path and json_path.is_file():
+        try:
+            record = json.loads(json_path.read_text(encoding="utf-8"))
+            expected_schema = {
+                "id": "flexpart-gpu.gpu-preflight",
+                "version": 1,
+            }
+            if record["schema"] != expected_schema:
+                raise ValueError("unsupported GPU preflight schema")
+            if record["status"] != "passed":
+                raise ValueError("GPU preflight did not pass")
+            report = record["report"]
+            adapter = report["adapter"]
+            info.update({
+                "name": adapter["name"],
+                "backend": adapter["backend"],
+                "type": adapter["device_type"],
+                "is_software": adapter["adapter_class"] == "software_wgsl",
+                "fallback_requested": adapter["software_fallback_requested"],
+            })
+            return info
+        except (KeyError, TypeError, ValueError):
+            pass
     path = Path(preflight_log) if preflight_log else None
     if not path or not path.is_file():
         return info
@@ -148,7 +173,10 @@ def main():
         build_env["build_env_txt"] = build_env_path.read_text(
             encoding="utf-8", errors="replace")
 
-    adapter = parse_adapter(output_dir / "gpu-preflight.log")
+    adapter = parse_adapter(
+        output_dir / "gpu-preflight.log",
+        output_dir / "gpu-preflight.json",
+    )
 
     # Inputs that determine the small gate (hashes for provenance).
     input_files = [
@@ -172,6 +200,7 @@ def main():
         output_dir / "candidate-run.log",
         output_dir / "sw-wgpu-advection.log",
         output_dir / "gpu-preflight.log",
+        output_dir / "gpu-preflight.json",
         output_dir / "oracle-verify.log",
         output_dir / "oracle-build.log",
     ]

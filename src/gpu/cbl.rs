@@ -332,27 +332,27 @@ pub async fn sample_cbl_vertical_velocity_gpu(
     io.download_outputs(ctx).await
 }
 
-/// Workflow helper that runs CBL sampling on GPU when available.
+/// Workflow helper that runs CBL sampling through the required GPU path.
 ///
-/// Returns:
-/// - `Ok(Some(outputs))` when a GPU adapter exists and dispatch succeeds.
-/// - `Ok(None)` when no GPU adapter is available (graceful skip).
+/// A missing adapter is returned as an explicit error; it is never represented
+/// as a successful skipped calculation.
+///
+/// # Errors
+///
+/// Returns [`GpuCblWorkflowError`] when GPU initialization, dispatch, or
+/// readback fails.
 pub async fn sample_cbl_vertical_velocity_workflow(
     particles: &ParticleStore,
     hanna_params: &[HannaParams],
     sampling_inputs: &[CblSamplingInput],
-) -> Result<Option<Vec<CblSamplingOutput>>, GpuCblWorkflowError> {
-    let ctx = match GpuContext::new().await {
-        Ok(ctx) => ctx,
-        Err(GpuError::NoAdapter) => return Ok(None),
-        Err(err) => return Err(err.into()),
-    };
+) -> Result<Vec<CblSamplingOutput>, GpuCblWorkflowError> {
+    let ctx = GpuContext::new().await?;
 
     let gpu_particles = ParticleBuffers::from_store(&ctx, particles);
     let outputs =
         sample_cbl_vertical_velocity_gpu(&ctx, &gpu_particles, hanna_params, sampling_inputs)
             .await?;
-    Ok(Some(outputs))
+    Ok(outputs)
 }
 
 #[cfg(test)]
@@ -572,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn workflow_api_gracefully_skips_without_adapter() {
+    fn test_cbl_workflow_runs_or_fails_explicitly() {
         let mut store = ParticleStore::with_capacity(2);
         store
             .add(make_particle(0.5, 0.5, 100.0))
@@ -606,11 +606,11 @@ mod tests {
             &store,
             &hanna_params,
             &sampling_inputs,
-        ))
-        .expect("workflow should gracefully handle missing adapter");
-
-        if let Some(outputs) = result {
-            assert_eq!(outputs.len(), store.as_slice().len());
+        ));
+        match result {
+            Ok(outputs) => assert_eq!(outputs.len(), store.as_slice().len()),
+            Err(GpuCblWorkflowError::Gpu(GpuError::NoAdapter)) => {}
+            Err(error) => panic!("unexpected workflow error: {error}"),
         }
     }
 }

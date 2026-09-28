@@ -1,11 +1,13 @@
-use anyhow::{anyhow, Result};
-use flexpart_gpu::gpu::{run_preflight, GpuPreflightOptions};
+use std::path::PathBuf;
+
+use anyhow::{anyhow, Context, Result};
+use flexpart_gpu::gpu::{run_preflight_record, GpuExecutionStatus, GpuPreflightOptions};
 
 const USAGE: &str = "\
 GPU runtime preflight check.
 
 Usage:
-  cargo run --bin gpu-preflight -- [--backend <value>] [--software] [--no-smoke]
+  cargo run --bin gpu-preflight -- [--backend <value>] [--software] [--no-smoke] [--json-output <path>]
   cargo run --bin gpu-preflight -- --help
 
 Options:
@@ -15,6 +17,8 @@ Options:
                      not be used as GPU performance values.
   --force-fallback   Alias for --software
   --no-smoke         Skip tiny compute dispatch/readback smoke test
+  --json-output <path>
+                     Write the versioned machine-readable pass/fail record
   -h, --help         Show this help
 
 Environment:
@@ -26,6 +30,7 @@ struct CliOptions {
     backend_override: Option<String>,
     run_smoke_test: bool,
     force_software_fallback: bool,
+    json_output: Option<PathBuf>,
 }
 
 impl Default for CliOptions {
@@ -34,6 +39,7 @@ impl Default for CliOptions {
             backend_override: None,
             run_smoke_test: true,
             force_software_fallback: false,
+            json_output: None,
         }
     }
 }
@@ -67,11 +73,26 @@ where
                     .ok_or_else(|| anyhow!("missing value after --backend"))?;
                 options.backend_override = Some(value);
             }
+            "--json-output" => {
+                let value = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("missing value after --json-output"))?;
+                options.json_output = Some(PathBuf::from(value));
+            }
             _ if argument.starts_with("--backend=") => {
                 let (_, value) = argument
                     .split_once('=')
                     .ok_or_else(|| anyhow!("invalid --backend argument"))?;
                 options.backend_override = Some(value.to_string());
+            }
+            _ if argument.starts_with("--json-output=") => {
+                let (_, value) = argument
+                    .split_once('=')
+                    .ok_or_else(|| anyhow!("invalid --json-output argument"))?;
+                if value.is_empty() {
+                    return Err(anyhow!("missing value after --json-output"));
+                }
+                options.json_output = Some(PathBuf::from(value));
             }
             _ => return Err(anyhow!("unknown argument: {argument}")),
         }
@@ -81,22 +102,29 @@ where
 }
 
 fn print_report(report: &flexpart_gpu::gpu::GpuPreflightReport) {
-    println!("GPU preflight: OK");
     println!("requested backend: {}", report.requested_backend);
     println!(
-        "adapter: {} ({:?}, {:?})",
-        report.adapter_name, report.adapter_backend, report.adapter_type
+        "adapter: {} ({}, {})",
+        report.adapter.name, report.adapter.backend, report.adapter.device_type
     );
-    println!("software fallback requested: {}", report.fallback_requested);
-    println!("software adapter: {}", report.is_software_adapter);
-    if report.is_software_adapter {
+    println!(
+        "software fallback requested: {}",
+        report.adapter.software_fallback_requested
+    );
+    let is_software_adapter =
+        report.adapter.adapter_class == flexpart_gpu::gpu::GpuAdapterClass::SoftwareWgsl;
+    println!("software adapter: {is_software_adapter}");
+    if is_software_adapter {
         println!("note: software WGSL adapter in use; timings must not be used as GPU performance values");
     }
     println!(
         "device ids: vendor=0x{:04x} device=0x{:04x}",
-        report.vendor_id, report.device_id
+        report.adapter.vendor_id, report.adapter.device_id
     );
-    println!("driver: {} | {}", report.driver, report.driver_info);
+    println!(
+        "driver: {} | {}",
+        report.adapter.driver, report.adapter.driver_info
+    );
     println!("limits:");
     println!("  max_bind_groups: {}", report.limits.max_bind_groups);
     println!(
@@ -122,10 +150,16 @@ fn print_report(report: &flexpart_gpu::gpu::GpuPreflightReport) {
         "  supports_wind_texture_sampling: {}",
         report.supports_wind_texture_sampling
     );
-    if let Some(value) = report.smoke_test_value {
-        println!("smoke test: PASS (0x{value:08x})");
-    } else {
-        println!("smoke test: SKIPPED");
+    match report.smoke_test.status {
+        GpuExecutionStatus::Passed => {
+            let value = report
+                .smoke_test
+                .actual_value
+                .expect("passed smoke evidence always contains a value");
+            println!("smoke test: PASS ({value})");
+        }
+        GpuExecutionStatus::Skipped => println!("smoke test: SKIPPED"),
+        GpuExecutionStatus::Failed => println!("smoke test: FAILED"),
     }
 }
 
@@ -137,12 +171,48 @@ fn run() -> Result<()> {
             return Ok(());
         }
         CliCommand::Run(cli) => {
-            let report = pollster::block_on(run_preflight(GpuPreflightOptions {
+            let record = pollster::block_on(run_preflight_record(GpuPreflightOptions {
                 backend_override: cli.backend_override,
                 run_smoke_test: cli.run_smoke_test,
                 force_software_fallback: cli.force_software_fallback,
-            }))?;
-            print_report(&report);
+            }));
+            record
+                .validate()
+                .context("GPU preflight produced an invalid evidence record")?;
+            if let Some(path) = cli.json_output {
+                let json = serde_json::to_string_pretty(&record)
+                    .context("failed to serialize GPU preflight record")?;
+                std::fs::write(&path, format!("{json}\n")).with_context(|| {
+                    format!("failed to write GPU preflight record to {}", path.display())
+                })?;
+            }
+            match record.status {
+                GpuExecutionStatus::Passed => {
+                    println!("GPU preflight: OK");
+                    let report = record
+                        .report
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("passing preflight record lacks report"))?;
+                    print_report(report);
+                }
+                GpuExecutionStatus::Failed => {
+                    return Err(anyhow!(
+                        "{}",
+                        record
+                            .failure
+                            .as_deref()
+                            .unwrap_or("unknown preflight failure")
+                    ));
+                }
+                GpuExecutionStatus::Skipped => {
+                    println!("GPU preflight: SKIPPED (initialization only)");
+                    let report = record
+                        .report
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("skipped preflight record lacks report"))?;
+                    print_report(report);
+                }
+            }
         }
     }
 
@@ -170,7 +240,8 @@ mod tests {
             CliCommand::Run(CliOptions {
                 backend_override: None,
                 run_smoke_test: true,
-                force_software_fallback: false
+                force_software_fallback: false,
+                json_output: None,
             })
         );
     }
@@ -188,7 +259,8 @@ mod tests {
             CliCommand::Run(CliOptions {
                 backend_override: Some("vulkan".to_string()),
                 run_smoke_test: false,
-                force_software_fallback: false
+                force_software_fallback: false,
+                json_output: None,
             })
         );
     }
@@ -202,7 +274,8 @@ mod tests {
             CliCommand::Run(CliOptions {
                 backend_override: None,
                 run_smoke_test: true,
-                force_software_fallback: true
+                force_software_fallback: true,
+                json_output: None,
             })
         );
 
@@ -213,7 +286,8 @@ mod tests {
             CliCommand::Run(CliOptions {
                 backend_override: None,
                 run_smoke_test: true,
-                force_software_fallback: true
+                force_software_fallback: true,
+                json_output: None,
             })
         );
     }
@@ -223,6 +297,21 @@ mod tests {
         let parsed =
             parse_cli_args(vec!["--help".to_string()]).expect("help should parse successfully");
         assert_eq!(parsed, CliCommand::Help);
+    }
+
+    #[test]
+    fn test_parse_cli_args_json_output() {
+        let parsed = parse_cli_args(vec!["--json-output=artifact.json".to_string()])
+            .expect("JSON output path should parse");
+        assert_eq!(
+            parsed,
+            CliCommand::Run(CliOptions {
+                backend_override: None,
+                run_smoke_test: true,
+                force_software_fallback: false,
+                json_output: Some(PathBuf::from("artifact.json")),
+            })
+        );
     }
 
     #[test]

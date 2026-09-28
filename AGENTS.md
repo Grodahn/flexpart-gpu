@@ -25,8 +25,7 @@ official FLEXPART development team.
 
 For any task that implements, modifies, composes, or reviews GPU execution code, read and obey
 `docs/GPU_CONTRACT.md` before making changes. That document is the normative repository-level
-GPU architecture, memory/transfer, execution/error, numerical, and verification contract once
-established by #91.
+GPU architecture, memory/transfer, execution/error, numerical, and verification contract.
 
 **Scientific production calculations are GPU-by-default.** Any issue that implements a
 physics-relevant or numerical calculation used by the supported production path must execute
@@ -302,8 +301,7 @@ renaming).
 
 1. Read this file before starting any task.
 2. For any GPU implementation, modification, composition, or review task, read and obey
-   `docs/GPU_CONTRACT.md` before touching GPU code. If the file does not yet exist because #91
-   is incomplete, GPU implementation work that depends on #91 must not proceed.
+   `docs/GPU_CONTRACT.md` before touching GPU code.
 3. When creating or refining issues, follow **Issue Definition & Task Slicing** above before implementation starts.
 4. For benchmarking/performance tasks, read `docs/benchmarks.md` first and follow
    its methodology (scenario sizing, warm-up/sample settings, and GPU/CPU recipe separation).

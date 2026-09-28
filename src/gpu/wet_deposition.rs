@@ -508,22 +508,22 @@ pub async fn apply_wet_deposition_step_gpu(
     io.download_probabilities(ctx).await
 }
 
-/// Workflow helper that updates a CPU particle store via GPU when available.
+/// Workflow helper that updates a CPU particle store through the required GPU path.
 ///
-/// Returns:
-/// - `Ok(Some(probabilities))` when a GPU adapter exists and the kernel runs.
-/// - `Ok(None)` when no GPU adapter is available (graceful skip).
+/// A missing adapter is returned as an explicit error; it is never represented
+/// as a successful skipped calculation.
+///
+/// # Errors
+///
+/// Returns [`GpuWetDepositionWorkflowError`] when GPU initialization,
+/// dispatch, or readback fails.
 pub async fn apply_wet_deposition_step_workflow(
     particles: &mut ParticleStore,
     scavenging_coefficient_s_inv: &[[f32; MAX_SPECIES]],
     precipitating_fraction: &[f32],
     params: WetDepositionStepParams,
-) -> Result<Option<Vec<[f32; MAX_SPECIES]>>, GpuWetDepositionWorkflowError> {
-    let ctx = match GpuContext::new().await {
-        Ok(ctx) => ctx,
-        Err(GpuError::NoAdapter) => return Ok(None),
-        Err(err) => return Err(err.into()),
-    };
+) -> Result<Vec<[f32; MAX_SPECIES]>, GpuWetDepositionWorkflowError> {
+    let ctx = GpuContext::new().await?;
 
     let gpu_particles = ParticleBuffers::from_store(&ctx, particles);
     let probabilities = apply_wet_deposition_step_gpu(
@@ -539,7 +539,7 @@ pub async fn apply_wet_deposition_step_workflow(
     particles.as_mut_slice().copy_from_slice(&updated_particles);
     particles.recount_active();
 
-    Ok(Some(probabilities))
+    Ok(probabilities)
 }
 
 #[cfg(test)]
@@ -663,7 +663,7 @@ mod tests {
     }
 
     #[test]
-    fn workflow_api_gracefully_skips_without_adapter() {
+    fn test_wet_deposition_workflow_runs_or_fails_explicitly() {
         let mut store = ParticleStore::with_capacity(2);
         let p0 = particle_at(0.5, 0.5, 1.0, 1.0);
         let p1 = particle_at(1.5, 1.5, 2.0, 1.0);
@@ -678,18 +678,15 @@ mod tests {
             &scavenging,
             &precipitating_fraction,
             WetDepositionStepParams { dt_seconds: 30.0 },
-        ))
-        .expect("workflow api should not fail on missing adapter");
-
+        ));
         match result {
-            Some(probabilities) => {
-                assert_eq!(probabilities.len(), 2);
-            }
-            None => {
+            Ok(probabilities) => assert_eq!(probabilities.len(), 2),
+            Err(GpuWetDepositionWorkflowError::Gpu(GpuError::NoAdapter)) => {
                 let mass_after_skip: Vec<f32> =
                     store.as_slice().iter().map(|p| p.mass[0]).collect();
                 assert_eq!(mass_after_skip, initial_mass);
             }
+            Err(error) => panic!("unexpected workflow error: {error}"),
         }
     }
 }

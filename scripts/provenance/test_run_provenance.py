@@ -72,6 +72,7 @@ def _build_manifest(directory: Path, *, oracle_kind="pristine-oracle",
         candidate_revision="abc123",
         candidate_executable_sha256=provenance.digest(candidate_exe),
         oracle_kind=oracle_kind,
+        oracle_revision="c70586c2b7f5258850705325881c61f557ea9bd8",
         oracle_executable_sha256=provenance.digest(oracle_exe),
         oracle_profile={"id": provenance.ORACLE_PROFILE_ID, "version": 1},
         oracle_strategy=strategy,
@@ -84,6 +85,7 @@ def _build_manifest(directory: Path, *, oracle_kind="pristine-oracle",
         candidate_revision="abc123",
         candidate_executable_sha256=provenance.digest(candidate_exe),
         oracle_kind=oracle_kind,
+        oracle_revision="c70586c2b7f5258850705325881c61f557ea9bd8",
         oracle_executable_sha256=provenance.digest(oracle_exe),
         oracle_profile={"id": provenance.ORACLE_PROFILE_ID, "version": 1},
         oracle_strategy=strategy,
@@ -394,22 +396,16 @@ class HardeningTest(unittest.TestCase):
             second.parent.mkdir(parents=True)
             first.write_bytes(b"first")
             second.write_bytes(b"second")
-            manifest = {
-                "schema": {"id": provenance.SCHEMA_ID, "version": 1},
-                "artifacts": {
-                    "inputs": {},
-                    "outputs": {
-                        "case-a/header": provenance.digest(first),
-                        "case-b/header": provenance.digest(second),
-                    },
-                },
+            recorded = {
+                "case-a/header": provenance.digest(first),
+                "case-b/header": provenance.digest(second),
             }
-            manifest_path = root / "run_manifest.json"
-            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-            result = provenance.verify_artifact_set(
-                manifest_path, [("header-a", first), ("header-b", second)])
-            self.assertEqual(result["state"], provenance.ATTRIBUTION_VERIFIED)
-            self.assertEqual(sorted(result["verified"]), ["header-a", "header-b"])
+            self.assertEqual(
+                provenance._resolve_consumed_artifact(recorded, first, [root]),
+                provenance.digest(first))
+            self.assertEqual(
+                provenance._resolve_consumed_artifact(recorded, second, [root]),
+                provenance.digest(second))
 
     def test_consumed_set_rejects_truly_ambiguous_basename(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -423,22 +419,13 @@ class HardeningTest(unittest.TestCase):
             ambiguous = root / "elsewhere" / "header"
             ambiguous.parent.mkdir(parents=True)
             ambiguous.write_bytes(b"first")
-            manifest = {
-                "schema": {"id": provenance.SCHEMA_ID, "version": 1},
-                "artifacts": {
-                    "inputs": {},
-                    "outputs": {
-                        "case-a/header": provenance.digest(first),
-                        "case-b/header": provenance.digest(second),
-                    },
-                },
+            recorded = {
+                "case-a/header": provenance.digest(first),
+                "case-b/header": provenance.digest(second),
             }
-            manifest_path = root / "run_manifest.json"
-            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             with self.assertRaisesRegex(
                     provenance.ProvenanceError, "duplicate artifact identity"):
-                provenance.verify_artifact_set(
-                    manifest_path, [("header", ambiguous)])
+                provenance._resolve_consumed_artifact(recorded, ambiguous, [root])
 
     def test_non_dict_json_document_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -468,7 +455,7 @@ class HardeningTest(unittest.TestCase):
             manifest["artifacts"]["outputs"].pop("seed_000.json")
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             with self.assertRaisesRegex(
-                    provenance.ProvenanceError, "pruned provenance"):
+                    provenance.ProvenanceError, "execution-owned provenance"):
                 provenance.verify_run_manifest(
                     manifest_path, search_roots=[root])
 
@@ -479,7 +466,45 @@ class HardeningTest(unittest.TestCase):
             manifest["artifacts"]["outputs"]["seed_000.json"] = "0" * 64
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             with self.assertRaisesRegex(
-                    provenance.ProvenanceError, "disagree"):
+                    provenance.ProvenanceError, "execution-owned provenance"):
+                provenance.verify_run_manifest(
+                    manifest_path, search_roots=[root])
+
+    def test_unowned_merged_artifact_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, manifest_path, _files = _build_manifest(root)
+            manifest["artifacts"]["outputs"]["unowned.bin"] = "0" * 64
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(
+                    provenance.ProvenanceError, "execution-owned provenance"):
+                provenance.verify_run_manifest(
+                    manifest_path, search_roots=[root])
+
+    def test_consumed_set_does_not_cross_execution_roles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _manifest, manifest_path, files = _build_manifest(root)
+            result = provenance.verify_artifact_set(
+                manifest_path,
+                [("candidate-output", files["oracle_output"], "candidate")])
+            self.assertEqual(result["state"], provenance.ATTRIBUTION_PARTIAL)
+            self.assertEqual(result["verified"], [])
+
+    def test_mutated_binding_cannot_reuse_execution_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, manifest_path, files = _build_manifest(root)
+            replacement_hash = provenance.hash_bytes(b"replacement")
+            candidate = next(
+                record for record in manifest["executions"]
+                if record["role"] == "candidate")
+            candidate["outputs_sha256"][files["output"].name] = replacement_hash
+            manifest["artifacts"]["outputs"][files["output"].name] = replacement_hash
+            files["output"].write_bytes(b"replacement")
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(
+                    provenance.ProvenanceError, "execution identity mismatch"):
                 provenance.verify_run_manifest(
                     manifest_path, search_roots=[root])
 
@@ -506,8 +531,9 @@ class ManifestIntegrityTest(unittest.TestCase):
         document = self._document()
         extra = json.loads(json.dumps(
             next(r for r in document["executions"] if r["role"] == "candidate")))
-        extra["execution_id"] = "b" * 64
         extra["candidate_revision"] = "other-revision"
+        extra["execution_id"] = provenance.derive_execution_id(
+            provenance._execution_binding(extra))
         document["executions"].append(extra)
         document["run_id"] = provenance.derive_run_id(
             [r["execution_id"] for r in document["executions"]])
@@ -519,8 +545,9 @@ class ManifestIntegrityTest(unittest.TestCase):
         document = self._document()
         extra = json.loads(json.dumps(
             next(r for r in document["executions"] if r["role"] == "oracle")))
-        extra["execution_id"] = "b" * 64
         extra["oracle_executable_sha256"] = "f" * 64
+        extra["execution_id"] = provenance.derive_execution_id(
+            provenance._execution_binding(extra))
         document["executions"].append(extra)
         document["run_id"] = provenance.derive_run_id(
             [r["execution_id"] for r in document["executions"]])
@@ -532,6 +559,20 @@ class ManifestIntegrityTest(unittest.TestCase):
         document = self._document()
         document["attribution"]["state"] = provenance.ATTRIBUTION_INVALID
         with self.assertRaisesRegex(provenance.ProvenanceError, "INVALID"):
+            provenance.verify_manifest_integrity(document)
+
+    def test_mutated_candidate_summary_rejected(self):
+        document = self._document()
+        document["candidate"]["revision"] = "unbound-revision"
+        with self.assertRaisesRegex(
+                provenance.ProvenanceError, "summary revision disagrees"):
+            provenance.verify_manifest_integrity(document)
+
+    def test_mutated_oracle_summary_rejected(self):
+        document = self._document()
+        document["oracle"]["pinned_commit"] = "f" * 40
+        with self.assertRaisesRegex(
+                provenance.ProvenanceError, "summary revision disagrees"):
             provenance.verify_manifest_integrity(document)
 
     def test_non_v1_document_rejected(self):

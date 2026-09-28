@@ -233,6 +233,11 @@ def _normalize_artifact_map(entries: dict) -> dict:
     return normalized
 
 
+def normalize_artifact_map(entries: dict) -> dict:
+    """Return portable artifact identities for writer-supplied path/hash maps."""
+    return _normalize_artifact_map(entries)
+
+
 def build_execution_record(
     *,
     role: str,
@@ -241,6 +246,7 @@ def build_execution_record(
     candidate_revision: str | None = None,
     candidate_executable_sha256: str | None = None,
     oracle_kind: str | None = None,
+    oracle_revision: str | None = None,
     oracle_executable_sha256: str | None = None,
     oracle_profile: dict | None = None,
     oracle_strategy: dict | None = None,
@@ -274,6 +280,7 @@ def build_execution_record(
         "candidate_revision": candidate_revision,
         "candidate_executable_sha256": candidate_executable_sha256,
         "oracle_kind": oracle_kind,
+        "oracle_revision": oracle_revision,
         "oracle_executable_sha256": oracle_executable_sha256,
         "oracle_profile": oracle_profile,
         "oracle_strategy": oracle_strategy,
@@ -293,6 +300,7 @@ def build_execution_record(
         "candidate_revision": candidate_revision,
         "candidate_executable_sha256": candidate_executable_sha256,
         "oracle_kind": oracle_kind,
+        "oracle_revision": oracle_revision,
         "oracle_executable_sha256": oracle_executable_sha256,
         "oracle_profile": oracle_profile,
         "oracle_strategy": oracle_strategy,
@@ -303,6 +311,144 @@ def build_execution_record(
         "attribution": ATTRIBUTION_VERIFIED,
     }
     return record
+
+
+def _execution_binding(record: dict) -> dict:
+    """Reconstruct the immutable binding represented by an execution record."""
+    required = (
+        "role",
+        "case_id",
+        "case_manifest_sha256",
+        "case_schema_version",
+        "realization",
+        "candidate_revision",
+        "candidate_executable_sha256",
+        "oracle_kind",
+        "oracle_revision",
+        "oracle_executable_sha256",
+        "oracle_profile",
+        "oracle_strategy",
+        "runtime_adapter",
+        "cpu_runtime",
+        "inputs_sha256",
+        "outputs_sha256",
+    )
+    missing = [field for field in required if field not in record]
+    if missing:
+        raise ProvenanceError(
+            "execution record lacks identity fields: " + ", ".join(missing))
+    return {
+        "schema": {"id": SCHEMA_ID, "version": SCHEMA_VERSION},
+        **{field: record[field] for field in required},
+    }
+
+
+def _verify_execution_identities(executions: list[dict]) -> None:
+    """Reject execution IDs that do not bind the record's immutable fields."""
+    seen: set[str] = set()
+    for record in executions:
+        execution_id = record.get("execution_id", "")
+        _require_hex64(execution_id, "execution_id")
+        if execution_id in seen:
+            raise ProvenanceError(
+                f"duplicate artifact identity: execution {execution_id}")
+        seen.add(execution_id)
+        expected = derive_execution_id(_execution_binding(record))
+        if execution_id != expected:
+            raise ProvenanceError(
+                f"execution identity mismatch for {record.get('role')}:"
+                f"{record.get('case_id')}: recorded immutable binding does not "
+                "derive the recorded execution_id")
+
+
+def _merged_execution_artifacts(executions: list[dict]) -> tuple[dict, dict]:
+    """Return exact merged input/output maps owned by execution records."""
+    merged_inputs: dict[str, str] = {}
+    merged_outputs: dict[str, str] = {}
+    for record in executions:
+        for section, merged in (("inputs_sha256", merged_inputs),
+                                ("outputs_sha256", merged_outputs)):
+            execution_map = record.get(section)
+            if not isinstance(execution_map, dict):
+                raise ProvenanceError(
+                    f"execution {record.get('execution_id', '')[:16]} "
+                    f"lacks a {section} object")
+            for name, value in execution_map.items():
+                _require_hex64(value, f"{section}.{name}")
+                if name in merged and merged[name] != value:
+                    raise ProvenanceError(
+                        f"duplicate artifact identity: {name!r} maps to two hashes")
+                merged[name] = value
+    return merged_inputs, merged_outputs
+
+
+def _verify_merged_artifacts(document: dict, executions: list[dict]) -> None:
+    """Require global artifact indexes to equal execution-owned artifacts."""
+    artifacts = document.get("artifacts")
+    if not isinstance(artifacts, dict):
+        raise ProvenanceError("run manifest lacks an artifacts object")
+    recorded_inputs = artifacts.get("inputs")
+    recorded_outputs = artifacts.get("outputs")
+    if not isinstance(recorded_inputs, dict) or not isinstance(recorded_outputs, dict):
+        raise ProvenanceError("run manifest artifact sections must be objects")
+    expected_inputs, expected_outputs = _merged_execution_artifacts(executions)
+    if recorded_inputs != expected_inputs:
+        raise ProvenanceError(
+            "merged input artifact map differs from execution-owned provenance")
+    if recorded_outputs != expected_outputs:
+        raise ProvenanceError(
+            "merged output artifact map differs from execution-owned provenance")
+
+
+def _verify_summary_bindings(document: dict, executions: list[dict]) -> None:
+    """Reject mutable summary fields that disagree with execution bindings."""
+    cases = document.get("cases")
+    if not isinstance(cases, list) or not cases:
+        raise ProvenanceError("run manifest cases must be a non-empty array")
+    case_bindings = {
+        (case.get("case_id"), case.get("case_manifest_sha256"),
+         case.get("case_schema_version"))
+        for case in cases if isinstance(case, dict)
+    }
+    if len(case_bindings) != len(cases):
+        raise ProvenanceError("run manifest contains duplicate or invalid case bindings")
+    for record in executions:
+        binding = (record.get("case_id"), record.get("case_manifest_sha256"),
+                   record.get("case_schema_version"))
+        if binding not in case_bindings:
+            raise ProvenanceError(
+                f"execution {record['execution_id'][:16]} disagrees with cases summary")
+
+    candidate = document.get("candidate")
+    oracle = document.get("oracle")
+    if not isinstance(candidate, dict) or not isinstance(oracle, dict):
+        raise ProvenanceError("run manifest candidate/oracle summaries must be objects")
+    candidate_records = [record for record in executions
+                         if record.get("role") == "candidate"]
+    oracle_records = [record for record in executions
+                      if record.get("role") == "oracle"]
+    for record in candidate_records:
+        if record.get("candidate_revision") != candidate.get("revision"):
+            raise ProvenanceError(
+                "candidate summary revision disagrees with execution binding")
+        if (record.get("candidate_executable_sha256") !=
+                candidate.get("executable_sha256")):
+            raise ProvenanceError(
+                "candidate summary executable disagrees with execution binding")
+    for record in oracle_records:
+        if record.get("oracle_kind") != oracle.get("kind"):
+            raise ProvenanceError(
+                "oracle summary kind disagrees with execution binding")
+        if record.get("oracle_revision") != oracle.get("pinned_commit"):
+            raise ProvenanceError(
+                "oracle summary revision disagrees with execution binding")
+        if (record.get("oracle_executable_sha256") !=
+                oracle.get("executable_sha256")):
+            raise ProvenanceError(
+                "oracle summary executable disagrees with execution binding")
+        if record.get("oracle_profile") != oracle.get("execution_profile"):
+            raise ProvenanceError(
+                "oracle summary profile disagrees with execution binding")
 
 
 def create_run_manifest(
@@ -380,10 +526,22 @@ def create_run_manifest(
                 merged[name] = value
 
     missing: list[dict] = []
+    roles = {record.get("role") for record in executions}
+    for role in ("candidate", "oracle"):
+        if role not in roles:
+            missing.append({
+                "name": f"executions.{role}",
+                "reason": f"run records no {role} execution; paired attribution is incomplete",
+            })
     if not candidate.get("revision") or candidate.get("revision") == "unknown":
         missing.append({
             "name": "candidate.revision",
             "reason": "no candidate revision tied to the executed artifacts",
+        })
+    if candidate.get("worktree_dirty"):
+        missing.append({
+            "name": "candidate.worktree_clean",
+            "reason": "candidate checkout was dirty at execution time",
         })
     if not candidate.get("executable_sha256"):
         missing.append({
@@ -394,6 +552,11 @@ def create_run_manifest(
         missing.append({
             "name": "oracle.executable_sha256",
             "reason": "no oracle executable hash tied to the executed artifacts",
+        })
+    if oracle.get("worktree_dirty"):
+        missing.append({
+            "name": "oracle.worktree_clean",
+            "reason": "oracle checkout was dirty at execution time",
         })
     if not runtime.get("adapter") and not runtime.get("cpu_runtime"):
         missing.append({
@@ -526,6 +689,7 @@ def verify_manifest_integrity(document: dict) -> None:
         if not isinstance(record, dict) or not isinstance(record.get("execution_id"), str):
             raise ProvenanceError("run manifest execution records must be objects "
                                   "with an execution_id")
+    _verify_execution_identities(executions)
     expected_run = derive_run_id(
         [record["execution_id"] for record in executions])
     if expected_run != document.get("run_id"):
@@ -533,30 +697,7 @@ def verify_manifest_integrity(document: dict) -> None:
             "stale artifact reused under a new run: run_id does not match "
             "the recorded execution identities")
 
-    artifacts = document.get("artifacts")
-    if not isinstance(artifacts, dict):
-        raise ProvenanceError("run manifest lacks an artifacts object")
-    recorded_inputs = artifacts.get("inputs", {})
-    recorded_outputs = artifacts.get("outputs", {})
-    if not isinstance(recorded_inputs, dict) or not isinstance(recorded_outputs, dict):
-        raise ProvenanceError("run manifest artifact sections must be objects")
-    for record in executions:
-        for section, merged in (("inputs_sha256", recorded_inputs),
-                                ("outputs_sha256", recorded_outputs)):
-            execution_map = record.get(section)
-            if not isinstance(execution_map, dict):
-                raise ProvenanceError(
-                    f"execution {record['execution_id'][:16]} lacks a {section} object")
-            for name, value in execution_map.items():
-                if name not in merged:
-                    raise ProvenanceError(
-                        f"execution {record['execution_id'][:16]} records {name!r} "
-                        "which is absent from the merged artifact map; "
-                        "pruned provenance is rejected")
-                if merged[name] != value:
-                    raise ProvenanceError(
-                        f"execution {record['execution_id'][:16]} and the merged "
-                        f"artifact map disagree on {name!r}")
+    _verify_merged_artifacts(document, executions)
 
     candidate_revisions = {
         record.get("candidate_revision")
@@ -575,6 +716,7 @@ def verify_manifest_integrity(document: dict) -> None:
     if len(exe_hashes) > 1:
         raise ProvenanceError(
             f"mismatched oracle identity/build: {sorted(exe_hashes)}")
+    _verify_summary_bindings(document, executions)
     if (document.get("attribution") or {}).get("state") == ATTRIBUTION_INVALID:
         raise ProvenanceError("run manifest is explicitly marked INVALID")
 
@@ -621,37 +763,7 @@ def verify_run_manifest(
             raise ProvenanceError("run manifest execution records must be objects "
                                   "with an execution_id")
 
-    expected_run = derive_run_id(
-        [record["execution_id"] for record in executions])
-    if expected_run != document["run_id"]:
-        raise ProvenanceError(
-            "stale artifact reused under a new run: run_id does not match "
-            "the recorded execution identities")
-
-    recorded_inputs = document["artifacts"].get("inputs", {})
-    recorded_outputs = document["artifacts"].get("outputs", {})
-    if not isinstance(recorded_inputs, dict) or not isinstance(recorded_outputs, dict):
-        raise ProvenanceError("run manifest artifact sections must be objects")
-
-    # The merged artifact maps must cover every execution-recorded hash;
-    # a pruned artifacts entry must not leave execution evidence unverified.
-    for record in executions:
-        for section, merged in (("inputs_sha256", recorded_inputs),
-                                ("outputs_sha256", recorded_outputs)):
-            execution_map = record.get(section)
-            if not isinstance(execution_map, dict):
-                raise ProvenanceError(
-                    f"execution {record['execution_id'][:16]} lacks a {section} object")
-            for name, value in execution_map.items():
-                if name not in merged:
-                    raise ProvenanceError(
-                        f"execution {record['execution_id'][:16]} records {name!r} "
-                        "which is absent from the merged artifact map; "
-                        "pruned provenance is rejected")
-                if merged[name] != value:
-                    raise ProvenanceError(
-                        f"execution {record['execution_id'][:16]} and the merged "
-                        f"artifact map disagree on {name!r}")
+    verify_manifest_integrity(document)
 
     verified: list[str] = []
     for section in ("inputs", "outputs"):
@@ -708,16 +820,18 @@ def verify_run_manifest(
 
 def verify_artifact_set(
     manifest_path: Path | str,
-    labeled_paths: list[tuple[str, Path | str]],
+    labeled_paths: list[tuple[str, Path | str] | tuple[str, Path | str, str]],
     *,
     search_roots: list[Path | str] | None = None,
 ) -> dict:
     """Verify an explicit consumed-artifact set against a v1 manifest.
 
-    ``labeled_paths`` holds ``(label, path)`` pairs actually consumed by
-    a report. Every consumed file must be covered by the manifest with a
-    matching hash; uncovered files are reported machine-readably and the
-    result stays ``PARTIAL``. Hash mismatches raise
+    ``labeled_paths`` holds ``(label, path)`` or ``(label, path, role)``
+    tuples actually consumed by a report. When a role is supplied, the
+    artifact must be owned by an execution of that role; an oracle output
+    cannot establish candidate coverage or vice versa. Every consumed file
+    must be covered by the manifest with a matching hash; uncovered files
+    are reported machine-readably and the result stays ``PARTIAL``. Hash mismatches raise
     :class:`ProvenanceError`. Reports must call this before calculating
     any verdict.
     """
@@ -725,15 +839,34 @@ def verify_artifact_set(
     if not is_v1_manifest(document):
         raise ProvenanceError(
             f"{manifest_path} is not a {SCHEMA_ID} v{SCHEMA_VERSION} manifest")
+    verify_manifest_integrity(document)
     recorded: dict[str, str] = {}
     for section in ("inputs", "outputs"):
         recorded.update(document["artifacts"].get(section, {}))
+    outputs_by_role: dict[str, dict[str, str]] = {}
+    for record in document["executions"]:
+        role_outputs = outputs_by_role.setdefault(record["role"], {})
+        for name, value in record["outputs_sha256"].items():
+            if name in role_outputs and role_outputs[name] != value:
+                raise ProvenanceError(
+                    f"duplicate artifact identity for role {record['role']}: {name!r}")
+            role_outputs[name] = value
     roots = [Path(r) for r in (search_roots or [])]
     verified: list[str] = []
     uncovered: list[dict] = []
-    for label, path in labeled_paths:
+    for item in labeled_paths:
+        if len(item) == 2:
+            label, path = item
+            role = None
+        elif len(item) == 3:
+            label, path, role = item
+            if role not in ("candidate", "oracle"):
+                raise ProvenanceError(f"unknown consumed-artifact role: {role!r}")
+        else:
+            raise ProvenanceError("consumed artifact tuple must have 2 or 3 items")
         actual = digest(path)
-        expected = _resolve_consumed_artifact(recorded, Path(path), roots)
+        eligible = outputs_by_role.get(role, {}) if role else recorded
+        expected = _resolve_consumed_artifact(eligible, Path(path), roots)
         if expected is None:
             uncovered.append({"name": f"provenance.{label}",
                               "reason": "artifact is not covered by the run manifest"})

@@ -126,9 +126,33 @@ class CorpusWriterV1Test(unittest.TestCase):
                 search_roots=[root / "candidate" / "ADV-ANA-001",
                               root / "oracle" / "ADV-ANA-001",
                               root / "meteo" / "ADV-ANA-001",
+                              root / "fortran" / "ADV-ANA-001",
+                              REPO_ROOT / "fixtures" / "corpus",
                               REPO_ROOT / "fixtures" / "corpus" / "cases",
+                              REPO_ROOT / "reference",
                               root])
             self.assertEqual(verified["state"], provenance.ATTRIBUTION_VERIFIED)
+
+    def test_changed_workflow_input_fails_verification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "run_manifest.json"
+            result = _run_writer(root, output)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            (root / "meteo" / "ADV-ANA-001" / "AVAILABLE").write_bytes(
+                b"changed-meteo")
+            with self.assertRaisesRegex(
+                    provenance.ProvenanceError, "changed input"):
+                provenance.verify_run_manifest(
+                    output,
+                    search_roots=[root / "candidate" / "ADV-ANA-001",
+                                  root / "oracle" / "ADV-ANA-001",
+                                  root / "meteo" / "ADV-ANA-001",
+                                  root / "fortran" / "ADV-ANA-001",
+                                  REPO_ROOT / "fixtures" / "corpus",
+                                  REPO_ROOT / "fixtures" / "corpus" / "cases",
+                                  REPO_ROOT / "reference",
+                                  root])
 
     def test_unknown_seed_case_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -220,7 +244,8 @@ class CorpusWriterV1Test(unittest.TestCase):
             output = root / "run_manifest.json"
             first = _run_writer(root, output)
             self.assertEqual(first.returncode, 0, first.stderr)
-            second = _run_writer(root, output)
+            _seed("ADV-ANA-001", 1, root / "candidate" / "ADV-ANA-001")
+            second = _run_writer(root, output, build_tree=False)
             self.assertNotEqual(second.returncode, 0)
             self.assertIn("refusing to overwrite", second.stderr)
 

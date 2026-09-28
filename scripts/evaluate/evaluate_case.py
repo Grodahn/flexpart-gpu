@@ -327,7 +327,7 @@ def _build_provenance_v1(args, oracle_manifest, manifest,
     provenance.verify_manifest_integrity(manifest)
 
     # Hash-verify every consumed artifact before attributing anything.
-    labeled = [(label, path) for label, path, _kind in artifact_paths]
+    labeled = [(label, path, kind) for label, path, kind in artifact_paths]
     if labeled:
         result = provenance.verify_artifact_set(args.run_manifest, labeled)
         for item in result.get("missing", []):

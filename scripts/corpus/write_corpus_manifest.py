@@ -266,6 +266,33 @@ def main():
         oracle_exe_sha = None
     adapter_identity = sorted(adapters)[0] if len(adapters) == 1 else None
 
+    # Bind every file consumed by the validation/provenance workflow into
+    # the authoritative v1 identity. The legacy nested inputs_sha256 field is
+    # informational only; verification reads execution input maps.
+    workflow_inputs: dict[str, str] = {}
+    for value in inputs_sha256.values():
+        entries = value if isinstance(value, dict) else {}
+        for name, hashed in provenance.normalize_artifact_map(entries).items():
+            if name in workflow_inputs and workflow_inputs[name] != hashed:
+                raise SystemExit(
+                    f"workflow input identity {name!r} maps to two hashes")
+            workflow_inputs[name] = hashed
+    for path in (Path(args.corpus_index), Path(args.oracle_manifest), report_path):
+        for name, hashed in provenance.normalize_artifact_map(
+                {str(path.resolve()): digest(path)}).items():
+            if name in workflow_inputs and workflow_inputs[name] != hashed:
+                raise SystemExit(
+                    f"workflow input identity {name!r} maps to two hashes")
+            workflow_inputs[name] = hashed
+    if args.thresholds:
+        threshold_path = Path(args.thresholds)
+        for name, hashed in provenance.normalize_artifact_map(
+                {str(threshold_path.resolve()): digest(threshold_path)}).items():
+            if name in workflow_inputs and workflow_inputs[name] != hashed:
+                raise SystemExit(
+                    f"workflow input identity {name!r} maps to two hashes")
+            workflow_inputs[name] = hashed
+
     v1_executions = []
     seed_files = sorted(seed_root.rglob("seed_*.json"))
     for seed_file in seed_files:
@@ -294,13 +321,12 @@ def main():
             candidate_revision=candidate.get("commit"),
             candidate_executable_sha256=candidate_exe_sha,
             oracle_kind=args.oracle_kind,
+            oracle_revision=reference.get("pinned_commit"),
             oracle_executable_sha256=oracle_exe_sha,
             oracle_profile={"id": provenance.ORACLE_PROFILE_ID,
                             "version": provenance.ORACLE_PROFILE_VERSION},
             runtime_adapter=seed_doc.get("adapter"),
-            inputs_sha256={
-                f"{case_binding['case_id']}/{Path(case_binding['manifest_path']).name}":
-                    case_binding["case_manifest_sha256"]},
+            inputs_sha256=workflow_inputs,
             outputs_sha256={scoped_seed_key: digest(seed_file)},
         ))
     # Oracle side: one execution per case binding over that case's
@@ -332,14 +358,13 @@ def main():
             candidate_revision=candidate.get("commit"),
             candidate_executable_sha256=candidate_exe_sha,
             oracle_kind=args.oracle_kind,
+            oracle_revision=reference.get("pinned_commit"),
             oracle_executable_sha256=oracle_exe_sha,
             oracle_profile={"id": provenance.ORACLE_PROFILE_ID,
                             "version": provenance.ORACLE_PROFILE_VERSION},
             runtime_adapter=None,
             cpu_runtime="flexpart-11.1-single-thread",
-            inputs_sha256={
-                f"{case_binding['case_id']}/{Path(case_binding['manifest_path']).name}":
-                    case_binding["case_manifest_sha256"]},
+            inputs_sha256=workflow_inputs,
             outputs_sha256=case_outputs,
         ))
     if not v1_executions:

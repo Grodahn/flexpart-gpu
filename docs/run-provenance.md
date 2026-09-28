@@ -54,8 +54,13 @@ characters.
 - Portable artifact keys are case-scoped relative paths
   (`<case_id>/<basename>`), never absolute paths and never bare
   basenames that collide across cases.
-- `artifacts.inputs` / `artifacts.outputs` merge every execution's maps.
-  A shared key with two hashes is a duplicate-identity error.
+- `artifacts.inputs` / `artifacts.outputs` exactly merge every execution's
+  maps. Extra unowned entries and a shared key with two hashes are
+  provenance errors.
+- Corpus execution identities include every file consumed by the workflow:
+  canonical cases, Fortran fixtures, meteorology, thresholds, corpus/oracle
+  manifests, and the comparison report. These hashes are authoritative;
+  similarly named legacy fields are compatibility metadata only.
 - Writers use `ensure_non_overwriting_write`: byte-identical reruns are
   idempotent; a new run with a different `run_id` refuses to overwrite
   an existing manifest (`--output` must point at a new
@@ -63,11 +68,15 @@ characters.
 - `verify_run_manifest` resolves portable keys against caller-supplied
   `search_roots` (candidate, oracle, meteo, case-fixture directories).
   Reports must additionally call `verify_artifact_set` with the exact
-  consumed `(label, path)` list before calculating any verdict.
+  consumed `(label, path, role)` list before calculating any verdict.
+  Candidate and oracle coverage is role-scoped, so an oracle-owned output
+  cannot establish candidate attribution or vice versa.
 - `verify_manifest_integrity` checks the manifest against its own
-  recorded execution identities without touching disk: run_id staleness,
-  mixed candidate revisions, mixed oracle builds, pruned artifact maps
-  and an explicit INVALID state all fail closed.
+  recorded execution identities without touching disk. It re-derives each
+  `execution_id` from the immutable binding and rejects run_id staleness,
+  changed bindings, mutable summary mismatches, mixed candidate revisions,
+  mixed oracle builds, pruned or unowned artifact maps, and an explicit
+  INVALID state.
 
 ## Attribution states
 

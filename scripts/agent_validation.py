@@ -11,14 +11,18 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_CASE = "ADV-ANA-001"
+MAX_DIAGNOSTIC_LINES = 30
+MAX_DIAGNOSTIC_LINE_CHARS = 500
 ORACLE_CALIBRATION_CASES = {
     "DRY-007": "ADV-ANA-001",
     "WET-008": "ADV-ANA-001",
@@ -46,12 +50,35 @@ def git_value(*arguments: str) -> str:
     return result.stdout.strip()
 
 
-def canonical_cases() -> set[str]:
-    """Return case ids owned by the existing corpus manifest."""
+def focused_oracle_cases() -> set[str]:
+    """Return cases supported by the existing synthetic paired runner."""
     index = json.loads(
         (REPO / "fixtures" / "corpus" / "corpus.json").read_text(encoding="utf-8")
     )
-    return {entry["id"] for entry in index["cases"]}
+    cases_dir = REPO / "fixtures" / "corpus" / "cases"
+    fortran_dir = REPO / "fixtures" / "corpus" / "fortran"
+    return {
+        entry["id"]
+        for entry in index["cases"]
+        if entry["status"] == "implemented"
+        and (cases_dir / f"{entry['id']}.json").is_file()
+        and (fortran_dir / entry["id"]).is_dir()
+    }
+
+
+def default_output_dir(case_id: str) -> Path:
+    """Create a collision-resistant run directory while retaining prior logs."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    return REPO / "target" / "agent-validation" / case_id / f"{timestamp}-{os.getpid()}"
+
+
+def create_output_dir(path: Path) -> Path:
+    """Create an empty absolute output directory without overwriting prior logs."""
+    resolved = path.resolve()
+    if resolved.exists() and (not resolved.is_dir() or any(resolved.iterdir())):
+        raise ValueError(f"output directory already exists and is not empty: {resolved}")
+    resolved.mkdir(parents=True, exist_ok=True)
+    return resolved
 
 
 def commands_for(check: str, case_id: str, report: Path) -> list[tuple[str, list[str]]]:
@@ -179,9 +206,18 @@ def commands_for(check: str, case_id: str, report: Path) -> list[tuple[str, list
     return commands
 
 
-def bounded_tail(output: str, lines: int = 30) -> list[str]:
-    """Keep failure diagnostics actionable without dumping full transcripts."""
-    return output.splitlines()[-lines:]
+def bounded_tail(
+    output: str,
+    lines: int = MAX_DIAGNOSTIC_LINES,
+    line_chars: int = MAX_DIAGNOSTIC_LINE_CHARS,
+) -> list[str]:
+    """Keep failure diagnostics bounded by both line count and line length."""
+    tail = []
+    for line in output.splitlines()[-lines:]:
+        if len(line) > line_chars:
+            line = f"...{line[-(line_chars - 3):]}"
+        tail.append(line)
+    return tail
 
 
 def classify_failure(output: str) -> str:
@@ -201,17 +237,23 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        help="Summary/log directory (default: target/agent-validation/<case>).",
+        help="Summary/log directory (default: a new run directory under target/agent-validation/<case>).",
     )
     args = parser.parse_args()
 
-    if args.case_id not in canonical_cases():
-        parser.error(f"unknown corpus case: {args.case_id}")
-    if args.case_id == "REPEAT-009":
-        parser.error("REPEAT-009 has no pinned oracle counterpart")
+    supported_cases = focused_oracle_cases()
+    if args.case_id not in supported_cases:
+        parser.error(
+            f"case {args.case_id!r} is not supported by the paired synthetic corpus runner; "
+            f"choose one of: {', '.join(sorted(supported_cases))}"
+        )
 
-    output_dir = args.output_dir or REPO / "target" / "agent-validation" / args.case_id
-    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        output_dir = create_output_dir(
+            args.output_dir or default_output_dir(args.case_id)
+        )
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
     report = output_dir / "comparison-report.json"
     summary_path = output_dir / "summary.json"
     environment = os.environ.copy()
@@ -226,6 +268,7 @@ def main() -> None:
     cache_status_path = REPO / "target" / "corpus" / "oracle-build-status.json"
     state = "PASS"
     diagnostic_tail: list[str] = []
+    mirrored_terminal_bytes = 0
     for stage_name, command in commands_for(args.check, args.case_id, report):
         stage_started = time.monotonic()
         try:
@@ -245,7 +288,9 @@ def main() -> None:
         log_path = output_dir / f"{stage_name}.log"
         log_path.write_text(combined, encoding="utf-8")
         if args.verbose and combined:
-            print(combined, file=sys.stderr, end="" if combined.endswith("\n") else "\n")
+            mirrored = combined if combined.endswith("\n") else f"{combined}\n"
+            print(mirrored, file=sys.stderr, end="")
+            mirrored_terminal_bytes += len(mirrored.encode("utf-8"))
         stage_result = {
             "stage": stage_name,
             "exit_code": exit_code,
@@ -264,9 +309,20 @@ def main() -> None:
                     or cache_status.get("status") not in ("REUSED", "REBUILT")
                 ):
                     raise ValueError("unexpected schema or status")
+                cache_metadata_source = Path(cache_status["metadata"])
+                cache_log_source = Path(cache_status["log"])
+                if not cache_metadata_source.is_absolute() or not cache_log_source.is_absolute():
+                    raise ValueError("cache artifact paths must be absolute")
+                retained_metadata = output_dir / f"{stage_name}-build.json"
+                retained_build_log = output_dir / f"{stage_name}-build.log"
+                shutil.copy2(cache_metadata_source, retained_metadata)
+                shutil.copy2(cache_log_source, retained_build_log)
+                cache_status = dict(cache_status)
+                cache_status["metadata"] = str(retained_metadata.resolve())
+                cache_status["log"] = str(retained_build_log.resolve())
                 stage_result["build_cache"] = cache_status
                 oracle_cache_statuses.append(cache_status)
-            except (OSError, ValueError) as error:
+            except (KeyError, OSError, ValueError) as error:
                 cache_status_error = f"invalid cache status {cache_status_path}: {error}"
         stage_results.append(stage_result)
         if exit_code != 0:
@@ -294,36 +350,42 @@ def main() -> None:
     try:
         candidate_revision = git_value("rev-parse", "HEAD")
         candidate_dirty = bool(git_value("status", "--porcelain"))
-    except subprocess.SubprocessError as error:
+    except (OSError, subprocess.SubprocessError) as error:
         if state == "PASS":
             state = "ERROR"
             diagnostic_tail = [f"candidate revision unavailable: {error}"]
 
-    evidence = [
-        str((REPO / "target" / "corpus" / "oracle" / args.case_id).resolve()),
-    ]
+    successful_stages = {
+        stage["stage"] for stage in stage_results if stage["exit_code"] == 0
+    }
+    evidence = []
+    if "oracle" in successful_stages:
+        evidence.append(
+            str((REPO / "target" / "corpus" / "oracle" / args.case_id).resolve())
+        )
     scientific_verdict = "NOT_EVALUATED"
     if args.check == "comparison":
         calibration_case = ORACLE_CALIBRATION_CASES.get(args.case_id)
-        if calibration_case:
+        if calibration_case and "oracle-calibration" in successful_stages:
             evidence.append(
                 str((REPO / "target" / "corpus" / "oracle" / calibration_case).resolve())
             )
-        evidence.extend(
-            [
+        if "candidate" in successful_stages:
+            evidence.append(
                 str((REPO / "target" / "corpus" / "candidate" / args.case_id).resolve()),
-                str(report.resolve()),
-                str(report.with_name("run-manifest.json").resolve()),
-            ]
-        )
-        comparison_completed = any(
-            stage["stage"] == "comparison" and stage["exit_code"] == 0
-            for stage in stage_results
-        )
-        if comparison_completed and report.is_file():
-            scientific_verdict = json.loads(report.read_text(encoding="utf-8")).get(
-                "status", "NOT_EVALUATED"
             )
+        if "comparison" in successful_stages:
+            evidence.append(str(report.resolve()))
+            try:
+                report_data = json.loads(report.read_text(encoding="utf-8"))
+                if not isinstance(report_data, dict):
+                    raise ValueError("comparison report must contain a JSON object")
+                scientific_verdict = report_data.get("status", "NOT_EVALUATED")
+            except (OSError, ValueError) as error:
+                state = "ERROR"
+                diagnostic_tail = [f"comparison report unavailable: {error}"]
+        if "manifest" in successful_stages:
+            evidence.append(str(report.with_name("run-manifest.json").resolve()))
 
     summary = {
         "schema": "flexpart-gpu.agent-validation-summary.v1",
@@ -339,7 +401,10 @@ def main() -> None:
         "scientific_verdict": scientific_verdict,
         "elapsed_seconds": round(time.monotonic() - started, 3),
         "manual_commands": 1,
-        "terminal_output": {"mode": "compact-json", "bytes": 0},
+        "terminal_output": {
+            "mode": "verbose-plus-json" if args.verbose else "compact-json",
+            "bytes": mirrored_terminal_bytes,
+        },
         "stages": stage_results,
         "evidence": evidence,
         "summary": str(summary_path.resolve()),
@@ -348,10 +413,10 @@ def main() -> None:
         summary["diagnostic_tail"] = diagnostic_tail
     while True:
         compact = json.dumps(summary, separators=(",", ":")) + "\n"
-        compact_bytes = len(compact.encode("utf-8"))
-        if summary["terminal_output"]["bytes"] == compact_bytes:
+        terminal_bytes = mirrored_terminal_bytes + len(compact.encode("utf-8"))
+        if summary["terminal_output"]["bytes"] == terminal_bytes:
             break
-        summary["terminal_output"]["bytes"] = compact_bytes
+        summary["terminal_output"]["bytes"] = terminal_bytes
     summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(compact, end="")
     raise SystemExit(0 if state == "PASS" else 1)

@@ -25,8 +25,15 @@ Use an oracle-only check when candidate execution is irrelevant:
 python scripts/agent_validation.py --check oracle --case ADV-ANA-001
 ```
 
+The selector accepts only implemented cases owned by the synthetic corpus
+runner and having both canonical candidate and Fortran fixtures. Blocked,
+candidate-only (`REPEAT-009`), and ETEX cases fail at argument validation
+instead of starting an unrelated or incomplete workflow.
+
 Use `--verbose` only after the compact result or bounded failure tail is not
 enough. It mirrors complete logs to stderr while preserving the same log files.
+The summary labels this mode `verbose-plus-json` and counts both mirrored log
+bytes and the final JSON line; compact mode counts only the JSON line.
 Use `--clean` for a reproducibility check; it forces a no-cache Docker image
 build and a clean Fortran compile. A clean run is deliberately not the normal
 development loop.
@@ -45,18 +52,23 @@ This prevents unrelated retained oracle results from changing a focused run.
 ## Retained artifacts
 
 - Compact summary and complete stage logs:
-  `target/agent-validation/<CASE>/`.
+  `target/agent-validation/<CASE>/<RUN-ID>/`. Each default invocation creates
+  a new run directory, so later checks do not overwrite earlier transcripts.
+  An explicit `--output-dir` must likewise be empty.
 - Candidate and raw/decoded oracle evidence (unchanged existing layout):
   `target/corpus/candidate/<CASE>/` and `target/corpus/oracle/<CASE>/`.
 - Focused existing-format comparison report:
-  `target/agent-validation/<CASE>/comparison-report.json`.
+  `target/agent-validation/<CASE>/<RUN-ID>/comparison-report.json`.
 - Focused existing-format provenance manifest:
-  `target/agent-validation/<CASE>/run-manifest.json`.
+  `target/agent-validation/<CASE>/<RUN-ID>/run-manifest.json`.
 - Oracle build identity and full build transcript:
+  retained cache copies named `<STAGE>-build.json` and `<STAGE>-build.log` in
+  the run directory. The active cache also remains at
   `target/oracle-cache/build.json` and `target/oracle-cache/build.log`.
 
-Failure output contains the failed stage and at most 30 trailing log lines. The
-complete transcript is never truncated on disk.
+Failure output contains the failed stage and at most 30 trailing log lines of
+at most 500 characters each. The complete transcript is never truncated on
+disk.
 
 ## Cache identity and invalidation
 
@@ -102,21 +114,24 @@ builds at most once for a multi-case oracle invocation, and reuses an exactly
 identified image/executable on an unchanged second run. Successful terminal
 output is one JSON line; full output moves to named logs. Wall-clock and byte
 measurements for each run are recorded in `summary.json` and the stage logs.
+Before each selected case runs, only that case's generated candidate/oracle
+directories are cleared, preventing stale seeds or raw slices from entering a
+focused report while leaving unrelated cases untouched.
 
 Measured on Windows/Docker Desktop with the pinned checkout and `ADV-ANA-001`
-(2026-09-27):
+(2026-09-28):
 
 | Representative path | Agent commands | Build behavior | Terminal bytes | Wall time |
 |---|---:|---|---:|---:|
 | Legacy-equivalent warm image build + unconditional clean Fortran compile + oracle run | 1 oracle command (4 commands for a manual paired comparison) | image layers reused, executable rebuilt | 10,167 | 44.7 s |
-| Compact oracle, unchanged retained inputs | 1 | image and executable reused | 1,163 | 4.5 s |
-| Compact paired comparison plus provenance manifest, warm Cargo + oracle caches | 1 | image and executable reused | 2,085 | 122.1 s |
+| Compact oracle, unchanged retained inputs | 1 | image and executable reused | 1,809 | 5.2 s |
+| Compact paired comparison plus provenance manifest, warm Cargo + oracle caches | 1 | image and executable reused | 2,873 | 9.1 s |
 
 The legacy-equivalent preparation component was measured independently at
 40.2 s and 4,105 terminal bytes; its oracle-run component was 4.5 s and 6,062
-log bytes. The compact warm oracle was therefore about 9.9x faster and emitted
-about 88.6% fewer terminal bytes. The first explicit `--clean` run also passed
-(294.8 s), then the unchanged run reported `REUSED`; this proves that reuse is
+log bytes. The compact warm oracle was therefore about 8.6x faster and emitted
+about 82.2% fewer terminal bytes. The first explicit `--clean` run also passed
+(260.7 s), then the unchanged run reported `REUSED`; this proves that reuse is
 an optimization rather than a hidden prerequisite. The paired report retained
 the existing `DIAGNOSTIC_NO_PARITY_VERDICT` status.
 

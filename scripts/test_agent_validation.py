@@ -92,6 +92,29 @@ class OracleBuildCacheTest(unittest.TestCase):
                 oracle_build_cache.validate(metadata, identity, "sha256:image", executable)
             )
 
+    @mock.patch.object(oracle_build_cache, "git_head", return_value="a" * 40)
+    def test_status_uses_absolute_retained_artifact_paths(self, _git_head):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, oracle = self.create_inputs(root)
+            identity = oracle_build_cache.cache_identity(project, oracle)
+            metadata = root / "build.json"
+            build_log = root / "build.log"
+            metadata.write_text("{}\n")
+            build_log.write_text("successful build\n")
+            output = root / "status.json"
+            oracle_build_cache.write_status(
+                output,
+                "REUSED",
+                identity,
+                "sha256:image",
+                metadata,
+                build_log,
+            )
+            status = json.loads(output.read_text())
+            self.assertEqual(status["metadata"], str(metadata.resolve()))
+            self.assertEqual(status["log"], str(build_log.resolve()))
+
 
 class AgentValidationTest(unittest.TestCase):
     def test_oracle_check_reuses_existing_runner(self):
@@ -139,6 +162,32 @@ class AgentValidationTest(unittest.TestCase):
         tail = agent_validation.bounded_tail(output)
         self.assertEqual(len(tail), 30)
         self.assertEqual(tail[-1], "line 99")
+
+    def test_failure_tail_truncates_single_huge_line(self):
+        tail = agent_validation.bounded_tail("x" * 10_000)
+        self.assertEqual(len(tail), 1)
+        self.assertEqual(len(tail[0]), agent_validation.MAX_DIAGNOSTIC_LINE_CHARS)
+        self.assertTrue(tail[0].startswith("..."))
+
+    def test_supported_cases_exclude_non_corpus_and_unpaired_cases(self):
+        cases = agent_validation.focused_oracle_cases()
+        self.assertIn("ADV-ANA-001", cases)
+        self.assertNotIn("REPEAT-009", cases)
+        self.assertNotIn("RESTART-010", cases)
+        self.assertNotIn("ETEX-MINI-013", cases)
+
+    def test_default_output_directory_is_run_scoped(self):
+        output = agent_validation.default_output_dir("ADV-ANA-001")
+        self.assertEqual(output.parent.name, "ADV-ANA-001")
+        self.assertRegex(output.name, r"^\d{8}T\d{6}\.\d{6}Z-\d+$")
+
+    def test_explicit_output_directory_cannot_overwrite_logs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "run"
+            self.assertEqual(agent_validation.create_output_dir(output), output.resolve())
+            (output / "oracle.log").write_text("retained\n")
+            with self.assertRaisesRegex(ValueError, "not empty"):
+                agent_validation.create_output_dir(output)
 
     def test_missing_docker_is_blocked(self):
         self.assertEqual(

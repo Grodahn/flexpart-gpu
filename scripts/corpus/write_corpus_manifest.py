@@ -137,12 +137,17 @@ def main():
                 tree = {}
                 for case_id in focused_input_cases:
                     case_file = root_path / f"{case_id}.json"
-                    if case_file.is_file():
-                        tree[str(case_file.resolve())] = digest(case_file)
+                    if not case_file.is_file():
+                        raise SystemExit(f"missing focused {label} input: {case_file}")
+                    tree[str(case_file.resolve())] = digest(case_file)
             elif args.case_id:
                 tree = {}
                 for case_id in focused_input_cases:
-                    tree.update(hash_tree(root_path / case_id))
+                    case_root = root_path / case_id
+                    case_tree = hash_tree(case_root)
+                    if not case_tree:
+                        raise SystemExit(f"missing focused {label} inputs under {case_root}")
+                    tree.update(case_tree)
             else:
                 tree = hash_tree(root_path)
             if tree:

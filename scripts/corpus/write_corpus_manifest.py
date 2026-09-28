@@ -20,7 +20,16 @@ import argparse
 import hashlib
 import json
 import subprocess
+import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT / "scripts" / "provenance") not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT / "scripts" / "provenance"))
+if str(REPO_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+import run_provenance as provenance
 
 
 def command(*args):
@@ -75,6 +84,13 @@ def main():
     parser.add_argument("--meteo-dir", default=None)
     parser.add_argument("--candidate-exe", default=None)
     parser.add_argument("--oracle-exe", default=None)
+    parser.add_argument(
+        "--oracle-kind",
+        default=provenance.ORACLE_PRISTINE,
+        choices=[provenance.ORACLE_PRISTINE, provenance.ORACLE_SEEDABLE],
+        help="Oracle execution kind from the #50 contract "
+        "(pristine-oracle vs seedable-validation-oracle; never collapsed).",
+    )
     parser.add_argument(
         "--case",
         dest="case_id",
@@ -209,10 +225,170 @@ def main():
         "comparison_report": str(report_path.resolve()),
         "comparison_report_sha256": comparison_report_sha256,
     }
+
+    # --- Issue #53 authoritative v1 overlay --------------------------------
+    # The legacy keys above are preserved byte-for-byte for compatibility;
+    # the v1 envelope below is the authoritative provenance path. Case
+    # identities are referenced from the #51 case files (never copied),
+    # oracle kind reuses the #50 contract vocabulary, and each candidate
+    # realization receives its own execution identity.
+    v1_cases = []
+    cases_root = Path(args.cases_dir) if args.cases_dir else None
+    case_ids = focused_input_cases or sorted(
+        {entry["id"] for entry in corpus_index.get("cases", [])})
+    for case_id in case_ids:
+        case_file = (cases_root / f"{case_id}.json") if cases_root else None
+        if case_file is not None and case_file.is_file():
+            v1_cases.append(provenance.case_manifest_identity(case_file))
+        else:
+            # Focused runs always hash the case file; full-corpus runs
+            # without --cases-dir record an explicit gap instead of
+            # inventing an identity.
+            v1_cases.append({
+                "case_id": case_id,
+                "case_manifest_sha256": "0" * 64,
+                "case_schema_version": provenance.CASE_SCHEMA_VERSION,
+                "manifest_path": str(case_file) if case_file else "",
+            })
+    # Real case identities only: placeholder zero-hashes never verify.
+    v1_cases = [c for c in v1_cases
+                if c["case_manifest_sha256"] != "0" * 64]
+    if not v1_cases:
+        raise SystemExit(
+            "cannot build v1 provenance without case-manifest identities "
+            "(pass --cases-dir with the versioned case files)")
+
+    candidate_exe_sha = executables_sha256.get("candidate")
+    if isinstance(candidate_exe_sha, str) and len(candidate_exe_sha) != 64:
+        candidate_exe_sha = None
+    oracle_exe_sha = executables_sha256.get("oracle")
+    if isinstance(oracle_exe_sha, str) and len(oracle_exe_sha) != 64:
+        oracle_exe_sha = None
+    adapter_identity = sorted(adapters)[0] if len(adapters) == 1 else None
+
+    v1_executions = []
+    seed_files = sorted(seed_root.rglob("seed_*.json"))
+    for seed_file in seed_files:
+        try:
+            seed_doc = json.loads(seed_file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        seed_case = seed_doc.get("case_id", args.case_id or "?")
+        case_binding = next((c for c in v1_cases if c["case_id"] == seed_case),
+                            v1_cases[0])
+        # Scope artifact keys by case so identical basenames from
+        # different cases stay distinct identities.
+        scoped_seed_key = f"{seed_case}/{seed_file.name}"
+        v1_executions.append(provenance.build_execution_record(
+            role="candidate",
+            case=case_binding,
+            realization={
+                "seed_index": seed_doc.get("seed_index"),
+                "philox_key": seed_doc.get("philox_key"),
+                "philox_counter": seed_doc.get("philox_counter"),
+                "seed_file": seed_file.name,
+            },
+            candidate_revision=candidate.get("commit"),
+            candidate_executable_sha256=candidate_exe_sha,
+            oracle_kind=args.oracle_kind,
+            oracle_executable_sha256=oracle_exe_sha,
+            oracle_profile={"id": provenance.ORACLE_PROFILE_ID,
+                            "version": provenance.ORACLE_PROFILE_VERSION},
+            runtime_adapter=seed_doc.get("adapter"),
+            inputs_sha256={
+                f"{case_binding['case_id']}/{Path(case_binding['manifest_path']).name}":
+                    case_binding["case_manifest_sha256"]},
+            outputs_sha256={scoped_seed_key: digest(seed_file)},
+        ))
+    # Oracle side: one execution per case binding over that case's
+    # recorded oracle output bytes so mixed oracle builds across cases
+    # are detectable in one manifest.
+    oracle_by_case: dict[str, dict[str, str]] = {c["case_id"]: {} for c in v1_cases}
+    for abs_key, value in oracle_files.items():
+        normalized = abs_key.replace("\\", "/")
+        owner = next((c["case_id"] for c in v1_cases
+                      if f"/{c['case_id']}/" in normalized
+                      or normalized.endswith(f"/{c['case_id']}")
+                      or f"/{c['case_id']}" in normalized), None)
+        if owner is None:
+            # Focused single-case run: attribute everything to that case.
+            owner = v1_cases[0]["case_id"] if len(v1_cases) == 1 else None
+        if owner is None:
+            continue
+        oracle_by_case[owner][f"{owner}/{Path(abs_key).name}"] = value
+    for case_binding in v1_cases:
+        case_outputs = oracle_by_case.get(case_binding["case_id"], {})
+        if not case_outputs:
+            continue
+        v1_executions.append(provenance.build_execution_record(
+            role="oracle",
+            case=case_binding,
+            realization={},
+            candidate_revision=candidate.get("commit"),
+            candidate_executable_sha256=candidate_exe_sha,
+            oracle_kind=args.oracle_kind,
+            oracle_executable_sha256=oracle_exe_sha,
+            oracle_profile={"id": provenance.ORACLE_PROFILE_ID,
+                            "version": provenance.ORACLE_PROFILE_VERSION},
+            runtime_adapter=None,
+            cpu_runtime="flexpart-11.1-single-thread",
+            inputs_sha256={
+                f"{case_binding['case_id']}/{Path(case_binding['manifest_path']).name}":
+                    case_binding["case_manifest_sha256"]},
+            outputs_sha256=case_outputs,
+        ))
+    if not v1_executions:
+        raise SystemExit("cannot build v1 provenance without execution artifacts")
+
+    v1_manifest = provenance.create_run_manifest(
+        cases=v1_cases,
+        candidate={
+            "revision": candidate.get("commit", "unknown"),
+            "worktree_dirty": candidate.get("worktree_dirty"),
+            "executable_sha256": candidate_exe_sha,
+            "build": {"compiler": compiler, "makefile_sha256": makefile_sha},
+        },
+        oracle={
+            "kind": args.oracle_kind,
+            "pinned_commit": reference.get("pinned_commit", ""),
+            "worktree_dirty": oracle.get("worktree_dirty"),
+            "executable_sha256": oracle_exe_sha,
+            "execution_profile": {"id": provenance.ORACLE_PROFILE_ID,
+                                  "version": provenance.ORACLE_PROFILE_VERSION},
+            "strategy": None,
+            "requested_identity": None,
+            "patch_sha256": None,
+        },
+        runtime={"adapter": adapter_identity,
+                 "cpu_runtime": "flexpart-11.1-single-thread"},
+        executions=v1_executions,
+        base="target/corpus",
+        notes=["v1 authoritative provenance overlay (issue #53); "
+               "legacy top-level keys preserved for compatibility."],
+    )
+    for key, value in v1_manifest.items():
+        manifest[key] = value
+
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    print(f"Corpus run manifest: {output}")
+    payload = (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
+    if output.is_file():
+        try:
+            existing = json.loads(output.read_text(encoding="utf-8"))
+        except Exception:
+            existing = None
+        if isinstance(existing, dict) and provenance.is_v1_manifest(existing):
+            if existing.get("run_id") != manifest.get("run_id"):
+                raise SystemExit(
+                    f"refusing to overwrite prior evidence: {output} "
+                    f"(existing run {existing.get('run_id')} != new run "
+                    f"{manifest.get('run_id')}); choose a new --output path")
+        elif isinstance(existing, dict) and "run_id" in existing:
+            if existing.get("run_id") != manifest.get("run_id"):
+                raise SystemExit(
+                    f"refusing to overwrite prior evidence: {output}")
+    output.write_bytes(payload)
+    print(f"Corpus run manifest: {output} (v1 run {manifest['run_id'][:16]})")
 
 
 if __name__ == "__main__":

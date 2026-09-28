@@ -49,12 +49,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(
+    0, str(Path(__file__).resolve().parent.parent.parent / "scripts" / "provenance"))
 
 import io_corpus
 import io_fortran
 import io_gpu
 import metrics
 import report as report_lib
+
+try:
+    import run_provenance as provenance
+except ImportError:
+    provenance = None  # type: ignore[assignment]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_ORACLE_MANIFEST = REPO_ROOT / "reference" / "flexpart-11.1.json"
@@ -144,6 +151,18 @@ def build_provenance(args, oracle_manifest, embedded_revisions=None,
     manifest = _load_run_manifest(args.run_manifest) if args.run_manifest else None
     if args.run_manifest:
         notes.append(f"Run manifest consumed: {args.run_manifest}")
+    if manifest is not None and provenance is not None:
+        try:
+            is_v1 = provenance.is_v1_manifest(manifest)
+        except Exception:
+            is_v1 = False
+        if is_v1:
+            return _build_provenance_v1(
+                args, oracle_manifest, manifest,
+                embedded_revisions=embedded_revisions,
+                embedded_adapters=embedded_adapters,
+                artifact_paths=artifact_paths,
+                missing=missing, notes=notes)
 
     candidate_revision = None
     revision_source = None
@@ -267,6 +286,178 @@ def build_provenance(args, oracle_manifest, embedded_revisions=None,
         candidate["executable_sha256"] = report_lib.sha256_file(args.candidate_executable)
     if args.oracle_executable:
         oracle["executable_sha256"] = report_lib.sha256_file(args.oracle_executable)
+    return oracle, candidate, missing, notes
+
+
+def _build_provenance_v1(args, oracle_manifest, manifest,
+                         embedded_revisions=None,
+                         embedded_adapters=None, artifact_paths=None,
+                         missing=None, notes=None):
+    """Build provenance from a v1 authoritative manifest (issue #53).
+
+    The v1 envelope is verified explicitly (never silently reinterpreted
+    as a legacy shape): every consumed artifact must be covered by the
+    manifest with a matching hash before any revision or oracle output
+    is attributed. Partial attribution stays machine-readable and is
+    never promoted to verified attribution.
+    """
+    missing = missing if missing is not None else []
+    notes = notes if notes is not None else []
+    artifact_paths = artifact_paths or []
+    notes.append(f"Run manifest schema: {provenance.SCHEMA_ID} "
+                 f"v{provenance.SCHEMA_VERSION} (authoritative #53 path)")
+    oracle_state = manifest.get("oracle", {})
+    notes.append(f"Oracle kind: {oracle_state.get('kind')} "
+                 f"(pristine vs seedable preserved from #50 identities)")
+    for case in manifest.get("cases", []):
+        notes.append(f"Case binding: {case.get('case_id')} "
+                     f"manifest {str(case.get('case_manifest_sha256', ''))[:16]} "
+                     f"schema v{case.get('case_schema_version')}")
+    execution_ids = [record.get("execution_id", "")[:16]
+                     for record in manifest.get("executions", [])]
+    if execution_ids:
+        notes.append(f"Execution identities: {', '.join(execution_ids)} "
+                     f"(run {str(manifest.get('run_id', ''))[:16]})")
+
+    # Hash-verify every consumed artifact before attributing anything.
+    labeled = [(label, path) for label, path, _kind in artifact_paths]
+    if labeled:
+        result = provenance.verify_artifact_set(args.run_manifest, labeled)
+        for item in result.get("missing", []):
+            missing.append(item)
+        notes.extend(result.get("notes", []))
+        candidates = [t for t in artifact_paths if t[2] == "candidate"]
+        oracles = [t for t in artifact_paths if t[2] == "oracle"]
+        candidate_covered = all(
+            any(label == verified for verified in result.get("verified", []))
+            for label, _path, _kind in candidates) if candidates else True
+        oracle_covered = all(
+            any(label == verified for verified in result.get("verified", []))
+            for label, _path, _kind in oracles) if oracles else True
+    else:
+        candidate_covered, oracle_covered = True, True
+
+    candidate_revision = None
+    revision_source = None
+    if embedded_revisions:
+        unique = set(embedded_revisions)
+        usable = {r for r in unique if r not in (None, "unknown")}
+        unattributed = len(embedded_revisions) - sum(
+            1 for r in embedded_revisions if r not in (None, "unknown"))
+        if unattributed:
+            missing.append(
+                {"name": "candidate.revision",
+                 "reason": f"{unattributed} of {len(embedded_revisions)} supplied "
+                           "artifacts embed no usable revision (unknown/missing); "
+                           "the set stays explicitly unverified"})
+        elif len(usable) > 1:
+            raise ValueError(
+                f"candidate artifacts mix revisions: {sorted(usable)}")
+        elif usable:
+            candidate_revision = usable.pop()
+            revision_source = "embedded-in-artifact"
+    manifest_revision = (manifest.get("candidate") or {}).get("revision")
+    if candidate_revision is None and candidate_covered:
+        if manifest_revision and manifest_revision != "unknown":
+            candidate_revision = manifest_revision
+            revision_source = "run-manifest-hash-verified"
+            notes.append("Candidate revision hash-verified via v1 run manifest")
+        else:
+            missing.append({"name": "candidate.revision",
+                            "reason": "v1 manifest records no usable candidate "
+                                      "revision; the set stays explicitly unverified"})
+    elif (candidate_revision is not None and manifest_revision
+            and manifest_revision != "unknown"
+            and candidate_revision != manifest_revision and candidate_covered):
+        raise ValueError(
+            f"mismatched candidate revision: embedded {candidate_revision} "
+            f"!= manifest {manifest_revision}")
+    if candidate_revision is None and args.candidate_revision:
+        candidate_revision = args.candidate_revision
+        revision_source = "declared-flag"
+        notes.append("Candidate revision is declared via --candidate-revision "
+                     "and is not hash-verified")
+    if candidate_revision is None and not any(
+            m.get("name") == "candidate.revision" for m in missing):
+        missing.append({"name": "candidate.revision",
+                        "reason": "no revision tied to the supplied artifacts "
+                                  "(use embedded revisions, --run-manifest or "
+                                  "--candidate-revision); the evaluator checkout HEAD "
+                                  "is deliberately not attributed"})
+    candidate_dirty = (manifest.get("candidate") or {}).get("worktree_dirty")
+    adapter = None
+    if embedded_adapters:
+        unique_adapters = set(embedded_adapters)
+        if len(unique_adapters) != 1:
+            raise ValueError(
+                f"candidate artifacts mix adapters: {sorted(unique_adapters)}")
+        adapter = unique_adapters.pop()
+    elif args.candidate_log:
+        adapter = report_lib.read_adapter_from_log(args.candidate_log)
+    if adapter is None:
+        adapter = (manifest.get("runtime") or {}).get("adapter")
+
+    attribution = "unverified"
+    checkout_verified = False
+    oracle_checkout = Path(args.oracle_checkout) if args.oracle_checkout else None
+    if oracle_checkout is not None:
+        actual, dirty = report_lib.git_revision(oracle_checkout)
+        if actual != oracle_manifest["pinned_commit"] or dirty:
+            raise ValueError(
+                "oracle checkout is not the pinned unmodified FLEXPART source "
+                 f"(expected {oracle_manifest['pinned_commit']}, got {actual}, dirty={dirty})")
+        checkout_verified = True
+        notes.append("Oracle sources verified at the pinned commit, but the "
+                     "supplied outputs are not linked to that checkout run; "
+                     "output attribution stays unverified "
+                     "(use --run-manifest for output attribution)")
+    manifest_attribution = (manifest.get("attribution") or {}).get("state")
+    for item in (manifest.get("attribution") or {}).get("missing", []):
+        missing.append({"name": f"manifest.{item.get('name')}",
+                        "reason": item.get("reason", "")})
+    oracles = [t for t in artifact_paths if t[2] == "oracle"]
+    if (oracle_state.get("pinned_commit") == oracle_manifest["pinned_commit"]
+            and not oracle_state.get("worktree_dirty")
+            and oracle_covered and oracles
+            and manifest_attribution == provenance.ATTRIBUTION_VERIFIED):
+        attribution = "run-manifest-v1"
+        notes.append("Oracle output hash-verified via v1 run manifest")
+    else:
+        notes.append("Oracle output is not tied to a hash-verified pinned run")
+    oracle = {
+        "name": oracle_manifest.get("name", "FLEXPART"),
+        "version": oracle_manifest.get("version", "11.1"),
+        "pinned_commit": oracle_manifest["pinned_commit"],
+        "attribution": attribution,
+        "checkout_verified": checkout_verified,
+        "kind": oracle_state.get("kind"),
+        "seed": args.oracle_seed,
+        "seed_controllable": bool(args.oracle_seed_controllable),
+    }
+    if oracle_state.get("strategy"):
+        oracle["strategy"] = oracle_state["strategy"]
+    if not oracle["seed_controllable"]:
+        oracle["seed_note"] = ("oracle seed is not exposed by this runner; "
+                               "not suitable for multi-seed parity proof")
+    candidate = {
+        "revision": candidate_revision,
+        "revision_source": revision_source,
+        "worktree_dirty": candidate_dirty,
+        "adapter": adapter,
+        "seed": args.seed,
+        "seed_controllable": bool(args.candidate_seed_controllable),
+    }
+    if not candidate["seed_controllable"]:
+        candidate["seed_note"] = ("candidate seed is not controlled by this runner; "
+                                  "single-seed results stay diagnostic")
+    if args.candidate_executable:
+        candidate["executable_sha256"] = report_lib.sha256_file(args.candidate_executable)
+    elif (manifest.get("candidate") or {}).get("executable_sha256"):
+        candidate["executable_sha256"] = manifest["candidate"]["executable_sha256"]
+    if args.oracle_executable:
+        oracle["executable_sha256"] = report_lib.sha256_file(args.oracle_executable)
+    elif oracle_state.get("executable_sha256"):
+        oracle["executable_sha256"] = oracle_state["executable_sha256"]
     return oracle, candidate, missing, notes
 
 

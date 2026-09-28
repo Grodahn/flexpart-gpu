@@ -877,6 +877,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${OUTPUT_DIR}/w-production-oracle/oracle-build/w-production-oracle.link-map" \
     --artifact "${OUTPUT_DIR}/w-production-oracle/reproducibility-check.log" \
     --artifact "${OUTPUT_DIR}/vertical-sampling/vertical-model-level-regression.json" \
+    --artifact "${OUTPUT_DIR}/vertical-sampling/vertical-interface-w-production-oracle.json" \
     --artifact "${OUTPUT_DIR}/vertical-sampling/report-validation.log" \
     --input "${PROJECT_ROOT}/reference/flex-extract.json" \
     --artifact "${OUTPUT_DIR}/flex-extract-etadot.log" \

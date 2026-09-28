@@ -12,6 +12,7 @@ pub mod compaction;
 pub mod convection;
 pub mod decay;
 pub mod deposition;
+pub mod evidence;
 pub mod gridding;
 pub mod hanna;
 pub mod interpolation;
@@ -62,6 +63,13 @@ pub use deposition::{
     DryDepositionIoBuffers, DryDepositionStepParams, GpuDryDepositionError,
     GpuDryDepositionWorkflowError,
 };
+pub use evidence::{
+    compare_finite_values, ComparisonEvidence, ComparisonFailure, ComparisonFailureKind,
+    ComparisonPolicy, GpuAdapterClass, GpuAdapterEvidence, GpuCalculationEvidence,
+    GpuCalculationPath, GpuCandidateEvidence, GpuEvidenceError, GpuEvidenceSchema,
+    GpuExecutionEvidence, GpuExecutionStatus, NumericalVerdict, PinnedOracleEvidence,
+    GPU_EVIDENCE_SCHEMA_ID, GPU_EVIDENCE_SCHEMA_VERSION,
+};
 pub use gridding::{
     accumulate_concentration_grid_gpu, dispatch_concentration_gridding_gpu,
     ConcentrationGridIoBuffers, ConcentrationGridOutput, ConcentrationGridShape,
@@ -108,8 +116,9 @@ pub use pbl_reflection::{
     encode_pbl_reflection_gpu_with_kernel, GpuPblReflectionError, PblReflectionDispatchKernel,
 };
 pub use preflight::{
-    normalize_backend_selector, run_preflight, DeviceLimitsSummary, GpuPreflightError,
-    GpuPreflightOptions, GpuPreflightReport,
+    normalize_backend_selector, run_preflight, run_preflight_record, DeviceLimitsSummary,
+    GpuPreflightError, GpuPreflightOptions, GpuPreflightRecord, GpuPreflightReport,
+    GpuSmokeTestEvidence, GPU_PREFLIGHT_SCHEMA_ID, GPU_PREFLIGHT_SCHEMA_VERSION,
 };
 pub use rng::{sample_philox_uniform4_gpu, GpuPhiloxError, PhiloxUniformBlock};
 pub use wet_deposition::{
@@ -179,7 +188,8 @@ impl GpuContext {
     ///
     /// # Errors
     ///
-    /// Returns `GpuError::NoAdapter` if no suitable adapter is found.
+    /// Returns [`GpuError::NoAdapter`] if no suitable adapter is found or
+    /// [`GpuError::DeviceRequest`] when device creation fails.
     pub async fn new() -> Result<Self, GpuError> {
         Self::with_options(GpuAdapterOptions::from_env()).await
     }
@@ -191,10 +201,15 @@ impl GpuContext {
     ///
     /// # Errors
     ///
-    /// Returns `GpuError::NoAdapter` if no suitable adapter is found.
+    /// Returns [`GpuError::NoAdapter`] if no suitable adapter is found or
+    /// [`GpuError::DeviceRequest`] when device creation fails.
     pub async fn with_options(options: GpuAdapterOptions) -> Result<Self, GpuError> {
         if let Some(backend) = options.backend_override.as_deref() {
-            std::env::set_var("WGPU_BACKEND", backend);
+            if backend == "auto" {
+                std::env::remove_var("WGPU_BACKEND");
+            } else {
+                std::env::set_var("WGPU_BACKEND", backend);
+            }
         }
         let instance = wgpu::Instance::default();
 
@@ -254,12 +269,22 @@ impl GpuContext {
         })
     }
 
+    /// Adapter name reported by `wgpu` for diagnostics and provenance.
+    #[must_use]
     pub fn device_name(&self) -> &str {
         &self.adapter_info.name
     }
 
+    /// Backend selected by `wgpu` for this context.
+    #[must_use]
     pub fn backend(&self) -> wgpu::Backend {
         self.adapter_info.backend
+    }
+
+    /// Complete adapter metadata used by machine-readable execution evidence.
+    #[must_use]
+    pub const fn adapter_info(&self) -> &wgpu::AdapterInfo {
+        &self.adapter_info
     }
 
     /// Adapter device type reported by `wgpu` (software adapters report `Cpu`).

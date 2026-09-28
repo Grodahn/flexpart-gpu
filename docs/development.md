@@ -79,7 +79,8 @@ shader smoke test.
 
 Interpretation tip:
 
-- Adapter `llvmpipe` / `Cpu` means CPU fallback (no physical GPU exposed).
+- Adapter `llvmpipe` / `Cpu` means a software WGSL adapter (the real shader
+  path executes, but no physical GPU is exposed).
 - Use `scripts/gpu-preflight.sh nvidia` when you need explicit NVIDIA passthrough in Docker.
 
 ## Software adapter (machines without a hardware GPU)

@@ -59,7 +59,7 @@
       "properties": {
         "revision": {"type": "string", "minLength": 1},
         "worktree_dirty": {"type": ["boolean", "null"]},
-        "executable_sha256": {"type": ["string", "null"], "pattern": "^([0-9a-f]{64})?$"},
+        "executable_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
         "build": {"type": ["object", "null"]}
       }
     },
@@ -71,7 +71,7 @@
         "kind": {"enum": ["pristine-oracle", "seedable-validation-oracle"]},
         "pinned_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
         "worktree_dirty": {"type": ["boolean", "null"]},
-        "executable_sha256": {"type": ["string", "null"], "pattern": "^([0-9a-f]{64})?$"},
+        "executable_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
         "execution_profile": {
           "type": "object",
           "additionalProperties": false,

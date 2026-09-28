@@ -109,11 +109,11 @@ schema. Without `--case-manifest` (oracle writer) or `--cases-dir`
 Focused provenance/hash checks plus the smallest representative
 workflow — no expensive oracle/model reruns:
 
-- `python scripts/provenance/test_run_provenance.py` (31 tests: valid
+- `python scripts/provenance/test_run_provenance.py` (32 tests: valid
   verify, output substitution, input mutation, mixed revisions/builds,
   stale/missing/duplicate rejection, oracle-kind distinction, identity
   determinism, pruned-map rejection, manifest integrity, partial
-  promotion).
+  promotion, case-scoped consumed-set disambiguation).
 - `python scripts/test_write_oracle_run_manifest_v1.py` (12 tests:
   synthetic case binding, strategy resolution, output partition).
 - `python scripts/corpus/test_write_corpus_manifest_v1.py` (7 tests:

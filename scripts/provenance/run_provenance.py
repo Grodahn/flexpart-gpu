@@ -728,23 +728,12 @@ def verify_artifact_set(
     recorded: dict[str, str] = {}
     for section in ("inputs", "outputs"):
         recorded.update(document["artifacts"].get(section, {}))
-    by_basename: dict[str, str] = {}
-    for key, value in recorded.items():
-        name = _normalize_key(key)
-        if name in by_basename and by_basename[name] != value:
-            raise ProvenanceError(
-                f"duplicate artifact identity: {name!r} maps to two hashes "
-                "in the run manifest")
-        by_basename[name] = value
+    roots = [Path(r) for r in (search_roots or [])]
     verified: list[str] = []
     uncovered: list[dict] = []
     for label, path in labeled_paths:
         actual = digest(path)
-        resolved = str(Path(path).resolve())
-        candidates = [recorded.get(resolved), recorded.get(Path(path).name),
-                      by_basename.get(_normalize_key(Path(path).name)),
-                      by_basename.get(_normalize_key(resolved))]
-        expected = next((c for c in candidates if c is not None), None)
+        expected = _resolve_consumed_artifact(recorded, Path(path), roots)
         if expected is None:
             uncovered.append({"name": f"provenance.{label}",
                               "reason": "artifact is not covered by the run manifest"})
@@ -764,6 +753,77 @@ def verify_artifact_set(
 
 def _normalize_key(key: str) -> str:
     return Path(key).name or str(key)
+
+
+def _consumed_suffixes(path: Path, search_roots: list[Path]) -> list[str]:
+    """Return portable lookup suffixes for a consumed filesystem path.
+
+    Order is most-specific first: search-root-relative paths, then the
+    case-scoped two-part suffix (``<case>/<basename>``), then the bare
+    basename. Callers try each against the recorded portable keys so a
+    case-scoped path disambiguates multi-case runs instead of colliding
+    on the basename.
+    """
+    suffixes: list[str] = []
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+    for root in search_roots:
+        try:
+            relative = resolved.relative_to(root.resolve())
+        except (OSError, ValueError):
+            continue
+        relative_posix = relative.as_posix()
+        if relative_posix and relative_posix not in suffixes:
+            suffixes.append(relative_posix)
+    parts = resolved.as_posix().replace("\\", "/").split("/")
+    parts = [p for p in parts if p not in ("", ".")]
+    if len(parts) >= 2:
+        two_part = "/".join(parts[-2:])
+        if two_part not in suffixes:
+            suffixes.append(two_part)
+    basename = resolved.name
+    if basename and basename not in suffixes:
+        suffixes.append(basename)
+    return suffixes
+
+
+def _resolve_consumed_artifact(
+    recorded: dict[str, str], path: Path, search_roots: list[Path]
+) -> str | None:
+    """Resolve one consumed file to its expected manifest hash.
+
+    Exact absolute-path keys win first (legacy writers). Otherwise the
+    most-specific portable suffix wins, so ``.../case-a/header``
+    matches ``case-a/header`` even when ``case-b/header`` with
+    different bytes exists. A bare basename shared by several entries
+    with different hashes and no disambiguating scope raises
+    :class:`ProvenanceError` (fail-closed); a basename with no entry
+    returns None (uncovered, machine-readable PARTIAL).
+    """
+    try:
+        resolved = str(path.resolve())
+    except OSError:
+        resolved = str(path)
+    if resolved in recorded:
+        return recorded[resolved]
+    suffixes = _consumed_suffixes(path, search_roots)
+    for suffix in suffixes:
+        if suffix in recorded:
+            return recorded[suffix]
+    basename = Path(resolved).name or _normalize_key(resolved)
+    same_name = [(key, value) for key, value in recorded.items()
+                 if _normalize_key(key) == basename]
+    if not same_name:
+        return None
+    hashes = {value for _, value in same_name}
+    if len(hashes) == 1:
+        return same_name[0][1]
+    raise ProvenanceError(
+        f"duplicate artifact identity: {basename!r} maps to "
+        f"{len(same_name)} hashes in the run manifest and "
+        f"{resolved!r} carries no disambiguating case scope")
 
 
 def migrate_legacy_manifest(document: dict, *, source: str = "legacy") -> dict:

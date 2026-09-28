@@ -385,7 +385,7 @@ class HardeningTest(unittest.TestCase):
         with self.assertRaisesRegex(provenance.ProvenanceError, "must be an object"):
             provenance._normalize_artifact_map(["not", "a", "dict"])
 
-    def test_consumed_set_rejects_basename_collision(self):
+    def test_consumed_set_disambiguates_case_scoped_keys(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             first = root / "case-a" / "header"
@@ -406,10 +406,39 @@ class HardeningTest(unittest.TestCase):
             }
             manifest_path = root / "run_manifest.json"
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            result = provenance.verify_artifact_set(
+                manifest_path, [("header-a", first), ("header-b", second)])
+            self.assertEqual(result["state"], provenance.ATTRIBUTION_VERIFIED)
+            self.assertEqual(sorted(result["verified"]), ["header-a", "header-b"])
+
+    def test_consumed_set_rejects_truly_ambiguous_basename(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = root / "case-a" / "header"
+            second = root / "case-b" / "header"
+            first.parent.mkdir(parents=True)
+            second.parent.mkdir(parents=True)
+            first.write_bytes(b"first")
+            second.write_bytes(b"second")
+            ambiguous = root / "elsewhere" / "header"
+            ambiguous.parent.mkdir(parents=True)
+            ambiguous.write_bytes(b"first")
+            manifest = {
+                "schema": {"id": provenance.SCHEMA_ID, "version": 1},
+                "artifacts": {
+                    "inputs": {},
+                    "outputs": {
+                        "case-a/header": provenance.digest(first),
+                        "case-b/header": provenance.digest(second),
+                    },
+                },
+            }
+            manifest_path = root / "run_manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             with self.assertRaisesRegex(
                     provenance.ProvenanceError, "duplicate artifact identity"):
                 provenance.verify_artifact_set(
-                    manifest_path, [("header", first)])
+                    manifest_path, [("header", ambiguous)])
 
     def test_non_dict_json_document_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

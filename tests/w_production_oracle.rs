@@ -205,7 +205,11 @@ fn test_w_production_oracle_real_data_and_issue_73_boundaries_are_explicit() {
         report["handoff_to_issue_73"]["interface_vertical_motion_block_removed"],
         false
     );
-    assert!(VERTICAL_SAMPLING_SOURCE.contains("InterfaceVerticalMotionBlocked"));
+    // The frozen #80 artifact records that #80 itself did not remove the
+    // block. Issue #73 now consumes that handoff without mutating the oracle.
+    assert!(VERTICAL_SAMPLING_SOURCE.contains("omega_interface_flexpart11_pinmconv_v1"));
+    assert!(VERTICAL_SAMPLING_SOURCE.contains("remaps those values"));
+    assert!(!VERTICAL_SAMPLING_SOURCE.contains("InterfaceVerticalMotionBlocked"));
 }
 
 #[test]

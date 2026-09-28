@@ -12,11 +12,10 @@
 //! the pinned build) and `interpol_mod.f90:539-547` (`vert_interpol`).
 //!
 //! Model-level (`LevelCenter`) fields interpolate on the #30 model-level AGL
-//! geometry. Interface-staggered (`LevelInterface`) vertical motion remains
-//! fail-closed until #80 freezes pristine FLEXPART's `eta=no` two-stage W
-//! production path (`verttransform_ecmwf_windfields -> interpol_wind ->
-//! interpol_wind_meter`). The narrower #71 `vertical-interface-wzlev` fixture
-//! is not sufficient to select candidate production semantics.
+//! geometry. The #80-supported pressure-velocity/interface path first remaps
+//! the runtime-owned W values onto FLEXPART's shared `[ground, model levels]`
+//! height grid and only then samples at particle height. Direct interpolation
+//! on W/interface heights is deliberately not production behavior.
 //!
 //! Horizontal interpolation (#72), temporal interpolation (#74),
 //! accumulated-field handling (#75), 4D composition (#76), consumer migration
@@ -26,9 +25,17 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::{
-    vertical::{VerticalRuntimeView, VerticalTransformError},
+    vertical::{
+        NativeVerticalMotionKind, NativeVerticalMotionSign, NativeVerticalMotionUnit,
+        NormalizedVerticalMotion, VerticalRuntimeView, VerticalTransformError,
+    },
     FieldId, VerticalOrdering, VerticalReference, VerticalStaggering,
 };
+
+const PRESSURE_ALGORITHM_ID: &str = "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1";
+const HEIGHT_ALGORITHM_ID: &str = "flexpart11_verttransform_ecmwf_heights_v1";
+const W_HEIGHT_ALGORITHM_ID: &str = "flexpart11_wzlev_from_uvzlev_v1";
+const INTERFACE_OMEGA_ALGORITHM_ID: &str = "omega_interface_flexpart11_pinmconv_v1";
 
 /// Vertical sample with full oracle-traceable evidence.
 ///
@@ -42,13 +49,13 @@ pub struct VerticalSample {
     pub value: f32,
     /// Requested height resolved to AGL in metres.
     pub height_agl_m: f32,
-    /// Physical bottom-to-top lower index (0-based).
+    /// Physical bottom-to-top lower index (0-based) on the sampled grid.
     pub lower_physical_index: usize,
     /// Physical bottom-to-top upper index (0-based, always `lower + 1`).
     pub upper_physical_index: usize,
-    /// Canonical storage index of the lower level (depends on ordering).
+    /// Canonical storage index of the lower sampled-grid level (depends on ordering).
     pub lower_canonical_index: usize,
-    /// Canonical storage index of the upper level (depends on ordering).
+    /// Canonical storage index of the upper sampled-grid level (depends on ordering).
     pub upper_canonical_index: usize,
     /// Weight applied to the lower (closer-to-ground) value (`dz2`).
     pub weight_lower: f32,
@@ -78,9 +85,20 @@ pub enum VerticalSamplingError {
         field: FieldId,
         requested: VerticalStaggering,
     },
-    /// W/interface production semantics are unresolved until issue #80 completes.
-    #[error("interface-staggered vertical-motion sampling is blocked by issue #80")]
-    InterfaceVerticalMotionBlocked,
+    /// Interface motion is outside the exact pressure-omega contract frozen by #80.
+    #[error(
+        "unsupported interface vertical-motion semantics: kind={kind:?}, unit={unit:?}, sign={sign:?}, source_staggering={source_staggering:?}, output_staggering={output_staggering:?}"
+    )]
+    UnsupportedInterfaceVerticalMotion {
+        kind: NativeVerticalMotionKind,
+        unit: NativeVerticalMotionUnit,
+        sign: NativeVerticalMotionSign,
+        source_staggering: VerticalStaggering,
+        output_staggering: VerticalStaggering,
+    },
+    /// Runtime provenance does not identify the #30/#80 geometry or conversion.
+    #[error("unsupported interface vertical-motion runtime contract: {reason}")]
+    UnsupportedInterfaceRuntime { reason: &'static str },
     /// Canonical vertical velocity must come from the same #30 runtime transform.
     #[error("vertical velocity is absent from the #30 runtime transform")]
     MissingRuntimeVerticalMotion,
@@ -116,6 +134,9 @@ pub enum VerticalSamplingError {
     /// Center-staggered sampling needs at least two model levels.
     #[error("insufficient model levels for center-staggered sampling: nz={nz}")]
     InsufficientLevels { nz: usize },
+    /// The frozen #80 remapping contract requires at least two model levels.
+    #[error("insufficient model levels for interface vertical-motion remapping: nz={nz}")]
+    InsufficientInterfaceLevels { nz: usize },
     /// Wrapped #30 runtime access failure (out-of-bounds column or corrupt shape).
     #[error(transparent)]
     Runtime(#[from] VerticalTransformError),
@@ -129,6 +150,10 @@ pub enum VerticalSamplingError {
 /// `values` must be empty: values and retained staggering are read from the
 /// same #30 runtime transform as the geometry, preventing callers from
 /// recombining independently derived motion and heights.
+/// Interface-staggered motion is currently limited to #80's single-column
+/// pressure-omega contract, which has no horizontal eta-surface slope
+/// correction. Multi-column interface motion fails closed until a normative
+/// horizontal remapping contract supplies the required U/V context.
 ///
 /// `reference` must be `AboveGroundLevel` or `AboveMeanSeaLevel`.
 /// ASL requests resolve through the column's local #30 terrain
@@ -182,8 +207,14 @@ pub fn sample_vertical(
             .vertical_velocity()
             .ok_or(VerticalSamplingError::MissingRuntimeVerticalMotion)?;
         let retained = motion.vertical_staggering();
+        if retained != staggering {
+            return Err(VerticalSamplingError::WrongStaggering {
+                field,
+                requested: staggering,
+            });
+        }
         if retained == VerticalStaggering::LevelInterface {
-            return Err(VerticalSamplingError::InterfaceVerticalMotionBlocked);
+            return sample_interface_vertical_motion(runtime, motion, x, y, resolved_agl_m);
         }
         debug_assert_eq!(retained, VerticalStaggering::LevelCenter);
         motion.values_ms()
@@ -240,13 +271,127 @@ fn validate_field_and_staggering(
     if !is_vertically_sampled(field) {
         return Err(VerticalSamplingError::UnsupportedField { field });
     }
-    if field == FieldId::VerticalVelocity && staggering == VerticalStaggering::LevelInterface {
-        return Err(VerticalSamplingError::InterfaceVerticalMotionBlocked);
-    }
-    if staggering != VerticalStaggering::LevelCenter {
+    let supported_staggering = if field == FieldId::VerticalVelocity {
+        matches!(
+            staggering,
+            VerticalStaggering::LevelCenter | VerticalStaggering::LevelInterface
+        )
+    } else {
+        staggering == VerticalStaggering::LevelCenter
+    };
+    if !supported_staggering {
         return Err(VerticalSamplingError::WrongStaggering {
             field,
             requested: staggering,
+        });
+    }
+    Ok(())
+}
+
+/// Reproduce FLEXPART 11.1's `eta=no` two-stage interface-W production path.
+///
+/// Ported from `verttransform_mod.f90:544-545,607-622` and
+/// `interpol_mod.f90:1022-1027,1651-1703` at pinned revision
+/// `c70586c2b7f5258850705325881c61f557ea9bd8`. The #30 runtime already owns
+/// the `omega * pinmconv` conversion and W/interface heights. This function
+/// remaps those values to FLEXPART's shared `[ground, model levels]` height
+/// grid before applying the ordinary meter-coordinate sampling primitive.
+fn sample_interface_vertical_motion(
+    runtime: VerticalRuntimeView<'_>,
+    motion: &NormalizedVerticalMotion,
+    x: usize,
+    y: usize,
+    height_agl_m: f32,
+) -> Result<VerticalSample, VerticalSamplingError> {
+    validate_interface_runtime_contract(runtime, motion)?;
+
+    let (nx, ny, nz) = runtime.dimensions();
+    if nz < 2 {
+        return Err(VerticalSamplingError::InsufficientInterfaceLevels { nz });
+    }
+    let horizontal = nx
+        .checked_mul(ny)
+        .ok_or(VerticalSamplingError::ShapeMismatch {
+            field: FieldId::VerticalVelocity,
+            expected: usize::MAX,
+            actual: motion.values_ms().len(),
+        })?;
+    let expected = horizontal
+        .checked_mul(nz + 1)
+        .ok_or(VerticalSamplingError::ShapeMismatch {
+            field: FieldId::VerticalVelocity,
+            expected: usize::MAX,
+            actual: motion.values_ms().len(),
+        })?;
+    if motion.values_ms().len() != expected {
+        return Err(VerticalSamplingError::ShapeMismatch {
+            field: FieldId::VerticalVelocity,
+            expected,
+            actual: motion.values_ms().len(),
+        });
+    }
+
+    let ordering = runtime.provenance().source_vertical_ordering;
+    let interfaces = collect_physical_interface_column(runtime, motion, x, y, ordering)?;
+    validate_physical_column(x, y, &interfaces)?;
+    let model_grid = remap_interface_motion_to_model_grid(runtime, x, y, ordering, &interfaces)?;
+    validate_physical_column(x, y, &model_grid)?;
+
+    Ok(interpolate_flexpart_meter_mode(&model_grid, height_agl_m))
+}
+
+fn validate_interface_runtime_contract(
+    runtime: VerticalRuntimeView<'_>,
+    motion: &NormalizedVerticalMotion,
+) -> Result<(), VerticalSamplingError> {
+    let provenance = motion.provenance();
+    let supported_motion = provenance.source_kind
+        == NativeVerticalMotionKind::PressureVelocityOmega
+        && provenance.source_unit == NativeVerticalMotionUnit::PascalPerSecond
+        && provenance.source_sign == NativeVerticalMotionSign::PositivePressureIncreasing
+        && provenance.source_vertical_staggering == VerticalStaggering::LevelInterface
+        && provenance.output_vertical_staggering == VerticalStaggering::LevelInterface
+        && provenance.algorithm_id == INTERFACE_OMEGA_ALGORITHM_ID;
+    if !supported_motion {
+        return Err(VerticalSamplingError::UnsupportedInterfaceVerticalMotion {
+            kind: provenance.source_kind,
+            unit: provenance.source_unit,
+            sign: provenance.source_sign,
+            source_staggering: provenance.source_vertical_staggering,
+            output_staggering: provenance.output_vertical_staggering,
+        });
+    }
+
+    let runtime_provenance = runtime.provenance();
+    let (nx, ny, nz) = runtime.dimensions();
+    if nx != 1 || ny != 1 {
+        return Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
+            reason: "#80 freezes a single vertical column without horizontal slope correction",
+        });
+    }
+    if runtime_provenance.source_level_count != nz {
+        return Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
+            reason: "runtime level count differs from the #30 source provenance",
+        });
+    }
+    if runtime_provenance.pressure_algorithm_id != PRESSURE_ALGORITHM_ID {
+        return Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
+            reason: "pressure reconstruction is not the #30 hybrid-interface contract",
+        });
+    }
+    if runtime_provenance.height_algorithm_id != HEIGHT_ALGORITHM_ID {
+        return Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
+            reason: "model heights are not the #30 FLEXPART height contract",
+        });
+    }
+    if runtime_provenance.w_height_algorithm_id != W_HEIGHT_ALGORITHM_ID {
+        return Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
+            reason: "W/interface heights are not the #30 FLEXPART wzlev contract",
+        });
+    }
+    if runtime_provenance.terrain_reference != VerticalReference::AboveMeanSeaLevel {
+        return Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
+            reason: "runtime terrain reference is not explicit ASL",
         });
     }
     Ok(())
@@ -309,6 +454,119 @@ fn collect_physical_column(
         });
     }
     Ok(column)
+}
+
+fn collect_physical_interface_column(
+    runtime: VerticalRuntimeView<'_>,
+    motion: &NormalizedVerticalMotion,
+    x: usize,
+    y: usize,
+    ordering: VerticalOrdering,
+) -> Result<Vec<PhysicalEntry>, VerticalSamplingError> {
+    let (nx, ny, nz) = runtime.dimensions();
+    let interface_count = nz + 1;
+    let mut column = Vec::with_capacity(interface_count);
+    for physical in 0..interface_count {
+        let canonical = canonical_index(ordering, interface_count, physical);
+        let height_agl_m = runtime.interface(x, y, canonical)?.height_agl_m;
+        let flat = volume_offset(x, y, canonical, nx, ny);
+        let value =
+            motion
+                .values_ms()
+                .get(flat)
+                .copied()
+                .ok_or(VerticalSamplingError::ShapeMismatch {
+                    field: FieldId::VerticalVelocity,
+                    expected: nx * ny * interface_count,
+                    actual: motion.values_ms().len(),
+                })?;
+        if !value.is_finite() {
+            return Err(VerticalSamplingError::NonFiniteFieldValue {
+                field: FieldId::VerticalVelocity,
+                x,
+                y,
+                index: canonical,
+            });
+        }
+        column.push(PhysicalEntry {
+            height_agl_m,
+            value,
+            canonical_index: canonical,
+        });
+    }
+    Ok(column)
+}
+
+fn remap_interface_motion_to_model_grid(
+    runtime: VerticalRuntimeView<'_>,
+    x: usize,
+    y: usize,
+    ordering: VerticalOrdering,
+    interfaces: &[PhysicalEntry],
+) -> Result<Vec<PhysicalEntry>, VerticalSamplingError> {
+    let (_, _, nz) = runtime.dimensions();
+    debug_assert_eq!(interfaces.len(), nz + 1);
+
+    if interfaces[0].height_agl_m != 0.0 {
+        return Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
+            reason: "the #80 shared height grid requires a zero-metre AGL ground boundary",
+        });
+    }
+
+    let grid_count = nz + 1;
+    let mut model_grid = Vec::with_capacity(grid_count);
+    model_grid.push(PhysicalEntry {
+        height_agl_m: interfaces[0].height_agl_m,
+        value: interfaces[0].value,
+        canonical_index: canonical_index(ordering, grid_count, 0),
+    });
+
+    // FLEXPART assigns the native interface boundary values directly at the
+    // first and last shared height levels. Only the strict interior shared
+    // model heights pass through the interface-height remapping.
+    for model_physical in 1..nz {
+        let source_physical = model_physical - 1;
+        let source_canonical = canonical_index(ordering, nz, source_physical);
+        let height_agl_m = runtime.level(x, y, source_canonical)?.height_agl_m;
+        if height_agl_m <= interfaces[0].height_agl_m
+            || height_agl_m >= interfaces[interfaces.len() - 1].height_agl_m
+        {
+            return Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
+                reason: "an interior shared model height is outside the W/interface domain",
+            });
+        }
+        let value = interpolate_flexpart_meter_mode(interfaces, height_agl_m).value;
+        model_grid.push(PhysicalEntry {
+            height_agl_m,
+            value,
+            canonical_index: canonical_index(ordering, grid_count, model_physical),
+        });
+    }
+
+    let top_model_canonical = canonical_index(ordering, nz, nz - 1);
+    let top_model_height_agl_m = runtime.level(x, y, top_model_canonical)?.height_agl_m;
+    if top_model_height_agl_m <= model_grid[model_grid.len() - 1].height_agl_m
+        || top_model_height_agl_m > interfaces[interfaces.len() - 1].height_agl_m
+    {
+        return Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
+            reason: "the top shared model height is incompatible with the W/interface domain",
+        });
+    }
+    model_grid.push(PhysicalEntry {
+        height_agl_m: top_model_height_agl_m,
+        value: interfaces[interfaces.len() - 1].value,
+        canonical_index: canonical_index(ordering, grid_count, nz),
+    });
+
+    Ok(model_grid)
+}
+
+#[inline]
+const fn canonical_index(ordering: VerticalOrdering, count: usize, physical_index: usize) -> usize {
+    match ordering {
+        VerticalOrdering::Increasing => count - 1 - physical_index,
+        VerticalOrdering::Decreasing => physical_index,
+    }
 }
 
 fn validate_physical_column(
@@ -504,29 +762,104 @@ mod tests {
     }
 
     #[test]
-    fn interface_vertical_motion_fails_closed_until_issue_80() {
+    fn interface_vertical_motion_matches_frozen_issue_80_production_oracle() {
         let snapshot = synthetic_snapshot();
         let omega: NativeVerticalMotion = serde_json::from_str(include_str!(
-            "../../fixtures/vertical/synthetic-omega-interface-v1.json"
+            "../../fixtures/vertical/synthetic-omega-interface-nonlinear-v1.json"
         ))
         .expect("omega fixture must parse");
         let geometry = reconstruct_vertical_geometry_with_motion(&snapshot, &omega)
             .expect("geometry with motion");
         let runtime = geometry.runtime_view().expect("runtime view");
-        let result = sample_vertical(
-            runtime,
-            FieldId::VerticalVelocity,
-            VerticalStaggering::LevelInterface,
-            &[],
-            0,
-            0,
-            100.0,
-            VerticalReference::AboveGroundLevel,
-        );
-        assert_eq!(
-            result,
-            Err(VerticalSamplingError::InterfaceVerticalMotionBlocked)
-        );
+        let report: serde_json::Value = serde_json::from_str(include_str!(
+            "../../fixtures/interpolation/w-production-oracle-v1.json"
+        ))
+        .expect("#80 report must parse");
+        let absolute = report["tolerances"]["absolute_m_s"]
+            .as_f64()
+            .expect("absolute tolerance");
+        let relative = report["tolerances"]["relative"]
+            .as_f64()
+            .expect("relative tolerance");
+        let queries = report["synthetic_case"]["queries"]
+            .as_array()
+            .expect("oracle queries");
+        let comparisons = report["synthetic_case"]["comparisons"]
+            .as_array()
+            .expect("direct-interface comparisons");
+        assert_eq!(queries.len(), comparisons.len());
+
+        for (query, comparison) in queries.iter().zip(comparisons) {
+            let query_number = query["query"].as_u64().expect("query number");
+            let height = checked_f64_to_f32(
+                query["particle_height_m_agl"]
+                    .as_f64()
+                    .expect("particle height"),
+                "#80 particle height",
+            );
+            let expected = query["pristine_w_m_s"].as_f64().expect("pristine W");
+            let sample = sample_vertical(
+                runtime,
+                FieldId::VerticalVelocity,
+                VerticalStaggering::LevelInterface,
+                &[],
+                0,
+                0,
+                height,
+                VerticalReference::AboveGroundLevel,
+            )
+            .expect("supported interface W sample");
+            let actual = f64::from(sample.value);
+            let tolerance = absolute + relative * actual.abs().max(expected.abs());
+            assert!(
+                (actual - expected).abs() <= tolerance,
+                "#80 query {query_number}: candidate {actual} != pristine {expected} (tolerance {tolerance})"
+            );
+
+            let direct = comparison["direct_interface_w_m_s"]
+                .as_f64()
+                .expect("direct-interface W");
+            if !comparison["equivalent"]
+                .as_bool()
+                .expect("equivalence verdict")
+            {
+                assert!(
+                    (actual - direct).abs() > tolerance,
+                    "#80 query {query_number}: candidate followed the rejected direct-interface value"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn unsupported_geometric_interface_motion_fails_closed() {
+        let snapshot = synthetic_snapshot();
+        let motion = NativeVerticalMotion {
+            kind: NativeVerticalMotionKind::GeometricVelocity,
+            unit: NativeVerticalMotionUnit::MeterPerSecond,
+            sign: NativeVerticalMotionSign::PositiveUpward,
+            vertical_staggering: VerticalStaggering::LevelInterface,
+            values: vec![0.3, 0.2, 0.1, 0.0],
+            provenance: NativeVerticalMotionProvenance {
+                source_id: "unsupported-geometric-interface-test".to_string(),
+            },
+        };
+        let geometry = reconstruct_vertical_geometry_with_motion(&snapshot, &motion)
+            .expect("geometry with geometric interface motion");
+        let runtime = geometry.runtime_view().expect("runtime view");
+        assert!(matches!(
+            sample_vertical(
+                runtime,
+                FieldId::VerticalVelocity,
+                VerticalStaggering::LevelInterface,
+                &[],
+                0,
+                0,
+                100.0,
+                VerticalReference::AboveGroundLevel,
+            ),
+            Err(VerticalSamplingError::UnsupportedInterfaceVerticalMotion { .. })
+        ));
     }
 
     #[test]
@@ -687,6 +1020,19 @@ mod tests {
     const ORACLE_REL_TOL: f64 = 1.0e-4;
     const ORACLE_ABS_TOL: f64 = 1.0e-6;
 
+    fn checked_f64_to_f32(value: f64, what: &str) -> f32 {
+        assert!(value.is_finite(), "{what}: non-finite f64 input");
+        assert!(
+            value >= f64::from(f32::MIN) && value <= f64::from(f32::MAX),
+            "{what}: f64 input is outside the supported f32 range"
+        );
+        // The range check makes this the explicit oracle-f64 -> runtime-f32
+        // rounding boundary. Production inputs are already canonical f32.
+        let rounded = value as f32;
+        assert!(rounded.is_finite(), "{what}: f32 rounding was non-finite");
+        rounded
+    }
+
     fn oracle_close(actual: f64, expected: f64, what: &str) {
         let diff = (actual - expected).abs();
         let tolerance = ORACLE_ABS_TOL + ORACLE_REL_TOL * expected.abs();
@@ -704,8 +1050,8 @@ mod tests {
             .zip(values.iter())
             .enumerate()
             .map(|(index, (height, value))| PhysicalEntry {
-                height_agl_m: *height as f32,
-                value: *value as f32,
+                height_agl_m: checked_f64_to_f32(*height, "oracle height"),
+                value: checked_f64_to_f32(*value, "oracle value"),
                 canonical_index: index,
             })
             .collect()
@@ -775,7 +1121,10 @@ mod tests {
                 *coordinate, expected_coordinate,
                 "{id} query {index}: coordinate id must match declared staggering"
             );
-            let sample = interpolate_flexpart_meter_mode(&column, *zt as f32);
+            let sample = interpolate_flexpart_meter_mode(
+                &column,
+                checked_f64_to_f32(*zt, "oracle query height"),
+            );
             let oracle_value = golden["VALUE"][0].as_f64().expect("oracle value");
             oracle_close(
                 f64::from(sample.value),

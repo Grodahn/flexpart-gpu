@@ -684,8 +684,8 @@ print("W production oracle fixture reproduced: OK")
 fi
 
 # ---------------------------------------------------------------------------
-# 2f. Canonical model-level vertical sampling and retained report.
-# Interface-staggered motion remains fail-closed until #80 is reviewed/merged.
+# 2f. Canonical vertical sampling and retained #73 reports.
+# Interface pressure velocity follows the two-stage path frozen by #80.
 # ---------------------------------------------------------------------------
 VERTICAL_SAMPLING_DIR="${OUTPUT_DIR}/vertical-sampling"
 mkdir -p "${VERTICAL_SAMPLING_DIR}"
@@ -696,11 +696,13 @@ if ! cargo test --test integration vertical_sampling 2>&1 | tee "${VERTICAL_SAMP
   fail "Rust #73 vertical-sampling integration tests failed"
 fi
 VERTICAL_SAMPLING_REPORT="${VERTICAL_SAMPLING_DIR}/vertical-model-level-regression.json"
+INTERFACE_W_REPORT="${VERTICAL_SAMPLING_DIR}/vertical-interface-w-production-oracle.json"
 test -s "${VERTICAL_SAMPLING_REPORT}" || fail "Vertical-sampling comparison report is missing or empty"
+test -s "${INTERFACE_W_REPORT}" || fail "Interface-W production comparison report is missing or empty"
 if ! "${HOST_PYTHON}" -c '
 import json, sys
 report = json.load(open(sys.argv[1], encoding="utf-8"))
-assert report["interface_vertical_motion"] == "BLOCKED_BY_ISSUE_80"
+assert report["interface_vertical_motion"] == "ISSUE_80_PRESSURE_OMEGA_TWO_STAGE_SUPPORTED"
 rows = report["rows"]
 assert rows, "comparison report has no rows"
 required = {
@@ -711,8 +713,19 @@ required = {
 for row in rows:
     assert required <= row.keys(), f"missing report fields: {sorted(required - row.keys())}"
     assert row["verdict"] == "PASS", "non-passing vertical comparison row"
-print("vertical-sampling comparison report: PASS")
-' "${VERTICAL_SAMPLING_REPORT}" 2>&1 | tee "${VERTICAL_SAMPLING_DIR}/report-validation.log"; then
+interface = json.load(open(sys.argv[2], encoding="utf-8"))
+assert interface["issue"] == 73
+assert interface["oracle_issue"] == 80
+assert interface["direct_interface_interpolation"] == "REJECTED_NOT_EQUIVALENT"
+assert interface["real_data_limitation"]["status"] == "not_available_in_checked_in_canonical_fixture"
+assert interface["verdict"] == "PASS"
+interface_rows = interface["rows"]
+assert len(interface_rows) == 5, "all #80 boundary/interior queries are required"
+for row in interface_rows:
+    assert row["verdict"] == "PASS", "non-passing interface-W comparison row"
+    assert row["f64_to_f32_rounding"] == "finite_range_checked_then_round_to_nearest_runtime_f32"
+print("vertical-sampling comparison reports: PASS")
+' "${VERTICAL_SAMPLING_REPORT}" "${INTERFACE_W_REPORT}" 2>&1 | tee "${VERTICAL_SAMPLING_DIR}/report-validation.log"; then
   fail "Vertical-sampling comparison report validation failed"
 fi
 

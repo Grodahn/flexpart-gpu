@@ -9,6 +9,7 @@
 
 pub mod candidate_physics;
 pub mod case;
+pub mod input_equivalence;
 
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -52,6 +52,12 @@ GEN = load_generator()
 
 from validation_case_schema import ValidationCaseSchemaError, validate_case_document
 
+# Canonical #52 input-equivalence implementation. The fixture-vs-case
+# comparison below routes through it so COMMAND/RELEASES/OUTGRID/SPECIES
+# semantics live in exactly one place (scripts/corpus/input_equivalence.py)
+# instead of a second field-audit implementation.
+import input_equivalence as INPUT_EQUIVALENCE
+
 FAILURES: list = []
 
 PHILOX_DERIVATION_WRAPPING_ADD_KEY0_V1 = "wrapping_add_key0_v1"
@@ -93,35 +99,53 @@ def audit_fixture_case(case_id: str, case: dict, fort_dir: Path) -> None:
     if not outdir.is_dir():
         check(f"{case_id} fortran fixture present", False, f"missing {outdir}")
         return
+    # Route the COMMAND/RELEASES/OUTGRID/SPECIES/METEO equivalence through
+    # the canonical #52 implementation so field semantics live in one place.
+    # The legacy per-artifact checks below are thin translations of the
+    # canonical field evidence, not a second audit implementation.
     try:
-        physics = GEN.mandatory_physics_switches(case_id, case)
-        GEN._validate_species_physics_contract(case_id, case, physics)
-        GEN._validate_deposition_contract(case_id, case, physics)
+        report = INPUT_EQUIVALENCE.build_report(case_id, case, outdir)
+    except Exception as exc:  # fail closed: canonical crash is an audit failure
+        check(f"{case_id} fixture equals case JSON", False, f"canonical gate crashed: {exc}")
+        return
+    by_field = {f["field_id"]: f for f in report.get("fields", [])}
+    verdict = report.get("verdict")
+
+    def field_detail(*field_ids):
+        problems = [
+            f"{fid}={by_field.get(fid, {}).get('status')}: {by_field.get(fid, {}).get('detail')}"
+            for fid in field_ids
+            if by_field.get(fid, {}).get("status") != "equivalent"
+        ]
+        return "; ".join(problems)
+
+    fixture_ok = verdict == INPUT_EQUIVALENCE.VERDICT_EQUIVALENT
+    # NOT_DEMONSTRATED fixtures (e.g. unresolved representation evidence) are
+    # never promoted to an input-equality PASS by this audit.
+    check(
+        f"{case_id} fixture equals case JSON",
+        fixture_ok,
+        "" if fixture_ok else f"canonical verdict {verdict}: {field_detail(*INPUT_EQUIVALENCE.REQUIRED_FIELD_IDS)}",
+    )
+    if not fixture_ok:
+        # Emit per-field evidence so failures name the offending field.
+        for fid in INPUT_EQUIVALENCE.REQUIRED_FIELD_IDS:
+            entry = by_field.get(fid)
+            if entry is None or entry.get("status") == "equivalent":
+                continue
+            check(
+                f"{case_id} input-equivalence {fid}",
+                False,
+                f"{entry.get('status')}: {entry.get('detail')}",
+            )
+        return
+    try:
         specnum = GEN.species_number_for_case(case_id, case)
-        GEN.verify_case(case_id, case, outdir, specnum)
-        check(f"{case_id} fixture equals case JSON", True)
     except SystemExit as exc:
         check(f"{case_id} fixture equals case JSON", False, str(exc))
         return
     species = outdir / "SPECIES" / f"SPECIES_{specnum:03d}"
     check(f"{case_id} SPECIES_{specnum:03d} present", species.is_file())
-    if species.is_file():
-        import re as _re
-
-        code = _re.sub(r"!.*", "", species.read_text(encoding="utf-8"))
-        check(
-            f"{case_id} SPECIES v11.1-readable (no PNDIA)",
-            _re.search(r"(?im)^\s*PNDIA\s*=", code) is None,
-        )
-        if case_id == "DRY-007":
-            pdryvel = GEN.namelist_value(
-                species.read_text(encoding="utf-8"), "PDRYVEL"
-            ).strip()
-            check(
-                f"{case_id} SPECIES PDRYVEL=2.0 (0.02 m/s, candidate-equivalent)",
-                pdryvel == "2.0",
-                f"found {pdryvel}",
-            )
     if specnum == 40:
         check(
             f"{case_id} SPECIES_040.PROVENANCE.txt present",

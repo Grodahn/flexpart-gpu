@@ -37,6 +37,7 @@ import argparse
 import hashlib
 import json
 import math
+import sys
 from pathlib import Path
 
 
@@ -297,7 +298,23 @@ def main():
         "--oracle-calibration-case",
         help="Additional inert oracle case consumed to calibrate a focused report.",
     )
+    parser.add_argument(
+        "--require-input-equivalence",
+        default=None,
+        help="Fail-closed #52 gate: path to a canonical input-equivalence report JSON. "
+        "Paired oracle comparison is refused unless the report verdict is INPUT_EQUIVALENT. "
+        "Use scripts/corpus/input_equivalence.py to produce the report.",
+    )
     args = parser.parse_args()
+
+    if args.require_input_equivalence is not None:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import input_equivalence as _ie
+
+        try:
+            _ie.require_input_equivalent(args.require_input_equivalence)
+        except _ie.InputEquivalenceError as exc:
+            raise SystemExit(f"input-equivalence gate refused scoring: {exc}") from None
 
     candidate_dir = Path(args.candidate_dir)
     oracle_dir = Path(args.oracle_dir) if args.oracle_dir else None

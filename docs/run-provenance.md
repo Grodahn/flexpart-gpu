@@ -64,6 +64,10 @@ characters.
   `search_roots` (candidate, oracle, meteo, case-fixture directories).
   Reports must additionally call `verify_artifact_set` with the exact
   consumed `(label, path)` list before calculating any verdict.
+- `verify_manifest_integrity` checks the manifest against its own
+  recorded execution identities without touching disk: run_id staleness,
+  mixed candidate revisions, mixed oracle builds, pruned artifact maps
+  and an explicit INVALID state all fail closed.
 
 ## Attribution states
 
@@ -105,12 +109,20 @@ schema. Without `--case-manifest` (oracle writer) or `--cases-dir`
 Focused provenance/hash checks plus the smallest representative
 workflow — no expensive oracle/model reruns:
 
-- `python scripts/provenance/test_run_provenance.py` (16 tests: valid
+- `python scripts/provenance/test_run_provenance.py` (31 tests: valid
   verify, output substitution, input mutation, mixed revisions/builds,
   stale/missing/duplicate rejection, oracle-kind distinction, identity
-  determinism).
-- `python scripts/evaluate/test_evaluate.py` (evaluator, incl. legacy
-  provenance paths).
+  determinism, pruned-map rejection, manifest integrity, partial
+  promotion).
+- `python scripts/test_write_oracle_run_manifest_v1.py` (12 tests:
+  synthetic case binding, strategy resolution, output partition).
+- `python scripts/corpus/test_write_corpus_manifest_v1.py` (7 tests:
+  writer CLI end-to-end, unknown seed case, exact case-component
+  attribution, unattributable oracle files, non-overwriting output,
+  deterministic run_id).
+- `python scripts/evaluate/test_evaluate.py` (42 tests, incl. v1
+  manifest consumption: attribution, empty-artifact coverage, dirty
+  candidate, tampered output, stale run_id).
 - `python scripts/test_oracle_run_manifest.py` (oracle writer).
 - Synthetic end-to-end writer check (see PR): focused corpus manifest
   for `ADV-ANA-001` verifies `VERIFIED`, then fails closed after output

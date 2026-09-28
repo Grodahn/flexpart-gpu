@@ -58,10 +58,10 @@ import io_gpu
 import metrics
 import report as report_lib
 
-try:
-    import run_provenance as provenance
-except ImportError:
-    provenance = None  # type: ignore[assignment]
+# The authoritative provenance library is mandatory: a v1 manifest must
+# never be silently processed by the legacy path when the library is
+# missing.
+import run_provenance as provenance
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_ORACLE_MANIFEST = REPO_ROOT / "reference" / "flexpart-11.1.json"
@@ -319,6 +319,13 @@ def _build_provenance_v1(args, oracle_manifest, manifest,
         notes.append(f"Execution identities: {', '.join(execution_ids)} "
                      f"(run {str(manifest.get('run_id', ''))[:16]})")
 
+    # Verify manifest integrity independently of artifact resolution:
+    # run_id staleness, mixed candidate revisions, mixed oracle builds and
+    # an explicit INVALID state must fail closed on the v1 path too. This
+    # check needs no search roots because it validates the manifest
+    # against its own recorded execution identities.
+    provenance.verify_manifest_integrity(manifest)
+
     # Hash-verify every consumed artifact before attributing anything.
     labeled = [(label, path) for label, path, _kind in artifact_paths]
     if labeled:
@@ -328,14 +335,16 @@ def _build_provenance_v1(args, oracle_manifest, manifest,
         notes.extend(result.get("notes", []))
         candidates = [t for t in artifact_paths if t[2] == "candidate"]
         oracles = [t for t in artifact_paths if t[2] == "oracle"]
-        candidate_covered = all(
+        candidate_covered = bool(candidates) and all(
             any(label == verified for verified in result.get("verified", []))
-            for label, _path, _kind in candidates) if candidates else True
-        oracle_covered = all(
+            for label, _path, _kind in candidates)
+        oracle_covered = bool(oracles) and all(
             any(label == verified for verified in result.get("verified", []))
-            for label, _path, _kind in oracles) if oracles else True
+            for label, _path, _kind in oracles)
     else:
-        candidate_covered, oracle_covered = True, True
+        # No consumed artifacts were supplied: nothing was hash-verified,
+        # so no coverage may be claimed for either role.
+        candidate_covered, oracle_covered = False, False
 
     candidate_revision = None
     revision_source = None
@@ -357,11 +366,18 @@ def _build_provenance_v1(args, oracle_manifest, manifest,
             candidate_revision = usable.pop()
             revision_source = "embedded-in-artifact"
     manifest_revision = (manifest.get("candidate") or {}).get("revision")
+    candidate_dirty = (manifest.get("candidate") or {}).get("worktree_dirty")
     if candidate_revision is None and candidate_covered:
         if manifest_revision and manifest_revision != "unknown":
-            candidate_revision = manifest_revision
-            revision_source = "run-manifest-hash-verified"
-            notes.append("Candidate revision hash-verified via v1 run manifest")
+            if candidate_dirty:
+                missing.append({"name": "candidate.revision",
+                                "reason": "candidate worktree was dirty at manifest "
+                                          "creation; revision attribution stays "
+                                          "unverified"})
+            else:
+                candidate_revision = manifest_revision
+                revision_source = "run-manifest-hash-verified"
+                notes.append("Candidate revision hash-verified via v1 run manifest")
         else:
             missing.append({"name": "candidate.revision",
                             "reason": "v1 manifest records no usable candidate "
@@ -384,7 +400,6 @@ def _build_provenance_v1(args, oracle_manifest, manifest,
                                   "(use embedded revisions, --run-manifest or "
                                   "--candidate-revision); the evaluator checkout HEAD "
                                   "is deliberately not attributed"})
-    candidate_dirty = (manifest.get("candidate") or {}).get("worktree_dirty")
     adapter = None
     if embedded_adapters:
         unique_adapters = set(embedded_adapters)

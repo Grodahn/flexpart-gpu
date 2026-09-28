@@ -164,6 +164,78 @@ def validate_runtime_profile(manifest_path, environment):
     }
 
 
+def _partition_output_artifacts(output_sha256, candidate_artifacts, oracle_artifacts):
+    """Split recorded output hashes into candidate/oracle ownership.
+
+    Explicit ``--candidate-artifact`` / ``--oracle-artifact`` lists win.
+    Remaining artifacts are classified by role markers in their path
+    (``gpu`` -> candidate, ``fortran`` -> oracle). Artifacts that cannot
+    be classified are conservatively bound to BOTH executions so neither
+    role can deny consuming them; ownership is never guessed silently
+    toward one side only.
+    """
+    candidate_set = set(candidate_artifacts)
+    oracle_set = set(oracle_artifacts)
+    overlap = candidate_set & oracle_set
+    if overlap:
+        raise ValueError(
+            f"artifact listed as both candidate and oracle output: "
+            f"{sorted(overlap)[0]}")
+    candidate_outputs = {}
+    oracle_outputs = {}
+    for path, value in output_sha256.items():
+        if path in candidate_set:
+            candidate_outputs[path] = value
+        elif path in oracle_set:
+            oracle_outputs[path] = value
+        elif "gpu" in path.lower():
+            candidate_outputs[path] = value
+        elif "fortran" in path.lower():
+            oracle_outputs[path] = value
+        else:
+            candidate_outputs[path] = value
+            oracle_outputs[path] = value
+    return candidate_outputs, oracle_outputs
+
+
+def synthetic_case_binding(case_label, input_sha256):
+    """Fallback case binding when no versioned case file is supplied.
+
+    Hashes the content of the consumed inputs, not just their path names:
+    identical paths with different bytes must not produce the same
+    binding.
+    """
+    return {
+        "case_id": case_label,
+        "case_manifest_sha256": provenance.hash_bytes(
+            provenance.canonical_json(sorted(input_sha256.items()))),
+        "case_schema_version": provenance.CASE_SCHEMA_VERSION,
+    }
+
+
+def resolve_oracle_strategy(oracle_kind, oracle_requested_identity):
+    """Resolve the #50 oracle strategy reference, failing closed."""
+    if oracle_kind == provenance.ORACLE_PRISTINE:
+        if oracle_requested_identity is not None:
+            raise ValueError(
+                "pristine-oracle runs must not carry "
+                "--oracle-requested-identity")
+        return None
+    if oracle_kind == provenance.ORACLE_SEEDABLE:
+        if oracle_requested_identity is None:
+            raise ValueError(
+                "seedable-validation-oracle runs require "
+                "--oracle-requested-identity; a seedable run without a "
+                "requested identity is rejected instead of silently "
+                "falling back to default mode")
+        return {
+            "strategy": provenance.ORACLE_STRATEGY_ID,
+            "version": provenance.ORACLE_STRATEGY_VERSION,
+            "contract_path": "reference/oracle-stochastic-identity.json",
+        }
+    raise ValueError(f"unknown oracle kind: {oracle_kind!r}")
+
+
 def make_manifest(args):
     reference = json.loads(Path(args.oracle_manifest).read_text(encoding="utf-8"))
     oracle = git_state(args.oracle_checkout)
@@ -207,7 +279,7 @@ def make_manifest(args):
     # vocabulary and is never collapsed into a generic identity.
     oracle_exe_sha = report["oracle_executable_sha256"]
     candidate_exe_sha = report["candidate_executable_sha256"]
-    candidate_state = git_state(args.candidate_checkout)
+    candidate_state = report["candidate"]
     case_label = args.case or args.scenario
     if args.case_manifest:
         case_binding = provenance.case_manifest_identity(args.case_manifest)
@@ -228,20 +300,13 @@ def make_manifest(args):
         realization["candidate_seed"] = args.seed
     if args.oracle_requested_identity is not None:
         realization["requested_identity"] = str(args.oracle_requested_identity)
-    oracle_strategy = None
-    if args.oracle_kind == provenance.ORACLE_SEEDABLE:
-        oracle_strategy = {
-            "strategy": provenance.ORACLE_STRATEGY_ID,
-            "version": provenance.ORACLE_STRATEGY_VERSION,
-            "contract_path": "reference/oracle-stochastic-identity.json",
-        }
+    oracle_strategy = resolve_oracle_strategy(
+        args.oracle_kind, args.oracle_requested_identity)
     has_case_binding = v1_cases[0]["case_manifest_sha256"] != "0" * 64
-    effective_case = v1_cases[0] if has_case_binding else {
-        "case_id": case_label,
-        "case_manifest_sha256": provenance.hash_bytes(
-            provenance.canonical_json(sorted(report["input_sha256"]))),
-        "case_schema_version": provenance.CASE_SCHEMA_VERSION,
-    }
+    effective_case = v1_cases[0] if has_case_binding else synthetic_case_binding(
+        case_label, report["input_sha256"])
+    candidate_outputs, oracle_outputs = _partition_output_artifacts(
+        report["output_sha256"], args.candidate_artifact, args.oracle_artifact)
     candidate_execution = provenance.build_execution_record(
         role="candidate",
         case=effective_case,
@@ -255,8 +320,7 @@ def make_manifest(args):
         oracle_strategy=oracle_strategy,
         runtime_adapter=report["adapter"],
         inputs_sha256=dict(report["input_sha256"]),
-        outputs_sha256={k: v for k, v in report["output_sha256"].items()
-                        if "gpu" in k.lower()},
+        outputs_sha256=candidate_outputs,
     )
     oracle_execution = provenance.build_execution_record(
         role="oracle",
@@ -272,8 +336,7 @@ def make_manifest(args):
         runtime_adapter=None,
         cpu_runtime="flexpart-11.1-single-thread",
         inputs_sha256=dict(report["input_sha256"]),
-        outputs_sha256={k: v for k, v in report["output_sha256"].items()
-                        if "gpu" not in k.lower()},
+        outputs_sha256=oracle_outputs,
     )
     # Without an explicit --case-manifest the case binding is a placeholder
     # and the manifest must stay PARTIAL with a machine-readable gap.
@@ -367,29 +430,25 @@ def main():
     parser.add_argument(
         "--oracle-requested-identity", default=None,
         help="Requested seedable identity (FLEXPART_VALIDATION_SEED value) "
-             "for seedable-validation-oracle runs; must be omitted for "
-             "pristine-oracle runs.")
+             "for seedable-validation-oracle runs; must be provided for "
+             "seedable-validation-oracle runs and omitted for pristine runs.")
+    parser.add_argument(
+        "--candidate-artifact", action="append", default=[],
+        help="Output artifact produced by the candidate execution; may be repeated")
+    parser.add_argument(
+        "--oracle-artifact", action="append", default=[],
+        help="Output artifact produced by the oracle execution; may be repeated")
     args = parser.parse_args()
     if not args.input or not args.artifact:
         parser.error("at least one --input and --artifact are required")
-    if args.oracle_kind == provenance.ORACLE_PRISTINE and args.oracle_requested_identity is not None:
-        parser.error("pristine-oracle runs must not carry --oracle-requested-identity")
+    resolve_oracle_strategy(args.oracle_kind, args.oracle_requested_identity)
     report = make_manifest(args)
     output = Path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
     payload = (json.dumps(report, indent=2) + "\n").encode("utf-8")
-    if output.is_file():
-        try:
-            existing = json.loads(output.read_text(encoding="utf-8"))
-        except Exception:
-            existing = None
-        if isinstance(existing, dict) and provenance.is_v1_manifest(existing):
-            if existing.get("run_id") != report.get("run_id"):
-                parser.error(
-                    f"refusing to overwrite prior evidence: {output} "
-                    f"(existing run {existing.get('run_id')} != new run "
-                    f"{report.get('run_id')}); choose a new --output path")
-    output.write_bytes(payload)
+    # Non-overwriting for every existing file: a v1 manifest with a
+    # different run_id, a legacy manifest, or any other prior evidence at
+    # this path is never silently replaced.
+    provenance.ensure_non_overwriting_write(output, payload)
     print(f"Oracle run manifest: {output} (v1 run {report.get('run_id', '?')[:16]})")
 
 

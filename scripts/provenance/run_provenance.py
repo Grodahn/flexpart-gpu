@@ -116,6 +116,8 @@ def case_manifest_identity(case_path: Path | str) -> dict:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ProvenanceError(f"case manifest unreadable: {path}: {exc}") from None
+    if not isinstance(document, dict):
+        raise ProvenanceError(f"case manifest is not a JSON object: {path}")
     if document.get("schema_version") != CASE_SCHEMA_VERSION or "version" in document:
         raise ProvenanceError(
             f"case {path} is not a canonical v2 document "
@@ -167,7 +169,9 @@ def execution_run_dir(base: Path | str, case_id: str, execution_id: str) -> Path
     Layout: ``<base>/<case_id>/<short-execution-id>/``. The directory name
     carries only the stable execution identity, never timestamps or pids.
     """
-    if not isinstance(case_id, str) or not case_id or "/" in case_id or "\\" in case_id:
+    if (not isinstance(case_id, str) or not case_id
+            or "/" in case_id or "\\" in case_id
+            or any(part in ("", ".", "..") for part in case_id.split("/"))):
         raise ProvenanceError(f"invalid case_id for run directory: {case_id!r}")
     return Path(base) / case_id / short_id(execution_id)
 
@@ -203,9 +207,14 @@ def _normalize_artifact_map(entries: dict) -> dict:
     silently merging.
     """
     normalized: dict[str, str] = {}
-    for key, value in (entries or {}).items():
+    if entries is None:
+        entries = {}
+    if not isinstance(entries, dict):
+        raise ProvenanceError("artifact map must be an object")
+    for key, value in entries.items():
         if not isinstance(value, str):
-            continue
+            raise ProvenanceError(
+                f"artifact hash for {key!r} must be a hex string, got {type(value).__name__}")
         raw = str(key).replace("\\", "/")
         is_absolute = (Path(raw).is_absolute() or raw.startswith("/")
                        or (len(raw) > 2 and raw[1] == ":"))
@@ -451,10 +460,14 @@ def load_manifest(path: Path | str) -> dict:
     if not manifest_path.is_file():
         raise ProvenanceError(f"run manifest missing: {manifest_path}")
     try:
-        return json.loads(manifest_path.read_text(encoding="utf-8"))
+        document = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ProvenanceError(
             f"run manifest unreadable: {manifest_path}: {exc}") from None
+    if not isinstance(document, dict):
+        raise ProvenanceError(
+            f"run manifest is not a JSON object: {manifest_path}")
+    return document
 
 
 def _resolve_artifact_file(name: str, search_roots: list[Path]) -> Path | None:
@@ -494,6 +507,78 @@ def _resolve_artifact_file(name: str, search_roots: list[Path]) -> Path | None:
     return None
 
 
+def verify_manifest_integrity(document: dict) -> None:
+    """Verify a v1 manifest's internal consistency without touching disk.
+
+    Checks the recorded ``run_id`` against the execution identities, the
+    merged artifact maps against every execution-recorded hash, mixed
+    candidate revisions, mixed oracle builds and an explicit INVALID
+    attribution state. Raises :class:`ProvenanceError` on any violation;
+    returns None when the manifest is internally consistent.
+    """
+    if not is_v1_manifest(document):
+        raise ProvenanceError(
+            f"not a {SCHEMA_ID} v{SCHEMA_VERSION} manifest")
+    executions = document.get("executions")
+    if not isinstance(executions, list) or not executions:
+        raise ProvenanceError("run manifest executions must be a non-empty array")
+    for record in executions:
+        if not isinstance(record, dict) or not isinstance(record.get("execution_id"), str):
+            raise ProvenanceError("run manifest execution records must be objects "
+                                  "with an execution_id")
+    expected_run = derive_run_id(
+        [record["execution_id"] for record in executions])
+    if expected_run != document.get("run_id"):
+        raise ProvenanceError(
+            "stale artifact reused under a new run: run_id does not match "
+            "the recorded execution identities")
+
+    artifacts = document.get("artifacts")
+    if not isinstance(artifacts, dict):
+        raise ProvenanceError("run manifest lacks an artifacts object")
+    recorded_inputs = artifacts.get("inputs", {})
+    recorded_outputs = artifacts.get("outputs", {})
+    if not isinstance(recorded_inputs, dict) or not isinstance(recorded_outputs, dict):
+        raise ProvenanceError("run manifest artifact sections must be objects")
+    for record in executions:
+        for section, merged in (("inputs_sha256", recorded_inputs),
+                                ("outputs_sha256", recorded_outputs)):
+            execution_map = record.get(section)
+            if not isinstance(execution_map, dict):
+                raise ProvenanceError(
+                    f"execution {record['execution_id'][:16]} lacks a {section} object")
+            for name, value in execution_map.items():
+                if name not in merged:
+                    raise ProvenanceError(
+                        f"execution {record['execution_id'][:16]} records {name!r} "
+                        "which is absent from the merged artifact map; "
+                        "pruned provenance is rejected")
+                if merged[name] != value:
+                    raise ProvenanceError(
+                        f"execution {record['execution_id'][:16]} and the merged "
+                        f"artifact map disagree on {name!r}")
+
+    candidate_revisions = {
+        record.get("candidate_revision")
+        for record in executions
+        if record.get("role") == "candidate"
+    } - {None}
+    if len({r for r in candidate_revisions if r != "unknown"}) > 1:
+        raise ProvenanceError(
+            f"mismatched candidate revision: {sorted(candidate_revisions)}")
+    oracle_builds = {
+        (record.get("oracle_kind"), record.get("oracle_executable_sha256"))
+        for record in executions
+        if record.get("role") == "oracle"
+    }
+    exe_hashes = {exe for _, exe in oracle_builds if exe}
+    if len(exe_hashes) > 1:
+        raise ProvenanceError(
+            f"mismatched oracle identity/build: {sorted(exe_hashes)}")
+    if (document.get("attribution") or {}).get("state") == ATTRIBUTION_INVALID:
+        raise ProvenanceError("run manifest is explicitly marked INVALID")
+
+
 def verify_run_manifest(
     manifest_path: Path | str,
     *,
@@ -528,8 +613,16 @@ def verify_run_manifest(
             raise ProvenanceError(f"run manifest lacks required field: {field}")
     _require_hex64(document["run_id"], "run_id")
 
+    executions = document["executions"]
+    if not isinstance(executions, list) or not executions:
+        raise ProvenanceError("run manifest executions must be a non-empty array")
+    for record in executions:
+        if not isinstance(record, dict) or not isinstance(record.get("execution_id"), str):
+            raise ProvenanceError("run manifest execution records must be objects "
+                                  "with an execution_id")
+
     expected_run = derive_run_id(
-        [record["execution_id"] for record in document["executions"]])
+        [record["execution_id"] for record in executions])
     if expected_run != document["run_id"]:
         raise ProvenanceError(
             "stale artifact reused under a new run: run_id does not match "
@@ -539,6 +632,26 @@ def verify_run_manifest(
     recorded_outputs = document["artifacts"].get("outputs", {})
     if not isinstance(recorded_inputs, dict) or not isinstance(recorded_outputs, dict):
         raise ProvenanceError("run manifest artifact sections must be objects")
+
+    # The merged artifact maps must cover every execution-recorded hash;
+    # a pruned artifacts entry must not leave execution evidence unverified.
+    for record in executions:
+        for section, merged in (("inputs_sha256", recorded_inputs),
+                                ("outputs_sha256", recorded_outputs)):
+            execution_map = record.get(section)
+            if not isinstance(execution_map, dict):
+                raise ProvenanceError(
+                    f"execution {record['execution_id'][:16]} lacks a {section} object")
+            for name, value in execution_map.items():
+                if name not in merged:
+                    raise ProvenanceError(
+                        f"execution {record['execution_id'][:16]} records {name!r} "
+                        "which is absent from the merged artifact map; "
+                        "pruned provenance is rejected")
+                if merged[name] != value:
+                    raise ProvenanceError(
+                        f"execution {record['execution_id'][:16]} and the merged "
+                        f"artifact map disagree on {name!r}")
 
     verified: list[str] = []
     for section in ("inputs", "outputs"):
@@ -615,7 +728,14 @@ def verify_artifact_set(
     recorded: dict[str, str] = {}
     for section in ("inputs", "outputs"):
         recorded.update(document["artifacts"].get(section, {}))
-    by_basename = {_normalize_key(k): v for k, v in recorded.items()}
+    by_basename: dict[str, str] = {}
+    for key, value in recorded.items():
+        name = _normalize_key(key)
+        if name in by_basename and by_basename[name] != value:
+            raise ProvenanceError(
+                f"duplicate artifact identity: {name!r} maps to two hashes "
+                "in the run manifest")
+        by_basename[name] = value
     verified: list[str] = []
     uncovered: list[dict] = []
     for label, path in labeled_paths:

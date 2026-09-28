@@ -274,8 +274,11 @@ def main():
         except Exception:
             continue
         seed_case = seed_doc.get("case_id", args.case_id or "?")
-        case_binding = next((c for c in v1_cases if c["case_id"] == seed_case),
-                            v1_cases[0])
+        case_binding = next((c for c in v1_cases if c["case_id"] == seed_case), None)
+        if case_binding is None:
+            raise SystemExit(
+                f"seed file {seed_file} belongs to case {seed_case!r} which is "
+                "not part of this run; misattributed provenance is rejected")
         # Scope artifact keys by case so identical basenames from
         # different cases stay distinct identities.
         scoped_seed_key = f"{seed_case}/{seed_file.name}"
@@ -302,19 +305,21 @@ def main():
         ))
     # Oracle side: one execution per case binding over that case's
     # recorded oracle output bytes so mixed oracle builds across cases
-    # are detectable in one manifest.
+    # are detectable in one manifest. Case attribution matches whole
+    # path components only (DEMO-1 must not capture DEMO-10 outputs),
+    # and unattributable files fail closed instead of being dropped.
     oracle_by_case: dict[str, dict[str, str]] = {c["case_id"]: {} for c in v1_cases}
     for abs_key, value in oracle_files.items():
         normalized = abs_key.replace("\\", "/")
-        owner = next((c["case_id"] for c in v1_cases
-                      if f"/{c['case_id']}/" in normalized
-                      or normalized.endswith(f"/{c['case_id']}")
-                      or f"/{c['case_id']}" in normalized), None)
+        parts = normalized.split("/")
+        owner = next((c["case_id"] for c in v1_cases if c["case_id"] in parts), None)
+        if owner is None and len(v1_cases) == 1:
+            owner = v1_cases[0]["case_id"]
         if owner is None:
-            # Focused single-case run: attribute everything to that case.
-            owner = v1_cases[0]["case_id"] if len(v1_cases) == 1 else None
-        if owner is None:
-            continue
+            raise SystemExit(
+                f"oracle artifact {abs_key} cannot be attributed to any "
+                f"case of this run {sorted(c['case_id'] for c in v1_cases)}; "
+                "unattributable provenance is rejected")
         oracle_by_case[owner][f"{owner}/{Path(abs_key).name}"] = value
     for case_binding in v1_cases:
         case_outputs = oracle_by_case.get(case_binding["case_id"], {})
@@ -370,24 +375,11 @@ def main():
         manifest[key] = value
 
     output = Path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
     payload = (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
-    if output.is_file():
-        try:
-            existing = json.loads(output.read_text(encoding="utf-8"))
-        except Exception:
-            existing = None
-        if isinstance(existing, dict) and provenance.is_v1_manifest(existing):
-            if existing.get("run_id") != manifest.get("run_id"):
-                raise SystemExit(
-                    f"refusing to overwrite prior evidence: {output} "
-                    f"(existing run {existing.get('run_id')} != new run "
-                    f"{manifest.get('run_id')}); choose a new --output path")
-        elif isinstance(existing, dict) and "run_id" in existing:
-            if existing.get("run_id") != manifest.get("run_id"):
-                raise SystemExit(
-                    f"refusing to overwrite prior evidence: {output}")
-    output.write_bytes(payload)
+    # Non-overwriting for every existing file: a v1 manifest with a
+    # different run_id, a legacy manifest, or any other prior evidence at
+    # this path is never silently replaced.
+    provenance.ensure_non_overwriting_write(output, payload)
     print(f"Corpus run manifest: {output} (v1 run {manifest['run_id'][:16]})")
 
 

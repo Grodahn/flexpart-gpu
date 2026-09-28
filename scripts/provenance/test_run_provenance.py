@@ -368,5 +368,166 @@ class ExecutionIdentityTest(unittest.TestCase):
             provenance.migrate_legacy_manifest({"status": "old"})
 
 
+class HardeningTest(unittest.TestCase):
+    """Review fixes: traversal, fail-closed maps, integrity cross-checks."""
+
+    def test_run_dir_rejects_parent_traversal_case_id(self):
+        with self.assertRaisesRegex(provenance.ProvenanceError, "invalid case_id"):
+            provenance.execution_run_dir(Path("/tmp"), "../escape", "a" * 64)
+        with self.assertRaisesRegex(provenance.ProvenanceError, "invalid case_id"):
+            provenance.execution_run_dir(Path("/tmp"), "a/../b", "a" * 64)
+
+    def test_artifact_map_rejects_non_string_hash(self):
+        with self.assertRaisesRegex(provenance.ProvenanceError, "hex string"):
+            provenance._normalize_artifact_map({"header": 12345})
+
+    def test_artifact_map_rejects_non_object(self):
+        with self.assertRaisesRegex(provenance.ProvenanceError, "must be an object"):
+            provenance._normalize_artifact_map(["not", "a", "dict"])
+
+    def test_consumed_set_rejects_basename_collision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = root / "case-a" / "header"
+            second = root / "case-b" / "header"
+            first.parent.mkdir(parents=True)
+            second.parent.mkdir(parents=True)
+            first.write_bytes(b"first")
+            second.write_bytes(b"second")
+            manifest = {
+                "schema": {"id": provenance.SCHEMA_ID, "version": 1},
+                "artifacts": {
+                    "inputs": {},
+                    "outputs": {
+                        "case-a/header": provenance.digest(first),
+                        "case-b/header": provenance.digest(second),
+                    },
+                },
+            }
+            manifest_path = root / "run_manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(
+                    provenance.ProvenanceError, "duplicate artifact identity"):
+                provenance.verify_artifact_set(
+                    manifest_path, [("header", first)])
+
+    def test_non_dict_json_document_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "run_manifest.json"
+            path.write_text("[1, 2, 3]", encoding="utf-8")
+            with self.assertRaisesRegex(provenance.ProvenanceError, "not a JSON object"):
+                provenance.load_manifest(path)
+
+    def test_non_dict_executions_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _manifest, manifest_path, _files = _build_manifest(root)
+            document = json.loads(manifest_path.read_text(encoding="utf-8"))
+            document["executions"] = "not-a-list"
+            manifest_path.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaisesRegex(
+                    provenance.ProvenanceError, "non-empty array"):
+                provenance.verify_run_manifest(
+                    manifest_path, search_roots=[root])
+
+    def test_pruned_artifact_map_entry_rejected(self):
+        # An execution-recorded hash missing from the merged artifacts
+        # map must not verify: pruning must not leave evidence unverified.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, manifest_path, files = _build_manifest(root)
+            manifest["artifacts"]["outputs"].pop("seed_000.json")
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(
+                    provenance.ProvenanceError, "pruned provenance"):
+                provenance.verify_run_manifest(
+                    manifest_path, search_roots=[root])
+
+    def test_execution_map_disagreeing_with_merged_map_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, manifest_path, _files = _build_manifest(root)
+            manifest["artifacts"]["outputs"]["seed_000.json"] = "0" * 64
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(
+                    provenance.ProvenanceError, "disagree"):
+                provenance.verify_run_manifest(
+                    manifest_path, search_roots=[root])
+
+
+class ManifestIntegrityTest(unittest.TestCase):
+    """verify_manifest_integrity: disk-independent consistency checks."""
+
+    def _document(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, _path, _files = _build_manifest(root)
+        return manifest
+
+    def test_consistent_manifest_passes(self):
+        provenance.verify_manifest_integrity(self._document())
+
+    def test_stale_run_id_rejected(self):
+        document = self._document()
+        document["run_id"] = "0" * 64
+        with self.assertRaisesRegex(provenance.ProvenanceError, "stale artifact"):
+            provenance.verify_manifest_integrity(document)
+
+    def test_mixed_candidate_revision_rejected(self):
+        document = self._document()
+        extra = json.loads(json.dumps(
+            next(r for r in document["executions"] if r["role"] == "candidate")))
+        extra["execution_id"] = "b" * 64
+        extra["candidate_revision"] = "other-revision"
+        document["executions"].append(extra)
+        document["run_id"] = provenance.derive_run_id(
+            [r["execution_id"] for r in document["executions"]])
+        with self.assertRaisesRegex(
+                provenance.ProvenanceError, "mismatched candidate revision"):
+            provenance.verify_manifest_integrity(document)
+
+    def test_mixed_oracle_build_rejected(self):
+        document = self._document()
+        extra = json.loads(json.dumps(
+            next(r for r in document["executions"] if r["role"] == "oracle")))
+        extra["execution_id"] = "b" * 64
+        extra["oracle_executable_sha256"] = "f" * 64
+        document["executions"].append(extra)
+        document["run_id"] = provenance.derive_run_id(
+            [r["execution_id"] for r in document["executions"]])
+        with self.assertRaisesRegex(
+                provenance.ProvenanceError, "mismatched oracle identity/build"):
+            provenance.verify_manifest_integrity(document)
+
+    def test_invalid_state_rejected(self):
+        document = self._document()
+        document["attribution"]["state"] = provenance.ATTRIBUTION_INVALID
+        with self.assertRaisesRegex(provenance.ProvenanceError, "INVALID"):
+            provenance.verify_manifest_integrity(document)
+
+    def test_non_v1_document_rejected(self):
+        with self.assertRaisesRegex(provenance.ProvenanceError, "not a "):
+            provenance.verify_manifest_integrity({"status": "legacy"})
+
+
+class PartialPromotionTest(unittest.TestCase):
+    """A manifest with gaps must verify as PARTIAL, never VERIFIED."""
+
+    def test_missing_gaps_stay_partial_at_verification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, manifest_path, files = _build_manifest(root)
+            manifest["attribution"]["state"] = provenance.ATTRIBUTION_PARTIAL
+            manifest["attribution"]["missing"].append({
+                "name": "candidate.executable_sha256",
+                "reason": "no executable hash supplied",
+            })
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            result = provenance.verify_run_manifest(
+                manifest_path, search_roots=[root])
+            self.assertEqual(result["state"], provenance.ATTRIBUTION_PARTIAL)
+            self.assertTrue(result["missing"])
+
+
 if __name__ == "__main__":
     unittest.main()

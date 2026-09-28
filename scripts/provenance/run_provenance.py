@@ -157,6 +157,23 @@ def derive_run_id(execution_ids: list[str]) -> str:
     return hash_bytes(canonical_json(sorted(execution_ids)))
 
 
+def candidate_build_identity(
+    source_revision: str | None, executable_sha256: str | None
+) -> dict | None:
+    """Bind a candidate build to its source revision and executable bytes."""
+    if (not source_revision or source_revision == "unknown"
+            or not executable_sha256):
+        return None
+    _require_hex64(executable_sha256, "candidate executable_sha256")
+    binding = {
+        "id": "flexpart-gpu-candidate-build",
+        "version": 1,
+        "source_revision": source_revision,
+        "executable_sha256": executable_sha256,
+    }
+    return {**binding, "identity_sha256": hash_bytes(canonical_json(binding))}
+
+
 def short_id(execution_id: str) -> str:
     """Return the 16-character directory-safe prefix of an execution identity."""
     _require_hex64(execution_id, "execution_id")
@@ -244,6 +261,7 @@ def build_execution_record(
     case: dict,
     realization: dict | None = None,
     candidate_revision: str | None = None,
+    candidate_build: dict | None = None,
     candidate_executable_sha256: str | None = None,
     oracle_kind: str | None = None,
     oracle_revision: str | None = None,
@@ -278,6 +296,7 @@ def build_execution_record(
         "case_schema_version": case.get("case_schema_version", CASE_SCHEMA_VERSION),
         "realization": realization or {},
         "candidate_revision": candidate_revision,
+        "candidate_build": candidate_build,
         "candidate_executable_sha256": candidate_executable_sha256,
         "oracle_kind": oracle_kind,
         "oracle_revision": oracle_revision,
@@ -298,6 +317,7 @@ def build_execution_record(
         "case_schema_version": case.get("case_schema_version", CASE_SCHEMA_VERSION),
         "realization": realization or {},
         "candidate_revision": candidate_revision,
+        "candidate_build": candidate_build,
         "candidate_executable_sha256": candidate_executable_sha256,
         "oracle_kind": oracle_kind,
         "oracle_revision": oracle_revision,
@@ -322,6 +342,7 @@ def _execution_binding(record: dict) -> dict:
         "case_schema_version",
         "realization",
         "candidate_revision",
+        "candidate_build",
         "candidate_executable_sha256",
         "oracle_kind",
         "oracle_revision",
@@ -431,6 +452,9 @@ def _verify_summary_bindings(document: dict, executions: list[dict]) -> None:
         if record.get("candidate_revision") != candidate.get("revision"):
             raise ProvenanceError(
                 "candidate summary revision disagrees with execution binding")
+        if record.get("candidate_build") != candidate.get("build"):
+            raise ProvenanceError(
+                "candidate summary build disagrees with execution binding")
         if (record.get("candidate_executable_sha256") !=
                 candidate.get("executable_sha256")):
             raise ProvenanceError(
@@ -542,6 +566,11 @@ def create_run_manifest(
         missing.append({
             "name": "candidate.worktree_clean",
             "reason": "candidate checkout was dirty at execution time",
+        })
+    if not candidate.get("build"):
+        missing.append({
+            "name": "candidate.build",
+            "reason": "no content-derived candidate build identity is recorded",
         })
     if not candidate.get("executable_sha256"):
         missing.append({

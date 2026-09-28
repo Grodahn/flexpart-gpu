@@ -37,9 +37,9 @@ The binding contains only immutable inputs: schema id/version, role
 (`candidate`/`oracle`), case id, case-manifest SHA-256 and schema
 version, realization (e.g. `seed_index` + Philox key/counter for
 candidates, `requested_identity` + repetition for seedable oracle
-runs), candidate revision, candidate/oracle executable hashes, oracle
-kind/profile/strategy, runtime/adapter identity and the normalized
-input/output artifact maps.
+  runs), candidate revision and content-derived build identity,
+  candidate/oracle executable hashes, oracle revision/kind/profile/strategy,
+  runtime/adapter identity and the normalized input/output artifact maps.
 
 `run_id = sha256(canonical_json(sorted(execution_ids)))`.
 

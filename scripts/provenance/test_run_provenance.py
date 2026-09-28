@@ -58,6 +58,8 @@ def _build_manifest(directory: Path, *, oracle_kind="pristine-oracle",
     oracle_output = _write(directory / "outputs" / "header", b"oracle-bytes")
     candidate_exe = _write(directory / "bin" / "candidate", b"candidate-exe")
     oracle_exe = _write(directory / "bin" / "oracle", b"oracle-exe")
+    candidate_build = provenance.candidate_build_identity(
+        "abc123", provenance.digest(candidate_exe))
     realization: dict = {"seed_index": seed_index}
     oracle_realization: dict = {}
     if requested_identity is not None:
@@ -70,6 +72,7 @@ def _build_manifest(directory: Path, *, oracle_kind="pristine-oracle",
     candidate_execution = provenance.build_execution_record(
         role="candidate", case=case, realization=realization,
         candidate_revision="abc123",
+        candidate_build=candidate_build,
         candidate_executable_sha256=provenance.digest(candidate_exe),
         oracle_kind=oracle_kind,
         oracle_revision="c70586c2b7f5258850705325881c61f557ea9bd8",
@@ -83,6 +86,7 @@ def _build_manifest(directory: Path, *, oracle_kind="pristine-oracle",
     oracle_execution = provenance.build_execution_record(
         role="oracle", case=case, realization=oracle_realization,
         candidate_revision="abc123",
+        candidate_build=candidate_build,
         candidate_executable_sha256=provenance.digest(candidate_exe),
         oracle_kind=oracle_kind,
         oracle_revision="c70586c2b7f5258850705325881c61f557ea9bd8",
@@ -96,7 +100,8 @@ def _build_manifest(directory: Path, *, oracle_kind="pristine-oracle",
     manifest = provenance.create_run_manifest(
         cases=[case],
         candidate={"revision": "abc123", "worktree_dirty": False,
-                   "executable_sha256": provenance.digest(candidate_exe)},
+                   "executable_sha256": provenance.digest(candidate_exe),
+                   "build": candidate_build},
         oracle={"kind": oracle_kind,
                 "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
                 "worktree_dirty": False,
@@ -363,6 +368,11 @@ class ExecutionIdentityTest(unittest.TestCase):
             run_dir = provenance.execution_run_dir(root, "DEMO-001",
                                                    "a" * 64)
             self.assertEqual(run_dir, root / "DEMO-001" / ("a" * 16))
+
+    def test_candidate_build_identity_changes_with_executable(self):
+        first = provenance.candidate_build_identity("revision", "a" * 64)
+        second = provenance.candidate_build_identity("revision", "b" * 64)
+        self.assertNotEqual(first["identity_sha256"], second["identity_sha256"])
 
     def test_legacy_manifest_never_silently_reinterpreted(self):
         with self.assertRaisesRegex(

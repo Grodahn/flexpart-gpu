@@ -265,6 +265,8 @@ def main():
     if isinstance(oracle_exe_sha, str) and len(oracle_exe_sha) != 64:
         oracle_exe_sha = None
     adapter_identity = sorted(adapters)[0] if len(adapters) == 1 else None
+    candidate_build = provenance.candidate_build_identity(
+        candidate.get("commit"), candidate_exe_sha)
 
     # Bind every file consumed by the validation/provenance workflow into
     # the authoritative v1 identity. The legacy nested inputs_sha256 field is
@@ -319,6 +321,7 @@ def main():
                 "seed_file": seed_file.name,
             },
             candidate_revision=candidate.get("commit"),
+            candidate_build=candidate_build,
             candidate_executable_sha256=candidate_exe_sha,
             oracle_kind=args.oracle_kind,
             oracle_revision=reference.get("pinned_commit"),
@@ -356,6 +359,7 @@ def main():
             case=case_binding,
             realization={},
             candidate_revision=candidate.get("commit"),
+            candidate_build=candidate_build,
             candidate_executable_sha256=candidate_exe_sha,
             oracle_kind=args.oracle_kind,
             oracle_revision=reference.get("pinned_commit"),
@@ -376,7 +380,7 @@ def main():
             "revision": candidate.get("commit", "unknown"),
             "worktree_dirty": candidate.get("worktree_dirty"),
             "executable_sha256": candidate_exe_sha,
-            "build": {"compiler": compiler, "makefile_sha256": makefile_sha},
+            "build": candidate_build,
         },
         oracle={
             "kind": args.oracle_kind,

@@ -717,10 +717,12 @@ class V1ProvenanceTest(unittest.TestCase):
         cand_out.write_bytes(b"candidate-bytes")
         oracle_out = root / "header"
         oracle_out.write_bytes(b"oracle-bytes")
+        candidate_build = provenance.candidate_build_identity("rev123", "a" * 64)
         manifest = provenance.create_run_manifest(
             cases=[case],
             candidate={"revision": "rev123", "worktree_dirty": candidate_dirty,
-                       "executable_sha256": "a" * 64},
+                       "executable_sha256": "a" * 64,
+                       "build": candidate_build},
             oracle={"kind": "pristine-oracle",
                     "pinned_commit": pinned,
                     "worktree_dirty": False, "executable_sha256": "b" * 64,
@@ -731,6 +733,7 @@ class V1ProvenanceTest(unittest.TestCase):
                 provenance.build_execution_record(
                     role="candidate", case=case, realization={"seed_index": 0},
                     candidate_revision="rev123",
+                    candidate_build=candidate_build,
                     candidate_executable_sha256="a" * 64,
                     oracle_kind="pristine-oracle",
                     oracle_revision=pinned,
@@ -742,6 +745,7 @@ class V1ProvenanceTest(unittest.TestCase):
                 provenance.build_execution_record(
                     role="oracle", case=case, realization={},
                     candidate_revision="rev123",
+                    candidate_build=candidate_build,
                     candidate_executable_sha256="a" * 64,
                     oracle_kind="pristine-oracle",
                     oracle_revision=pinned,

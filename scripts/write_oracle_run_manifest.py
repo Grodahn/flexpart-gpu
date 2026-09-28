@@ -302,6 +302,8 @@ def make_manifest(args):
         realization["requested_identity"] = str(args.oracle_requested_identity)
     oracle_strategy = resolve_oracle_strategy(
         args.oracle_kind, args.oracle_requested_identity)
+    candidate_build = provenance.candidate_build_identity(
+        candidate_state.get("commit"), candidate_exe_sha)
     has_case_binding = v1_cases[0]["case_manifest_sha256"] != "0" * 64
     effective_case = v1_cases[0] if has_case_binding else synthetic_case_binding(
         case_label, report["input_sha256"])
@@ -312,6 +314,7 @@ def make_manifest(args):
         case=effective_case,
         realization=dict(realization),
         candidate_revision=candidate_state.get("commit"),
+        candidate_build=candidate_build,
         candidate_executable_sha256=candidate_exe_sha,
         oracle_kind=args.oracle_kind,
         oracle_revision=reference.get("pinned_commit"),
@@ -328,6 +331,7 @@ def make_manifest(args):
         case=effective_case,
         realization=dict(realization) if args.oracle_kind == provenance.ORACLE_SEEDABLE else {},
         candidate_revision=candidate_state.get("commit"),
+        candidate_build=candidate_build,
         candidate_executable_sha256=candidate_exe_sha,
         oracle_kind=args.oracle_kind,
         oracle_revision=reference.get("pinned_commit"),
@@ -357,7 +361,7 @@ def make_manifest(args):
             "revision": candidate_state.get("commit", "unknown"),
             "worktree_dirty": candidate_state.get("worktree_dirty"),
             "executable_sha256": candidate_exe_sha,
-            "build": None,
+            "build": candidate_build,
         },
         oracle={
             "kind": args.oracle_kind,

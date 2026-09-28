@@ -107,21 +107,47 @@ SEEDABLE_OUT_DIR="${PROJECT_ROOT}/target/corpus/oracle_seedable"
 SEEDABLE_REPORT="${PROJECT_ROOT}/target/corpus/oracle_seed_identity_report.json"
 SEEDABLE_PATCH="${PROJECT_ROOT}/reference/flexpart-11.1-seedable.patch"
 SEEDABLE_CONTRACT="${PROJECT_ROOT}/reference/oracle-stochastic-identity.json"
+ORACLE_CACHE_DIR="${PROJECT_ROOT}/target/oracle-cache"
+ORACLE_CACHE_METADATA="${ORACLE_CACHE_DIR}/build.json"
+ORACLE_BUILD_LOG="${ORACLE_CACHE_DIR}/build.log"
+ORACLE_CACHE_STATUS_FILE="${PROJECT_ROOT}/target/corpus/oracle-build-status.json"
+ORACLE_REBUILD="${ORACLE_REBUILD:-0}"
+ORACLE_VERBOSE="${ORACLE_VERBOSE:-0}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
 log_info() { echo -e "${GREEN}[INFO]${NC}  $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC}  $*" >&2; }
 log_step() { echo -e "\n${BLUE}=== Step: $* ===${NC}"; }
 
+require_synthetic_case() {
+  local requested="$1"
+  local known
+  for known in ${SYNTHETIC_CASES}; do
+    if [ "${requested}" = "${known}" ]; then
+      return
+    fi
+  done
+  log_error "Unknown synthetic corpus case: ${requested}"
+  return 1
+}
+
+oracle_git() {
+  local checkout
+  if ! checkout="$(cd "${FLEXPART_DIR}" 2>/dev/null && pwd -P)"; then
+    return 1
+  fi
+  git -c "safe.directory=${checkout}" -C "${checkout}" "$@"
+}
+
 require_pinned_fortran() {
   local manifest="${PROJECT_ROOT}/reference/flexpart-11.1.json"
-  local pinned actual
+  local pinned actual oracle_status
   pinned="$(sed -n 's/^[[:space:]]*"pinned_commit": *"\([0-9a-f]*\)".*/\1/p' "${manifest}" | head -1)"
   if ! printf '%s' "${pinned}" | grep -qE '^[0-9a-f]{40}$'; then
     log_error "Could not read pinned_commit from ${manifest}"
     return 1
   fi
-  if ! actual="$(git -C "${FLEXPART_DIR}" rev-parse HEAD 2>/dev/null)"; then
+  if ! actual="$(oracle_git rev-parse HEAD 2>/dev/null)"; then
     log_error "${FLEXPART_DIR} is not a git checkout (see docs/reference-environment.md)"
     return 1
   fi
@@ -129,11 +155,100 @@ require_pinned_fortran() {
     log_error "Fortran checkout is at ${actual}, expected pinned ${pinned}"
     return 1
   fi
-  if [ -n "$(git -C "${FLEXPART_DIR}" status --porcelain)" ]; then
+  if ! oracle_status="$(oracle_git status --porcelain 2>/dev/null)"; then
+    log_error "Could not verify that the Fortran checkout is clean"
+    return 1
+  fi
+  if [ -n "${oracle_status}" ]; then
     log_error "Fortran checkout has uncommitted changes; the oracle must stay unmodified"
     return 1
   fi
   log_info "Fortran oracle pinned at ${pinned} (clean)"
+}
+
+# Build the image before compiling the pinned oracle. The explicit return on
+# image-build failure is required because callers disable errexit while they
+# capture the complete transcript.
+oracle_build_pinned() {
+  local force_clean="$1"
+  local -a build_command=(
+    docker compose -f "${FORTRAN_COMPOSE_FILE}" build
+  )
+  if [ "${force_clean}" = "1" ]; then
+    build_command+=(--no-cache)
+  fi
+  build_command+=(flexpart-fortran)
+
+  "${build_command[@]}" || return
+  docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran bash -c "
+    set -euo pipefail
+    cd /workspace/flexpart/src
+    make -f makefile_gfortran clean >/dev/null 2>&1 || true
+    FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4
+    test -x FLEXPART
+    rm -f gitversion.txt
+  "
+}
+
+write_oracle_cache_status() {
+  local status="$1"
+  local image_id="$2"
+  "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/oracle_build_cache.py" status \
+    --project-root "${PROJECT_ROOT}" --oracle-checkout "${FLEXPART_DIR}" \
+    --metadata "${ORACLE_CACHE_METADATA}" --image-id "${image_id}" \
+    --build-log "${ORACLE_BUILD_LOG}" --status "${status}" \
+    --status-output "${ORACLE_CACHE_STATUS_FILE}" >/dev/null
+}
+
+# Reuse the existing Docker/Fortran build only when every relevant immutable
+# input, the retained image, and the retained executable still match.  A miss
+# runs the historical pinned build path and records its exact identity.
+oracle_prepare_cached() {
+  require_pinned_fortran
+  mkdir -p "${ORACLE_CACHE_DIR}" "$(dirname "${ORACLE_CACHE_STATUS_FILE}")"
+  rm -f "${ORACLE_CACHE_STATUS_FILE}"
+  if ! command -v docker >/dev/null 2>&1; then
+    log_error "Docker is required for the oracle build but was not found"
+    return 1
+  fi
+  local executable="${FLEXPART_DIR}/src/FLEXPART"
+  local image_id=""
+  local cache_key
+  cache_key="$("${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/oracle_build_cache.py" key \
+    --project-root "${PROJECT_ROOT}" --oracle-checkout "${FLEXPART_DIR}" | \
+    "${HOST_PYTHON}" -c 'import json,sys; print(json.load(sys.stdin)["cache_key"])')"
+  image_id="$(docker image inspect flexpart-fortran:latest --format '{{.Id}}' 2>/dev/null || true)"
+  if [ "${ORACLE_REBUILD}" != "1" ] && [ -n "${image_id}" ] && \
+     "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/oracle_build_cache.py" validate \
+       --project-root "${PROJECT_ROOT}" --oracle-checkout "${FLEXPART_DIR}" \
+       --metadata "${ORACLE_CACHE_METADATA}" --image-id "${image_id}" \
+       --executable "${executable}" >/dev/null 2>&1; then
+    write_oracle_cache_status "REUSED" "${image_id}"
+    log_info "Oracle build cache: REUSED (${cache_key})"
+    return
+  fi
+
+  log_info "Oracle build cache: REBUILD (${cache_key}); full log: ${ORACLE_BUILD_LOG}"
+  set +e
+  if [ "${ORACLE_VERBOSE}" = "1" ]; then
+    oracle_build_pinned "${ORACLE_REBUILD}" 2>&1 | tee "${ORACLE_BUILD_LOG}"
+  else
+    oracle_build_pinned "${ORACLE_REBUILD}" > "${ORACLE_BUILD_LOG}" 2>&1
+  fi
+  local build_status=$?
+  set -e
+  restore_oracle_checkout
+  if [ "${build_status}" -ne 0 ] || [ ! -f "${executable}" ]; then
+    log_error "Oracle build failed; tail of ${ORACLE_BUILD_LOG}:"
+    tail -40 "${ORACLE_BUILD_LOG}" >&2 || true
+    return 1
+  fi
+  image_id="$(docker image inspect flexpart-fortran:latest --format '{{.Id}}')"
+  "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/oracle_build_cache.py" record \
+    --project-root "${PROJECT_ROOT}" --oracle-checkout "${FLEXPART_DIR}" \
+    --metadata "${ORACLE_CACHE_METADATA}" --image-id "${image_id}" \
+    --executable "${executable}" >/dev/null
+  write_oracle_cache_status "REBUILT" "${image_id}"
 }
 
 # Issue #49: the v11.1 makefile stamps its git version into tracked
@@ -141,11 +256,16 @@ require_pinned_fortran() {
 # build so the normative checkout stays pristine; the git-ignored binary
 # itself remains for the retained repetitions.
 restore_oracle_checkout() {
-  git -C "${FLEXPART_DIR}" checkout -- src/FLEXPART.f90 2>/dev/null || true
+  local oracle_status
+  oracle_git checkout -- src/FLEXPART.f90 2>/dev/null || true
   rm -f "${FLEXPART_DIR}/src/gitversion.txt"
-  if [ -n "$(git -C "${FLEXPART_DIR}" status --porcelain)" ]; then
+  if ! oracle_status="$(oracle_git status --porcelain 2>/dev/null)"; then
+    log_error "Could not verify the oracle checkout after build/run"
+    return 1
+  fi
+  if [ -n "${oracle_status}" ]; then
     log_error "Oracle checkout is dirty after build/run; refusing to continue"
-    git -C "${FLEXPART_DIR}" status --porcelain | head -20 >&2 || true
+    printf '%s\n' "${oracle_status}" | head -20 >&2
     return 1
   fi
 }
@@ -746,10 +866,14 @@ step_candidate() {
   local case="${1:-all}"
   local seeds="${2:-10}"
   log_step "Candidate corpus run (case=${case}, seeds=${seeds})"
-  mkdir -p "${CANDIDATE_DIR}"
   if [ "${case}" = "all" ]; then
+    rm -rf "${CANDIDATE_DIR}"
+    mkdir -p "${CANDIDATE_DIR}"
     cargo run --release --bin corpus-run -- --all --seeds "${seeds}" --out-dir "${CANDIDATE_DIR}"
   else
+    require_synthetic_case "${case}"
+    rm -rf "${CANDIDATE_DIR:?}/${case}"
+    mkdir -p "${CANDIDATE_DIR}"
     if [ "${case}" = "ADV-ANA-001" ]; then
       cargo run --release --bin corpus-run -- --case "${case}" --seeds 1 --out-dir "${CANDIDATE_DIR}"
     elif [ "${case}" = "REPEAT-009" ]; then
@@ -771,6 +895,7 @@ step_oracle_case() {
     log_error "Missing oracle fixture: ${fixture}"
     return 1
   fi
+  rm -rf "${rundir}" "${meteodir}" "${oracledir}"
   mkdir -p "${rundir}/options/SPECIES" "${rundir}/output" "${meteodir}" "${oracledir}/raw"
   # Synthetic meteorology from the single generator path. Flags come from the
   # versioned METEO_ARGS.txt written by generate_fortran_fixtures.py (derived
@@ -811,16 +936,6 @@ step_oracle_case() {
 ============================================
 PATHEOF
   # The meteo bind-mount layout mirrors scripts/compare-fortran.sh validate.
-  log_info "Building oracle image (once) and compiling pinned FLEXPART..."
-  docker compose -f "${FORTRAN_COMPOSE_FILE}" build flexpart-fortran
-  docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran bash -c "
-    set -euo pipefail
-    cd /workspace/flexpart/src
-    make -f makefile_gfortran clean >/dev/null 2>&1 || true
-    FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4 2>&1 | tail -5
-    test -x FLEXPART
-    rm -f gitversion.txt
-  "
   log_info "Running pinned oracle for ${case}..."
   docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran bash -c "
     set -euo pipefail
@@ -856,7 +971,17 @@ PATHEOF
 
 step_oracle() {
   local case="${1:-all}"
-  require_pinned_fortran
+  if [ "${case}" != "all" ]; then
+    require_synthetic_case "${case}"
+    if [ "${case}" = "REPEAT-009" ]; then
+      log_error "REPEAT-009 has no pinned oracle counterpart"
+      return 1
+    fi
+  fi
+  oracle_prepare_cached
+  if [ "${case}" = "all" ]; then
+    rm -rf "${ORACLE_DIR}"
+  fi
   mkdir -p "${ORACLE_DIR}"
   if [ "${case}" = "all" ]; then
     for c in ${SYNTHETIC_CASES}; do

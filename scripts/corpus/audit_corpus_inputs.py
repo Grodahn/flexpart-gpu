@@ -327,12 +327,21 @@ def main() -> None:
     parser.add_argument("--candidate-dir", default=None)
     parser.add_argument("--oracle-dir", default=None)
     parser.add_argument("--require-oracle", action="store_true")
+    parser.add_argument(
+        "--case",
+        dest="case_id",
+        help="Audit only this canonical case id (focused agent/review runs).",
+    )
     args = parser.parse_args()
 
     fixtures = Path(args.fixtures)
     corpus_index = json.loads((fixtures / "corpus.json").read_text(encoding="utf-8"))
     fort_dir = fixtures / "fortran"
     cases = {c["id"]: c for c in corpus_index["cases"]}
+    if args.case_id:
+        if args.case_id not in cases:
+            raise SystemExit(f"unknown corpus case: {args.case_id}")
+        cases = {args.case_id: cases[args.case_id]}
 
     for case_id, entry in cases.items():
         if entry["status"] != "implemented" or case_id == "ETEX-MINI-013":

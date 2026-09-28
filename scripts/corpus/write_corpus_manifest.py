@@ -75,6 +75,17 @@ def main():
     parser.add_argument("--meteo-dir", default=None)
     parser.add_argument("--candidate-exe", default=None)
     parser.add_argument("--oracle-exe", default=None)
+    parser.add_argument(
+        "--case",
+        dest="case_id",
+        help="Hash and report only this canonical case id for a focused run.",
+    )
+    parser.add_argument(
+        "--oracle-dependency-case",
+        action="append",
+        default=[],
+        help="Additional oracle case consumed by a focused comparison.",
+    )
     args = parser.parse_args()
 
     reference = json.loads(Path(args.oracle_manifest).read_text(encoding="utf-8"))
@@ -83,13 +94,34 @@ def main():
         raise SystemExit("oracle checkout is not the pinned unmodified FLEXPART source")
     candidate = git_state(Path(args.candidate_checkout))
     corpus_index = json.loads(Path(args.corpus_index).read_text(encoding="utf-8"))
+    known_case_ids = {entry["id"] for entry in corpus_index["cases"]}
+    if args.case_id and args.case_id not in known_case_ids:
+        raise SystemExit(f"unknown corpus case: {args.case_id}")
+    if args.oracle_dependency_case and not args.case_id:
+        raise SystemExit("--oracle-dependency-case requires --case")
+    unknown_dependencies = set(args.oracle_dependency_case) - known_case_ids
+    if unknown_dependencies:
+        raise SystemExit(
+            f"unknown oracle dependency case: {sorted(unknown_dependencies)[0]}"
+        )
+    focused_input_cases = [args.case_id, *args.oracle_dependency_case] if args.case_id else []
 
     candidate_dir = Path(args.candidate_dir)
-    candidate_files = hash_tree(candidate_dir)
+    candidate_files = hash_tree(
+        candidate_dir / args.case_id if args.case_id else candidate_dir
+    )
     if not candidate_files:
         raise SystemExit(f"missing candidate artifacts under {candidate_dir}")
     oracle_dir = Path(args.oracle_dir)
-    oracle_files = hash_tree(oracle_dir)
+    if args.case_id:
+        oracle_files = {}
+        for case_id in focused_input_cases:
+            case_files = hash_tree(oracle_dir / case_id)
+            if not case_files:
+                raise SystemExit(f"missing oracle artifacts under {oracle_dir / case_id}")
+            oracle_files.update(case_files)
+    else:
+        oracle_files = hash_tree(oracle_dir)
 
     # Actually consumed inputs: versioned case definitions, thresholds and
     # Fortran fixtures; generated meteorology; both executables; report.
@@ -100,7 +132,24 @@ def main():
         ("meteo", args.meteo_dir),
     ):
         if root:
-            tree = hash_tree(Path(root))
+            root_path = Path(root)
+            if args.case_id and label == "cases":
+                tree = {}
+                for case_id in focused_input_cases:
+                    case_file = root_path / f"{case_id}.json"
+                    if not case_file.is_file():
+                        raise SystemExit(f"missing focused {label} input: {case_file}")
+                    tree[str(case_file.resolve())] = digest(case_file)
+            elif args.case_id:
+                tree = {}
+                for case_id in focused_input_cases:
+                    case_root = root_path / case_id
+                    case_tree = hash_tree(case_root)
+                    if not case_tree:
+                        raise SystemExit(f"missing focused {label} inputs under {case_root}")
+                    tree.update(case_tree)
+            else:
+                tree = hash_tree(root_path)
             if tree:
                 inputs_sha256[label] = tree
     if args.thresholds:
@@ -123,7 +172,8 @@ def main():
     # Adapter and seeds come from the candidate per-seed outputs themselves.
     adapters = set()
     seeds = {}
-    for path in sorted(candidate_dir.rglob("seed_*.json")):
+    seed_root = candidate_dir / args.case_id if args.case_id else candidate_dir
+    for path in sorted(seed_root.rglob("seed_*.json")):
         try:
             seed = json.loads(path.read_text(encoding="utf-8"))
         except Exception:

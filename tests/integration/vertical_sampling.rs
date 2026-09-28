@@ -5,13 +5,17 @@
 //! primitive equivalence for the model-level #71 vertical fixtures is proven
 //! by the unit tests in `src/meteorology/vertical_sampling.rs`.
 //!
-//! Interface-staggered vertical motion fails closed until #80 resolves the
-//! pristine `eta=no` W production semantics.
+//! Interface-staggered pressure velocity follows the pristine `eta=no`
+//! two-stage W production semantics frozen by #80.
 
 use std::collections::BTreeMap;
 
 use flexpart_gpu::meteorology::{
-    vertical::reconstruct_vertical_geometry,
+    vertical::{
+        reconstruct_vertical_geometry, reconstruct_vertical_geometry_with_motion,
+        NativeVerticalMotion, NativeVerticalMotionKind, NativeVerticalMotionProvenance,
+        NativeVerticalMotionSign, NativeVerticalMotionUnit,
+    },
     vertical_sampling::{sample_vertical, VerticalSamplingError},
     Axis, Calendar, Field, FieldId, FieldTime, HorizontalGrid, HorizontalStaggering,
     LongitudeDomain, SchemaIdentity, SignConvention, Snapshot, StorageOrder, TemporalKind, Unit,
@@ -297,6 +301,292 @@ fn vertical_sampling_covers_both_orderings_without_fixed_level_counts() {
     }
 }
 
+fn nonlinear_interface_omega(ordering: VerticalOrdering, nz: usize) -> NativeVerticalMotion {
+    let mut physical_bottom_up: Vec<f32> = (0..=nz)
+        .map(|physical| {
+            if physical == nz {
+                0.0
+            } else {
+                let index = f32::from(
+                    u16::try_from(physical)
+                        .expect("focused vertical level counts must fit exactly in f32"),
+                );
+                -0.2 - 0.07 * index * index
+            }
+        })
+        .collect();
+    if ordering == VerticalOrdering::Increasing {
+        physical_bottom_up.reverse();
+    }
+    NativeVerticalMotion {
+        kind: NativeVerticalMotionKind::PressureVelocityOmega,
+        unit: NativeVerticalMotionUnit::PascalPerSecond,
+        sign: NativeVerticalMotionSign::PositivePressureIncreasing,
+        vertical_staggering: VerticalStaggering::LevelInterface,
+        values: physical_bottom_up,
+        provenance: NativeVerticalMotionProvenance {
+            source_id: format!("vertical-sampling-interface-{ordering:?}-{nz}"),
+        },
+    }
+}
+
+#[test]
+fn interface_vertical_motion_covers_both_orderings_and_level_counts() {
+    for nz in [2, 3, 5] {
+        let increasing = snapshot_ordered(VerticalOrdering::Increasing, nz);
+        let decreasing = snapshot_ordered(VerticalOrdering::Decreasing, nz);
+        let increasing_motion = nonlinear_interface_omega(VerticalOrdering::Increasing, nz);
+        let decreasing_motion = nonlinear_interface_omega(VerticalOrdering::Decreasing, nz);
+        let increasing_geometry =
+            reconstruct_vertical_geometry_with_motion(&increasing, &increasing_motion)
+                .expect("increasing geometry with interface motion");
+        let decreasing_geometry =
+            reconstruct_vertical_geometry_with_motion(&decreasing, &decreasing_motion)
+                .expect("decreasing geometry with interface motion");
+        let increasing_runtime = increasing_geometry.runtime_view().expect("runtime view");
+        let decreasing_runtime = decreasing_geometry.runtime_view().expect("runtime view");
+        let heights = physical_heights_center(increasing_runtime);
+        let queries = [
+            0.0,
+            0.25 * heights[0],
+            heights[0].midpoint(heights[1]),
+            heights[nz - 1],
+        ];
+
+        for query in queries {
+            let increasing_sample = sample_vertical(
+                increasing_runtime,
+                FieldId::VerticalVelocity,
+                VerticalStaggering::LevelInterface,
+                &[],
+                0,
+                0,
+                query,
+                VerticalReference::AboveGroundLevel,
+            )
+            .expect("increasing interface sample");
+            let decreasing_sample = sample_vertical(
+                decreasing_runtime,
+                FieldId::VerticalVelocity,
+                VerticalStaggering::LevelInterface,
+                &[],
+                0,
+                0,
+                query,
+                VerticalReference::AboveGroundLevel,
+            )
+            .expect("decreasing interface sample");
+            let tolerance = 1.0e-6_f32
+                + 1.0e-5
+                    * increasing_sample
+                        .value
+                        .abs()
+                        .max(decreasing_sample.value.abs());
+            assert!(
+                (increasing_sample.value - decreasing_sample.value).abs() <= tolerance,
+                "nz={nz}, query={query}: storage ordering changed the physical result"
+            );
+        }
+    }
+}
+
+#[test]
+fn interface_vertical_motion_fails_closed_outside_frozen_geometry() {
+    let single = snapshot_ordered(VerticalOrdering::Decreasing, 1);
+    let single_motion = nonlinear_interface_omega(VerticalOrdering::Decreasing, 1);
+    let single_geometry = reconstruct_vertical_geometry_with_motion(&single, &single_motion)
+        .expect("single-level geometry with motion");
+    let single_runtime = single_geometry.runtime_view().expect("runtime view");
+    assert_eq!(
+        sample_vertical(
+            single_runtime,
+            FieldId::VerticalVelocity,
+            VerticalStaggering::LevelInterface,
+            &[],
+            0,
+            0,
+            0.0,
+            VerticalReference::AboveGroundLevel,
+        ),
+        Err(VerticalSamplingError::InsufficientInterfaceLevels { nz: 1 })
+    );
+
+    let mut multi_column = snapshot_ordered(VerticalOrdering::Decreasing, 3);
+    multi_column.horizontal_grid.nx = 2;
+    for field in &mut multi_column.fields {
+        field.shape[0] = 2;
+        field.values = field
+            .values
+            .iter()
+            .flat_map(|value| [*value, *value])
+            .collect();
+    }
+    let mut multi_motion = nonlinear_interface_omega(VerticalOrdering::Decreasing, 3);
+    multi_motion.values = multi_motion
+        .values
+        .iter()
+        .flat_map(|value| [*value, *value])
+        .collect();
+    let multi_geometry = reconstruct_vertical_geometry_with_motion(&multi_column, &multi_motion)
+        .expect("multi-column geometry with motion");
+    let multi_runtime = multi_geometry.runtime_view().expect("runtime view");
+    assert_eq!(
+        sample_vertical(
+            multi_runtime,
+            FieldId::VerticalVelocity,
+            VerticalStaggering::LevelInterface,
+            &[],
+            0,
+            0,
+            100.0,
+            VerticalReference::AboveGroundLevel,
+        ),
+        Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
+            reason: "#80 freezes a single vertical column without horizontal slope correction"
+        })
+    );
+}
+
+fn checked_f64_to_f32(value: f64, what: &str) -> f32 {
+    assert!(value.is_finite(), "{what}: non-finite f64 input");
+    assert!(
+        value >= f64::from(f32::MIN) && value <= f64::from(f32::MAX),
+        "{what}: f64 input is outside the supported f32 range"
+    );
+    // Oracle JSON numbers are f64. This checked cast is the single explicit
+    // rounding boundary into the canonical runtime's f32 arithmetic.
+    let rounded = value as f32;
+    assert!(rounded.is_finite(), "{what}: f32 rounding was non-finite");
+    rounded
+}
+
+#[test]
+fn interface_vertical_motion_matches_issue_80_oracle_and_writes_report() {
+    let snapshot: Snapshot = serde_json::from_str(include_str!(
+        "../../fixtures/vertical/synthetic-column-v1.json"
+    ))
+    .expect("synthetic snapshot must parse");
+    let motion: NativeVerticalMotion = serde_json::from_str(include_str!(
+        "../../fixtures/vertical/synthetic-omega-interface-nonlinear-v1.json"
+    ))
+    .expect("nonlinear omega fixture must parse");
+    let geometry = reconstruct_vertical_geometry_with_motion(&snapshot, &motion)
+        .expect("#30 runtime geometry and motion");
+    let runtime = geometry.runtime_view().expect("runtime view");
+    let oracle: serde_json::Value = serde_json::from_str(include_str!(
+        "../../fixtures/interpolation/w-production-oracle-v1.json"
+    ))
+    .expect("#80 report must parse");
+    assert_eq!(oracle["conclusion"], "not_equivalent");
+    let absolute = oracle["tolerances"]["absolute_m_s"]
+        .as_f64()
+        .expect("absolute tolerance");
+    let relative = oracle["tolerances"]["relative"]
+        .as_f64()
+        .expect("relative tolerance");
+    let queries = oracle["synthetic_case"]["queries"]
+        .as_array()
+        .expect("queries");
+    let comparisons = oracle["synthetic_case"]["comparisons"]
+        .as_array()
+        .expect("comparisons");
+    assert_eq!(queries.len(), comparisons.len());
+    let terrain_asl_m = runtime.terrain_asl_m(0, 0).expect("terrain");
+    let mut rows = Vec::with_capacity(queries.len());
+
+    for (query, comparison) in queries.iter().zip(comparisons) {
+        let height_oracle_f64 = query["particle_height_m_agl"]
+            .as_f64()
+            .expect("query height");
+        let height_agl_m = checked_f64_to_f32(height_oracle_f64, "#80 query height");
+        let expected = query["pristine_w_m_s"].as_f64().expect("pristine W");
+        let direct = comparison["direct_interface_w_m_s"]
+            .as_f64()
+            .expect("direct W");
+        let sample = sample_vertical(
+            runtime,
+            FieldId::VerticalVelocity,
+            VerticalStaggering::LevelInterface,
+            &[],
+            0,
+            0,
+            height_agl_m,
+            VerticalReference::AboveGroundLevel,
+        )
+        .expect("#80 production sample");
+        let actual = f64::from(sample.value);
+        let tolerance = absolute + relative * actual.abs().max(expected.abs());
+        let difference = (actual - expected).abs();
+        assert!(
+            difference <= tolerance,
+            "query {}: candidate {actual} != pristine {expected} (tolerance {tolerance})",
+            query["query"]
+        );
+        if !comparison["equivalent"]
+            .as_bool()
+            .expect("direct equivalence")
+        {
+            assert!(
+                (actual - direct).abs() > tolerance,
+                "candidate followed rejected direct-interface result"
+            );
+        }
+
+        let from_asl = sample_vertical(
+            runtime,
+            FieldId::VerticalVelocity,
+            VerticalStaggering::LevelInterface,
+            &[],
+            0,
+            0,
+            height_agl_m + terrain_asl_m,
+            VerticalReference::AboveMeanSeaLevel,
+        )
+        .expect("equivalent ASL sample");
+        assert_eq!(sample.value, from_asl.value);
+
+        rows.push(serde_json::json!({
+            "query": query["query"],
+            "classification": query["classification"],
+            "vertical_reference": "above_ground_level",
+            "staggering": "level_interface",
+            "source_interface_heights_agl_m": oracle["synthetic_case"]["interface_grid"],
+            "remapped_model_grid": oracle["synthetic_case"]["model_grid"],
+            "requested_height_agl_m_f64": height_oracle_f64,
+            "requested_height_agl_m_f32": height_agl_m,
+            "f64_to_f32_rounding": "finite_range_checked_then_round_to_nearest_runtime_f32",
+            "pristine_w_m_s": expected,
+            "candidate_w_m_s": sample.value,
+            "direct_interface_w_m_s": direct,
+            "absolute_difference_m_s": difference,
+            "tolerance_m_s": tolerance,
+            "verdict": "PASS"
+        }));
+    }
+
+    let report = serde_json::json!({
+        "schema": {"id": "flexpart-gpu.vertical-interface-sampling-report", "version": 1},
+        "issue": 73,
+        "oracle_issue": 80,
+        "oracle_artifact": "fixtures/interpolation/w-production-oracle-v1.json",
+        "runtime_boundary": "VerticalTransformResult::runtime_view()/VerticalRuntimeView (#30)",
+        "production_path": "runtime interface omega*pinmconv -> shared model height grid -> particle-height sample",
+        "direct_interface_interpolation": "REJECTED_NOT_EQUIVALENT",
+        "real_data_limitation": oracle["real_data_obligation"],
+        "rows": rows,
+        "verdict": "PASS"
+    });
+    let directory = std::path::Path::new("target/ci-gate/vertical-sampling");
+    std::fs::create_dir_all(directory).expect("create report directory");
+    let path = directory.join("vertical-interface-w-production-oracle.json");
+    std::fs::write(
+        &path,
+        serde_json::to_vec_pretty(&report).expect("serialize interface report"),
+    )
+    .expect("write interface report");
+    assert!(std::fs::metadata(path).expect("report metadata").len() > 0);
+}
+
 /// One machine-readable comparison row tying the requirement to the #30
 /// surface, the #71 oracle fixture and the test verdict.
 #[derive(Debug, Clone, Serialize)]
@@ -337,7 +627,7 @@ fn write_report(
         "implementation": "src/meteorology/vertical_sampling.rs::sample_vertical (#73)",
         "source_order": "canonical_storage_order_as_consumed_via_runtime_view",
         "value_provenance": value_provenance,
-        "interface_vertical_motion": "BLOCKED_BY_ISSUE_80",
+        "interface_vertical_motion": "ISSUE_80_PRESSURE_OMEGA_TWO_STAGE_SUPPORTED",
         "rows": rows,
     });
     std::fs::write(
@@ -486,7 +776,7 @@ fn vertical_sampling_fails_closed_on_unsupported_states() {
             100.0,
             VerticalReference::AboveGroundLevel
         ),
-        Err(VerticalSamplingError::InterfaceVerticalMotionBlocked)
+        Err(VerticalSamplingError::MissingRuntimeVerticalMotion)
     );
 
     let single = snapshot_ordered(VerticalOrdering::Decreasing, 1);
@@ -590,7 +880,10 @@ fn vertical_model_level_report_covers_real_runtime_view() {
         &std::fs::read(report_path).expect("read retained comparison report"),
     )
     .expect("parse retained comparison report");
-    assert_eq!(report["interface_vertical_motion"], "BLOCKED_BY_ISSUE_80");
+    assert_eq!(
+        report["interface_vertical_motion"],
+        "ISSUE_80_PRESSURE_OMEGA_TWO_STAGE_SUPPORTED"
+    );
     assert_eq!(
         report["rows"].as_array().expect("comparison rows").len(),
         rows.len()

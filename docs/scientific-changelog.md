@@ -16,6 +16,23 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-09-28 — Complete interface-W vertical sampling (#73)
+**Impact**: numerics (interface-staggered pressure velocity now follows the
+pristine FLEXPART 11.1 `eta=no` two-stage production semantics on the CPU)
+**Files**: `src/meteorology/vertical_sampling.rs`,
+`tests/integration/vertical_sampling.rs`, `tests/w_production_oracle.rs`,
+`scripts/ci-gate.sh`
+**Validation**: The #30 runtime-owned `omega * pinmconv` interface values are
+remapped onto FLEXPART's shared `[ground, model levels]` grid before particle-height
+sampling, matching all five boundary/strict-interior values in the frozen #80
+direct-oracle report within its unchanged `1e-6 m/s + 1e-5 relative` tolerance.
+The nonlinear case continues to reject direct interface interpolation. Integration
+tests cover AGL/ASL requests, both vertical storage orderings and 2/3/5 model-level
+columns. Unsupported interface provenance, single-level columns, and multi-column
+geometry that would require FLEXPART's unfrozen horizontal slope correction remain
+fail-closed. The checked-in real ERA5/ETEX fixture still has no vertical-motion
+field, so no real-W or provider claim is made. GPU execution remains with #88/#91.
+
 ### 2026-09-26 — Freeze pristine interface-W production sampling (#80)
 **Impact**: none (oracle evidence only; candidate interface-W sampling remains blocked)
 **Files**: `scripts/interpolation/w_production_oracle.f90`,

@@ -38,6 +38,7 @@ jobs:
           cargo test --test integration vertical_runtime
           cargo test --test integration vertical_sampling
           test -s target/ci-gate/vertical-sampling/vertical-model-level-regression.json
+          test -s target/ci-gate/vertical-sampling/vertical-interface-w-production-oracle.json
           cargo test --test meteorology_contract
           python3 scripts/test_oracle_run_manifest.py
 

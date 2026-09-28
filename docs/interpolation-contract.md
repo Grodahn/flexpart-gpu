@@ -3,7 +3,7 @@
 Status: frozen reference for issues #72 (horizontal), #73 (vertical), #74 (temporal),
 and #75 (accumulated-field interval/rate normalization).
 
-For #73, model-level meter-coordinate sampling is frozen as direct FLEXPART oracle evidence. The `vertical-interface-wzlev` case freezes the #30 W/interface **handoff geometry/staggering and primitive interpolation behavior only**. Issue #80 now separately freezes pristine FLEXPART's complete `eta=no` W production path and demonstrates that direct interface sampling is not equivalent for the supported nonlinear case. The #73 W/interface implementation remains blocked until it reproduces the frozen two-stage result or documents an intentional canonical divergence.
+For #73, model-level meter-coordinate sampling is frozen as direct FLEXPART oracle evidence. The `vertical-interface-wzlev` case freezes the #30 W/interface **handoff geometry/staggering and primitive interpolation behavior only**. Issue #80 separately freezes pristine FLEXPART's complete `eta=no` W production path and demonstrates that direct interface sampling is not equivalent for the supported nonlinear case. The #73 CPU implementation now reproduces that frozen two-stage result for its exact single-column pressure-omega contract.
 
 This document freezes the *normative* interpolation behavior that the downstream
 interpolation implementation issues must reproduce or explicitly diverge from.
@@ -546,9 +546,24 @@ tolerance (`1e-6 m/s`, `1e-5`). The upper production-grid boundary also differs:
 pristine FLEXPART returns `0 m/s`, while direct interface interpolation returns
 `0.015056730163961408 m/s`.
 
-Therefore #73 must reproduce the frozen two-stage result, or document an intentional
-canonical divergence with separate candidate and oracle expectations. This issue does
-not implement that change and does not remove `InterfaceVerticalMotionBlocked`.
+Issue #73 now reproduces the frozen two-stage result on the CPU. It consumes #30's
+runtime-owned, already converted `omega * pinmconv` interface values and W/interface
+heights, remaps them onto `[ground, model levels]` exactly as
+`verttransform_ecmwf_windfields` does for the supported single-column vertical
+contract, and then applies the existing meter-coordinate sampling primitive. The
+first and last shared-grid W values come directly from the first and last interfaces;
+only strict-interior shared model heights are remapped. Direct particle-height
+interpolation on W/interface heights remains rejected.
+
+The implementation accepts only the #80-proven pressure-velocity provenance
+(`Pa/s`, positive pressure-increasing, interface-staggered, normalized by #30's
+`omega_interface_flexpart11_pinmconv_v1`). Other interface-motion semantics fail
+closed. Because #80 disables horizontal slope correction and supplies no U/V
+handoff for that term, the interface path is limited to a single vertical column;
+multi-column interface motion fails explicitly instead of silently omitting the
+FLEXPART slope term. Center-staggered model-level behavior is unchanged. This is a
+transitional CPU implementation; GPU execution remains owned by #88 and the shared
+contract in #91.
 
 The checked-in canonical ERA5/ETEX fixture contains the #29/#30 thermodynamic column
 but no vertical-motion field. The #80 report records

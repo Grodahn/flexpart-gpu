@@ -138,6 +138,19 @@ Fail-closed step 2e (#80, interface-W production oracle):
   fixture has no vertical-motion field, so this step records that conditional
   limitation instead of adding provider decoding or #70 eta-dot preprocessing.
 
+Fail-closed step 2f (#73, canonical vertical sampling):
+
+- Run the model-level and interface-W unit/integration tests through the public
+  `sample_vertical` entry point on #30 `VerticalRuntimeView` geometry.
+- Require `vertical-model-level-regression.json` and
+  `vertical-interface-w-production-oracle.json`. The interface report must cover
+  all five frozen #80 boundary/interior queries, retain the `not_equivalent`
+  direct-interface conclusion, identify the checked f64-oracle to f32-runtime
+  rounding boundary, and match the pristine two-stage values under the unchanged
+  `1e-6 m/s + 1e-5 relative` tolerance.
+- The report retains #80's real-data limitation: the checked-in ERA5/ETEX fixture
+  has no vertical-motion field, so no provider or real-W claim is added.
+
 Any missing adapter, skipped GPU test, missing oracle artifact, or failed
 comparison exits non-zero. Unwired corpus cases are listed as `NOT_WIRED`,
 never as `PASS`; no placeholder reports success.

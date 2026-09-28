@@ -308,11 +308,15 @@ def main():
     args = parser.parse_args()
 
     if args.require_input_equivalence is not None:
+        if args.case_id is None:
+            raise SystemExit("--require-input-equivalence requires --case so the report is bound to exactly one scored case")
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import input_equivalence as _ie
 
         try:
-            _ie.require_input_equivalent(args.require_input_equivalence)
+            _ie.require_input_equivalent(
+                args.require_input_equivalence, expected_case_id=args.case_id
+            )
         except _ie.InputEquivalenceError as exc:
             raise SystemExit(f"input-equivalence gate refused scoring: {exc}") from None
 

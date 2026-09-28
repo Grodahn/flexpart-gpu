@@ -18,6 +18,8 @@ Covers the required #52 proof surface:
 
 import copy
 import json
+import re
+import shutil
 import sys
 import tempfile
 import unittest
@@ -67,10 +69,14 @@ class EquivalentSyntheticTest(unittest.TestCase):
         # Downstream gate allows this report.
         IE.require_input_equivalent(report)
 
-    def test_wind_uni_002_is_input_equivalent(self):
+    def test_wind_uni_002_is_not_demonstrated_for_turbulence_inputs(self):
         case = load_case("WIND-UNI-002")
         report = IE.build_report("WIND-UNI-002", case, oracle_dir_for("WIND-UNI-002"))
-        self.assertEqual(report["verdict"], IE.VERDICT_EQUIVALENT)
+        self.assertEqual(report["verdict"], IE.VERDICT_NOT_DEMONSTRATED)
+        self.assertEqual(
+            field_status(report, IE.FIELD_METEOROLOGY_CANDIDATE_TRANSFORMATION),
+            "not_demonstrated",
+        )
 
 
 class TimestepMismatchTest(unittest.TestCase):
@@ -147,6 +153,15 @@ class RepresentationDifferenceTest(unittest.TestCase):
             field_status(report, IE.FIELD_REPRESENTATION_DIFFERENCES), "not_demonstrated"
         )
 
+    def test_declared_species_physics_difference_is_not_demonstrated(self):
+        case = load_case("WET-008")
+        report = IE.build_report("WET-008", case, oracle_dir_for("WET-008"))
+        self.assertEqual(report["verdict"], IE.VERDICT_NOT_DEMONSTRATED)
+        self.assertEqual(
+            field_status(report, IE.FIELD_SPECIES_PHYSICS_CONTRACT),
+            "not_demonstrated",
+        )
+
 
 class IntegrityErrorTest(unittest.TestCase):
     def test_missing_oracle_dir_yields_integrity_error(self):
@@ -191,6 +206,52 @@ class IntegrityErrorTest(unittest.TestCase):
             ident = IE.evaluate_case_file(path, oracle_dir_for("WIND-UNI-002"))
         self.assertEqual(ident["verdict"], IE.VERDICT_INTEGRITY_ERROR)
 
+    def test_malformed_oracle_number_yields_integrity_error(self):
+        case = load_case("ADV-ANA-001")
+        with tempfile.TemporaryDirectory() as tmp:
+            oracle = Path(tmp) / "oracle"
+            shutil.copytree(oracle_dir_for("ADV-ANA-001"), oracle)
+            releases = oracle / "RELEASES"
+            text = releases.read_text(encoding="utf-8")
+            text = re.sub(r"(?m)^(\s*LON1\s*=\s*)[^,\n]+", r"\1not-a-number", text)
+            releases.write_text(text, encoding="utf-8")
+            report = IE.build_report("ADV-ANA-001", case, oracle)
+        self.assertEqual(report["verdict"], IE.VERDICT_INTEGRITY_ERROR)
+        self.assertEqual(
+            field_status(report, IE.FIELD_RELEASE_GEOMETRY), "integrity_error"
+        )
+
+    def test_stale_input_derivation_yields_mismatch(self):
+        case = load_case("ADV-ANA-001")
+        with tempfile.TemporaryDirectory() as tmp:
+            oracle = Path(tmp) / "oracle"
+            shutil.copytree(oracle_dir_for("ADV-ANA-001"), oracle)
+            derivation_path = oracle / "INPUT_DERIVATION.json"
+            derivation = json.loads(derivation_path.read_text(encoding="utf-8"))
+            derivation["particle_count"] += 1
+            derivation_path.write_text(json.dumps(derivation), encoding="utf-8")
+            report = IE.build_report("ADV-ANA-001", case, oracle)
+        self.assertEqual(report["verdict"], IE.VERDICT_MISMATCH)
+        self.assertEqual(
+            field_status(report, IE.FIELD_RELEASE_PARTICLE_COUNT), "mismatch"
+        )
+
+    def test_tampered_species_file_yields_mismatch(self):
+        case = load_case("ADV-ANA-001")
+        with tempfile.TemporaryDirectory() as tmp:
+            oracle = Path(tmp) / "oracle"
+            shutil.copytree(oracle_dir_for("ADV-ANA-001"), oracle)
+            species = oracle / "SPECIES" / "SPECIES_024"
+            species.write_text(
+                species.read_text(encoding="utf-8") + "\n! tampered\n",
+                encoding="utf-8",
+            )
+            report = IE.build_report("ADV-ANA-001", case, oracle)
+        self.assertEqual(report["verdict"], IE.VERDICT_MISMATCH)
+        self.assertEqual(
+            field_status(report, IE.FIELD_SPECIES_PHYSICS_CONTRACT), "mismatch"
+        )
+
 
 class EtexMiniTest(unittest.TestCase):
     def test_etex_mini_stays_not_demonstrated(self):
@@ -215,34 +276,44 @@ class EtexMiniTest(unittest.TestCase):
 
 class DownstreamGateTest(unittest.TestCase):
     def test_gate_refuses_every_non_equivalent_state(self):
-        base = {
-            "schema_version": 1,
-            "schema_id": IE.REPORT_SCHEMA_ID,
-            "case_id": "TEST-001",
-            "case_file": "fixtures/corpus/cases/TEST-001.json",
-            "oracle_dir": "fixtures/corpus/fortran/TEST-001",
-            "fields": [],
-            "conversions": [],
-            "provenance_dependency": IE.PROVENANCE_DEPENDENCY,
-        }
-        for verdict in (
-            IE.VERDICT_NOT_DEMONSTRATED,
-            IE.VERDICT_MISMATCH,
-            IE.VERDICT_INTEGRITY_ERROR,
-        ):
+        base = IE.build_report(
+            "ADV-ANA-001",
+            load_case("ADV-ANA-001"),
+            oracle_dir_for("ADV-ANA-001"),
+        )
+        states = (
+            (IE.VERDICT_NOT_DEMONSTRATED, "not_demonstrated"),
+            (IE.VERDICT_MISMATCH, "mismatch"),
+            (IE.VERDICT_INTEGRITY_ERROR, "integrity_error"),
+        )
+        for verdict, field_status_value in states:
             with self.subTest(verdict=verdict):
-                report = dict(base, verdict=verdict)
+                report = copy.deepcopy(base)
+                report["verdict"] = verdict
+                report["fields"][0]["status"] = field_status_value
                 with self.assertRaises(IE.InputEquivalenceError) as ctx:
                     IE.require_input_equivalent(report)
                 self.assertIn(verdict, str(ctx.exception))
-        allowed = dict(base, verdict=IE.VERDICT_EQUIVALENT)
-        IE.require_input_equivalent(allowed)
+        IE.require_input_equivalent(base, expected_case_id="ADV-ANA-001")
 
     def test_gate_rejects_malformed_report(self):
         with self.assertRaises(IE.InputEquivalenceError):
             IE.require_input_equivalent({"verdict": "PASS"})
         with self.assertRaises(IE.InputEquivalenceError):
             IE.require_input_equivalent({})
+
+    def test_gate_rejects_forged_equivalent_verdict(self):
+        with self.assertRaises(IE.InputEquivalenceError):
+            IE.require_input_equivalent({"verdict": IE.VERDICT_EQUIVALENT})
+
+    def test_gate_rejects_wrong_case(self):
+        report = IE.build_report(
+            "ADV-ANA-001",
+            load_case("ADV-ANA-001"),
+            oracle_dir_for("ADV-ANA-001"),
+        )
+        with self.assertRaises(IE.InputEquivalenceError):
+            IE.require_input_equivalent(report, expected_case_id="WIND-UNI-002")
 
 
 if __name__ == "__main__":

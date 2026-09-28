@@ -1141,6 +1141,7 @@ def run_corpus_seeds(args, oracle_manifest):
     """
     missing = []
     notes = list(args.note or [])
+    case_def = io_corpus.read_case_definition(args.case_def)
     # Fail-closed #52 gate: paired oracle scoring requires INPUT_EQUIVALENT.
     # Candidate-only statistics remain diagnostic; supplying --fortran-output
     # together with --require-input-equivalence turns the gate on.
@@ -1155,14 +1156,16 @@ def run_corpus_seeds(args, oracle_manifest):
         _ie = _ilu.module_from_spec(_spec)
         _spec.loader.exec_module(_ie)
         try:
-            _ie.require_input_equivalent(args.require_input_equivalence)
+            _ie.require_input_equivalent(
+                args.require_input_equivalence,
+                expected_case_id=case_def["case_id"],
+            )
         except _ie.InputEquivalenceError as exc:
             raise ValueError(f"input-equivalence gate refused scoring: {exc}") from None
         notes.append(
             "Input-equivalence gate passed (INPUT_EQUIVALENT); #53 provenance "
             "must still be verified before any parity claim."
         )
-    case_def = io_corpus.read_case_definition(args.case_def)
     case_id = case_def["case_id"]
     release_mass = float(case_def["release"]["inventory"]["quantity_kg"])
     switches = case_def["physics_switches"]

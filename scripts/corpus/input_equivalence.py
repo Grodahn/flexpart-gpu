@@ -57,6 +57,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import sys
@@ -81,6 +82,7 @@ SCHEMA_MOD = _load_module("validation_case_schema", "validation_case_schema.py")
 
 REPORT_SCHEMA_VERSION = 1
 REPORT_SCHEMA_ID = "schemas/input-equivalence-v1.schema.json"
+REPORT_SCHEMA_PATH = REPO / REPORT_SCHEMA_ID
 
 VERDICT_EQUIVALENT = "INPUT_EQUIVALENT"
 VERDICT_NOT_DEMONSTRATED = "INPUT_EQUIVALENCE_NOT_DEMONSTRATED"
@@ -217,6 +219,17 @@ class InputEquivalenceError(ValueError):
     """Raised when a report cannot be built or a gate refuses scoring."""
 
 
+FIELD_EVALUATION_ERRORS = (
+    InputEquivalenceError,
+    KeyError,
+    OSError,
+    TypeError,
+    ValueError,
+    json.JSONDecodeError,
+)
+REPORT_EVALUATION_ERRORS = (SystemExit,) + FIELD_EVALUATION_ERRORS
+
+
 def _evidence(field_id, status, candidate, oracle, conversion, detail):
     return {
         "field_id": field_id,
@@ -255,6 +268,44 @@ def _overall_verdict(fields):
     return VERDICT_EQUIVALENT
 
 
+def _validate_report(report, expected_case_id=None):
+    """Validate report shape, closed field surface, and verdict consistency."""
+    try:
+        schema = json.loads(REPORT_SCHEMA_PATH.read_text(encoding="utf-8"))
+        SCHEMA_MOD._validate_node(schema, schema, report, "$")
+    except (OSError, json.JSONDecodeError, SCHEMA_MOD.ValidationCaseSchemaError) as exc:
+        raise InputEquivalenceError(
+            f"input-equivalence report schema violation: {exc}"
+        ) from exc
+
+    fields = report["fields"]
+    field_ids = [field["field_id"] for field in fields]
+    duplicate_ids = sorted(
+        field_id for field_id in set(field_ids) if field_ids.count(field_id) > 1
+    )
+    missing_ids = sorted(set(REQUIRED_FIELD_IDS) - set(field_ids))
+    unexpected_ids = sorted(set(field_ids) - set(REQUIRED_FIELD_IDS))
+    if duplicate_ids or missing_ids or unexpected_ids:
+        raise InputEquivalenceError(
+            "input-equivalence report does not contain the closed field surface: "
+            f"duplicates={duplicate_ids}, missing={missing_ids}, "
+            f"unexpected={unexpected_ids}"
+        )
+
+    derived_verdict = _overall_verdict(fields)
+    if report["verdict"] != derived_verdict:
+        raise InputEquivalenceError(
+            "input-equivalence report verdict contradicts field evidence: "
+            f"declared={report['verdict']}, derived={derived_verdict}"
+        )
+    if expected_case_id is not None and report["case_id"] != expected_case_id:
+        raise InputEquivalenceError(
+            "input-equivalence report belongs to the wrong case: "
+            f"expected {expected_case_id!r}, got {report['case_id']!r}"
+        )
+    return report
+
+
 def _read_text(path):
     try:
         return Path(path).read_text(encoding="utf-8")
@@ -267,6 +318,13 @@ def _namelist_scalar(text, key):
         return GEN.namelist_value(text, key)
     except (ValueError, AttributeError) as exc:
         raise InputEquivalenceError(f"namelist key {key} missing/malformed: {exc}") from exc
+
+
+def _git_blob_sha(path):
+    """Return the Git blob identity for one resolved input artifact."""
+    data = Path(path).read_bytes().replace(b"\r\n", b"\n")
+    header = f"blob {len(data)}\0".encode("ascii")
+    return hashlib.sha1(header + data).hexdigest()
 
 
 def default_oracle_dir(case_id):
@@ -349,6 +407,18 @@ def build_report(case_id, case, oracle_dir):
     """
     oracle_dir = Path(oracle_dir)
     case_file = f"fixtures/corpus/cases/{case_id}.json"
+
+    try:
+        SCHEMA_MOD.validate_case_document(case, source=case_file)
+    except SCHEMA_MOD.ValidationCaseSchemaError as exc:
+        return _integrity_report(case_id, case_file, oracle_dir, str(exc))
+    if case.get("case_id") != case_id:
+        return _integrity_report(
+            case_id,
+            case_file,
+            oracle_dir,
+            f"manifest case_id {case.get('case_id')!r} does not match requested {case_id!r}",
+        )
 
     # --- manifest-level fail-closed checks (reuse generator readers) ---
     try:
@@ -520,6 +590,78 @@ def build_report(case_id, case, oracle_dir):
     except OSError as exc:
         return _integrity_report(case_id, case_file, oracle_dir, f"cannot read oracle artifact: {exc}")
 
+    derivation_mismatches = {}
+    if not is_real_weather:
+        try:
+            derivation = json.loads(
+                (oracle_dir / "INPUT_DERIVATION.json").read_text(encoding="utf-8")
+            )
+            release_lon, _, release_lat, _ = GEN.release_lonlat(case_id, case)
+            release_z, _, _ = GEN.release_vertical(case_id, case)
+            output_grid = GEN._required_output_grid(case_id, case)
+            expected_derivation = {
+                "case_file": case_file,
+                "release_lon_deg": release_lon,
+                "release_lat_deg": release_lat,
+                "release_z_m": release_z,
+                "particle_count": GEN._required_particle_count(
+                    case_id, case["release"]
+                ),
+                "candidate_mass_kg": GEN.case_total_mass_kg(case_id, case),
+                "mass_conversion": (
+                    "MASS_g = mass_kg * 1000 (FLEXPART MASS is in grams)"
+                ),
+                "oracle_mass_g": (
+                    GEN.case_total_mass_kg(case_id, case) * GEN.KG_TO_G
+                ),
+                "oracle_meteorology_profile": case["oracle_meteorology_profile"],
+                "output_grid": {
+                    key: output_grid[key]
+                    for key in (
+                        "xlon0_deg",
+                        "ylat0_deg",
+                        "nx",
+                        "ny",
+                        "nz",
+                        "dx_deg",
+                        "dy_deg",
+                        "heights_m",
+                        "heights_ref",
+                    )
+                },
+            }
+            if not isinstance(derivation, dict):
+                raise InputEquivalenceError(
+                    "INPUT_DERIVATION.json root must be an object"
+                )
+            missing_derivation_keys = sorted(
+                set(expected_derivation) - set(derivation)
+            )
+            unexpected_derivation_keys = sorted(
+                set(derivation) - set(expected_derivation)
+            )
+            if missing_derivation_keys or unexpected_derivation_keys:
+                return _integrity_report(
+                    case_id,
+                    case_file,
+                    oracle_dir,
+                    "INPUT_DERIVATION.json has an invalid field surface: "
+                    f"missing={missing_derivation_keys}, "
+                    f"unexpected={unexpected_derivation_keys}",
+                )
+            derivation_mismatches = {
+                key: {"candidate": expected_derivation[key], "oracle": derivation[key]}
+                for key in expected_derivation
+                if derivation[key] != expected_derivation[key]
+            }
+        except FIELD_EVALUATION_ERRORS as exc:
+            return _integrity_report(
+                case_id,
+                case_file,
+                oracle_dir,
+                f"INPUT_DERIVATION.json is malformed or unreadable: {exc}",
+            )
+
     fields = []
 
     # --- release.geometry ---
@@ -545,7 +687,7 @@ def build_report(case_id, case, oracle_dir):
             fields.append(_mismatch(FIELD_RELEASE_GEOMETRY,
                 f"RELEASES lon/lat {oracle_geo} contradict release geometry {(exp_lon1, exp_lon2, exp_lat1, exp_lat2)}.",
                 candidate_geo, oracle_geo, "lonlat_deg_to_releases:v1"))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_RELEASE_GEOMETRY, str(exc)))
 
     # --- release.timing ---
@@ -567,7 +709,7 @@ def build_report(case_id, case, oracle_dir):
             fields.append(_mismatch(FIELD_RELEASE_TIMING,
                 f"RELEASES dates {oracle_timing} contradict release timing {(exp_idate1, exp_itime1, exp_idate2, exp_itime2)}.",
                 candidate_timing, oracle_timing, "time_yyyymmddhhmmss_to_ibdate_ibtime:v1"))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_RELEASE_TIMING, str(exc)))
 
     # --- release.vertical_ref ---
@@ -586,7 +728,7 @@ def build_report(case_id, case, oracle_dir):
             fields.append(_mismatch(FIELD_RELEASE_VERTICAL_REF,
                 f"Vertical reference mismatch: case vertical_ref={candidate_vref!r} expects Z1/Z2/ZKIND=({exp_z1}, {exp_z2}, {exp_zkind}), oracle has {oracle_vref}.",
                 candidate_vref, oracle_vref, "z_agl_to_zkind1:v1"))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_RELEASE_VERTICAL_REF, str(exc)))
 
     # --- release.species_inventory ---
@@ -607,7 +749,7 @@ def build_report(case_id, case, oracle_dir):
             fields.append(_mismatch(FIELD_RELEASE_SPECIES_INVENTORY,
                 f"Inventory mismatch: expected MASS_g={exp_g} SPECNUM={specnum}, oracle has MASS_g={o_mass_g} SPECNUM={o_specnum} (rel_err={rel_err:.2e}).",
                 candidate_inv, oracle_inv, "mass_kg_to_g:v1"))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_RELEASE_SPECIES_INVENTORY, str(exc)))
 
     # --- release.particle_count ---
@@ -622,7 +764,7 @@ def build_report(case_id, case, oracle_dir):
             fields.append(_mismatch(FIELD_RELEASE_PARTICLE_COUNT,
                 f"Particle-count contradiction: case={exp_parts}, oracle PARTS={o_parts}.",
                 exp_parts, o_parts, None))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_RELEASE_PARTICLE_COUNT, str(exc)))
 
     # --- species_physics_contract ---
@@ -631,9 +773,37 @@ def build_report(case_id, case, oracle_dir):
         profile = contract.get("profile")
         o_specnum = int(float(_namelist_scalar(releases_text, "SPECNUM_REL")))
         expected_specnum = specnum
-        species_path = None
-        species_ok = (o_specnum == expected_specnum)
-        detail_extra = ""
+        contract_path = REPO / contract["path"]
+        contract_document = json.loads(contract_path.read_text(encoding="utf-8"))
+        expected_contract_identity = {
+            "contract_id": contract["id"],
+            "contract_version": contract["version"],
+            "species_id": case["release"]["species"]["id"],
+        }
+        actual_contract_identity = {
+            key: contract_document.get(key) for key in expected_contract_identity
+        }
+        if actual_contract_identity != expected_contract_identity:
+            raise InputEquivalenceError(
+                f"species contract {contract_path} identity mismatch: "
+                f"expected {expected_contract_identity}, got {actual_contract_identity}"
+            )
+        candidate_physics = {
+            key: bool(physics[key])
+            for key in ("dry_deposition", "wet_deposition", "decay")
+        }
+        if contract_document.get("candidate_physics") != candidate_physics:
+            raise InputEquivalenceError(
+                "species contract candidate_physics contradicts the canonical case: "
+                f"contract={contract_document.get('candidate_physics')}, "
+                f"case={candidate_physics}"
+            )
+        oracle_physics = contract_document.get("oracle_physics")
+        if not isinstance(oracle_physics, dict):
+            raise InputEquivalenceError(
+                "species contract oracle_physics must be an object"
+            )
+        species_ok = o_specnum == expected_specnum
         if not is_real_weather:
             species_path = oracle_dir / "SPECIES" / f"SPECIES_{expected_specnum:03d}"
             if not species_path.is_file():
@@ -644,44 +814,67 @@ def build_report(case_id, case, oracle_dir):
                 import re as _re
                 code = _re.sub(r"!.*", "", species_path.read_text(encoding="utf-8"))
                 has_pndia = _re.search(r"(?im)^\s*PNDIA\s*=", code) is not None
-                if has_pndia:
+                checked_fixture = contract_document.get("checked_in_fixture")
+                if not isinstance(checked_fixture, dict) or not isinstance(
+                    checked_fixture.get("git_blob_sha"), str
+                ):
+                    raise InputEquivalenceError(
+                        "species contract lacks checked_in_fixture.git_blob_sha"
+                    )
+                actual_blob_sha = _git_blob_sha(species_path)
+                expected_blob_sha = checked_fixture["git_blob_sha"]
+                oracle_evidence = {
+                    "SPECNUM_REL": o_specnum,
+                    "git_blob_sha": actual_blob_sha,
+                    "oracle_physics": oracle_physics,
+                }
+                if actual_blob_sha != expected_blob_sha:
+                    fields.append(_mismatch(FIELD_SPECIES_PHYSICS_CONTRACT,
+                        f"Resolved SPECIES_{expected_specnum:03d} blob {actual_blob_sha} contradicts pinned contract blob {expected_blob_sha}.",
+                        contract_document, oracle_evidence))
+                elif has_pndia:
                     fields.append(_mismatch(FIELD_SPECIES_PHYSICS_CONTRACT,
                         f"Oracle SPECIES_{expected_specnum:03d} contains PNDIA unknown to v11.1.",
-                        contract, {"SPECNUM_REL": o_specnum}))
+                        contract_document, oracle_evidence))
                 elif case_id == "DRY-007":
                     pdry = GEN.namelist_value(species_path.read_text(encoding="utf-8"), "PDRYVEL").strip()
                     if pdry != "2.0":
                         fields.append(_mismatch(FIELD_SPECIES_PHYSICS_CONTRACT,
                             f"DRY-007 SPECIES PDRYVEL={pdry!r} contradicts candidate-equivalent 2.0 (0.02 m/s).",
-                            contract, {"PDRYVEL": pdry, "SPECNUM_REL": o_specnum}))
+                            contract_document, dict(oracle_evidence, PDRYVEL=pdry)))
                     elif not species_ok:
                         fields.append(_mismatch(FIELD_SPECIES_PHYSICS_CONTRACT,
                             f"SPECNUM_REL={o_specnum} contradicts species contract {profile} (expected {expected_specnum}).",
-                            contract, {"SPECNUM_REL": o_specnum}))
+                            contract_document, oracle_evidence))
                     else:
                         fields.append(_equivalent(FIELD_SPECIES_PHYSICS_CONTRACT,
-                            f"Species contract {profile} matches SPECIES_{expected_specnum:03d} (PDRYVEL=2.0, no PNDIA) and SPECNUM_REL={o_specnum}.",
-                            contract, {"SPECNUM_REL": o_specnum, "PDRYVEL": pdry}, None))
+                            f"Species contract {profile} matches pinned SPECIES_{expected_specnum:03d} blob {actual_blob_sha} (PDRYVEL=2.0, no PNDIA) and SPECNUM_REL={o_specnum}.",
+                            contract_document, dict(oracle_evidence, PDRYVEL=pdry), None))
                 else:
                     if not species_ok:
                         fields.append(_mismatch(FIELD_SPECIES_PHYSICS_CONTRACT,
                             f"SPECNUM_REL={o_specnum} contradicts species contract {profile} (expected {expected_specnum}).",
-                            contract, {"SPECNUM_REL": o_specnum}))
+                            contract_document, oracle_evidence))
+                    elif oracle_physics != candidate_physics:
+                        fields.append(_not_demonstrated(FIELD_SPECIES_PHYSICS_CONTRACT,
+                            f"Species contract {profile} declares different candidate/oracle physics {candidate_physics}/{oracle_physics}; equivalence is not demonstrated.",
+                            candidate_physics, oracle_evidence))
                     else:
                         fields.append(_equivalent(FIELD_SPECIES_PHYSICS_CONTRACT,
-                            f"Species contract {profile} matches SPECIES_{expected_specnum:03d} (no PNDIA) and SPECNUM_REL={o_specnum}.",
-                            contract, {"SPECNUM_REL": o_specnum}, None))
+                            f"Species contract {profile} matches pinned SPECIES_{expected_specnum:03d} blob {actual_blob_sha} (no PNDIA) and SPECNUM_REL={o_specnum}.",
+                            contract_document, oracle_evidence, None))
         else:
-            # ETEX mini: no SPECIES file in mini/config; contract + SPECNUM must still agree.
+            # ETEX mini: no resolved SPECIES file in mini/config, so the pinned
+            # identity cannot be independently checked by this report.
             if not species_ok:
                 fields.append(_mismatch(FIELD_SPECIES_PHYSICS_CONTRACT,
                     f"SPECNUM_REL={o_specnum} contradicts species contract {profile} (expected {expected_specnum}).",
-                    contract, {"SPECNUM_REL": o_specnum}))
+                    contract_document, {"SPECNUM_REL": o_specnum}))
             else:
-                fields.append(_equivalent(FIELD_SPECIES_PHYSICS_CONTRACT,
-                    f"Species contract {profile} agrees with RELEASES SPECNUM_REL={o_specnum}; oracle SPECIES file lives outside mini/config (pinned oracle).",
-                    contract, {"SPECNUM_REL": o_specnum}, None))
-    except (SystemExit, InputEquivalenceError, OSError) as exc:
+                fields.append(_not_demonstrated(FIELD_SPECIES_PHYSICS_CONTRACT,
+                    f"Species contract {profile} agrees with RELEASES SPECNUM_REL={o_specnum}, but the resolved oracle SPECIES file is absent from {oracle_dir} and its identity cannot be checked.",
+                    contract_document, {"SPECNUM_REL": o_specnum}, None))
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_SPECIES_PHYSICS_CONTRACT, str(exc)))
 
     # --- meteorology.identity ---
@@ -725,7 +918,7 @@ def build_report(case_id, case, oracle_dir):
                 fields.append(_equivalent(FIELD_METEOROLOGY_IDENTITY,
                     f"Real-weather meteorology identity {met['dataset_id']} {met['version']} with sha256 digest; source is shared, transformations compared separately.",
                     identity, identity, None))
-    except (SystemExit, InputEquivalenceError, OSError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_METEOROLOGY_IDENTITY, str(exc)))
 
     # --- meteorology.coverage ---
@@ -753,33 +946,95 @@ def build_report(case_id, case, oracle_dir):
             fields.append(_equivalent(FIELD_METEOROLOGY_COVERAGE,
                 f"ERA5 temporal coverage {coverage} covers simulation {integration['start']} + {integration['total_s']}s.",
                 coverage, coverage, None))
-    except (SystemExit, InputEquivalenceError, OSError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_METEOROLOGY_COVERAGE, str(exc)))
 
     # --- meteorology transformations (candidate + oracle) ---
     rep = case.get("representation_differences", {}) or {}
     known_limits = rep.get("known_input_equivalence_limitations", []) or []
+    synthetic_representation_equivalent = (
+        not is_real_weather
+        and wind_profile == "uniform"
+        and not any(
+            physics[key]
+            for key in (
+                "turbulence",
+                "convection",
+                "dry_deposition",
+                "wet_deposition",
+            )
+        )
+    )
     try:
         if not is_real_weather:
             oracle_profile = case["oracle_meteorology_profile"]
             candidate_profile = case["candidate_physics_profile"]
-            # Record declared differences verbatim; pinned contracts are the independent evidence.
-            declared = {k: rep.get(k) for k in ("horizontal_grid", "vertical_coordinate", "temporal_resolution", "wind_components", "pbl_diagnostics") if rep.get(k)}
-            cand_trans = {"candidate_physics_profile": candidate_profile, "wind_profile": wind_profile}
-            or_trans = {"oracle_meteorology_profile": oracle_profile, "generator": "scripts/generate_synthetic_grib.py"}
-            note = (
-                "Declared synthetic representation differences are pinned by "
-                "flexpart-synthetic-grib-v1 and candidate-forward-timeloop-v1; "
-                f"declared={declared}."
+            candidate_profile_document = json.loads(
+                (REPO / candidate_profile["manifest_path"]).read_text(encoding="utf-8")
             )
-            fields.append(_equivalent(FIELD_METEOROLOGY_CANDIDATE_TRANSFORMATION,
-                f"Candidate transformation pinned ({candidate_profile['id']} v{candidate_profile['version']}). {note}",
-                cand_trans, cand_trans,
-                "candidate_physics_pinned:candidate-forward-timeloop-v1"))
-            fields.append(_equivalent(FIELD_METEOROLOGY_ORACLE_TRANSFORMATION,
-                f"Oracle transformation pinned ({oracle_profile['id']} v{oracle_profile['version']}). {note}",
-                or_trans, or_trans,
-                "synthetic_meteorology_pinned:flexpart-synthetic-grib-v1"))
+            oracle_profile_document = json.loads(
+                (REPO / oracle_profile["manifest_path"]).read_text(encoding="utf-8")
+            )
+            for profile_ref, profile_document, label in (
+                (candidate_profile, candidate_profile_document, "candidate"),
+                (oracle_profile, oracle_profile_document, "oracle"),
+            ):
+                if (
+                    profile_document.get("id") != profile_ref["id"]
+                    or profile_document.get("version") != profile_ref["version"]
+                ):
+                    raise InputEquivalenceError(
+                        f"{label} profile manifest identity contradicts its case reference"
+                    )
+            declared = {k: rep.get(k) for k in ("horizontal_grid", "vertical_coordinate", "temporal_resolution", "wind_components", "pbl_diagnostics") if rep.get(k)}
+            cand_trans = {
+                "candidate_physics_profile": candidate_profile,
+                "synthetic_meteorology": candidate_profile_document.get(
+                    "synthetic_meteorology"
+                ),
+                "wind_profile": wind_profile,
+            }
+            or_trans = {
+                "oracle_meteorology_profile": oracle_profile,
+                "grid": oracle_profile_document.get("grid"),
+                "upper_air_profile": oracle_profile_document.get(
+                    "upper_air_profile"
+                ),
+                "fixed_surface_fields": oracle_profile_document.get(
+                    "fixed_surface_fields"
+                ),
+                "known_representation_differences": oracle_profile_document.get(
+                    "known_representation_differences"
+                ),
+            }
+            if synthetic_representation_equivalent:
+                fields.append(_equivalent(FIELD_METEOROLOGY_CANDIDATE_TRANSFORMATION,
+                    f"Candidate profile {candidate_profile['id']} v{candidate_profile['version']} is immaterial for this uniform-wind case because all meteorology-sensitive physics switches are disabled; declared differences remain recorded: {declared}.",
+                    cand_trans, or_trans,
+                    "candidate_physics_pinned:candidate-forward-timeloop-v1"))
+                fields.append(_equivalent(FIELD_METEOROLOGY_ORACLE_TRANSFORMATION,
+                    f"Oracle profile {oracle_profile['id']} v{oracle_profile['version']} maps the same uniform wind, while all meteorology-sensitive physics switches are disabled; declared differences remain recorded: {declared}.",
+                    or_trans, cand_trans,
+                    "synthetic_meteorology_pinned:flexpart-synthetic-grib-v1"))
+            else:
+                reason = (
+                    "Pinned candidate/oracle profiles declare different grid, vertical, "
+                    "thermodynamic, or surface representations while the case enables "
+                    "meteorology-sensitive physics; no independent equivalence evidence "
+                    f"is supplied. declared={declared}."
+                )
+                fields.append(_not_demonstrated(
+                    FIELD_METEOROLOGY_CANDIDATE_TRANSFORMATION,
+                    reason,
+                    cand_trans,
+                    or_trans,
+                ))
+                fields.append(_not_demonstrated(
+                    FIELD_METEOROLOGY_ORACLE_TRANSFORMATION,
+                    reason,
+                    or_trans,
+                    cand_trans,
+                ))
         else:
             met = wind["meteorology"]
             cand_t = met.get("candidate_transformation")
@@ -803,7 +1058,7 @@ def build_report(case_id, case, oracle_dir):
                     f"{reason} candidate={cand_t}.", cand_t, or_t))
                 fields.append(_not_demonstrated(FIELD_METEOROLOGY_ORACLE_TRANSFORMATION,
                     f"{reason} oracle={or_t}.", or_t, cand_t))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_METEOROLOGY_CANDIDATE_TRANSFORMATION, str(exc)))
         fields.append(_integrity(FIELD_METEOROLOGY_ORACLE_TRANSFORMATION, str(exc)))
 
@@ -821,7 +1076,7 @@ def build_report(case_id, case, oracle_dir):
             fields.append(_mismatch(FIELD_PHYSICS_SWITCHES,
                 f"Physics-switch contradiction: case turbulence={physics['turbulence']}/convection={physics['convection']} expects LTURBULENCE={exp_lturb}/LCONVECTION={exp_lconv}, oracle has {o_lturb}/{o_lconv}.",
                 physics, {"LTURBULENCE": o_lturb, "LCONVECTION": o_lconv}, None))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_PHYSICS_SWITCHES, str(exc)))
 
     # --- physics.formulation ---
@@ -846,7 +1101,7 @@ def build_report(case_id, case, oracle_dir):
                 {"turbulence_formulation": exp_form, "ctl": exp_ctl, "ifine": exp_ifine, "lsynctime_s": exp_lsync},
                 {"CTL": o_ctl, "IFINE": o_ifine, "LSYNCTIME": o_lsync},
                 "ctl_formulation:v1"))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_PHYSICS_FORMULATION, str(exc)))
 
     # --- simulation_direction ---
@@ -861,23 +1116,27 @@ def build_report(case_id, case, oracle_dir):
             fields.append(_mismatch(FIELD_SIMULATION_DIRECTION,
                 f"Direction contradiction: case {direction} expects LDIRECT={exp_ldirect}, oracle has {o_ldirect}.",
                 direction, o_ldirect, "direction_to_ldirect:v1"))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_SIMULATION_DIRECTION, str(exc)))
 
     # --- domain_grid ---
     try:
         domain = case["domain"]
-        if not is_real_weather:
+        if not is_real_weather and synthetic_representation_equivalent:
             declared_h = rep.get("horizontal_grid")
             fields.append(_equivalent(FIELD_DOMAIN_GRID,
                 f"Candidate domain {domain['nx']}x{domain['ny']}x{domain['nz']} declared; oracle synthetic meteorology uses pinned 32x32x12 global grid (flexpart-synthetic-grib-v1). Declared difference preserved: {declared_h!r}.",
                 domain, {"oracle_synthetic_grid": {"nx": 32, "ny": 32, "nz": 12}},
                 "synthetic_meteorology_pinned:flexpart-synthetic-grib-v1"))
+        elif not is_real_weather:
+            fields.append(_not_demonstrated(FIELD_DOMAIN_GRID,
+                f"Candidate domain {domain['nx']}x{domain['ny']}x{domain['nz']} and oracle synthetic 32x32x12 global grid differ while meteorology-sensitive physics is enabled; no independent equivalence mapping is supplied. Declared: {rep.get('horizontal_grid')!r}.",
+                domain, {"oracle_synthetic_grid": {"nx": 32, "ny": 32, "nz": 12}}))
         else:
             fields.append(_not_demonstrated(FIELD_DOMAIN_GRID,
                 f"Candidate meteorology domain 65x41x16 differs from oracle 137 native hybrid levels with no equivalence mapping. Declared: {rep.get('horizontal_grid')!r}.",
                 domain, {"oracle_levels": 137}))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_DOMAIN_GRID, str(exc)))
 
     # --- output_grid ---
@@ -914,7 +1173,7 @@ def build_report(case_id, case, oracle_dir):
                 f"Output-grid contradiction: case {grid} vs oracle OUTLON0={o_outlon0}/OUTLAT0={o_outlat0}/NUMXGRID={o_nx}/NUMYGRID={o_ny}/DXOUT={o_dx}/DYOUT={o_dy}/OUTHEIGHTS={o_heights}.",
                 grid, {"OUTLON0": o_outlon0, "OUTLAT0": o_outlat0, "NUMXGRID": o_nx, "NUMYGRID": o_ny, "DXOUT": o_dx, "DYOUT": o_dy, "OUTHEIGHTS": o_heights},
                 "outgrid_from_output_grid:v1"))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_OUTPUT_GRID, str(exc)))
 
     # --- vertical_coordinate ---
@@ -924,22 +1183,31 @@ def build_report(case_id, case, oracle_dir):
         vrefs = (domain.get("wind_heights_ref"), case["release"].get("vertical_ref"), grid.get("heights_ref"))
         o_zkind = int(float(_namelist_scalar(releases_text, "ZKIND")))
         if not is_real_weather:
-            if vrefs == ("agl", "agl", "agl") and o_zkind == 1:
+            if (
+                synthetic_representation_equivalent
+                and vrefs == ("agl", "agl", "agl")
+                and o_zkind == 1
+            ):
                 fields.append(_equivalent(FIELD_VERTICAL_COORDINATE,
                     f"Vertical references are AGL on both sides (domain/case/output {vrefs}, ZKIND=1); oracle synthetic uses pinned 12-level hybrid-eta coordinate. Declared: {rep.get('vertical_coordinate')!r}.",
                     {"wind_heights_ref": vrefs[0], "release_vertical_ref": vrefs[1], "output_heights_ref": vrefs[2]},
                     {"ZKIND": o_zkind, "oracle_vertical": "pinned 12-level simplified hybrid-eta"},
                     "z_agl_to_zkind1:v1+synthetic_meteorology_pinned:flexpart-synthetic-grib-v1"))
-            else:
+            elif vrefs != ("agl", "agl", "agl") or o_zkind != 1:
                 fields.append(_mismatch(FIELD_VERTICAL_COORDINATE,
                     f"Vertical-reference contradiction: case refs {vrefs} vs oracle ZKIND={o_zkind}; only agl->ZKIND=1 is established.",
                     {"refs": vrefs}, {"ZKIND": o_zkind}, "z_agl_to_zkind1:v1"))
+            else:
+                fields.append(_not_demonstrated(FIELD_VERTICAL_COORDINATE,
+                    f"Candidate fixed AGL wind levels {domain.get('wind_heights_m')} and oracle pinned 12-level hybrid-eta coordinate differ while meteorology-sensitive physics is enabled; no independent equivalence mapping is supplied. Declared: {rep.get('vertical_coordinate')!r}.",
+                    {"candidate_levels": domain.get("wind_heights_m")},
+                    {"oracle_vertical": "pinned 12-level simplified hybrid-eta"}))
         else:
             fields.append(_not_demonstrated(FIELD_VERTICAL_COORDINATE,
                 f"Candidate 16 fixed AGL levels {domain.get('wind_heights_m')} vs oracle 137 native hybrid levels; candidate omega-derived w vs oracle etadot. Declared: vertical={rep.get('vertical_coordinate')!r} wind={rep.get('wind_components')!r}. No equivalence mapping demonstrated.",
                 {"candidate_levels": domain.get("wind_heights_m"), "candidate_w": "omega-derived"},
                 {"oracle_levels": 137, "oracle_w": "etadot"}))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_VERTICAL_COORDINATE, str(exc)))
 
     # --- integration.timestep ---
@@ -958,7 +1226,7 @@ def build_report(case_id, case, oracle_dir):
             fields.append(_mismatch(FIELD_TIMESTEP,
                 f"Timestep contradiction: case lsynctime/ifine={exp_lsync}/{exp_ifine}, oracle has {o_lsync}/{o_ifine}.",
                 candidate_ts, oracle_ts, "ctl_formulation:v1"))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_TIMESTEP, str(exc)))
 
     # --- integration.window (start/end) ---
@@ -979,7 +1247,7 @@ def build_report(case_id, case, oracle_dir):
             fields.append(_mismatch(FIELD_SIMULATION_WINDOW,
                 f"Simulation-window contradiction: expected {(exp_ibdate, exp_ibtime, exp_iedate, exp_ietime)}, oracle has {(o_ibdate, o_ibtime, o_iedate, o_ietime)}.",
                 candidate_win, oracle_win, "time_yyyymmddhhmmss_to_ibdate_ibtime:v1"))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_SIMULATION_WINDOW, str(exc)))
 
     # --- output.windows ---
@@ -997,7 +1265,7 @@ def build_report(case_id, case, oracle_dir):
                 f"Output-window contradiction: case interval/averaging/sampling={(output['interval_s'], output['averaging_window_s'], output['sampling_interval_s'])}, oracle has {(o_loutstep, o_loutaver, o_loutsample)}.",
                 output, {"LOUTSTEP": o_loutstep, "LOUTAVER": o_loutaver, "LOUTSAMPLE": o_loutsample},
                 "output_to_lout:v1"))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_OUTPUT_WINDOWS, str(exc)))
 
     # --- conversions.units_sign_coordinates ---
@@ -1006,7 +1274,7 @@ def build_report(case_id, case, oracle_dir):
         fields.append(_equivalent(FIELD_CONVERSIONS,
             "Units are canonical SI (wind m/s, height m, mass kg, time s, concentration kg/m3); sign/coordinate conventions: lon/lat degrees geographic, heights AGL, mass kg->g x1000, time Gregorian YYYYMMDDHHMMSS.",
             units, units, "units_canonical_si:v1"))
-    except (SystemExit, InputEquivalenceError) as exc:
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_CONVERSIONS, str(exc)))
 
     # --- representation_differences ---
@@ -1019,14 +1287,45 @@ def build_report(case_id, case, oracle_dir):
             fields.append(_not_demonstrated(FIELD_REPRESENTATION_DIFFERENCES,
                 f"Real-weather structured differences (vertical={rep.get('vertical_coordinate')!r}, wind={rep.get('wind_components')!r}, pbl={rep.get('pbl_diagnostics')!r}, temporal={rep.get('temporal_resolution')!r}) have no demonstrated equivalence mapping; see meteorology/vertical fields.",
                 rep, rep))
-        else:
-            # Synthetic: descriptive differences pinned by versioned contracts; quote them so they are not normalized away.
+        elif synthetic_representation_equivalent:
             fields.append(_equivalent(FIELD_REPRESENTATION_DIFFERENCES,
-                f"Synthetic representation differences are declared and pinned (horizontal={rep.get('horizontal_grid')!r}, vertical={rep.get('vertical_coordinate')!r}, temporal={rep.get('temporal_resolution')!r}); candidate-forward-timeloop-v1 + flexpart-synthetic-grib-v1 with verified fixtures are the independent evidence.",
+                f"Synthetic representation differences are declared (horizontal={rep.get('horizontal_grid')!r}, vertical={rep.get('vertical_coordinate')!r}, temporal={rep.get('temporal_resolution')!r}) but are immaterial for this uniform-wind case with all meteorology-sensitive physics disabled.",
                 rep, rep,
                 "synthetic_meteorology_pinned:flexpart-synthetic-grib-v1+candidate_physics_pinned:candidate-forward-timeloop-v1"))
-    except (SystemExit, InputEquivalenceError) as exc:
+        else:
+            fields.append(_not_demonstrated(FIELD_REPRESENTATION_DIFFERENCES,
+                f"Synthetic candidate/oracle representation differences are pinned but not demonstrated equivalent for enabled meteorology-sensitive physics (horizontal={rep.get('horizontal_grid')!r}, vertical={rep.get('vertical_coordinate')!r}, temporal={rep.get('temporal_resolution')!r}).",
+                rep, rep))
+    except REPORT_EVALUATION_ERRORS as exc:
         fields.append(_integrity(FIELD_REPRESENTATION_DIFFERENCES, str(exc)))
+
+    derivation_field_ids = {
+        "case_file": FIELD_CONVERSIONS,
+        "release_lon_deg": FIELD_RELEASE_GEOMETRY,
+        "release_lat_deg": FIELD_RELEASE_GEOMETRY,
+        "release_z_m": FIELD_RELEASE_VERTICAL_REF,
+        "particle_count": FIELD_RELEASE_PARTICLE_COUNT,
+        "candidate_mass_kg": FIELD_RELEASE_SPECIES_INVENTORY,
+        "mass_conversion": FIELD_CONVERSIONS,
+        "oracle_mass_g": FIELD_RELEASE_SPECIES_INVENTORY,
+        "oracle_meteorology_profile": FIELD_METEOROLOGY_IDENTITY,
+        "output_grid": FIELD_OUTPUT_GRID,
+    }
+    mismatches_by_field = {}
+    for key, difference in derivation_mismatches.items():
+        mismatches_by_field.setdefault(derivation_field_ids[key], {})[key] = difference
+    for index, field in enumerate(fields):
+        differences = mismatches_by_field.get(field["field_id"])
+        if differences is None or field["status"] != "equivalent":
+            continue
+        fields[index] = _mismatch(
+            field["field_id"],
+            "INPUT_DERIVATION.json contradicts the canonical case derivation: "
+            f"{differences}",
+            {key: value["candidate"] for key, value in differences.items()},
+            {key: value["oracle"] for key, value in differences.items()},
+            field["conversion"],
+        )
 
     # Order fields canonically and compute verdict.
     order = {fid: i for i, fid in enumerate(REQUIRED_FIELD_IDS)}
@@ -1068,7 +1367,7 @@ def evaluate_case_file(case_path, oracle_dir=None):
     return build_report(case_id, case, Path(oracle_dir))
 
 
-def require_input_equivalent(report_or_path):
+def require_input_equivalent(report_or_path, expected_case_id=None):
     """Gate downstream paired scientific scoring on INPUT_EQUIVALENT.
 
     Accepts a report dict or a path to a report JSON file. Returns the
@@ -1083,11 +1382,8 @@ def require_input_equivalent(report_or_path):
             raise InputEquivalenceError(f"input-equivalence report unreadable: {exc}") from exc
     else:
         report = report_or_path
-    verdict = report.get("verdict") if isinstance(report, dict) else None
-    if verdict not in VERDICTS:
-        raise InputEquivalenceError(
-            f"input-equivalence report has no valid verdict (got {verdict!r}); refusing scoring"
-        )
+    report = _validate_report(report, expected_case_id=expected_case_id)
+    verdict = report["verdict"]
     if verdict != VERDICT_EQUIVALENT:
         case_id = report.get("case_id", "?") if isinstance(report, dict) else "?"
         raise InputEquivalenceError(

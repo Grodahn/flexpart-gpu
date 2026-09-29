@@ -274,6 +274,13 @@ class StaleMixedRunTest(unittest.TestCase):
             provenance._normalize_artifact_map(
                 {"/a/case/header": "a" * 64, "/b/case/header": "b" * 64})
 
+    def test_distinct_paths_with_same_hash_cannot_collapse(self):
+        with self.assertRaisesRegex(
+                provenance.ProvenanceError, "distinct paths"):
+            provenance.normalize_artifact_map(
+                {"/a/case/header": "a" * 64,
+                 "/b/case/header": "a" * 64})
+
     def test_non_overwriting_write_refuses_replacement(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "evidence.bin"

@@ -411,7 +411,8 @@ step_compare() {
         --oracle-artifact "${FORTRAN_RUN}/output" \
         --oracle-artifact "${ETEX_DIR}/fortran.log" \
         --candidate-artifact "${GPU_OUTPUT}" \
-        --candidate-artifact "${ETEX_DIR}/gpu.log"
+        --candidate-artifact "${ETEX_DIR}/gpu.log" \
+        --validation-artifact "${ETEX_DIR}"
 }
 
 # ---------------------------------------------------------------------------

@@ -64,40 +64,62 @@ class PartitionOutputArtifactsTest(unittest.TestCase):
         }
 
     def test_explicit_lists_win_over_path_markers(self):
-        candidate, oracle = _partition_output_artifacts(
+        candidate, oracle, validation = _partition_output_artifacts(
             self._artifacts(),
             candidate_artifacts=["target/etex/mini/fortran_run/output"],
             oracle_artifacts=["target/etex/mini/gpu_output.json"],
+            validation_artifacts=["results/evaluation"],
         )
         self.assertIn("target/etex/mini/fortran_run/output", candidate)
         self.assertNotIn("target/etex/mini/fortran_run/output", oracle)
         self.assertIn("target/etex/mini/gpu_output.json", oracle)
         self.assertNotIn("target/etex/mini/gpu_output.json", candidate)
+        self.assertIn("results/evaluation/report.json", validation)
 
-    def test_path_markers_classify_role_outputs(self):
-        candidate, oracle = _partition_output_artifacts(
-            self._artifacts(), [], [])
+    def test_explicit_directory_roots_classify_role_outputs(self):
+        candidate, oracle, validation = _partition_output_artifacts(
+            self._artifacts(),
+            ["target/etex/mini/gpu_output.json"],
+            ["target/etex/mini/fortran_run"],
+            ["results/evaluation"])
         self.assertIn("target/etex/mini/gpu_output.json", candidate)
         self.assertIn("target/etex/mini/fortran_run/output", oracle)
+        self.assertIn("results/evaluation/report.json", validation)
 
-    def test_unclassifiable_artifact_bound_to_both_roles(self):
-        candidate, oracle = _partition_output_artifacts(
-            self._artifacts(), [], [])
-        self.assertIn("results/evaluation/report.json", candidate)
-        self.assertIn("results/evaluation/report.json", oracle)
+    def test_specific_role_root_wins_over_broad_validation_root(self):
+        candidate, oracle, validation = _partition_output_artifacts(
+            self._artifacts(),
+            ["target/etex/mini/gpu_output.json"],
+            ["target/etex/mini/fortran_run"],
+            ["target", "results"])
+        self.assertIn("target/etex/mini/gpu_output.json", candidate)
+        self.assertIn("target/etex/mini/fortran_run/output", oracle)
+        self.assertNotIn("target/etex/mini/gpu_output.json", validation)
+
+    def test_unclassifiable_artifact_rejected(self):
+        with self.assertRaisesRegex(ValueError, "no explicit producer"):
+            _partition_output_artifacts(
+                self._artifacts(),
+                ["target/etex/mini/gpu_output.json"],
+                ["target/etex/mini/fortran_run"],
+                [])
 
     def test_same_artifact_in_both_lists_rejected(self):
-        with self.assertRaisesRegex(ValueError, "both candidate and oracle"):
+        with self.assertRaisesRegex(ValueError, "multiple producer roles"):
             _partition_output_artifacts(
                 self._artifacts(),
                 candidate_artifacts=["target/etex/mini/gpu_output.json"],
-                oracle_artifacts=["target/etex/mini/gpu_output.json"],
+                oracle_artifacts=["target/etex/mini/gpu_output.json",
+                                  "target/etex/mini/fortran_run"],
+                validation_artifacts=["results/evaluation"],
             )
 
     def test_empty_partition_yields_empty_maps(self):
-        candidate, oracle = _partition_output_artifacts({}, [], [])
+        candidate, oracle, validation = _partition_output_artifacts(
+            {}, [], [], [])
         self.assertEqual(candidate, {})
         self.assertEqual(oracle, {})
+        self.assertEqual(validation, {})
 
 
 if __name__ == "__main__":

@@ -224,6 +224,7 @@ def _normalize_artifact_map(entries: dict) -> dict:
     silently merging.
     """
     normalized: dict[str, str] = {}
+    sources: dict[str, str] = {}
     if entries is None:
         entries = {}
     if not isinstance(entries, dict):
@@ -243,10 +244,15 @@ def _normalize_artifact_map(entries: dict) -> dict:
                 name = parts[-1] if parts else raw
         else:
             name = raw
+        if name in sources and sources[name] != raw:
+            raise ProvenanceError(
+                f"duplicate artifact identity: distinct paths {sources[name]!r} "
+                f"and {raw!r} normalize to {name!r}")
         if name in normalized and normalized[name] != value:
             raise ProvenanceError(
                 f"duplicate artifact identity: {name!r} maps to two hashes")
         normalized[name] = value
+        sources[name] = raw
     return normalized
 
 
@@ -282,7 +288,7 @@ def build_execution_record(
     oracle runs. Every realization receives its own unambiguous
     ``execution_id`` derived from the full immutable binding.
     """
-    if role not in ("candidate", "oracle"):
+    if role not in ("candidate", "oracle", "validation"):
         raise ProvenanceError(f"unknown execution role: {role!r}")
     if not isinstance(case, dict) or not case.get("case_id"):
         raise ProvenanceError("execution record needs a case identity")
@@ -889,7 +895,7 @@ def verify_artifact_set(
             role = None
         elif len(item) == 3:
             label, path, role = item
-            if role not in ("candidate", "oracle"):
+            if role not in ("candidate", "oracle", "validation"):
                 raise ProvenanceError(f"unknown consumed-artifact role: {role!r}")
         else:
             raise ProvenanceError("consumed artifact tuple must have 2 or 3 items")

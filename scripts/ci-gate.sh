@@ -871,7 +871,14 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${OUTPUT_DIR}/flex-extract-oracle/comparison-report.json" \
     --artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/oracle-run/source-provenance.json" \
     --artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/run-provenance.json" \
-    --artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/comparison-report.json" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/comparison-report.json" \
+    --candidate-artifact "${CANDIDATE_OUTPUT}" \
+    --candidate-artifact "${CANDIDATE_LOG}" \
+    --oracle-artifact "${OUTPUT_DIR}/interpolation/oracle-output" \
+    --oracle-artifact "${OUTPUT_DIR}/vertical-column/real-routine-oracle-output.txt" \
+    --oracle-artifact "${OUTPUT_DIR}/w-production-oracle/oracle-output.txt" \
+    --oracle-artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/oracle-run" \
+    --validation-artifact "${OUTPUT_DIR}" 2>&1 | tee "${OUTPUT_DIR}/run-manifest.log"; then
     fail "Provenance manifest generation failed (missing artifact or unpinned oracle)"
   fi
   test -s "${OUTPUT_DIR}/run-manifest.json" || fail "Provenance manifest missing: ${OUTPUT_DIR}/run-manifest.json"

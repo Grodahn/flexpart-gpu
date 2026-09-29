@@ -271,29 +271,19 @@ def main():
     # Bind every file consumed by the validation/provenance workflow into
     # the authoritative v1 identity. The legacy nested inputs_sha256 field is
     # informational only; verification reads execution input maps.
-    workflow_inputs: dict[str, str] = {}
+    workflow_input_paths: dict[str, str] = {}
     for value in inputs_sha256.values():
-        entries = value if isinstance(value, dict) else {}
-        for name, hashed in provenance.normalize_artifact_map(entries).items():
-            if name in workflow_inputs and workflow_inputs[name] != hashed:
-                raise SystemExit(
-                    f"workflow input identity {name!r} maps to two hashes")
-            workflow_inputs[name] = hashed
+        if isinstance(value, dict):
+            workflow_input_paths.update(value)
     for path in (Path(args.corpus_index), Path(args.oracle_manifest), report_path):
-        for name, hashed in provenance.normalize_artifact_map(
-                {str(path.resolve()): digest(path)}).items():
-            if name in workflow_inputs and workflow_inputs[name] != hashed:
-                raise SystemExit(
-                    f"workflow input identity {name!r} maps to two hashes")
-            workflow_inputs[name] = hashed
+        workflow_input_paths[str(path.resolve())] = digest(path)
     if args.thresholds:
         threshold_path = Path(args.thresholds)
-        for name, hashed in provenance.normalize_artifact_map(
-                {str(threshold_path.resolve()): digest(threshold_path)}).items():
-            if name in workflow_inputs and workflow_inputs[name] != hashed:
-                raise SystemExit(
-                    f"workflow input identity {name!r} maps to two hashes")
-            workflow_inputs[name] = hashed
+        workflow_input_paths[str(threshold_path.resolve())] = digest(threshold_path)
+    try:
+        workflow_inputs = provenance.normalize_artifact_map(workflow_input_paths)
+    except provenance.ProvenanceError as error:
+        raise SystemExit(f"workflow input identity error: {error}") from None
 
     v1_executions = []
     seed_files = sorted(seed_root.rglob("seed_*.json"))

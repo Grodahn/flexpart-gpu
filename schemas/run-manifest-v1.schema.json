@@ -121,7 +121,7 @@
         ],
         "properties": {
           "execution_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-          "role": {"enum": ["candidate", "oracle"]},
+          "role": {"enum": ["candidate", "oracle", "validation"]},
           "case_id": {"type": "string", "minLength": 1},
           "candidate_build": {"type": ["object", "null"]},
           "oracle_revision": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},

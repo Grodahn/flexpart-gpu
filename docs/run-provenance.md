@@ -28,13 +28,13 @@ the v1 writers instead.
 
 ## Execution identity
 
-Each concrete candidate/oracle execution — and, for ensembles, each
-realization — receives its own stable identity:
+Each concrete candidate/oracle execution, validation-pipeline execution and,
+for ensembles, each realization receives its own stable identity:
 
 `execution_id = sha256(canonical_json(binding))`
 
 The binding contains only immutable inputs: schema id/version, role
-(`candidate`/`oracle`), case id, case-manifest SHA-256 and schema
+(`candidate`/`oracle`/`validation`), case id, case-manifest SHA-256 and schema
 version, realization (e.g. `seed_index` + Philox key/counter for
 candidates, `requested_identity` + repetition for seedable oracle
   runs), candidate revision and content-derived build identity,
@@ -54,6 +54,9 @@ characters.
 - Portable artifact keys are case-scoped relative paths
   (`<case_id>/<basename>`), never absolute paths and never bare
   basenames that collide across cases.
+- Distinct source paths that normalize to the same portable key are rejected,
+  even when their bytes have the same hash; normalization never silently
+  collapses two artifacts.
 - `artifacts.inputs` / `artifacts.outputs` exactly merge every execution's
   maps. Extra unowned entries and a shared key with two hashes are
   provenance errors.
@@ -69,8 +72,12 @@ characters.
   `search_roots` (candidate, oracle, meteo, case-fixture directories).
   Reports must additionally call `verify_artifact_set` with the exact
   consumed `(label, path, role)` list before calculating any verdict.
-  Candidate and oracle coverage is role-scoped, so an oracle-owned output
-  cannot establish candidate attribution or vice versa.
+  Candidate, oracle and validation-pipeline coverage is role-scoped, so one
+  producer's output cannot establish another producer's attribution.
+- Oracle-manifest callers declare candidate, oracle and validation output
+  files or directory roots explicitly. The most-specific nested root wins;
+  ambiguous, unmatched and unowned outputs fail closed without filename
+  heuristics.
 - `verify_manifest_integrity` checks the manifest against its own
   recorded execution identities without touching disk. It re-derives each
   `execution_id` from the immutable binding and rejects run_id staleness,

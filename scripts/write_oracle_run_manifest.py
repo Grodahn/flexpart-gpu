@@ -164,38 +164,64 @@ def validate_runtime_profile(manifest_path, environment):
     }
 
 
-def _partition_output_artifacts(output_sha256, candidate_artifacts, oracle_artifacts):
-    """Split recorded output hashes into candidate/oracle ownership.
+def _partition_output_artifacts(
+        output_sha256, candidate_artifacts, oracle_artifacts,
+        validation_artifacts):
+    """Assign every output to one explicit producer root, failing closed.
 
-    Explicit ``--candidate-artifact`` / ``--oracle-artifact`` lists win.
-    Remaining artifacts are classified by role markers in their path
-    (``gpu`` -> candidate, ``fortran`` -> oracle). Artifacts that cannot
-    be classified are conservatively bound to BOTH executions so neither
-    role can deny consuming them; ownership is never guessed silently
-    toward one side only.
+    Declared paths may name files or directory roots. When roots nest, the
+    most-specific matching root owns the file. Equal-specificity matches for
+    different roles and outputs outside every declared root are rejected.
     """
-    candidate_set = set(candidate_artifacts)
-    oracle_set = set(oracle_artifacts)
-    overlap = candidate_set & oracle_set
-    if overlap:
+    declared = {
+        "candidate": candidate_artifacts,
+        "oracle": oracle_artifacts,
+        "validation": validation_artifacts,
+    }
+    roots = []
+    for role, paths in declared.items():
+        for raw in paths:
+            root = Path(raw).resolve()
+            roots.append((role, root, len(root.parts), str(raw)))
+    if output_sha256 and not roots:
         raise ValueError(
-            f"artifact listed as both candidate and oracle output: "
-            f"{sorted(overlap)[0]}")
-    candidate_outputs = {}
-    oracle_outputs = {}
+            "output artifacts require explicit --candidate-artifact, "
+            "--oracle-artifact or --validation-artifact ownership")
+
+    outputs = {role: {} for role in declared}
+    matched_roots: set[tuple[str, str]] = set()
     for path, value in output_sha256.items():
-        if path in candidate_set:
-            candidate_outputs[path] = value
-        elif path in oracle_set:
-            oracle_outputs[path] = value
-        elif "gpu" in path.lower():
-            candidate_outputs[path] = value
-        elif "fortran" in path.lower():
-            oracle_outputs[path] = value
-        else:
-            candidate_outputs[path] = value
-            oracle_outputs[path] = value
-    return candidate_outputs, oracle_outputs
+        resolved = Path(path).resolve()
+        matches = []
+        for role, root, specificity, raw in roots:
+            try:
+                resolved.relative_to(root)
+            except ValueError:
+                if resolved != root:
+                    continue
+            matches.append((specificity, role, raw))
+        if not matches:
+            raise ValueError(
+                f"output artifact has no explicit producer ownership: {path}")
+        matched_roots.update((role, raw) for _specificity, role, raw in matches)
+        most_specific = max(specificity for specificity, _role, _raw in matches)
+        owners = {(role, raw) for specificity, role, raw in matches
+                  if specificity == most_specific}
+        roles = {role for role, _raw in owners}
+        if len(roles) != 1:
+            raise ValueError(
+                f"output artifact matches multiple producer roles: {path}: "
+                f"{sorted(roles)}")
+        role = roles.pop()
+        outputs[role][path] = value
+
+    unmatched = [(role, raw) for role, _root, _specificity, raw in roots
+                 if (role, raw) not in matched_roots]
+    if unmatched:
+        role, raw = unmatched[0]
+        raise ValueError(
+            f"declared {role} artifact root matches no recorded output: {raw}")
+    return outputs["candidate"], outputs["oracle"], outputs["validation"]
 
 
 def synthetic_case_binding(case_label, input_sha256):
@@ -307,8 +333,9 @@ def make_manifest(args):
     has_case_binding = v1_cases[0]["case_manifest_sha256"] != "0" * 64
     effective_case = v1_cases[0] if has_case_binding else synthetic_case_binding(
         case_label, report["input_sha256"])
-    candidate_outputs, oracle_outputs = _partition_output_artifacts(
-        report["output_sha256"], args.candidate_artifact, args.oracle_artifact)
+    candidate_outputs, oracle_outputs, validation_outputs = _partition_output_artifacts(
+        report["output_sha256"], args.candidate_artifact,
+        args.oracle_artifact, args.validation_artifact)
     candidate_execution = provenance.build_execution_record(
         role="candidate",
         case=effective_case,
@@ -344,6 +371,23 @@ def make_manifest(args):
         inputs_sha256=dict(report["input_sha256"]),
         outputs_sha256=oracle_outputs,
     )
+    validation_execution = provenance.build_execution_record(
+        role="validation",
+        case=effective_case,
+        realization=dict(realization),
+        candidate_revision=candidate_state.get("commit"),
+        candidate_build=candidate_build,
+        candidate_executable_sha256=candidate_exe_sha,
+        oracle_kind=args.oracle_kind,
+        oracle_revision=reference.get("pinned_commit"),
+        oracle_executable_sha256=oracle_exe_sha,
+        oracle_profile={"id": provenance.ORACLE_PROFILE_ID,
+                        "version": provenance.ORACLE_PROFILE_VERSION},
+        oracle_strategy=oracle_strategy,
+        runtime_adapter="validation-provenance-writer-v1",
+        inputs_sha256=dict(report["input_sha256"]),
+        outputs_sha256=validation_outputs,
+    ) if validation_outputs else None
     # Without an explicit --case-manifest the case binding is a placeholder
     # and the manifest must stay PARTIAL with a machine-readable gap.
     v1_notes = ["v1 authoritative provenance overlay (issue #53); "
@@ -378,7 +422,8 @@ def make_manifest(args):
         },
         runtime={"adapter": report["adapter"],
                  "cpu_runtime": "flexpart-11.1-single-thread"},
-        executions=[candidate_execution, oracle_execution],
+        executions=[candidate_execution, oracle_execution] +
+        ([validation_execution] if validation_execution else []),
         base="target/etex" if case_label.startswith("ETEX") else "target/corpus",
         notes=v1_notes,
     )
@@ -444,6 +489,9 @@ def main():
     parser.add_argument(
         "--oracle-artifact", action="append", default=[],
         help="Output artifact produced by the oracle execution; may be repeated")
+    parser.add_argument(
+        "--validation-artifact", action="append", default=[],
+        help="Output artifact produced by the validation pipeline; may be repeated")
     args = parser.parse_args()
     if not args.input or not args.artifact:
         parser.error("at least one --input and --artifact are required")

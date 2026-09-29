@@ -3395,6 +3395,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn schema_subset_required_precheck_preserves_one_of_semantics() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "required": ["kind"],
+            "oneOf": [
+                {
+                    "required": ["kind", "left_value"],
+                    "properties": {
+                        "kind": {"const": "left"},
+                        "left_value": {"type": "integer"}
+                    }
+                },
+                {
+                    "required": ["kind", "right_value"],
+                    "properties": {
+                        "kind": {"const": "right"},
+                        "right_value": {"type": "string"}
+                    }
+                }
+            ]
+        });
+
+        let right_branch = serde_json::json!({"kind": "right", "right_value": "ok"});
+        validate_json_schema_subset(&schema, &schema, &right_branch, "$")
+            .expect("one failing branch and one matching branch must satisfy oneOf");
+
+        let missing_branch_field = serde_json::json!({"kind": "right"});
+        let error = validate_json_schema_subset(&schema, &schema, &missing_branch_field, "$")
+            .expect_err("branch-local required fields must still be enforced");
+        assert!(error.contains("oneOf expected exactly one matching branch, got 0"));
+
+        let overlapping_schema = serde_json::json!({
+            "type": "object",
+            "required": ["value"],
+            "oneOf": [
+                {"required": ["value"]},
+                {"properties": {"value": {"type": "integer"}}}
+            ]
+        });
+        let ambiguous = serde_json::json!({"value": 1});
+        let error =
+            validate_json_schema_subset(&overlapping_schema, &overlapping_schema, &ambiguous, "$")
+                .expect_err("two matching branches must violate exactly-one semantics");
+        assert!(error.contains("oneOf expected exactly one matching branch, got 2"));
+    }
 
     #[test]
     fn write_failure_uses_write_file_error() {
@@ -3525,6 +3571,19 @@ mod tests {
 
     #[test]
     fn direct_serde_deserialization_requires_nullable_oracle_state_fields() {
+        let valid = minimal_manifest_json();
+        let manifest = serde_json::from_value::<ValidationCaseManifest>(valid.clone())
+            .expect("direct serde must accept valid oracle strategy and seed values");
+        let oracle = manifest.stochastic.oracle_seed.as_ref().expect("oracle identity");
+        assert!(oracle.strategy.is_some());
+        assert_eq!(oracle.seed, Some(1));
+        let serialized = serde_json::to_value(&manifest).expect("serialize valid oracle identity");
+        assert_eq!(
+            serialized["stochastic"]["oracle_seed"]["strategy"],
+            valid["stochastic"]["oracle_seed"]["strategy"]
+        );
+        assert_eq!(serialized["stochastic"]["oracle_seed"]["seed"], 1);
+
         for field in ["strategy", "seed"] {
             let mut raw = minimal_manifest_json();
             raw["stochastic"]["oracle_seed"]
@@ -3537,6 +3596,16 @@ mod tests {
                 err.to_string().contains(field),
                 "direct serde error must name omitted {field}: {err}"
             );
+        }
+
+        for (field, malformed) in [
+            ("strategy", serde_json::json!("not-an-object")),
+            ("seed", serde_json::json!("not-an-integer")),
+        ] {
+            let mut raw = minimal_manifest_json();
+            raw["stochastic"]["oracle_seed"][field] = malformed;
+            serde_json::from_value::<ValidationCaseManifest>(raw)
+                .expect_err("direct serde must reject malformed nullable oracle values");
         }
 
         let mut raw = minimal_manifest_json();
@@ -3555,6 +3624,9 @@ mod tests {
         let oracle = manifest.stochastic.oracle_seed.expect("oracle identity");
         assert!(oracle.strategy.is_none());
         assert!(oracle.seed.is_none());
+        let serialized = serde_json::to_value(&oracle).expect("serialize null oracle identity");
+        assert!(serialized.get("strategy").expect("strategy key").is_null());
+        assert!(serialized.get("seed").expect("seed key").is_null());
     }
 
     #[test]

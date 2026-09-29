@@ -56,6 +56,10 @@ def _json_type_name(value):
 
 
 def _type_matches(expected, value):
+    if isinstance(expected, list):
+        if not expected:
+            raise ValidationCaseSchemaError("schema type union must not be empty")
+        return any(_type_matches(candidate, value) for candidate in expected)
     if expected == "null":
         return value is None
     if expected == "boolean":

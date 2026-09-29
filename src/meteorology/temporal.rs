@@ -345,29 +345,58 @@ fn extract_series<'a>(
     Ok(series)
 }
 
-/// Sample one canonical instantaneous field at a requested validity time.
+/// Resolved pre-validated bracketing pair for one temporal request.
 ///
-/// The series must be ordered from oldest to newest. Requests strictly between
-/// two snapshots are linearly interpolated with the #71-frozen FLEXPART
-/// formula; requests exactly at a snapshot timestamp return that snapshot
-/// unchanged. Requests outside the ordered window, or any inconsistent or
-/// non-instantaneous chronology, fail closed (see [`TemporalError`]).
+/// This is the single source of truth for #74 timestamp, endpoint and
+/// fail-closed semantics shared by the CPU candidate (`sample_field`) and the
+/// GPU production path (#89). It validates the ordered instantaneous series,
+/// rejects unsupported extrapolation/duplicate/non-monotonic/missing or
+/// inconsistent coverage, selects the leftmost bracketing pair and computes
+/// the frozen #71/#74 temporal weights (`dt1`, `dt2`, `dtt`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TemporalBracket {
+    /// Canonical field identity that was resolved.
+    pub field_id: FieldId,
+    /// Request that produced the resolution.
+    pub request: RequestedSampleTime,
+    /// How the requested time relates to the source series.
+    pub application: TemporalApplication,
+    /// Active bracketing source timestamps.
+    pub source_timestamps: SourceTimestamps,
+    /// Temporal weights in `DTS`-aligned form.
+    pub weights: TemporalWeights,
+    /// Index of the lower bracketing snapshot in the input series.
+    pub lower_index: usize,
+    /// Index of the upper bracketing snapshot in the input series.
+    pub upper_index: usize,
+    /// Validated series calendar.
+    pub calendar: Calendar,
+    /// Number of field elements in each bracket snapshot.
+    pub element_count: usize,
+    /// Full ordered series of source timestamps for evidence.
+    pub series_timestamps_epoch_seconds: Vec<i64>,
+}
+
+/// Resolve and validate the temporal bracketing pair without blending values.
+///
+/// Preserves #74 semantics exactly: ordered snapshots, exact-source behavior,
+/// first/last endpoints, frozen #71/#74 weights, and fail-closed rejection of
+/// duplicate/non-monotonic/missing/inconsistent timestamps and unsupported
+/// extrapolation. Accumulated-field handling remains out of scope and fails
+/// closed via [`TemporalError::UnsupportedTemporalPolicy`].
 ///
 /// # Errors
-/// Returns [`TemporalError`] for unsupported temporal policies, insufficient
-/// or non-monotonic coverage, missing or non-instantaneous snapshots,
-/// inconsistent calendars/shapes, non-finite inputs, and requests outside the
-/// supported coverage window.
+/// Returns [`TemporalError`] for the same fail-closed cases as `sample_field`.
 ///
 /// # Panics
 /// Only on internal invariants established during series validation: at least
 /// two snapshots, and a bracketing pair for any request within the validated
 /// series coverage. A caller cannot trigger these panics with public inputs.
-pub fn sample_field(
+pub fn resolve_temporal_bracket(
     field_id: FieldId,
     snapshots: &[&Snapshot],
     request: RequestedSampleTime,
-) -> Result<TemporalSample, TemporalError> {
+) -> Result<TemporalBracket, TemporalError> {
     let series = extract_series(field_id, snapshots)?;
     if request.calendar != series[0].calendar {
         return Err(TemporalError::CalendarMismatch {
@@ -427,8 +456,63 @@ pub fn sample_field(
     let span = dt1 + dt2;
     debug_assert!(span > 0.0 && dt1 >= 0.0 && dt2 >= 0.0);
     let inverse_span = 1.0 / span;
-    let weight_lower = dt2 * inverse_span;
-    let weight_upper = dt1 * inverse_span;
+
+    let series_timestamps_epoch_seconds: Vec<i64> = series
+        .iter()
+        .map(|entry| entry.timestamp_epoch_seconds)
+        .collect();
+
+    Ok(TemporalBracket {
+        field_id,
+        request,
+        application,
+        source_timestamps: SourceTimestamps {
+            lower_epoch_seconds: lower.timestamp_epoch_seconds,
+            upper_epoch_seconds: upper.timestamp_epoch_seconds,
+        },
+        weights: TemporalWeights {
+            dt1_seconds: dt1,
+            dt2_seconds: dt2,
+            inverse_span_per_second: inverse_span,
+        },
+        lower_index,
+        upper_index,
+        calendar: series[0].calendar,
+        element_count: lower.values.len(),
+        series_timestamps_epoch_seconds,
+    })
+}
+
+/// Sample one canonical instantaneous field at a requested validity time.
+///
+/// The series must be ordered from oldest to newest. Requests strictly between
+/// two snapshots are linearly interpolated with the #71-frozen FLEXPART
+/// formula; requests exactly at a snapshot timestamp return that snapshot
+/// unchanged. Requests outside the ordered window, or any inconsistent or
+/// non-instantaneous chronology, fail closed (see [`TemporalError`]).
+///
+/// # Errors
+/// Returns [`TemporalError`] for unsupported temporal policies, insufficient
+/// or non-monotonic coverage, missing or non-instantaneous snapshots,
+/// inconsistent calendars/shapes, non-finite inputs, and requests outside the
+/// supported coverage window.
+///
+/// # Panics
+/// Only on internal invariants established during series validation: at least
+/// two snapshots, and a bracketing pair for any request within the validated
+/// series coverage. A caller cannot trigger these panics with public inputs.
+pub fn sample_field(
+    field_id: FieldId,
+    snapshots: &[&Snapshot],
+    request: RequestedSampleTime,
+) -> Result<TemporalSample, TemporalError> {
+    let bracket = resolve_temporal_bracket(field_id, snapshots, request)?;
+    let series = extract_series(field_id, snapshots)?;
+    let lower = &series[bracket.lower_index];
+    let upper = &series[bracket.upper_index];
+
+    let weight_lower = bracket.weights.dt2_seconds * bracket.weights.inverse_span_per_second;
+    let weight_upper = bracket.weights.dt1_seconds * bracket.weights.inverse_span_per_second;
 
     let mut values = Vec::with_capacity(lower.values.len());
     for (lower_value, upper_value) in lower.values.iter().zip(upper.values) {
@@ -449,16 +533,9 @@ pub fn sample_field(
     Ok(TemporalSample {
         field_id,
         request,
-        application,
-        source_timestamps: SourceTimestamps {
-            lower_epoch_seconds: lower.timestamp_epoch_seconds,
-            upper_epoch_seconds: upper.timestamp_epoch_seconds,
-        },
-        weights: TemporalWeights {
-            dt1_seconds: dt1,
-            dt2_seconds: dt2,
-            inverse_span_per_second: inverse_span,
-        },
+        application: bracket.application,
+        source_timestamps: bracket.source_timestamps,
+        weights: bracket.weights,
         values,
     })
 }

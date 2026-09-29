@@ -407,7 +407,12 @@ step_compare() {
         --artifact "${REPORT}" \
         "${audit_artifact_args[@]}" \
         --artifact "${ETEX_DIR}/fortran.log" \
-        --artifact "${ETEX_DIR}/gpu.log"
+        --artifact "${ETEX_DIR}/gpu.log" \
+        --oracle-artifact "${FORTRAN_RUN}/output" \
+        --oracle-artifact "${ETEX_DIR}/fortran.log" \
+        --candidate-artifact "${GPU_OUTPUT}" \
+        --candidate-artifact "${ETEX_DIR}/gpu.log" \
+        --validation-artifact "${ETEX_DIR}"
 }
 
 # ---------------------------------------------------------------------------

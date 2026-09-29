@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/run-manifest-v1.schema.json",
+  "title": "FLEXPART-GPU unified validation run manifest v1 (issue #53)",
+  "description": "Authoritative provenance contract binding declared case/profile (#51) to concrete execution instances and immutable input/output bytes. Extends and consolidates the #6 run-manifest/hash infrastructure. Scientific metrics, thresholds, input-equivalence verdicts (#52) and ensemble aggregation are out of scope and must not appear here.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "run_id",
+    "created_utc",
+    "cases",
+    "candidate",
+    "oracle",
+    "runtime",
+    "executions",
+    "artifacts",
+    "attribution",
+    "layout"
+  ],
+  "properties": {
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": {"const": "flexpart-gpu.run-manifest"},
+        "version": {"const": 1}
+      }
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Deterministic content-derived identity of the whole run (hash over execution bindings). Never a timestamp, pid or other incidental state."
+    },
+    "created_utc": {
+      "type": "string",
+      "description": "Informational wall-clock timestamp only; never part of run_id or execution_id."
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case_id", "case_manifest_sha256", "case_schema_version", "manifest_path"],
+        "properties": {
+          "case_id": {"type": "string", "minLength": 1},
+          "case_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "case_schema_version": {"const": 2},
+          "manifest_path": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["revision", "executable_sha256"],
+      "properties": {
+        "revision": {"type": "string", "minLength": 1},
+        "worktree_dirty": {"type": ["boolean", "null"]},
+        "executable_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "build": {"type": ["object", "null"]}
+      }
+    },
+    "oracle": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["kind", "pinned_commit", "execution_profile"],
+      "properties": {
+        "kind": {"enum": ["pristine-oracle", "seedable-validation-oracle"]},
+        "pinned_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "worktree_dirty": {"type": ["boolean", "null"]},
+        "executable_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "execution_profile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version"],
+          "properties": {
+            "id": {"const": "flexpart-11.1-single-thread"},
+            "version": {"const": 1}
+          }
+        },
+        "strategy": {
+          "type": ["object", "null"],
+          "properties": {
+            "strategy": {"const": "flexpart-oracle-validation-seed-offset"},
+            "version": {"const": 1},
+            "contract_path": {"type": "string"}
+          }
+        },
+        "requested_identity": {"type": ["integer", "null"]},
+        "patch_sha256": {"type": ["string", "null"]}
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["adapter"],
+      "properties": {
+        "adapter": {"type": ["string", "null"]},
+        "cpu_runtime": {"type": ["string", "null"]}
+      }
+    },
+    "executions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "execution_id",
+          "role",
+          "case_id",
+          "candidate_build",
+          "oracle_revision",
+          "realization",
+          "inputs_sha256",
+          "outputs_sha256",
+          "attribution"
+        ],
+        "properties": {
+          "execution_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "role": {"enum": ["candidate", "oracle", "validation"]},
+          "case_id": {"type": "string", "minLength": 1},
+          "candidate_build": {"type": ["object", "null"]},
+          "oracle_revision": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+          "realization": {"type": "object"},
+          "inputs_sha256": {"type": "object"},
+          "outputs_sha256": {"type": "object"},
+          "attribution": {"enum": ["VERIFIED", "PARTIAL", "INVALID"]}
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputs", "outputs"],
+      "properties": {
+        "inputs": {"type": "object"},
+        "outputs": {"type": "object"}
+      }
+    },
+    "attribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "missing", "notes"],
+      "properties": {
+        "state": {"enum": ["VERIFIED", "PARTIAL", "INVALID"]},
+        "missing": {"type": "array"},
+        "notes": {"type": "array"}
+      }
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["version", "base", "run_dir", "non_overwriting"],
+      "properties": {
+        "version": {"const": 1},
+        "base": {"type": "string"},
+        "run_dir": {"type": "string"},
+        "non_overwriting": {"const": true}
+      }
+    }
+  }
+}

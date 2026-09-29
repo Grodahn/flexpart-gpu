@@ -699,5 +699,147 @@ class InputAuditTest(unittest.TestCase):
                          " ".join(notes))
 
 
+class V1ProvenanceTest(unittest.TestCase):
+    """Issue #53: v1 manifest consumption in the evaluator."""
+
+    def _v1_manifest(self, root, candidate_dirty=False):
+        sys.path.insert(0, str(evaluate_case.REPO_ROOT / "scripts" / "provenance"))
+        import run_provenance as provenance
+        pinned = evaluate_case.load_oracle_manifest(
+            str(evaluate_case.DEFAULT_ORACLE_MANIFEST))["pinned_commit"]
+        case_path = root / "cases" / "DEMO-001.json"
+        case_path.parent.mkdir(parents=True, exist_ok=True)
+        case_path.write_text(json.dumps(
+            {"schema_version": 2, "case_id": "DEMO-001", "description": "x"}),
+            encoding="utf-8")
+        case = provenance.case_manifest_identity(case_path)
+        cand_out = root / "seed_000.json"
+        cand_out.write_bytes(b"candidate-bytes")
+        oracle_out = root / "header"
+        oracle_out.write_bytes(b"oracle-bytes")
+        candidate_build = provenance.candidate_build_identity("rev123", "a" * 64)
+        manifest = provenance.create_run_manifest(
+            cases=[case],
+            candidate={"revision": "rev123", "worktree_dirty": candidate_dirty,
+                       "executable_sha256": "a" * 64,
+                       "build": candidate_build},
+            oracle={"kind": "pristine-oracle",
+                    "pinned_commit": pinned,
+                    "worktree_dirty": False, "executable_sha256": "b" * 64,
+                    "execution_profile": {"id": provenance.ORACLE_PROFILE_ID,
+                                          "version": 1}},
+            runtime={"adapter": "test-adapter"},
+            executions=[
+                provenance.build_execution_record(
+                    role="candidate", case=case, realization={"seed_index": 0},
+                    candidate_revision="rev123",
+                    candidate_build=candidate_build,
+                    candidate_executable_sha256="a" * 64,
+                    oracle_kind="pristine-oracle",
+                    oracle_revision=pinned,
+                    oracle_executable_sha256="b" * 64,
+                    oracle_profile={"id": provenance.ORACLE_PROFILE_ID, "version": 1},
+                    runtime_adapter="test-adapter",
+                    inputs_sha256={"COMMAND": "c" * 64},
+                    outputs_sha256={cand_out.name: provenance.digest(cand_out)}),
+                provenance.build_execution_record(
+                    role="oracle", case=case, realization={},
+                    candidate_revision="rev123",
+                    candidate_build=candidate_build,
+                    candidate_executable_sha256="a" * 64,
+                    oracle_kind="pristine-oracle",
+                    oracle_revision=pinned,
+                    oracle_executable_sha256="b" * 64,
+                    oracle_profile={"id": provenance.ORACLE_PROFILE_ID, "version": 1},
+                    cpu_runtime="flexpart-11.1-single-thread",
+                    inputs_sha256={"COMMAND": "c" * 64},
+                    outputs_sha256={oracle_out.name: provenance.digest(oracle_out)}),
+            ],
+            base=str(root))
+        manifest_path = root / "run_manifest.json"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        return manifest_path, cand_out, oracle_out
+
+    def _args(self, manifest_path):
+        return _namespaced(run_manifest=str(manifest_path))
+
+    def test_v1_manifest_attributes_revision_and_oracle(self):
+        oracle_manifest = evaluate_case.load_oracle_manifest(
+            str(evaluate_case.DEFAULT_ORACLE_MANIFEST))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path, cand_out, oracle_out = self._v1_manifest(root)
+            args = self._args(manifest_path)
+            oracle, candidate, missing, _notes = evaluate_case.build_provenance(
+                args, oracle_manifest,
+                artifact_paths=[("candidate_output", str(cand_out), "candidate"),
+                                ("oracle_header", str(oracle_out), "oracle")])
+            self.assertEqual(oracle["attribution"], "run-manifest-v1")
+            self.assertEqual(candidate["revision"], "rev123")
+            self.assertEqual(candidate["revision_source"],
+                             "run-manifest-hash-verified")
+
+    def test_v1_manifest_without_artifacts_does_not_label_verified(self):
+        # Empty artifact_paths (e.g. aggregate-seeds) must not label the
+        # revision run-manifest-hash-verified with zero artifacts checked.
+        oracle_manifest = evaluate_case.load_oracle_manifest(
+            str(evaluate_case.DEFAULT_ORACLE_MANIFEST))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path, _cand, _oracle = self._v1_manifest(root)
+            args = self._args(manifest_path)
+            _oracle, candidate, missing, _notes = evaluate_case.build_provenance(
+                args, oracle_manifest)
+            self.assertIsNone(candidate["revision"])
+            self.assertTrue(any(m["name"] == "candidate.revision" for m in missing))
+
+    def test_v1_manifest_dirty_candidate_withholds_revision(self):
+        oracle_manifest = evaluate_case.load_oracle_manifest(
+            str(evaluate_case.DEFAULT_ORACLE_MANIFEST))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path, cand_out, oracle_out = self._v1_manifest(
+                root, candidate_dirty=True)
+            args = self._args(manifest_path)
+            _oracle, candidate, missing, _notes = evaluate_case.build_provenance(
+                args, oracle_manifest,
+                artifact_paths=[("candidate_output", str(cand_out), "candidate"),
+                                ("oracle_header", str(oracle_out), "oracle")])
+            self.assertIsNone(candidate["revision"])
+            self.assertTrue(any("dirty" in m["reason"] for m in missing))
+
+    def test_v1_manifest_tampered_output_fails_closed(self):
+        oracle_manifest = evaluate_case.load_oracle_manifest(
+            str(evaluate_case.DEFAULT_ORACLE_MANIFEST))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path, cand_out, _oracle = self._v1_manifest(root)
+            args = self._args(manifest_path)
+            cand_out.write_bytes(b"tampered")
+            with self.assertRaisesRegex(ValueError, "differs from run manifest"):
+                evaluate_case.build_provenance(
+                    args, oracle_manifest,
+                    artifact_paths=[("candidate_output", str(cand_out),
+                                     "candidate")])
+
+    def test_v1_manifest_stale_run_id_fails_closed(self):
+        oracle_manifest = evaluate_case.load_oracle_manifest(
+            str(evaluate_case.DEFAULT_ORACLE_MANIFEST))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path, cand_out, oracle_out = self._v1_manifest(root)
+            document = json.loads(manifest_path.read_text(encoding="utf-8"))
+            document["run_id"] = "0" * 64
+            manifest_path.write_text(json.dumps(document), encoding="utf-8")
+            args = self._args(manifest_path)
+            with self.assertRaisesRegex(ValueError, "stale artifact"):
+                evaluate_case.build_provenance(
+                    args, oracle_manifest,
+                    artifact_paths=[("candidate_output", str(cand_out),
+                                     "candidate"),
+                                    ("oracle_header", str(oracle_out),
+                                     "oracle")])
+
+
 if __name__ == "__main__":
     unittest.main()

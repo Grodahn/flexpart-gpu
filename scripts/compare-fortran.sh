@@ -561,7 +561,12 @@ do_validate() {
       --artifact "${PROJECT_ROOT}/target/validation/gpu_concentration.json" \
       --artifact "${PROJECT_ROOT}/target/validation/comparison_report.json" \
       --artifact "${PROJECT_ROOT}/target/validation/fortran.log" \
-      --artifact "${PROJECT_ROOT}/target/validation/gpu.log"
+      --artifact "${PROJECT_ROOT}/target/validation/gpu.log" \
+      --oracle-artifact "${FORTRAN_OUTPUT}" \
+      --oracle-artifact "${PROJECT_ROOT}/target/validation/fortran.log" \
+      --candidate-artifact "${PROJECT_ROOT}/target/validation/gpu_concentration.json" \
+      --candidate-artifact "${PROJECT_ROOT}/target/validation/gpu.log" \
+      --validation-artifact "${PROJECT_ROOT}/target/validation"
   fi
 
   log_info "Validation complete. Results in target/validation/"

@@ -7,9 +7,10 @@ use sha2::{Digest, Sha256};
 
 /// Pinned SHA-256 of the checked-in accumulation contract fixture.
 ///
-/// Recompute with `Get-FileHash`/`sha256sum` after regenerating the fixture and
-/// update the value together with the fixture. The test recomputes the digest
-/// from the embedded bytes so a stale pinned value fails loudly.
+/// Recompute from the repository's canonical LF representation after
+/// regenerating the fixture and update the value together with the fixture.
+/// The test normalizes checkout line endings so Git's Windows CRLF conversion
+/// cannot change the scientific artifact identity.
 const ACCUMULATION_FIXTURE_SHA256: &str =
     "4bf7d901be71210dea9a072069d8551318455b4fe9bace8bcb45b04729517ef1";
 
@@ -206,13 +207,15 @@ fn error_variant_name(error: &AccumulationError) -> &'static str {
         AccumulationError::NegativeDelta { .. } => "negative_delta",
         AccumulationError::NegativeAmount { .. } => "negative_amount",
         AccumulationError::NonFiniteAmount { .. } => "non_finite_amount",
+        AccumulationError::IntervalDurationOutOfRange { .. } => "interval_duration_out_of_range",
     }
 }
 
 #[test]
 fn checked_in_accumulation_fixture_digest_is_pinned() {
     let source = include_str!("../fixtures/accumulation/contract-v1.json");
-    let digest = format!("{:x}", Sha256::digest(source.as_bytes()));
+    let canonical_source = source.replace("\r\n", "\n");
+    let digest = format!("{:x}", Sha256::digest(canonical_source.as_bytes()));
     assert_eq!(
         digest, ACCUMULATION_FIXTURE_SHA256,
         "fixture changed; regenerate and update the pinned digest together with the provenance"

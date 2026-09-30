@@ -5,6 +5,7 @@
 use thiserror::Error;
 
 pub mod adapter;
+pub mod accumulation;
 pub mod advection;
 pub mod buffers;
 pub mod cbl;
@@ -26,6 +27,14 @@ pub mod rng;
 pub mod temporal;
 pub mod wet_deposition;
 pub mod workgroup;
+pub use accumulation::{
+    build_accumulated_gpu_report, build_transform_inputs, dispatch_accumulated_intervals_gpu,
+    dispatch_accumulated_intervals_gpu_with_kernel, encode_accumulated_intervals_gpu_with_kernel,
+    transform_accumulated_intervals_gpu, AccumulatedGpuIntervalEvidence, AccumulatedGpuReport,
+    AccumulatedIntervalBuffers, AccumulatedIntervalKernel, AccumulatedTransformInput,
+    AccumulatedTransformInputs, GpuAccumulationError, ACCUMULATED_GPU_EVIDENCE_SCHEMA_ID,
+    ACCUMULATED_GPU_EVIDENCE_SCHEMA_VERSION, ACCUMULATED_GPU_IMPLEMENTATION_ID,
+};
 pub use advection::{
     advect_particles_dual_wind_gpu, advect_particles_gpu, advect_particles_gpu_with_sampling,
     dispatch_advection_gpu_with_sampling_and_kernel,

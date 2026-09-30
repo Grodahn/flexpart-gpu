@@ -24,6 +24,7 @@ pub mod pbl;
 pub mod pbl_reflection;
 pub mod preflight;
 pub mod rng;
+pub mod temporal;
 pub mod wet_deposition;
 pub mod workgroup;
 pub use accumulation::{
@@ -130,6 +131,18 @@ pub use preflight::{
     GpuSmokeTestEvidence, GPU_PREFLIGHT_SCHEMA_ID, GPU_PREFLIGHT_SCHEMA_VERSION,
 };
 pub use rng::{sample_philox_uniform4_gpu, GpuPhiloxError, PhiloxUniformBlock};
+pub use temporal::{
+    build_temporal_gpu_report, create_temporal_bracket_buffers,
+    create_temporal_output_buffer, create_temporal_uniform_buffer, default_comparison_policy,
+    dispatch_temporal_blend_and_wait, download_temporal_output, encode_temporal_blend,
+    sample_field_gpu, GpuTemporalError, TemporalBlendOutput, TemporalBracketBuffers,
+    TemporalBlendUniforms, TemporalGpuReport, TemporalGpuRow, TemporalGpuSample,
+    TemporalInterpolationKernel,
+    TEMPORAL_GPU_CANDIDATE_DESCRIPTION, TEMPORAL_GPU_IMPLEMENTATION_ID,
+    TEMPORAL_GPU_REPORT_SCHEMA_ID, TEMPORAL_GPU_REPORT_SCHEMA_VERSION,
+    TEMPORAL_ORACLE_EXECUTABLE_SHA256, TEMPORAL_ORACLE_IMPLEMENTATION_ID,
+    TEMPORAL_ORACLE_OUTPUT_SHA256, TEMPORAL_ORACLE_REVISION,
+};
 pub use wet_deposition::{
     apply_wet_deposition_step_gpu, apply_wet_deposition_step_workflow,
     dispatch_wet_deposition_probability_gpu, dispatch_wet_deposition_probability_gpu_with_kernel,

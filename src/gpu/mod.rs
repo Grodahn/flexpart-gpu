@@ -27,8 +27,7 @@ pub mod rng;
 pub mod wet_deposition;
 pub mod workgroup;
 pub use accumulation::{
-    build_accumulated_gpu_report, build_accumulation_gpu_calculation_evidence,
-    build_transform_inputs, dispatch_accumulated_intervals_gpu,
+    build_accumulated_gpu_report, build_transform_inputs, dispatch_accumulated_intervals_gpu,
     dispatch_accumulated_intervals_gpu_with_kernel, encode_accumulated_intervals_gpu_with_kernel,
     transform_accumulated_intervals_gpu, AccumulatedGpuIntervalEvidence, AccumulatedGpuReport,
     AccumulatedIntervalBuffers, AccumulatedIntervalKernel, AccumulatedTransformInput,

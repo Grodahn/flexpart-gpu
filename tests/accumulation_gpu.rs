@@ -108,37 +108,36 @@ fn gpu_monotonic_sequence_matches_oracle_amounts_and_rates() {
     }
 
     // Machine-readable evidence with actual WGSL execution proof.
-    let inputs = build_transform_inputs(&observations).expect("inputs build");
     let oracle_amounts: Vec<f64> = expected_amounts.to_vec();
     let oracle_rates: Vec<f64> = expected_rates_mmh.to_vec();
-    let report = build_accumulated_gpu_report(
+    let report = pollster::block_on(build_accumulated_gpu_report(
         "accumulation-gpu/monotonic-3-interval",
         "large_scale_precipitation",
         &ctx,
         &observations,
-        &inputs,
-        &amounts,
-        &rates_si,
-        &rates_mmh,
         &oracle_amounts,
         &oracle_rates,
-    )
+    ))
     .expect("evidence builds");
-    let mut mismatched_inputs = inputs.clone();
-    mismatched_inputs[1].duration_seconds = 900.0;
+    let mut tampered_source = report.clone();
+    tampered_source.intervals[1].source_accumulated_amount_kg_per_square_meter = 4.0;
     assert!(matches!(
-        build_accumulated_gpu_report(
-            "accumulation-gpu/mismatched-input-guard",
-            "large_scale_precipitation",
-            &ctx,
-            &observations,
-            &mismatched_inputs,
-            &amounts,
-            &rates_si,
-            &rates_mmh,
-            &oracle_amounts,
-            &oracle_rates,
-        ),
+        tampered_source.validate(),
+        Err(GpuEvidenceError::InvalidComparisonState(_))
+    ));
+    let mut tampered_si_rate = report.clone();
+    tampered_si_rate.intervals[1].derived_gpu_rate_si = 1.0;
+    assert!(matches!(
+        tampered_si_rate.validate(),
+        Err(GpuEvidenceError::InvalidComparisonState(_))
+    ));
+    let mut tampered_comparison = report.clone();
+    tampered_comparison
+        .amount_evidence
+        .comparison
+        .max_absolute_error = Some(123.0);
+    assert!(matches!(
+        tampered_comparison.validate(),
         Err(GpuEvidenceError::InvalidComparisonState(_))
     ));
     assert_eq!(report.verdict, NumericalVerdict::Passed);
@@ -232,20 +231,14 @@ fn gpu_declared_reset_boundary_applies_fresh_amount() {
     assert_eq!(inputs[1].reset_applied, 1);
     assert_eq!(inputs[2].reset_applied, 0);
 
-    let report = build_accumulated_gpu_report(
+    let report = pollster::block_on(build_accumulated_gpu_report(
         "accumulation-gpu/declared-reset",
         "large_scale_precipitation",
         &ctx,
         &observations,
-        &inputs,
-        &amounts,
-        &pollster::block_on(transform_accumulated_intervals_gpu(&ctx, &observations))
-            .expect("re-run succeeds")
-            .1,
-        &rates_mmh,
         &expected_amounts.map(|value| value),
         &expected_rates_mmh.map(|value| value),
-    )
+    ))
     .expect("evidence builds");
     assert_eq!(report.verdict, NumericalVerdict::Passed);
     assert!(report.intervals[1].detected_reset);
@@ -317,6 +310,8 @@ fn gpu_rain_layer_oracle_rates_match_canonical_fixture() {
         .find(|case| case.id == "rain-layer-fields-bilinear-rates")
         .expect("oracle case exists");
 
+    let evidence_dir = std::path::Path::new("target/ci-gate/accumulation-gpu");
+    std::fs::create_dir_all(evidence_dir).expect("create accumulation evidence directory");
     let mut checked_cells = 0;
     for field in case.fields.as_ref().expect("oracle fields exist") {
         let cell_count = field.observations[0].amounts_kg_per_square_meter.len();
@@ -370,55 +365,38 @@ fn gpu_rain_layer_oracle_rates_match_canonical_fixture() {
                     &format!("field {} cell {cell} GPU vs CPU diagnostic", field.id),
                 );
             }
+            let oracle_amounts: Vec<f64> = field
+                .expected_interval_amounts_kg_per_square_meter
+                .iter()
+                .map(|grid| grid[cell])
+                .collect();
+            let oracle_rates: Vec<f64> = field
+                .expected_rates_mm_per_hour
+                .iter()
+                .map(|grid| grid[cell])
+                .collect();
+            let report = pollster::block_on(build_accumulated_gpu_report(
+                &format!("accumulation-gpu/rain-layer-{}-cell-{cell:02}", field.id),
+                &field.id,
+                &ctx,
+                &sequence,
+                &oracle_amounts,
+                &oracle_rates,
+            ))
+            .unwrap_or_else(|error| {
+                panic!("field {} cell {cell} evidence builds: {error}", field.id)
+            });
+            report.require_paired_pass().unwrap_or_else(|error| {
+                panic!("field {} cell {cell} proves GPU: {error}", field.id)
+            });
+            let evidence_path = evidence_dir.join(format!("{}-cell-{cell:02}.json", field.id));
+            std::fs::write(
+                evidence_path,
+                serde_json::to_vec_pretty(&report).expect("rain evidence serializes"),
+            )
+            .expect("write rain evidence");
             checked_cells += 1;
         }
-        // Machine-readable evidence for the first cell of each field.
-        let first_sequence: Vec<AccumulatedObservation> = field
-            .observations
-            .iter()
-            .map(|observation| AccumulatedObservation {
-                valid_time_epoch_seconds: observation.valid_time_epoch_seconds,
-                reset_epoch_seconds: observation.reset_epoch_seconds,
-                accumulated_amount_kg_per_square_meter: observation.amounts_kg_per_square_meter[0],
-            })
-            .collect();
-        let (amounts, rates_si, rates_mmh) =
-            pollster::block_on(transform_accumulated_intervals_gpu(&ctx, &first_sequence))
-                .expect("first-cell GPU succeeds");
-        let inputs = build_transform_inputs(&first_sequence).expect("inputs build");
-        let oracle_amounts: Vec<f64> = field
-            .expected_interval_amounts_kg_per_square_meter
-            .iter()
-            .map(|grid| grid[0])
-            .collect();
-        let oracle_rates: Vec<f64> = field
-            .expected_rates_mm_per_hour
-            .iter()
-            .map(|grid| grid[0])
-            .collect();
-        let report = build_accumulated_gpu_report(
-            &format!("accumulation-gpu/rain-layer-{}", field.id),
-            &field.id,
-            &ctx,
-            &first_sequence,
-            &inputs,
-            &amounts,
-            &rates_si,
-            &rates_mmh,
-            &oracle_amounts,
-            &oracle_rates,
-        )
-        .expect("rain evidence builds");
-        assert_eq!(report.verdict, NumericalVerdict::Passed);
-        report.require_paired_pass().expect("rain lane proves GPU");
-        let evidence_dir = std::path::Path::new("target/ci-gate/accumulation-gpu");
-        std::fs::create_dir_all(evidence_dir).expect("create accumulation evidence directory");
-        let evidence_path = evidence_dir.join(format!("{}.json", field.id));
-        std::fs::write(
-            evidence_path,
-            serde_json::to_vec_pretty(&report).expect("rain evidence serializes"),
-        )
-        .expect("write rain evidence");
     }
     assert_eq!(checked_cells, 24, "both 12-cell fields are covered");
 }

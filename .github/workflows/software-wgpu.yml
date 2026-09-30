@@ -64,12 +64,14 @@ jobs:
           set -euo pipefail
           mkdir -p target/ci-gate
           cargo test --test accumulation_gpu -- --nocapture 2>&1 | tee target/ci-gate/accumulation-gpu.log
-          test -s target/ci-gate/accumulation-gpu/large_scale_precipitation.json
-          test -s target/ci-gate/accumulation-gpu/convective_precipitation.json
-          grep -q '"verdict": "passed"' target/ci-gate/accumulation-gpu/large_scale_precipitation.json
-          grep -q '"verdict": "passed"' target/ci-gate/accumulation-gpu/convective_precipitation.json
-          grep -q '"calculation_path": "wgsl_device"' target/ci-gate/accumulation-gpu/large_scale_precipitation.json
-          grep -q '"adapter_class": "software_wgsl"' target/ci-gate/accumulation-gpu/large_scale_precipitation.json
+          test "$(find target/ci-gate/accumulation-gpu -maxdepth 1 -name 'large_scale_precipitation-cell-*.json' | wc -l)" -eq 12
+          test "$(find target/ci-gate/accumulation-gpu -maxdepth 1 -name 'convective_precipitation-cell-*.json' | wc -l)" -eq 12
+          for evidence in target/ci-gate/accumulation-gpu/*.json; do
+            test -s "$evidence"
+            grep -q '"verdict": "passed"' "$evidence"
+            grep -q '"calculation_path": "wgsl_device"' "$evidence"
+            grep -q '"adapter_class": "software_wgsl"' "$evidence"
+          done
       - name: Run corpus deterministic subset (Issue #6, point 2)
         run: |
           set -euo pipefail

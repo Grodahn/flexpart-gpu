@@ -94,6 +94,10 @@ pub const ACCUMULATED_GPU_IMPLEMENTATION_ID: &str = "accumulation-interval-reset
 /// Pinned FLEXPART revision owning the #71 interpolation oracle.
 pub const PINNED_FLEXPART_REVISION: &str = "c70586c2b7f5258850705325881c61f557ea9bd8";
 
+/// Stable identity of the pinned #71/#75 FLEXPART oracle path.
+pub const PINNED_ORACLE_IMPLEMENTATION_ID: &str =
+    "FLEXPART-11.1-interpol_rain-canonical-accumulation-71-75";
+
 /// Pinned oracle executable identity (linked object set from #71 provenance).
 pub const PINNED_ORACLE_EXECUTABLE_SHA256: &str =
     "388d1f824306df30fc74fbedc6464e86602b6a93ba782e9e1dad20ffacc3327c";
@@ -206,6 +210,7 @@ impl AccumulatedTransformInputs {
             u64::try_from(byte_len).map_err(|_| GpuAccumulationError::SizeOverflow {
                 field: "accumulated_transform_inputs",
             })?;
+        push_device_error_scopes(ctx);
         let buffer = ctx
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -215,6 +220,7 @@ impl AccumulatedTransformInputs {
                     | wgpu::BufferUsages::COPY_DST
                     | wgpu::BufferUsages::COPY_SRC,
             });
+        finish_device_error_scopes(ctx, "input buffer creation")?;
         Ok(Self {
             buffer,
             interval_count,
@@ -271,6 +277,7 @@ impl AccumulatedIntervalBuffers {
         let usage = wgpu::BufferUsages::STORAGE
             | wgpu::BufferUsages::COPY_DST
             | wgpu::BufferUsages::COPY_SRC;
+        push_device_error_scopes(ctx);
         let amount_kg_per_square_meter = ctx.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("accumulated_interval_amounts"),
             size,
@@ -289,6 +296,7 @@ impl AccumulatedIntervalBuffers {
             usage,
             mapped_at_creation: false,
         });
+        finish_device_error_scopes(ctx, "output buffer creation")?;
         Ok(Self {
             amount_kg_per_square_meter,
             rate_si,
@@ -499,6 +507,9 @@ pub enum GpuAccumulationError {
     /// Buffer transfer or readback failed.
     #[error("buffer operation failed: {0}")]
     Buffer(#[from] GpuBufferError),
+    /// Machine-readable GPU evidence could not be constructed or validated.
+    #[error("accumulation GPU evidence failed: {0}")]
+    Evidence(#[from] GpuEvidenceError),
     /// The WebGPU device reported an explicit scoped error.
     #[error("accumulation GPU {stage} failed: {message}")]
     Device {
@@ -798,14 +809,37 @@ pub async fn transform_accumulated_intervals_gpu(
     ctx: &GpuContext,
     observations: &[AccumulatedObservation],
 ) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>), GpuAccumulationError> {
-    let inputs = AccumulatedTransformInputs::from_observations(ctx, observations)?;
+    let readback = execute_accumulated_intervals_gpu(ctx, observations).await?;
+    Ok((readback.amounts, readback.rates_si, readback.rates_mmh))
+}
+
+struct AccumulatedGpuReadback {
+    transform_inputs: Vec<AccumulatedTransformInput>,
+    amounts: Vec<f32>,
+    rates_si: Vec<f32>,
+    rates_mmh: Vec<f32>,
+    adapter: GpuAdapterEvidence,
+}
+
+async fn execute_accumulated_intervals_gpu(
+    ctx: &GpuContext,
+    observations: &[AccumulatedObservation],
+) -> Result<AccumulatedGpuReadback, GpuAccumulationError> {
+    let transform_inputs = build_transform_inputs(observations)?;
+    let inputs = AccumulatedTransformInputs::from_inputs(ctx, &transform_inputs)?;
     let outputs = AccumulatedIntervalBuffers::new(ctx, inputs.interval_count())?;
     let kernel = AccumulatedIntervalKernel::new(ctx)?;
     dispatch_accumulated_intervals_gpu_with_kernel(ctx, &inputs, &outputs, &kernel)?;
     let amounts = outputs.download_amounts(ctx).await?;
     let rates_si = outputs.download_rates_si(ctx).await?;
     let rates_mmh = outputs.download_rates_millimeter_per_hour(ctx).await?;
-    Ok((amounts, rates_si, rates_mmh))
+    Ok(AccumulatedGpuReadback {
+        transform_inputs,
+        amounts,
+        rates_si,
+        rates_mmh,
+        adapter: GpuAdapterEvidence::from_context(ctx),
+    })
 }
 
 /// Lowercase hexadecimal SHA-256 of `bytes`.
@@ -872,9 +906,9 @@ pub fn accumulated_comparison_policy() -> Result<ComparisonPolicy, GpuEvidenceEr
 /// # Errors
 ///
 /// Returns [`GpuEvidenceError`] for an invalid tolerance policy.
-pub fn build_accumulation_gpu_calculation_evidence(
+fn build_accumulation_gpu_calculation_evidence(
     case_id: &str,
-    ctx: &GpuContext,
+    adapter: &GpuAdapterEvidence,
     inputs: &[AccumulatedTransformInput],
     oracle_values: &[f64],
     candidate_values: &[f64],
@@ -893,13 +927,12 @@ pub fn build_accumulation_gpu_calculation_evidence(
         execution: GpuExecutionEvidence {
             status: GpuExecutionStatus::Passed,
             calculation_path: GpuCalculationPath::WgslDevice,
-            adapter: Some(GpuAdapterEvidence::from_context(ctx)),
+            adapter: Some(adapter.clone()),
             failure: None,
             skip_reason: None,
         },
         oracle: Some(PinnedOracleEvidence {
-            implementation_id: "FLEXPART-11.1-interpol_rain-canonical-accumulation-71-75"
-                .to_string(),
+            implementation_id: PINNED_ORACLE_IMPLEMENTATION_ID.to_string(),
             revision: PINNED_FLEXPART_REVISION.to_string(),
             executable_sha256: PINNED_ORACLE_EXECUTABLE_SHA256.to_string(),
             output_sha256: finite_values_sha256(oracle_values),
@@ -1048,7 +1081,8 @@ impl AccumulatedGpuReport {
                     "accumulation rate evidence requires pinned oracle provenance",
                 ))?;
         let oracle_identity_is_pinned = [amount_oracle, rate_oracle].iter().all(|oracle| {
-            oracle.revision == PINNED_FLEXPART_REVISION
+            oracle.implementation_id == PINNED_ORACLE_IMPLEMENTATION_ID
+                && oracle.revision == PINNED_FLEXPART_REVISION
                 && oracle.executable_sha256 == PINNED_ORACLE_EXECUTABLE_SHA256
         });
         if !oracle_identity_is_pinned
@@ -1059,6 +1093,7 @@ impl AccumulatedGpuReport {
             || self.amount_evidence.candidate.input_sha256
                 != self.rate_evidence.candidate.input_sha256
             || self.amount_evidence.candidate.revision != self.rate_evidence.candidate.revision
+            || self.amount_evidence.execution != self.rate_evidence.execution
         {
             return Err(GpuEvidenceError::InvalidComparisonState(
                 "accumulation evidence candidate or oracle provenance is inconsistent",
@@ -1074,28 +1109,41 @@ impl AccumulatedGpuReport {
                 "accumulation evidence row coverage does not match the embedded comparisons",
             ));
         }
+        let recorded_observations: Vec<AccumulatedObservation> = self
+            .intervals
+            .iter()
+            .map(|row| AccumulatedObservation {
+                valid_time_epoch_seconds: row.source_valid_time_epoch_seconds,
+                reset_epoch_seconds: row.source_reset_epoch_seconds,
+                accumulated_amount_kg_per_square_meter: row
+                    .source_accumulated_amount_kg_per_square_meter,
+            })
+            .collect();
+        let expected_metadata =
+            validate_interval_sequence(&recorded_observations).map_err(|_| {
+                GpuEvidenceError::InvalidComparisonState(
+                    "accumulation evidence source rows violate the canonical interval contract",
+                )
+            })?;
+        let expected_inputs = build_transform_inputs(&recorded_observations).map_err(|_| {
+            GpuEvidenceError::InvalidComparisonState(
+                "accumulation evidence source rows cannot produce canonical GPU inputs",
+            )
+        })?;
+        let expected_input_sha256 = accumulated_inputs_sha256(&expected_inputs);
+        if self.amount_evidence.candidate.input_sha256 != expected_input_sha256 {
+            return Err(GpuEvidenceError::InvalidComparisonState(
+                "accumulation evidence source rows do not match the recorded GPU input hash",
+            ));
+        }
         let rows_pass = self.intervals.iter().enumerate().all(|(index, row)| {
-            let reset_metadata_matches = if index == 0 {
-                row.reset_applied
-                    && !row.detected_reset
-                    && row.interval_start_epoch_seconds == row.source_reset_epoch_seconds
-            } else {
-                let previous = &self.intervals[index - 1];
-                let detected_reset =
-                    row.source_reset_epoch_seconds > previous.source_reset_epoch_seconds;
-                row.detected_reset == detected_reset
-                    && row.reset_applied == detected_reset
-                    && row.interval_start_epoch_seconds
-                        == if detected_reset {
-                            row.source_reset_epoch_seconds
-                        } else {
-                            previous.source_valid_time_epoch_seconds
-                        }
-            };
+            let metadata = expected_metadata[index];
+            let duration_seconds = f64::from(expected_inputs[index].duration_seconds);
             row.source_index == index
-                && reset_metadata_matches
-                && row.interval_end_epoch_seconds == row.source_valid_time_epoch_seconds
-                && row.interval_end_epoch_seconds > row.interval_start_epoch_seconds
+                && row.interval_start_epoch_seconds == metadata.interval_start_epoch_seconds
+                && row.interval_end_epoch_seconds == metadata.interval_end_epoch_seconds
+                && row.detected_reset == metadata.detected_reset
+                && row.reset_applied == metadata.reset_applied
                 && row
                     .source_accumulated_amount_kg_per_square_meter
                     .is_finite()
@@ -1104,6 +1152,14 @@ impl AccumulatedGpuReport {
                 && row.derived_gpu_rate_millimeter_per_hour.is_finite()
                 && row.oracle_expected_amount_kg_per_square_meter.is_finite()
                 && row.oracle_expected_rate_millimeter_per_hour.is_finite()
+                && amounts_match(
+                    row.derived_gpu_amount_kg_per_square_meter / duration_seconds,
+                    row.derived_gpu_rate_si,
+                )
+                && amounts_match(
+                    row.derived_gpu_rate_si * 3_600.0,
+                    row.derived_gpu_rate_millimeter_per_hour,
+                )
                 && row.amount_matches_oracle
                 && row.rate_matches_oracle
                 && row.amount_matches_oracle
@@ -1127,11 +1183,33 @@ impl AccumulatedGpuReport {
             .iter()
             .map(|row| row.oracle_expected_rate_millimeter_per_hour)
             .collect();
+        let candidate_amounts: Vec<f64> = self
+            .intervals
+            .iter()
+            .map(|row| row.derived_gpu_amount_kg_per_square_meter)
+            .collect();
+        let candidate_rates: Vec<f64> = self
+            .intervals
+            .iter()
+            .map(|row| row.derived_gpu_rate_millimeter_per_hour)
+            .collect();
         if amount_oracle.output_sha256 != finite_values_sha256(&oracle_amounts)
             || rate_oracle.output_sha256 != finite_values_sha256(&oracle_rates)
         {
             return Err(GpuEvidenceError::InvalidComparisonState(
                 "accumulation evidence oracle hashes do not match the recorded values",
+            ));
+        }
+        let policy = accumulated_comparison_policy()?;
+        let expected_amount_comparison =
+            super::compare_finite_values(&oracle_amounts, &candidate_amounts, policy)?;
+        let expected_rate_comparison =
+            super::compare_finite_values(&oracle_rates, &candidate_rates, policy)?;
+        if self.amount_evidence.comparison != expected_amount_comparison
+            || self.rate_evidence.comparison != expected_rate_comparison
+        {
+            return Err(GpuEvidenceError::InvalidComparisonState(
+                "accumulation evidence comparisons do not match the recorded rows",
             ));
         }
         let expected_verdict = if rows_pass
@@ -1169,12 +1247,13 @@ impl AccumulatedGpuReport {
     }
 }
 
-/// Build issue-specific GPU evidence for one validated observation sequence.
+/// Execute one validated observation sequence and build issue-specific GPU evidence.
 ///
-/// `field_identity` names the resolved field, `case_id` is the stable
-/// validation case, `gpu_amounts`/`gpu_rates_si`/`gpu_rates_mmh` are the
-/// device-derived values in observation order, and `oracle_amounts`/
-/// `oracle_rates_mmh` are the canonical expected values from #71/#75.
+/// `field_identity` names the resolved field, `case_id` is the stable validation
+/// case, and `oracle_amounts`/`oracle_rates_mmh` are the canonical expected
+/// values from #71/#75. Candidate values and adapter provenance are obtained
+/// only by dispatching and reading back this module's WGSL path; callers cannot
+/// supply CPU-produced values while claiming device execution.
 ///
 /// The function compares both lanes with the #90 policy, records per-interval
 /// rows, and embeds two repository-wide evidence records. No CPU-derived
@@ -1183,21 +1262,40 @@ impl AccumulatedGpuReport {
 ///
 /// # Errors
 ///
-/// Returns [`GpuEvidenceError`] for an invalid tolerance policy or
-/// mismatched lane lengths.
-#[allow(clippy::cast_precision_loss, clippy::too_many_arguments)]
-pub fn build_accumulated_gpu_report(
+/// Returns [`GpuAccumulationError`] for GPU preparation, dispatch, readback,
+/// comparison-policy, or evidence-validation failure.
+pub async fn build_accumulated_gpu_report(
     case_id: &str,
     field_identity: &str,
     ctx: &GpuContext,
     observations: &[AccumulatedObservation],
-    transform_inputs: &[AccumulatedTransformInput],
-    gpu_amounts: &[f32],
-    gpu_rates_si: &[f32],
-    gpu_rates_mmh: &[f32],
+    oracle_amounts: &[f64],
+    oracle_rates_mmh: &[f64],
+) -> Result<AccumulatedGpuReport, GpuAccumulationError> {
+    let readback = execute_accumulated_intervals_gpu(ctx, observations).await?;
+    Ok(assemble_accumulated_gpu_report(
+        case_id,
+        field_identity,
+        observations,
+        &readback,
+        oracle_amounts,
+        oracle_rates_mmh,
+    )?)
+}
+
+#[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
+fn assemble_accumulated_gpu_report(
+    case_id: &str,
+    field_identity: &str,
+    observations: &[AccumulatedObservation],
+    readback: &AccumulatedGpuReadback,
     oracle_amounts: &[f64],
     oracle_rates_mmh: &[f64],
 ) -> Result<AccumulatedGpuReport, GpuEvidenceError> {
+    let transform_inputs = &readback.transform_inputs;
+    let gpu_amounts = &readback.amounts;
+    let gpu_rates_si = &readback.rates_si;
+    let gpu_rates_mmh = &readback.rates_mmh;
     let metadata = validate_interval_sequence(observations).map_err(|_| {
         GpuEvidenceError::InvalidComparisonState(
             "GPU evidence requires canonically valid source observations",
@@ -1218,7 +1316,7 @@ pub fn build_accumulated_gpu_report(
             "GPU evidence lanes must match the observation count",
         ));
     }
-    if transform_inputs != expected_transform_inputs {
+    if transform_inputs != &expected_transform_inputs {
         return Err(GpuEvidenceError::InvalidComparisonState(
             "GPU evidence transform inputs do not match the source observations",
         ));
@@ -1230,14 +1328,14 @@ pub fn build_accumulated_gpu_report(
         .collect();
     let amount_evidence = build_accumulation_gpu_calculation_evidence(
         &format!("{case_id}/amount"),
-        ctx,
+        &readback.adapter,
         transform_inputs,
         oracle_amounts,
         &gpu_amounts_f64,
     )?;
     let rate_evidence = build_accumulation_gpu_calculation_evidence(
         &format!("{case_id}/rate"),
-        ctx,
+        &readback.adapter,
         transform_inputs,
         oracle_rates_mmh,
         &gpu_rates_mmh_f64,

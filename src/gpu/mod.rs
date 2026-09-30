@@ -4,8 +4,8 @@
 /// and compute shader dispatch. All GPU operations go through `GpuContext`.
 use thiserror::Error;
 
-pub mod accumulation;
 pub mod adapter;
+pub mod accumulation;
 pub mod advection;
 pub mod buffers;
 pub mod cbl;
@@ -24,17 +24,15 @@ pub mod pbl;
 pub mod pbl_reflection;
 pub mod preflight;
 pub mod rng;
-pub mod temporal;
 pub mod wet_deposition;
 pub mod workgroup;
 pub use accumulation::{
     build_accumulated_gpu_report, build_accumulation_gpu_calculation_evidence,
     build_transform_inputs, dispatch_accumulated_intervals_gpu,
-    dispatch_accumulated_intervals_gpu_with_kernel,
-    encode_accumulated_intervals_gpu_with_kernel, transform_accumulated_intervals_gpu,
-    AccumulatedGpuIntervalEvidence, AccumulatedGpuReport, AccumulatedIntervalBuffers,
-    AccumulatedIntervalKernel, AccumulatedTransformInput, AccumulatedTransformInputs,
-    GpuAccumulationError, ACCUMULATED_GPU_EVIDENCE_SCHEMA_ID,
+    dispatch_accumulated_intervals_gpu_with_kernel, encode_accumulated_intervals_gpu_with_kernel,
+    transform_accumulated_intervals_gpu, AccumulatedGpuIntervalEvidence, AccumulatedGpuReport,
+    AccumulatedIntervalBuffers, AccumulatedIntervalKernel, AccumulatedTransformInput,
+    AccumulatedTransformInputs, GpuAccumulationError, ACCUMULATED_GPU_EVIDENCE_SCHEMA_ID,
     ACCUMULATED_GPU_EVIDENCE_SCHEMA_VERSION, ACCUMULATED_GPU_IMPLEMENTATION_ID,
 };
 pub use advection::{
@@ -133,17 +131,6 @@ pub use preflight::{
     GpuSmokeTestEvidence, GPU_PREFLIGHT_SCHEMA_ID, GPU_PREFLIGHT_SCHEMA_VERSION,
 };
 pub use rng::{sample_philox_uniform4_gpu, GpuPhiloxError, PhiloxUniformBlock};
-pub use temporal::{
-    build_temporal_gpu_report, build_temporal_gpu_row, create_temporal_bracket_buffers,
-    create_temporal_output_buffer, create_temporal_uniform_buffer, default_comparison_policy,
-    dispatch_temporal_blend_and_wait, download_temporal_output, encode_temporal_blend,
-    sample_field_gpu, GpuTemporalError, TemporalBlendOutput, TemporalBracketBuffers,
-    TemporalGpuReport, TemporalGpuRow, TemporalGpuSample, TemporalInterpolationKernel,
-    TEMPORAL_GPU_CANDIDATE_DESCRIPTION, TEMPORAL_GPU_IMPLEMENTATION_ID,
-    TEMPORAL_GPU_REPORT_SCHEMA_ID, TEMPORAL_GPU_REPORT_SCHEMA_VERSION,
-    TEMPORAL_ORACLE_EXECUTABLE_SHA256, TEMPORAL_ORACLE_IMPLEMENTATION_ID,
-    TEMPORAL_ORACLE_OUTPUT_SHA256, TEMPORAL_ORACLE_REVISION,
-};
 pub use wet_deposition::{
     apply_wet_deposition_step_gpu, apply_wet_deposition_step_workflow,
     dispatch_wet_deposition_probability_gpu, dispatch_wet_deposition_probability_gpu_with_kernel,

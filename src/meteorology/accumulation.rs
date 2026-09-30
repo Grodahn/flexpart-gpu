@@ -114,6 +114,26 @@ pub struct AccumulatedObservation {
     pub accumulated_amount_kg_per_square_meter: f64,
 }
 
+/// Validated interval/reset metadata shared by CPU reference derivation and
+/// GPU input preparation.
+///
+/// This control-plane record intentionally contains no derived amount or rate.
+/// Production GPU callers use it to preserve the #75 fail-closed chronology
+/// without executing the production numerical transformation on the host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AccumulatedIntervalMetadata {
+    /// Start of the represented interval in epoch seconds.
+    pub interval_start_epoch_seconds: i64,
+    /// End of the represented interval in epoch seconds.
+    pub interval_end_epoch_seconds: i64,
+    /// Strictly positive interval duration in seconds.
+    pub duration_seconds: i64,
+    /// Whether the interval amount is the current fresh-run accumulation.
+    pub reset_applied: bool,
+    /// Whether this row declares a new run relative to the previous row.
+    pub detected_reset: bool,
+}
+
 /// One derived interval product for the coverage between two observation
 /// instants (or, for the first observation, between the declared reset and the
 /// first valid time).
@@ -227,6 +247,12 @@ pub enum AccumulationError {
     /// Non-finite source amounts are rejected like every canonical value.
     #[error("observation {index}: source amount is not finite")]
     NonFiniteAmount { index: usize },
+    /// The interval endpoints cannot be represented as a positive `i64`
+    /// duration and therefore cannot be transferred unambiguously.
+    #[error(
+        "observation {index}: interval duration from {start} to {end} is outside the supported positive i64 range"
+    )]
+    IntervalDurationOutOfRange { index: usize, start: i64, end: i64 },
 }
 
 /// Verdict attached to one report row.
@@ -334,6 +360,26 @@ pub fn resolve_interval_sequence(
         intervals,
         detected_reset_count,
     })
+}
+
+/// Validate accumulated observations and derive interval/reset metadata only.
+///
+/// This is the production host boundary for the GPU transformation. It checks
+/// every #75 chronology, reset, finiteness, sign, monotonicity, and duration
+/// rule, but does not calculate an interval amount or rate.
+///
+/// # Errors
+///
+/// Returns [`AccumulationError`] on the first violating observation.
+pub fn validate_interval_sequence(
+    observations: &[AccumulatedObservation],
+) -> Result<Vec<AccumulatedIntervalMetadata>, AccumulationError> {
+    if observations.is_empty() {
+        return Err(AccumulationError::EmptySequence);
+    }
+    (0..observations.len())
+        .map(|index| validate_interval_metadata(observations, index))
+        .collect()
 }
 
 /// Build a machine-readable report over `observations` without failing: rows
@@ -525,6 +571,34 @@ fn derive_interval(
     observations: &[AccumulatedObservation],
     index: usize,
 ) -> Result<(IntervalProduct, bool), AccumulationError> {
+    let metadata = validate_interval_metadata(observations, index)?;
+    let observation = observations[index];
+    let interval_amount = if metadata.reset_applied {
+        observation.accumulated_amount_kg_per_square_meter
+    } else {
+        observation.accumulated_amount_kg_per_square_meter
+            - observations[index - 1].accumulated_amount_kg_per_square_meter
+    };
+    let duration = metadata.duration_seconds as f64;
+    let rate_si = interval_amount / duration;
+    let rate_millimeter_per_hour = rate_si * SECONDS_PER_HOUR;
+    Ok((
+        IntervalProduct {
+            interval_start_epoch_seconds: metadata.interval_start_epoch_seconds,
+            interval_end_epoch_seconds: metadata.interval_end_epoch_seconds,
+            amount_kg_per_square_meter: AmountKgPerSquareMeter(interval_amount),
+            rate_kg_per_square_meter_per_second: RateKgPerSquareMeterPerSecond(rate_si),
+            rate_millimeter_per_hour: RateMillimeterPerHour(rate_millimeter_per_hour),
+            reset_applied: metadata.reset_applied,
+        },
+        metadata.detected_reset,
+    ))
+}
+
+fn validate_interval_metadata(
+    observations: &[AccumulatedObservation],
+    index: usize,
+) -> Result<AccumulatedIntervalMetadata, AccumulationError> {
     let observation = observations[index];
     let amount = observation.accumulated_amount_kg_per_square_meter;
     if !amount.is_finite() {
@@ -541,95 +615,74 @@ fn derive_interval(
         });
     }
 
-    let (interval_start, interval_end, interval_amount, reset_applied, detected_reset) =
-        if index == 0 {
-            // The leading interval covers the declared run start up to the first
-            // valid time; the observed amount is the interval total by
-            // definition (nothing before the reset is claimed).
-            (
-                observation.reset_epoch_seconds,
-                observation.valid_time_epoch_seconds,
-                amount,
-                true,
-                false,
-            )
+    let (interval_start, reset_applied, detected_reset) = if index == 0 {
+        (observation.reset_epoch_seconds, true, false)
+    } else {
+        let previous = observations[index - 1];
+        if observation.valid_time_epoch_seconds <= previous.valid_time_epoch_seconds {
+            return Err(AccumulationError::NonIncreasingTimestamps {
+                index,
+                previous: previous.valid_time_epoch_seconds,
+                current: observation.valid_time_epoch_seconds,
+            });
+        }
+        if observation.reset_epoch_seconds < previous.reset_epoch_seconds {
+            return Err(AccumulationError::BackwardsReset {
+                index,
+                previous: previous.reset_epoch_seconds,
+                current: observation.reset_epoch_seconds,
+            });
+        }
+        if observation.reset_epoch_seconds == previous.reset_epoch_seconds {
+            if amount < previous.accumulated_amount_kg_per_square_meter {
+                return Err(AccumulationError::NegativeDelta {
+                    index,
+                    previous: previous.accumulated_amount_kg_per_square_meter,
+                    current: amount,
+                });
+            }
+            (previous.valid_time_epoch_seconds, false, false)
         } else {
-            let previous = observations[index - 1];
-            if observation.valid_time_epoch_seconds <= previous.valid_time_epoch_seconds {
-                return Err(AccumulationError::NonIncreasingTimestamps {
+            let reset = observation.reset_epoch_seconds;
+            if reset < previous.valid_time_epoch_seconds {
+                return Err(AccumulationError::MidWindowReset {
                     index,
-                    previous: previous.valid_time_epoch_seconds,
-                    current: observation.valid_time_epoch_seconds,
-                });
-            }
-            if observation.reset_epoch_seconds < previous.reset_epoch_seconds {
-                return Err(AccumulationError::BackwardsReset {
-                    index,
-                    previous: previous.reset_epoch_seconds,
-                    current: observation.reset_epoch_seconds,
-                });
-            }
-            if observation.reset_epoch_seconds == previous.reset_epoch_seconds {
-                // Same declared run: the interval amount is the within-run
-                // increment; a decrease is never interpreted as a reset.
-                if amount < previous.accumulated_amount_kg_per_square_meter {
-                    return Err(AccumulationError::NegativeDelta {
-                        index,
-                        previous: previous.accumulated_amount_kg_per_square_meter,
-                        current: amount,
-                    });
-                }
-                (
-                    previous.valid_time_epoch_seconds,
-                    observation.valid_time_epoch_seconds,
-                    amount - previous.accumulated_amount_kg_per_square_meter,
-                    false,
-                    false,
-                )
-            } else {
-                // Newly declared run origin. The reset must fall exactly on the
-                // previous observation valid time: earlier contradicts the
-                // previous observation's declared window, later leaves a
-                // coverage gap that no rule may fill.
-                let reset = observation.reset_epoch_seconds;
-                if reset < previous.valid_time_epoch_seconds {
-                    return Err(AccumulationError::MidWindowReset {
-                        index,
-                        reset,
-                        previous_valid_time: previous.valid_time_epoch_seconds,
-                    });
-                }
-                if reset > previous.valid_time_epoch_seconds {
-                    return Err(AccumulationError::UncoveredGap {
-                        index,
-                        previous_valid_time: previous.valid_time_epoch_seconds,
-                        reset,
-                    });
-                }
-                (
                     reset,
-                    observation.valid_time_epoch_seconds,
-                    amount,
-                    true,
-                    true,
-                )
+                    previous_valid_time: previous.valid_time_epoch_seconds,
+                });
             }
-        };
-
-    let duration = (interval_end - interval_start) as f64;
-    let rate_si = interval_amount / duration;
-    let rate_millimeter_per_hour = rate_si * SECONDS_PER_HOUR;
-    Ok((
-        IntervalProduct {
-            interval_start_epoch_seconds: interval_start,
-            interval_end_epoch_seconds: interval_end,
-            amount_kg_per_square_meter: AmountKgPerSquareMeter(interval_amount),
-            rate_kg_per_square_meter_per_second: RateKgPerSquareMeterPerSecond(rate_si),
-            rate_millimeter_per_hour: RateMillimeterPerHour(rate_millimeter_per_hour),
-            reset_applied,
+            if reset > previous.valid_time_epoch_seconds {
+                return Err(AccumulationError::UncoveredGap {
+                    index,
+                    previous_valid_time: previous.valid_time_epoch_seconds,
+                    reset,
+                });
+            }
+            (reset, true, true)
+        }
+    };
+    let interval_end = observation.valid_time_epoch_seconds;
+    let duration_seconds = interval_end.checked_sub(interval_start).ok_or(
+        AccumulationError::IntervalDurationOutOfRange {
+            index,
+            start: interval_start,
+            end: interval_end,
         },
+    )?;
+    if duration_seconds <= 0 {
+        return Err(AccumulationError::IntervalDurationOutOfRange {
+            index,
+            start: interval_start,
+            end: interval_end,
+        });
+    }
+    Ok(AccumulatedIntervalMetadata {
+        interval_start_epoch_seconds: interval_start,
+        interval_end_epoch_seconds: interval_end,
+        duration_seconds,
+        reset_applied,
         detected_reset,
-    ))
+    })
 }
 
 /// `1e-6`-relative closeness used for interval-preservation verdicts in the

@@ -1142,6 +1142,30 @@ def run_corpus_seeds(args, oracle_manifest):
     missing = []
     notes = list(args.note or [])
     case_def = io_corpus.read_case_definition(args.case_def)
+    # Fail-closed #52 gate: paired oracle scoring requires INPUT_EQUIVALENT.
+    # Candidate-only statistics remain diagnostic; supplying --fortran-output
+    # together with --require-input-equivalence turns the gate on.
+    if getattr(args, "require_input_equivalence", None) and getattr(args, "fortran_output", None):
+        import importlib.util as _ilu
+
+        _spec = _ilu.spec_from_file_location(
+            "input_equivalence_gate",
+            REPO_ROOT / "scripts" / "corpus" / "input_equivalence.py",
+        )
+        assert _spec is not None and _spec.loader is not None
+        _ie = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_ie)
+        try:
+            _ie.require_input_equivalent(
+                args.require_input_equivalence,
+                expected_case_id=case_def["case_id"],
+            )
+        except _ie.InputEquivalenceError as exc:
+            raise ValueError(f"input-equivalence gate refused scoring: {exc}") from None
+        notes.append(
+            "Input-equivalence gate passed (INPUT_EQUIVALENT); #53 provenance "
+            "must still be verified before any parity claim."
+        )
     case_id = case_def["case_id"]
     release_mass = float(case_def["release"]["inventory"]["quantity_kg"])
     switches = case_def["physics_switches"]
@@ -1544,6 +1568,10 @@ def build_parser():
                         help="Oracle run manifest for hash-verified provenance")
     parser.add_argument("--input-equivalence-report", default=None,
                         help="ETEX input-equivalence audit report to consume")
+    parser.add_argument("--require-input-equivalence", default=None,
+                        help="Fail-closed #52 gate: path to a canonical input-equivalence report JSON. "
+                        "Paired oracle scoring is refused unless the verdict is INPUT_EQUIVALENT. "
+                        "Produce via scripts/corpus/input_equivalence.py.")
     parser.add_argument("--oracle-seed", type=int, default=None)
     parser.add_argument("--oracle-seed-controllable", action="store_true")
     parser.add_argument("--candidate-log", default=None)

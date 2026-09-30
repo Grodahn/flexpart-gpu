@@ -12,10 +12,10 @@ use flexpart_gpu::gpu::{
     build_accumulated_gpu_report, build_transform_inputs,
     encode_accumulated_intervals_gpu_with_kernel, transform_accumulated_intervals_gpu,
     AccumulatedIntervalBuffers, AccumulatedIntervalKernel, AccumulatedTransformInputs,
-    ComparisonPolicy, GpuAccumulationError, GpuAdapterEvidence, GpuCalculationEvidence,
-    GpuCalculationPath, GpuCandidateEvidence, GpuContext, GpuError, GpuEvidenceError,
-    GpuEvidenceSchema, GpuExecutionEvidence, GpuExecutionStatus, NumericalVerdict,
-    PinnedOracleEvidence, ACCUMULATED_GPU_IMPLEMENTATION_ID,
+    ComparisonPolicy, GpuAccumulationError, GpuAdapterEvidence, GpuAdapterOptions,
+    GpuCalculationEvidence, GpuCalculationPath, GpuCandidateEvidence, GpuContext, GpuError,
+    GpuEvidenceError, GpuEvidenceSchema, GpuExecutionEvidence, GpuExecutionStatus,
+    NumericalVerdict, PinnedOracleEvidence, ACCUMULATED_GPU_IMPLEMENTATION_ID,
 };
 use flexpart_gpu::meteorology::accumulation::{
     resolve_interval_sequence, AccumulatedObservation, AccumulationError,
@@ -34,6 +34,10 @@ fn gpu_context_or_skip() -> Option<GpuContext> {
     match pollster::block_on(GpuContext::new()) {
         Ok(ctx) => Some(ctx),
         Err(GpuError::NoAdapter) => {
+            assert!(
+                !GpuAdapterOptions::from_env().force_software_fallback,
+                "software WGSL was required, but no adapter was available"
+            );
             eprintln!("no GPU adapter; skipping GPU accumulation test (not evidence)");
             None
         }
@@ -120,6 +124,23 @@ fn gpu_monotonic_sequence_matches_oracle_amounts_and_rates() {
         &oracle_rates,
     )
     .expect("evidence builds");
+    let mut mismatched_inputs = inputs.clone();
+    mismatched_inputs[1].duration_seconds = 900.0;
+    assert!(matches!(
+        build_accumulated_gpu_report(
+            "accumulation-gpu/mismatched-input-guard",
+            "large_scale_precipitation",
+            &ctx,
+            &observations,
+            &mismatched_inputs,
+            &amounts,
+            &rates_si,
+            &rates_mmh,
+            &oracle_amounts,
+            &oracle_rates,
+        ),
+        Err(GpuEvidenceError::InvalidComparisonState(_))
+    ));
     assert_eq!(report.verdict, NumericalVerdict::Passed);
     report
         .require_paired_pass()
@@ -390,6 +411,14 @@ fn gpu_rain_layer_oracle_rates_match_canonical_fixture() {
         .expect("rain evidence builds");
         assert_eq!(report.verdict, NumericalVerdict::Passed);
         report.require_paired_pass().expect("rain lane proves GPU");
+        let evidence_dir = std::path::Path::new("target/ci-gate/accumulation-gpu");
+        std::fs::create_dir_all(evidence_dir).expect("create accumulation evidence directory");
+        let evidence_path = evidence_dir.join(format!("{}.json", field.id));
+        std::fs::write(
+            evidence_path,
+            serde_json::to_vec_pretty(&report).expect("rain evidence serializes"),
+        )
+        .expect("write rain evidence");
     }
     assert_eq!(checked_cells, 24, "both 12-cell fields are covered");
 }
@@ -532,7 +561,7 @@ fn gpu_encode_path_composes_two_stages_without_intermediate_submit() {
         .expect("first outputs allocate");
     let second_outputs = AccumulatedIntervalBuffers::new(&ctx, second_inputs.interval_count())
         .expect("second outputs allocate");
-    let kernel = AccumulatedIntervalKernel::new(&ctx);
+    let kernel = AccumulatedIntervalKernel::new(&ctx).expect("kernel compiles");
 
     let mut encoder = ctx
         .device

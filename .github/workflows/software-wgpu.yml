@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       FLEXPART_GPU_SOFTWARE: "1"
+      FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
       WGPU_BACKEND: vulkan
       LIBGL_ALWAYS_SOFTWARE: "1"
     steps:
@@ -58,6 +59,17 @@ jobs:
             exit 1
           fi
           grep -q "software_adapter=true" target/ci-gate/sw-wgpu-advection.log
+      - name: Prove accumulated-field GPU oracle parity
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-gate
+          cargo test --test accumulation_gpu -- --nocapture 2>&1 | tee target/ci-gate/accumulation-gpu.log
+          test -s target/ci-gate/accumulation-gpu/large_scale_precipitation.json
+          test -s target/ci-gate/accumulation-gpu/convective_precipitation.json
+          grep -q '"verdict": "passed"' target/ci-gate/accumulation-gpu/large_scale_precipitation.json
+          grep -q '"verdict": "passed"' target/ci-gate/accumulation-gpu/convective_precipitation.json
+          grep -q '"calculation_path": "wgsl_device"' target/ci-gate/accumulation-gpu/large_scale_precipitation.json
+          grep -q '"adapter_class": "software_wgsl"' target/ci-gate/accumulation-gpu/large_scale_precipitation.json
       - name: Run corpus deterministic subset (Issue #6, point 2)
         run: |
           set -euo pipefail
@@ -92,5 +104,7 @@ jobs:
             target/ci-gate/gpu-preflight.json
             target/ci-gate/gpu-preflight.log
             target/ci-gate/sw-wgpu-advection.log
+            target/ci-gate/accumulation-gpu.log
+            target/ci-gate/accumulation-gpu/*.json
             target/ci-gate/corpus-subset.log
           retention-days: 30

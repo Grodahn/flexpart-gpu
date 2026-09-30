@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/input-equivalence-v1.schema.json",
+  "title": "FLEXPART-GPU candidate/oracle input-equivalence report v1",
+  "description": "Canonical machine-readable input-equivalence report for Issue #52. Consumes the #51 validation-case v2 manifest plus resolved candidate/oracle input artifacts. Execution provenance (binary/build/runtime/output hashes) belongs to #53 and is referenced, not evaluated, here.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "schema_id": {
+      "const": "schemas/input-equivalence-v1.schema.json"
+    },
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "case_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "oracle_dir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verdict": {
+      "enum": [
+        "INPUT_EQUIVALENT",
+        "INPUT_EQUIVALENCE_NOT_DEMONSTRATED",
+        "INPUT_MISMATCH",
+        "INTEGRITY_ERROR"
+      ]
+    },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/field_evidence"
+      }
+    },
+    "conversions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/conversion_record"
+      }
+    },
+    "provenance_dependency": {
+      "$ref": "#/$defs/provenance_dependency"
+    }
+  },
+  "required": [
+    "schema_version",
+    "schema_id",
+    "case_id",
+    "case_file",
+    "oracle_dir",
+    "verdict",
+    "fields",
+    "conversions",
+    "provenance_dependency"
+  ],
+  "$defs": {
+    "field_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "field_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "equivalent",
+            "mismatch",
+            "not_demonstrated",
+            "integrity_error"
+          ]
+        },
+        "candidate": {
+          "description": "Canonical candidate-side value (usually from the #51 case manifest)."
+        },
+        "oracle": {
+          "description": "Resolved oracle-side value (usually parsed from Fortran input artifacts)."
+        },
+        "conversion": {
+          "type": ["string", "null"],
+          "description": "Named, versioned conversion/mapping applied, or null when no conversion applies."
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "field_id",
+        "status",
+        "candidate",
+        "oracle",
+        "conversion",
+        "detail"
+      ]
+    },
+    "conversion_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "description"
+      ]
+    },
+    "provenance_dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "const": "#53"
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "owner",
+        "note"
+      ]
+    }
+  }
+}

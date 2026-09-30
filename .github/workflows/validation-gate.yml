@@ -28,6 +28,10 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Run full Rust library test suite
+        working-directory: flexpart-gpu
+        run: cargo test --lib
+
       - name: Run canonical meteorology contract tests
         run: |
           set -euo pipefail

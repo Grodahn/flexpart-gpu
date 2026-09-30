@@ -228,38 +228,16 @@ pub enum OracleSeedMode {
     RequestedIdentity,
 }
 
-/// Deserialization helper for fields that are nullable but may not be omitted.
+/// Deserialize an explicitly present nullable field.
 ///
-/// Serde treats a missing `Option<T>` field as `None`, which would collapse
-/// omission and an explicit JSON null. Wrapping the wire value in a non-Option
-/// field makes omission a deserialization error while still accepting null.
-enum RequiredNullable<T> {
-    Null,
-    Value(T),
-}
-
-impl<T> RequiredNullable<T> {
-    fn into_option(self) -> Option<T> {
-        match self {
-            Self::Null => None,
-            Self::Value(value) => Some(value),
-        }
-    }
-}
-
-impl<'de, T> Deserialize<'de> for RequiredNullable<T>
+/// Applying this with `deserialize_with` keeps the field required at the wire
+/// level while allowing its value to be JSON null.
+fn deserialize_required_nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
+    D: serde::Deserializer<'de>,
     T: Deserialize<'de>,
 {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        Ok(match Option::<T>::deserialize(deserializer)? {
-            Some(value) => Self::Value(value),
-            None => Self::Null,
-        })
-    }
+    Option::<T>::deserialize(deserializer)
 }
 
 /// Oracle-side stochastic identity per issue #50 contract.
@@ -293,18 +271,20 @@ impl<'de> Deserialize<'de> for OracleSeedIdentity {
         #[serde(deny_unknown_fields)]
         struct Wire {
             kind: OracleKind,
-            strategy: RequiredNullable<OracleStrategyRef>,
+            #[serde(deserialize_with = "deserialize_required_nullable")]
+            strategy: Option<OracleStrategyRef>,
             mode: OracleSeedMode,
-            seed: RequiredNullable<u32>,
+            #[serde(deserialize_with = "deserialize_required_nullable")]
+            seed: Option<u32>,
             repetitions: u32,
         }
 
         let wire = Wire::deserialize(deserializer)?;
         Ok(Self {
             kind: wire.kind,
-            strategy: wire.strategy.into_option(),
+            strategy: wire.strategy,
             mode: wire.mode,
-            seed: wire.seed.into_option(),
+            seed: wire.seed,
             repetitions: wire.repetitions,
         })
     }
@@ -2916,6 +2896,19 @@ mod tests {
             return validate_json_schema_subset(root, target, value, path);
         }
 
+        // Report requirements owned by this object before evaluating dependent
+        // branches so a missing discriminator is not hidden by a generic
+        // `oneOf` mismatch.
+        if let Some(object) = value.as_object() {
+            if let Some(required) = node.get("required").and_then(serde_json::Value::as_array) {
+                for key in required.iter().filter_map(serde_json::Value::as_str) {
+                    if !object.contains_key(key) {
+                        return Err(format!("{path}: missing required property {key}"));
+                    }
+                }
+            }
+        }
+
         if let Some(branches) = node.get("oneOf").and_then(serde_json::Value::as_array) {
             let matches = branches
                 .iter()
@@ -2949,14 +2942,6 @@ mod tests {
         }
 
         if let Some(object) = value.as_object() {
-            if let Some(required) = node.get("required").and_then(serde_json::Value::as_array) {
-                for key in required.iter().filter_map(serde_json::Value::as_str) {
-                    if !object.contains_key(key) {
-                        return Err(format!("{path}: missing required property {key}"));
-                    }
-                }
-            }
-
             let properties = node
                 .get("properties")
                 .and_then(serde_json::Value::as_object);
@@ -3265,6 +3250,27 @@ mod tests {
         }
     }
 
+    fn make_valid_dry_deposition_manifest() -> ValidationCaseManifest {
+        let mut manifest = make_minimal_manifest();
+        manifest.physics_switches.dry_deposition = true;
+        manifest.release.species.id = "SPECIES_040".to_string();
+        manifest.release.species.physics_contract = SpeciesPhysicsContractRef {
+            profile: SpeciesPhysicsProfile::Species040DryConstantV1,
+            id: SPECIES_040_DRY_CONTRACT_ID.to_string(),
+            version: 1,
+            path: SPECIES_040_DRY_CONTRACT_PATH.to_string(),
+            git_blob_sha: SPECIES_040_DRY_CONTRACT_BLOB.to_string(),
+        };
+        manifest.deposition = Some(DepositionSpec {
+            dry_deposition_velocity_m_s: 0.02,
+            dry_reference_height_m: Some(15.0),
+            wet_scavenging_coefficient_s_inv: 0.0,
+            wet_precipitating_fraction: 0.0,
+        });
+        manifest.validate().expect("canonical dry-deposition fixture must validate");
+        manifest
+    }
+
     #[test]
     fn oracle_execution_policy_controls_oracle_artifact_requirements() {
         let mut required = make_minimal_manifest();
@@ -3389,6 +3395,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn schema_subset_required_precheck_preserves_one_of_semantics() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "required": ["kind"],
+            "oneOf": [
+                {
+                    "required": ["kind", "left_value"],
+                    "properties": {
+                        "kind": {"const": "left"},
+                        "left_value": {"type": "integer"}
+                    }
+                },
+                {
+                    "required": ["kind", "right_value"],
+                    "properties": {
+                        "kind": {"const": "right"},
+                        "right_value": {"type": "string"}
+                    }
+                }
+            ]
+        });
+
+        let right_branch = serde_json::json!({"kind": "right", "right_value": "ok"});
+        validate_json_schema_subset(&schema, &schema, &right_branch, "$")
+            .expect("one failing branch and one matching branch must satisfy oneOf");
+
+        let missing_branch_field = serde_json::json!({"kind": "right"});
+        let error = validate_json_schema_subset(&schema, &schema, &missing_branch_field, "$")
+            .expect_err("branch-local required fields must still be enforced");
+        assert!(error.contains("oneOf expected exactly one matching branch, got 0"));
+
+        let overlapping_schema = serde_json::json!({
+            "type": "object",
+            "required": ["value"],
+            "oneOf": [
+                {"required": ["value"]},
+                {"properties": {"value": {"type": "integer"}}}
+            ]
+        });
+        let ambiguous = serde_json::json!({"value": 1});
+        let error =
+            validate_json_schema_subset(&overlapping_schema, &overlapping_schema, &ambiguous, "$")
+                .expect_err("two matching branches must violate exactly-one semantics");
+        assert!(error.contains("oneOf expected exactly one matching branch, got 2"));
+    }
 
     #[test]
     fn write_failure_uses_write_file_error() {
@@ -3519,6 +3571,19 @@ mod tests {
 
     #[test]
     fn direct_serde_deserialization_requires_nullable_oracle_state_fields() {
+        let valid = minimal_manifest_json();
+        let manifest = serde_json::from_value::<ValidationCaseManifest>(valid.clone())
+            .expect("direct serde must accept valid oracle strategy and seed values");
+        let oracle = manifest.stochastic.oracle_seed.as_ref().expect("oracle identity");
+        assert!(oracle.strategy.is_some());
+        assert_eq!(oracle.seed, Some(1));
+        let serialized = serde_json::to_value(&manifest).expect("serialize valid oracle identity");
+        assert_eq!(
+            serialized["stochastic"]["oracle_seed"]["strategy"],
+            valid["stochastic"]["oracle_seed"]["strategy"]
+        );
+        assert_eq!(serialized["stochastic"]["oracle_seed"]["seed"], 1);
+
         for field in ["strategy", "seed"] {
             let mut raw = minimal_manifest_json();
             raw["stochastic"]["oracle_seed"]
@@ -3532,6 +3597,36 @@ mod tests {
                 "direct serde error must name omitted {field}: {err}"
             );
         }
+
+        for (field, malformed) in [
+            ("strategy", serde_json::json!("not-an-object")),
+            ("seed", serde_json::json!("not-an-integer")),
+        ] {
+            let mut raw = minimal_manifest_json();
+            raw["stochastic"]["oracle_seed"][field] = malformed;
+            serde_json::from_value::<ValidationCaseManifest>(raw)
+                .expect_err("direct serde must reject malformed nullable oracle values");
+        }
+
+        let mut raw = minimal_manifest_json();
+        raw["stochastic"]["oracle_seed"] = serde_json::json!({
+            "kind": "pristine-oracle",
+            "strategy": null,
+            "mode": "default",
+            "seed": null,
+            "repetitions": 1
+        });
+        let manifest = serde_json::from_value::<ValidationCaseManifest>(raw)
+            .expect("direct serde must accept explicit null oracle fields");
+        manifest
+            .validate()
+            .expect("explicit null oracle state must remain contract-valid");
+        let oracle = manifest.stochastic.oracle_seed.expect("oracle identity");
+        assert!(oracle.strategy.is_none());
+        assert!(oracle.seed.is_none());
+        let serialized = serde_json::to_value(&oracle).expect("serialize null oracle identity");
+        assert!(serialized.get("strategy").expect("strategy key").is_null());
+        assert!(serialized.get("seed").expect("seed key").is_null());
     }
 
     #[test]
@@ -5167,6 +5262,11 @@ mod tests {
         serde_json::to_value(make_minimal_manifest()).expect("serialize minimal")
     }
 
+    fn valid_real_weather_manifest_json() -> serde_json::Value {
+        serde_json::to_value(load_checked_in_case("ETEX-MINI-013"))
+            .expect("serialize valid real-weather fixture")
+    }
+
     fn parse_json_value(value: &serde_json::Value) -> Result<ValidationCaseManifest, ValidationCaseError> {
         let text = serde_json::to_string(value).expect("re-serialize");
         ValidationCaseManifest::parse(&text, Path::new("test.json"))
@@ -5432,16 +5532,7 @@ mod tests {
 
     #[test]
     fn active_deposition_requires_explicit_forcing_block() {
-        let mut manifest = make_minimal_manifest();
-        manifest.physics_switches.dry_deposition = true;
-        manifest.release.species.id = "SPECIES_040".to_string();
-        manifest.release.species.physics_contract = SpeciesPhysicsContractRef {
-            profile: SpeciesPhysicsProfile::Species040DryConstantV1,
-            id: SPECIES_040_DRY_CONTRACT_ID.to_string(),
-            version: 1,
-            path: SPECIES_040_DRY_CONTRACT_PATH.to_string(),
-            git_blob_sha: SPECIES_040_DRY_CONTRACT_BLOB.to_string(),
-        };
+        let mut manifest = make_valid_dry_deposition_manifest();
         manifest.deposition = None;
         let err = manifest.validate().expect_err("active dry deposition needs forcing");
         assert!(matches!(
@@ -5485,24 +5576,25 @@ mod tests {
 
     #[test]
     fn dry_deposition_requires_positive_velocity_and_height() {
-        let mut manifest = make_minimal_manifest();
-        manifest.physics_switches.dry_deposition = true;
-        manifest.deposition = Some(DepositionSpec {
-            dry_deposition_velocity_m_s: 0.0,
-            dry_reference_height_m: Some(15.0),
-            wet_scavenging_coefficient_s_inv: 0.0,
-            wet_precipitating_fraction: 0.0,
-        });
-        assert!(manifest.validate().is_err());
-        manifest.deposition = Some(DepositionSpec {
-            dry_deposition_velocity_m_s: 0.02,
-            dry_reference_height_m: None,
-            wet_scavenging_coefficient_s_inv: 0.0,
-            wet_precipitating_fraction: 0.0,
-        });
+        let mut manifest = make_valid_dry_deposition_manifest();
+        manifest.deposition.as_mut().expect("deposition").dry_deposition_velocity_m_s = 0.0;
+        let err = manifest.validate().expect_err("zero dry-deposition velocity fails");
+        assert!(
+            matches!(err, ValidationCaseError::InvalidPhysicsSwitches { .. })
+                && err.to_string().contains("dry_deposition_velocity_m_s"),
+            "unexpected: {err}"
+        );
+
+        let mut manifest = make_valid_dry_deposition_manifest();
+        manifest.deposition.as_mut().expect("deposition").dry_reference_height_m = None;
         let err = manifest.validate().expect_err("missing href fails");
         assert!(
-            matches!(err, ValidationCaseError::MissingField { .. }),
+            matches!(
+                err,
+                ValidationCaseError::MissingField {
+                    field: "deposition.dry_reference_height_m"
+                }
+            ),
             "unexpected: {err}"
         );
     }
@@ -5525,42 +5617,16 @@ mod tests {
 
     #[test]
     fn real_weather_meteorology_missing_fields_rejected() {
-        let mut raw = minimal_manifest_json();
-        raw["wind"] = serde_json::json!({
-            "profile": "real_weather",
-            "meteorology": {
-                "dataset_id": "test",
-                "version": "1",
-                "source_path": "path",
-                "digest": "manifest:path",
-                "temporal_coverage": ["20240101000000", "20240101010000"],
-                "horizontal_coord": "test",
-                "vertical_coord": "test",
-                "required_fields": ["u"],
-                "candidate_transformation": {"description": "d", "script": "s", "version": "v"},
-                "oracle_transformation": {"description": "d", "script": "s", "version": "v"}
-            }
-        });
-        // Should pass
+        let raw = valid_real_weather_manifest_json();
         parse_json_value(&raw).expect("complete meteorology passes");
 
-        // Missing dataset_id
-        let mut raw2 = minimal_manifest_json();
-        raw2["wind"] = serde_json::json!({
-            "profile": "real_weather",
-            "meteorology": {
-                "version": "1",
-                "source_path": "path",
-                "digest": "manifest:path",
-                "temporal_coverage": ["20240101000000", "20240101010000"],
-                "horizontal_coord": "test",
-                "vertical_coord": "test",
-                "required_fields": ["u"],
-                "candidate_transformation": {"description": "d", "script": "s", "version": "v"},
-                "oracle_transformation": {"description": "d", "script": "s", "version": "v"}
-            }
-        });
-        let err = parse_json_value(&raw2).expect_err("missing dataset_id fails");
+        let mut missing_dataset_id = raw;
+        missing_dataset_id["wind"]["meteorology"]
+            .as_object_mut()
+            .expect("meteorology object")
+            .remove("dataset_id");
+        let err =
+            parse_json_value(&missing_dataset_id).expect_err("missing dataset_id fails");
         let rendered = err.to_string();
         assert!(
             rendered.contains("dataset_id") || rendered.contains("missing field"),

@@ -27,6 +27,7 @@ use flexpart_gpu::meteorology::{
 };
 use serde_json::Value;
 use std::path::Path;
+use std::process::Command;
 
 const ABS_TOL: f64 = 1.0e-6;
 const REL_TOL: f64 = 1.0e-5;
@@ -142,6 +143,19 @@ fn gregorian(epoch_seconds: i64) -> RequestedSampleTime {
 
 fn comparison_policy() -> ComparisonPolicy {
     ComparisonPolicy::new(ABS_TOL, REL_TOL).expect("test comparison policy must be valid")
+}
+
+fn candidate_revision() -> String {
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("read candidate Git revision");
+    assert!(output.status.success(), "git rev-parse HEAD must succeed");
+    String::from_utf8(output.stdout)
+        .expect("Git revision must be UTF-8")
+        .trim()
+        .to_string()
 }
 
 fn pinned_oracle_queries() -> Vec<OracleQuery> {
@@ -351,6 +365,30 @@ fn test_gpu_linear_interior_interpolation() {
 }
 
 #[test]
+fn test_gpu_non_finite_output_fails_closed() {
+    let Some(ctx) = try_gpu_context() else {
+        assert_skipped_evidence_fails_closed();
+        return;
+    };
+    let kernel = TemporalInterpolationKernel::new(&ctx).expect("temporal pipeline");
+    let snapshots = [wind_snapshot(0, f32::MAX), wind_snapshot(3600, f32::MAX)];
+    let refs: Vec<&Snapshot> = snapshots.iter().collect();
+
+    let error = pollster::block_on(sample_field_gpu(
+        &ctx,
+        FieldId::WindU,
+        &refs,
+        gregorian(1800),
+        &kernel,
+    ))
+    .expect_err("non-finite GPU output must fail closed");
+    assert!(matches!(
+        error,
+        GpuTemporalError::NonFiniteOutputValue { element_index: 0 }
+    ));
+}
+
+#[test]
 fn test_gpu_invalid_duplicate_non_monotonic_fail_closed() {
     let Some(ctx) = try_gpu_context() else {
         assert_skipped_evidence_fails_closed();
@@ -487,6 +525,7 @@ fn test_gpu_vs_oracle_parity() {
     let report = pollster::block_on(build_temporal_gpu_report(
         &ctx,
         "oracle-temporal-bilinear",
+        &candidate_revision(),
         FieldId::WindU,
         &refs,
         comparison_policy(),
@@ -588,6 +627,10 @@ fn test_gpu_vs_oracle_parity() {
         gpu_evidence["execution"]["calculation_path"].as_str(),
         Some("wgsl_device")
     );
+    assert_eq!(
+        gpu_evidence["candidate"]["revision"].as_str(),
+        Some(candidate_revision().as_str())
+    );
 }
 
 #[test]
@@ -603,6 +646,7 @@ fn test_gpu_evidence_fails_closed_on_contradiction() {
     let mut report = pollster::block_on(build_temporal_gpu_report(
         &ctx,
         "oracle-temporal-bilinear",
+        &candidate_revision(),
         FieldId::WindU,
         &refs,
         comparison_policy(),
@@ -616,6 +660,7 @@ fn test_gpu_evidence_fails_closed_on_contradiction() {
     let fabricated = pollster::block_on(build_temporal_gpu_report(
         &ctx,
         "oracle-temporal-bilinear",
+        &candidate_revision(),
         FieldId::WindU,
         &refs,
         comparison_policy(),
@@ -625,6 +670,21 @@ fn test_gpu_evidence_fails_closed_on_contradiction() {
     assert!(matches!(
         fabricated,
         Err(GpuTemporalError::OracleContract { .. })
+    ));
+
+    let invalid_revision = pollster::block_on(build_temporal_gpu_report(
+        &ctx,
+        "oracle-temporal-bilinear",
+        "0.1.0",
+        FieldId::WindU,
+        &refs,
+        comparison_policy(),
+        &queries,
+        &kernel,
+    ));
+    assert!(matches!(
+        invalid_revision,
+        Err(GpuTemporalError::InvalidCandidateRevision { .. })
     ));
 
     let mut cpu_replacement = report.rows[0].gpu_evidence.clone();
@@ -637,6 +697,12 @@ fn test_gpu_evidence_fails_closed_on_contradiction() {
         .comparison
         .max_absolute_error = Some(0.25);
     assert!(contradictory_comparison.validate().is_err());
+
+    let original_revision = report.rows[1].gpu_evidence.candidate.revision.clone();
+    report.rows[1].gpu_evidence.candidate.revision =
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+    assert!(report.validate().is_err());
+    report.rows[1].gpu_evidence.candidate.revision = original_revision;
 
     let skipped = GpuCalculationEvidence {
         schema: GpuEvidenceSchema::default(),

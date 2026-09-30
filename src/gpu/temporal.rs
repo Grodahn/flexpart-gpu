@@ -81,6 +81,10 @@ pub enum GpuTemporalError {
     },
     #[error("non-finite value in temporal bracket buffer at element {element_index}")]
     NonFiniteBufferValue { element_index: usize },
+    #[error("non-finite GPU temporal output at element {element_index}")]
+    NonFiniteOutputValue { element_index: usize },
+    #[error("candidate revision must be a 40-character lowercase Git SHA, got {value}")]
+    InvalidCandidateRevision { value: String },
     #[error("failed to hash candidate inputs: {message}")]
     InputHash { message: String },
     #[error("request does not match the pinned #71 temporal oracle contract: {message}")]
@@ -357,6 +361,31 @@ fn validate_finite_values(values: &[f32]) -> Result<(), GpuTemporalError> {
                 element_index: index,
             });
         }
+    }
+    Ok(())
+}
+
+fn validate_finite_output_values(values: &[f32]) -> Result<(), GpuTemporalError> {
+    for (element_index, value) in values.iter().enumerate() {
+        if !value.is_finite() {
+            return Err(GpuTemporalError::NonFiniteOutputValue { element_index });
+        }
+    }
+    Ok(())
+}
+
+fn is_lowercase_git_sha(revision: &str) -> bool {
+    revision.len() == 40
+        && revision
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn validate_candidate_revision(revision: &str) -> Result<(), GpuTemporalError> {
+    if !is_lowercase_git_sha(revision) {
+        return Err(GpuTemporalError::InvalidCandidateRevision {
+            value: revision.to_string(),
+        });
     }
     Ok(())
 }
@@ -674,6 +703,7 @@ pub async fn sample_field_gpu(
 
     dispatch_temporal_blend_and_wait(ctx, &bracket_buffers, &output, &uniforms, &bracket, kernel)?;
     let values = download_temporal_output(ctx, &output).await?;
+    validate_finite_output_values(&values)?;
 
     Ok(TemporalGpuSample {
         field_id,
@@ -834,11 +864,13 @@ impl TemporalGpuReport {
                 "temporal GPU report must contain all three pinned oracle rows",
             ));
         }
+        let candidate_revision = &self.rows[0].gpu_evidence.candidate.revision;
         for (row, expected_time) in self.rows.iter().zip([0, 1800, 3600]) {
             if row.field_id != self.field_id
                 || row.comparison_policy != self.comparison_policy
                 || row.requested_time_epoch_seconds != expected_time
                 || row.element_index != 0
+                || row.gpu_evidence.candidate.revision != *candidate_revision
                 || !self
                     .source_timestamps_epoch_seconds
                     .contains(&row.source_timestamps.lower_epoch_seconds)
@@ -847,7 +879,7 @@ impl TemporalGpuReport {
                     .contains(&row.source_timestamps.upper_epoch_seconds)
             {
                 return Err(GpuEvidenceError::InvalidComparisonState(
-                    "temporal GPU row metadata contradicts its report",
+                    "temporal GPU row metadata or candidate revision contradicts its report",
                 ));
             }
             row.validate()?;
@@ -896,6 +928,11 @@ impl TemporalGpuRow {
         if self.gpu_evidence.comparison != comparison {
             return Err(GpuEvidenceError::InvalidComparisonState(
                 "embedded GPU comparison contradicts temporal row values or policy",
+            ));
+        }
+        if !is_lowercase_git_sha(&self.gpu_evidence.candidate.revision) {
+            return Err(GpuEvidenceError::InvalidComparisonState(
+                "candidate revision is not a lowercase Git commit SHA",
             ));
         }
         let expected_case_id = format!(
@@ -956,10 +993,12 @@ fn build_temporal_gpu_row(
     comparison_policy: ComparisonPolicy,
     lower_values: &[f32],
     upper_values: &[f32],
+    candidate_revision: &str,
 ) -> Result<TemporalGpuRow, GpuTemporalError> {
     if !gpu_value.is_finite() || !oracle_value.is_finite() {
         return Err(GpuTemporalError::Temporal(TemporalError::NonFiniteResult));
     }
+    validate_candidate_revision(candidate_revision)?;
     let comparison = compare_finite_values(
         &[f64::from(oracle_value)],
         &[f64::from(gpu_value)],
@@ -1011,7 +1050,7 @@ fn build_temporal_gpu_row(
         case_id,
         candidate: GpuCandidateEvidence {
             implementation_id: TEMPORAL_GPU_IMPLEMENTATION_ID.to_string(),
-            revision: env!("CARGO_PKG_VERSION").to_string(),
+            revision: candidate_revision.to_string(),
             shader_sha256: shader_sha256(),
             input_sha256: input_sha,
         },
@@ -1136,16 +1175,18 @@ fn validate_pinned_oracle_contract(
 ///
 /// # Errors
 /// Returns [`GpuTemporalError`] for empty queries, out-of-range elements,
-/// validation failures or GPU/evidence failures.
+/// invalid candidate provenance, validation failures or GPU/evidence failures.
 pub async fn build_temporal_gpu_report(
     ctx: &GpuContext,
     scenario_id: &str,
+    candidate_revision: &str,
     field_id: FieldId,
     snapshots: &[&Snapshot],
     comparison_policy: ComparisonPolicy,
     queries: &[temporal::OracleQuery],
     kernel: &TemporalInterpolationKernel,
 ) -> Result<TemporalGpuReport, GpuTemporalError> {
+    validate_candidate_revision(candidate_revision)?;
     if queries.is_empty() {
         return Err(GpuTemporalError::Temporal(
             TemporalError::EmptyOracleQueries,
@@ -1214,6 +1255,7 @@ pub async fn build_temporal_gpu_report(
             comparison_policy,
             lower_values,
             upper_values,
+            candidate_revision,
         )?);
     }
 

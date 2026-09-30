@@ -65,6 +65,7 @@ jobs:
           test -f target/temporal-gpu-evidence.json
           python3 - <<'PY'
           import json
+          import os
           from pathlib import Path
 
           report = json.loads(Path("target/temporal-gpu-evidence.json").read_text(encoding="utf-8"))
@@ -81,6 +82,7 @@ jobs:
               assert evidence["execution"]["status"] == "passed"
               assert evidence["execution"]["calculation_path"] == "wgsl_device"
               assert evidence["execution"]["adapter"]["adapter_class"] == "software_wgsl"
+              assert evidence["candidate"]["revision"] == os.environ["GITHUB_SHA"]
               assert evidence["oracle"]["revision"] == "c70586c2b7f5258850705325881c61f557ea9bd8"
               assert evidence["comparison"]["verdict"] == "passed"
           PY

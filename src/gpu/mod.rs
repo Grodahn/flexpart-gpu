@@ -123,11 +123,12 @@ pub use preflight::{
 };
 pub use rng::{sample_philox_uniform4_gpu, GpuPhiloxError, PhiloxUniformBlock};
 pub use temporal::{
-    build_temporal_gpu_report, build_temporal_gpu_row, create_temporal_bracket_buffers,
+    build_temporal_gpu_report, create_temporal_bracket_buffers,
     create_temporal_output_buffer, create_temporal_uniform_buffer, default_comparison_policy,
     dispatch_temporal_blend_and_wait, download_temporal_output, encode_temporal_blend,
     sample_field_gpu, GpuTemporalError, TemporalBlendOutput, TemporalBracketBuffers,
-    TemporalGpuReport, TemporalGpuRow, TemporalGpuSample, TemporalInterpolationKernel,
+    TemporalBlendUniforms, TemporalGpuReport, TemporalGpuRow, TemporalGpuSample,
+    TemporalInterpolationKernel,
     TEMPORAL_GPU_CANDIDATE_DESCRIPTION, TEMPORAL_GPU_IMPLEMENTATION_ID,
     TEMPORAL_GPU_REPORT_SCHEMA_ID, TEMPORAL_GPU_REPORT_SCHEMA_VERSION,
     TEMPORAL_ORACLE_EXECUTABLE_SHA256, TEMPORAL_ORACLE_IMPLEMENTATION_ID,

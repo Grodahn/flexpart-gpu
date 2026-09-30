@@ -11,10 +11,11 @@
 // unsupported extrapolation rejection). This kernel executes only the
 // elementwise blend for one pre-validated bracketing pair:
 //
-//   output[i] = lower[i] * w_lower + upper[i] * w_upper
+//   output[i] = (lower[i] * dt2 + upper[i] * dt1) * dtt
 //
-// where (w_lower, w_upper) = (dt2*dtt, dt1*dtt) are the frozen #71/#74
-// temporal weights derived on the host in f64 and passed as f32 uniforms.
+// where (dt1, dt2, dtt) are the frozen #71/#74 temporal weights passed as
+// f32 uniforms. Endpoint requests select the source value directly so the
+// canonical "unchanged snapshot" guarantee does not depend on rounding.
 // Accumulated-field/reset semantics are out of scope and must not enter here.
 //
 // Buffer contract:
@@ -23,13 +24,13 @@
 // - binding 2: blended output values, f32[element_count], read-write
 //   (GPU-resident for #76 composition; host readback only at explicit
 //   validation/output boundaries)
-// - binding 3: uniform params (w_lower, w_upper, element_count, pad)
+// - binding 3: uniform params (dt1, dt2, dtt, element_count)
 
 struct TemporalBlendParams {
-    w_lower: f32,
-    w_upper: f32,
+    dt1: f32,
+    dt2: f32,
+    dtt: f32,
     element_count: u32,
-    _pad0: u32,
 };
 
 @group(0) @binding(0)
@@ -50,5 +51,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     if (idx >= params.element_count) {
         return;
     }
-    blended_values[idx] = lower_values[idx] * params.w_lower + upper_values[idx] * params.w_upper;
+    if (params.dt1 == 0.0) {
+        blended_values[idx] = lower_values[idx];
+    } else if (params.dt2 == 0.0) {
+        blended_values[idx] = upper_values[idx];
+    } else {
+        blended_values[idx] =
+            (lower_values[idx] * params.dt2 + upper_values[idx] * params.dt1) * params.dtt;
+    }
 }

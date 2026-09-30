@@ -58,6 +58,32 @@ jobs:
             exit 1
           fi
           grep -q "software_adapter=true" target/ci-gate/sw-wgpu-advection.log
+      - name: Prove temporal interpolation against the pinned FLEXPART oracle
+        run: |
+          set -euo pipefail
+          cargo test --test temporal_gpu test_gpu_vs_oracle_parity -- --exact --nocapture 2>&1 | tee target/ci-gate/temporal-gpu.log
+          test -f target/temporal-gpu-evidence.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("target/temporal-gpu-evidence.json").read_text(encoding="utf-8"))
+          assert report["schema"] == {
+              "id": "flexpart-gpu.temporal-gpu-evidence",
+              "version": 1,
+          }
+          assert report["scenario_id"] == "oracle-temporal-bilinear"
+          assert report["status"] == "pass"
+          assert len(report["rows"]) == 3
+          for row in report["rows"]:
+              assert row["row_verdict"] == "pass"
+              evidence = row["gpu_evidence"]
+              assert evidence["execution"]["status"] == "passed"
+              assert evidence["execution"]["calculation_path"] == "wgsl_device"
+              assert evidence["execution"]["adapter"]["adapter_class"] == "software_wgsl"
+              assert evidence["oracle"]["revision"] == "c70586c2b7f5258850705325881c61f557ea9bd8"
+              assert evidence["comparison"]["verdict"] == "passed"
+          PY
       - name: Run corpus deterministic subset (Issue #6, point 2)
         run: |
           set -euo pipefail
@@ -92,5 +118,7 @@ jobs:
             target/ci-gate/gpu-preflight.json
             target/ci-gate/gpu-preflight.log
             target/ci-gate/sw-wgpu-advection.log
+            target/ci-gate/temporal-gpu.log
             target/ci-gate/corpus-subset.log
+            target/temporal-gpu-evidence.json
           retention-days: 30

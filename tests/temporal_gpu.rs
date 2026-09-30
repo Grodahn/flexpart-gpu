@@ -17,8 +17,8 @@ use flexpart_gpu::gpu::{
 };
 use flexpart_gpu::meteorology::{
     temporal::{
-        OracleQuery, RequestedSampleTime, TemporalApplication, TemporalError, Tolerance,
-        resolve_temporal_bracket,
+        resolve_temporal_bracket, OracleDts, OracleQuery, RequestedSampleTime, TemporalApplication,
+        TemporalError,
     },
     Axis, Calendar, Field, FieldId, FieldTime, HorizontalGrid, HorizontalStaggering,
     LongitudeDomain, SchemaIdentity, SignConvention, Snapshot, StorageOrder, TemporalKind,
@@ -108,7 +108,11 @@ fn wind_snapshot(epoch_seconds: i64, value: f32) -> Snapshot {
         sign: SignConvention::PositiveEastward,
         horizontal_staggering: HorizontalStaggering::CellCenter,
         vertical_staggering: VerticalStaggering::NotApplicable,
-        time: field_time(Calendar::Gregorian, TemporalKind::Instantaneous, epoch_seconds),
+        time: field_time(
+            Calendar::Gregorian,
+            TemporalKind::Instantaneous,
+            epoch_seconds,
+        ),
         values: vec![value],
     })
 }
@@ -123,13 +127,59 @@ fn temperature_snapshot(epoch_seconds: i64, values: Vec<f32>) -> Snapshot {
         sign: SignConvention::SignedScalar,
         horizontal_staggering: HorizontalStaggering::CellCenter,
         vertical_staggering: VerticalStaggering::LevelCenter,
-        time: field_time(Calendar::Gregorian, TemporalKind::Instantaneous, epoch_seconds),
+        time: field_time(
+            Calendar::Gregorian,
+            TemporalKind::Instantaneous,
+            epoch_seconds,
+        ),
         values,
     })
 }
 
 fn gregorian(epoch_seconds: i64) -> RequestedSampleTime {
     RequestedSampleTime::new(Calendar::Gregorian, epoch_seconds)
+}
+
+fn comparison_policy() -> ComparisonPolicy {
+    ComparisonPolicy::new(ABS_TOL, REL_TOL).expect("test comparison policy must be valid")
+}
+
+fn pinned_oracle_queries() -> Vec<OracleQuery> {
+    vec![
+        OracleQuery {
+            requested_time_epoch_seconds: 0,
+            element_index: 0,
+            oracle_value: 10.0,
+            oracle_dts: Some(OracleDts {
+                dt1_seconds: 0.0,
+                dt2_seconds: 3600.0,
+                inverse_span_per_second: 0.000_277_777_784_503_996_37,
+            }),
+            expected_application: Some(TemporalApplication::FirstEndpoint),
+        },
+        OracleQuery {
+            requested_time_epoch_seconds: 1800,
+            element_index: 0,
+            oracle_value: 15.0,
+            oracle_dts: Some(OracleDts {
+                dt1_seconds: 1800.0,
+                dt2_seconds: 1800.0,
+                inverse_span_per_second: 0.000_277_777_784_503_996_37,
+            }),
+            expected_application: Some(TemporalApplication::LinearInterior),
+        },
+        OracleQuery {
+            requested_time_epoch_seconds: 3600,
+            element_index: 0,
+            oracle_value: 20.0,
+            oracle_dts: Some(OracleDts {
+                dt1_seconds: 3600.0,
+                dt2_seconds: 0.0,
+                inverse_span_per_second: 0.000_277_777_784_503_996_37,
+            }),
+            expected_application: Some(TemporalApplication::LastEndpoint),
+        },
+    ]
 }
 
 fn assert_skipped_evidence_fails_closed() {
@@ -139,10 +189,10 @@ fn assert_skipped_evidence_fails_closed() {
         candidate: GpuCandidateEvidence {
             implementation_id: "temporal-gpu".to_string(),
             revision: "0.1.0".to_string(),
-            shader_sha256:
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
-            input_sha256:
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+            shader_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_string(),
+            input_sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                .to_string(),
         },
         execution: GpuExecutionEvidence {
             status: GpuExecutionStatus::Skipped,
@@ -169,16 +219,26 @@ fn test_gpu_first_endpoint() {
         assert_skipped_evidence_fails_closed();
         return;
     };
-    let kernel = TemporalInterpolationKernel::new(&ctx);
+    let kernel = TemporalInterpolationKernel::new(&ctx).expect("temporal pipeline");
     let snapshots = [wind_snapshot(0, 10.0), wind_snapshot(3600, 20.0)];
     let refs: Vec<&Snapshot> = snapshots.iter().collect();
 
-    let sample = pollster::block_on(sample_field_gpu(&ctx, FieldId::WindU, &refs, gregorian(0), &kernel))
-        .expect("GPU first endpoint must succeed");
+    let sample = pollster::block_on(sample_field_gpu(
+        &ctx,
+        FieldId::WindU,
+        &refs,
+        gregorian(0),
+        &kernel,
+    ))
+    .expect("GPU first endpoint must succeed");
     assert_eq!(sample.application, TemporalApplication::FirstEndpoint);
     assert_eq!(sample.source_timestamps.lower_epoch_seconds, 0);
     assert_eq!(sample.source_timestamps.upper_epoch_seconds, 3600);
-    assert_close(f64::from(sample.values[0]), 10.0, "GPU first endpoint VALUE");
+    assert_close(
+        f64::from(sample.values[0]),
+        10.0,
+        "GPU first endpoint VALUE",
+    );
     assert_close(sample.weights.dt1_seconds, 0.0, "GPU first endpoint dt1");
     assert_close(sample.weights.dt2_seconds, 3600.0, "GPU first endpoint dt2");
     assert!(!ctx.device_name().is_empty());
@@ -190,13 +250,18 @@ fn test_gpu_last_endpoint() {
         assert_skipped_evidence_fails_closed();
         return;
     };
-    let kernel = TemporalInterpolationKernel::new(&ctx);
+    let kernel = TemporalInterpolationKernel::new(&ctx).expect("temporal pipeline");
     let snapshots = [wind_snapshot(0, 10.0), wind_snapshot(3600, 20.0)];
     let refs: Vec<&Snapshot> = snapshots.iter().collect();
 
-    let sample =
-        pollster::block_on(sample_field_gpu(&ctx, FieldId::WindU, &refs, gregorian(3600), &kernel))
-            .expect("GPU last endpoint must succeed");
+    let sample = pollster::block_on(sample_field_gpu(
+        &ctx,
+        FieldId::WindU,
+        &refs,
+        gregorian(3600),
+        &kernel,
+    ))
+    .expect("GPU last endpoint must succeed");
     assert_eq!(sample.application, TemporalApplication::LastEndpoint);
     assert_close(f64::from(sample.values[0]), 20.0, "GPU last endpoint VALUE");
     assert_close(sample.weights.dt1_seconds, 3600.0, "GPU last endpoint dt1");
@@ -209,7 +274,7 @@ fn test_gpu_exact_interior_source_timestamp() {
         assert_skipped_evidence_fails_closed();
         return;
     };
-    let kernel = TemporalInterpolationKernel::new(&ctx);
+    let kernel = TemporalInterpolationKernel::new(&ctx).expect("temporal pipeline");
     let snapshots = [
         temperature_snapshot(0, vec![270.0, 280.0, 290.0]),
         temperature_snapshot(1800, vec![272.5, 290.0, 307.5]),
@@ -244,14 +309,23 @@ fn test_gpu_linear_interior_interpolation() {
         assert_skipped_evidence_fails_closed();
         return;
     };
-    let kernel = TemporalInterpolationKernel::new(&ctx);
+    let kernel = TemporalInterpolationKernel::new(&ctx).expect("temporal pipeline");
     let snapshots = [wind_snapshot(0, 10.0), wind_snapshot(3600, 20.0)];
     let refs: Vec<&Snapshot> = snapshots.iter().collect();
-    let sample =
-        pollster::block_on(sample_field_gpu(&ctx, FieldId::WindU, &refs, gregorian(1800), &kernel))
-            .expect("GPU linear interior must succeed");
+    let sample = pollster::block_on(sample_field_gpu(
+        &ctx,
+        FieldId::WindU,
+        &refs,
+        gregorian(1800),
+        &kernel,
+    ))
+    .expect("GPU linear interior must succeed");
     assert_eq!(sample.application, TemporalApplication::LinearInterior);
-    assert_close(f64::from(sample.values[0]), 15.0, "GPU linear interior VALUE");
+    assert_close(
+        f64::from(sample.values[0]),
+        15.0,
+        "GPU linear interior VALUE",
+    );
     let (w_lower, w_upper) = sample.bracket.weights.normalized();
     assert_close(w_lower, 0.5, "midpoint lower weight");
     assert_close(w_upper, 0.5, "midpoint upper weight");
@@ -282,12 +356,18 @@ fn test_gpu_invalid_duplicate_non_monotonic_fail_closed() {
         assert_skipped_evidence_fails_closed();
         return;
     };
-    let kernel = TemporalInterpolationKernel::new(&ctx);
+    let kernel = TemporalInterpolationKernel::new(&ctx).expect("temporal pipeline");
 
     let duplicate = [wind_snapshot(0, 10.0), wind_snapshot(0, 20.0)];
     let dup_refs: Vec<&Snapshot> = duplicate.iter().collect();
-    let dup_err = pollster::block_on(sample_field_gpu(&ctx, FieldId::WindU, &dup_refs, gregorian(0), &kernel))
-            .expect_err("duplicate must fail closed");
+    let dup_err = pollster::block_on(sample_field_gpu(
+        &ctx,
+        FieldId::WindU,
+        &dup_refs,
+        gregorian(0),
+        &kernel,
+    ))
+    .expect_err("duplicate must fail closed");
     assert!(
         matches!(
             dup_err,
@@ -303,13 +383,13 @@ fn test_gpu_invalid_duplicate_non_monotonic_fail_closed() {
     let descending = [wind_snapshot(3600, 10.0), wind_snapshot(0, 20.0)];
     let desc_refs: Vec<&Snapshot> = descending.iter().collect();
     let desc_err = pollster::block_on(sample_field_gpu(
-            &ctx,
-            FieldId::WindU,
-            &desc_refs,
-            gregorian(0),
-            &kernel
-        ))
-        .expect_err("non-monotonic must fail closed");
+        &ctx,
+        FieldId::WindU,
+        &desc_refs,
+        gregorian(0),
+        &kernel,
+    ))
+    .expect_err("non-monotonic must fail closed");
     assert!(
         matches!(
             desc_err,
@@ -338,12 +418,18 @@ fn test_gpu_unsupported_extrapolation_fail_closed() {
         assert_skipped_evidence_fails_closed();
         return;
     };
-    let kernel = TemporalInterpolationKernel::new(&ctx);
+    let kernel = TemporalInterpolationKernel::new(&ctx).expect("temporal pipeline");
     let snapshots = [wind_snapshot(0, 10.0), wind_snapshot(3600, 20.0)];
     let refs: Vec<&Snapshot> = snapshots.iter().collect();
 
-    let before_err = pollster::block_on(sample_field_gpu(&ctx, FieldId::WindU, &refs, gregorian(-3600), &kernel))
-            .expect_err("before-first must fail closed");
+    let before_err = pollster::block_on(sample_field_gpu(
+        &ctx,
+        FieldId::WindU,
+        &refs,
+        gregorian(-3600),
+        &kernel,
+    ))
+    .expect_err("before-first must fail closed");
     assert!(
         matches!(
             before_err,
@@ -354,8 +440,14 @@ fn test_gpu_unsupported_extrapolation_fail_closed() {
         ),
         "unexpected before-first error: {before_err:?}"
     );
-    let after_err = pollster::block_on(sample_field_gpu(&ctx, FieldId::WindU, &refs, gregorian(7200), &kernel))
-            .expect_err("after-last must fail closed");
+    let after_err = pollster::block_on(sample_field_gpu(
+        &ctx,
+        FieldId::WindU,
+        &refs,
+        gregorian(7200),
+        &kernel,
+    ))
+    .expect_err("after-last must fail closed");
     assert!(
         matches!(
             after_err,
@@ -374,7 +466,7 @@ fn test_gpu_vs_oracle_parity() {
         assert_skipped_evidence_fails_closed();
         return;
     };
-    let kernel = TemporalInterpolationKernel::new(&ctx);
+    let kernel = TemporalInterpolationKernel::new(&ctx).expect("temporal pipeline");
     let snapshots = [wind_snapshot(0, 10.0), wind_snapshot(3600, 20.0)];
     let refs: Vec<&Snapshot> = snapshots.iter().collect();
 
@@ -390,48 +482,14 @@ fn test_gpu_vs_oracle_parity() {
     let golden_queries = temporal["golden"]["queries"].as_array().expect("queries");
     assert_eq!(golden_queries.len(), 3);
 
-    let queries = vec![
-        OracleQuery {
-            requested_time_epoch_seconds: 0,
-            element_index: 0,
-            oracle_value: 10.0,
-            oracle_dts: Some(flexpart_gpu::meteorology::temporal::OracleDts {
-                dt1_seconds: 0.0,
-                dt2_seconds: 3600.0,
-                inverse_span_per_second: 0.00027777778450399637,
-            }),
-            expected_application: Some(TemporalApplication::FirstEndpoint),
-        },
-        OracleQuery {
-            requested_time_epoch_seconds: 1800,
-            element_index: 0,
-            oracle_value: 15.0,
-            oracle_dts: Some(flexpart_gpu::meteorology::temporal::OracleDts {
-                dt1_seconds: 1800.0,
-                dt2_seconds: 1800.0,
-                inverse_span_per_second: 0.00027777778450399637,
-            }),
-            expected_application: Some(TemporalApplication::LinearInterior),
-        },
-        OracleQuery {
-            requested_time_epoch_seconds: 3600,
-            element_index: 0,
-            oracle_value: 20.0,
-            oracle_dts: Some(flexpart_gpu::meteorology::temporal::OracleDts {
-                dt1_seconds: 3600.0,
-                dt2_seconds: 0.0,
-                inverse_span_per_second: 0.00027777778450399637,
-            }),
-            expected_application: Some(TemporalApplication::LastEndpoint),
-        },
-    ];
+    let queries = pinned_oracle_queries();
 
     let report = pollster::block_on(build_temporal_gpu_report(
         &ctx,
         "oracle-temporal-bilinear",
         FieldId::WindU,
         &refs,
-        Tolerance::new(ABS_TOL, REL_TOL),
+        comparison_policy(),
         &queries,
         &kernel,
     ))
@@ -441,17 +499,27 @@ fn test_gpu_vs_oracle_parity() {
         report.schema.id, TEMPORAL_GPU_REPORT_SCHEMA_ID,
         "report schema must be temporal GPU evidence"
     );
-    assert_eq!(report.status, flexpart_gpu::meteorology::temporal::Verdict::Pass);
+    assert_eq!(
+        report.status,
+        flexpart_gpu::meteorology::temporal::Verdict::Pass
+    );
     assert_eq!(report.rows.len(), 3);
     for (row, golden) in report.rows.iter().zip(golden_queries) {
         let golden_value = golden["VALUE"][0].as_f64().expect("golden value");
-        assert_close(f64::from(row.gpu_value), golden_value, "GPU vs oracle VALUE");
+        assert_close(
+            f64::from(row.gpu_value),
+            golden_value,
+            "GPU vs oracle VALUE",
+        );
         assert_close(
             f64::from(row.oracle_value),
             golden_value,
             "oracle row vs golden",
         );
-        assert_eq!(row.row_verdict, flexpart_gpu::meteorology::temporal::Verdict::Pass);
+        assert_eq!(
+            row.row_verdict,
+            flexpart_gpu::meteorology::temporal::Verdict::Pass
+        );
         row.gpu_evidence
             .validate()
             .expect("GPU row evidence must validate");
@@ -473,10 +541,16 @@ fn test_gpu_vs_oracle_parity() {
     let out_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("target")
         .join("temporal-gpu-evidence.json");
+    std::fs::create_dir_all(out_path.parent().expect("evidence path has parent"))
+        .expect("create GPU evidence directory");
     std::fs::write(&out_path, &encoded).expect("write GPU evidence");
     let value: Value = serde_json::from_str(&encoded).expect("evidence must be valid JSON");
     assert_eq!(value["status"].as_str(), Some("pass"));
-    let row = value["rows"].as_array().expect("rows").first().expect("row");
+    let row = value["rows"]
+        .as_array()
+        .expect("rows")
+        .first()
+        .expect("row");
     for key in [
         "field_id",
         "element_index",
@@ -486,7 +560,7 @@ fn test_gpu_vs_oracle_parity() {
         "weights",
         "gpu_value",
         "oracle_value",
-        "tolerance",
+        "comparison_policy",
         "absolute_difference",
         "value_verdict",
         "weights_verdict",
@@ -497,7 +571,14 @@ fn test_gpu_vs_oracle_parity() {
         assert!(row.get(key).is_some(), "GPU row must record {key}");
     }
     let gpu_evidence = row.get("gpu_evidence").expect("gpu_evidence");
-    for key in ["schema", "case_id", "candidate", "execution", "oracle", "comparison"] {
+    for key in [
+        "schema",
+        "case_id",
+        "candidate",
+        "execution",
+        "oracle",
+        "comparison",
+    ] {
         assert!(
             gpu_evidence.get(key).is_some(),
             "GPU evidence must record {key}"
@@ -515,30 +596,47 @@ fn test_gpu_evidence_fails_closed_on_contradiction() {
         assert_skipped_evidence_fails_closed();
         return;
     };
-    let kernel = TemporalInterpolationKernel::new(&ctx);
+    let kernel = TemporalInterpolationKernel::new(&ctx).expect("temporal pipeline");
     let snapshots = [wind_snapshot(0, 10.0), wind_snapshot(3600, 20.0)];
     let refs: Vec<&Snapshot> = snapshots.iter().collect();
-    let queries = vec![OracleQuery {
-        requested_time_epoch_seconds: 1800,
-        element_index: 0,
-        oracle_value: 15.0,
-        oracle_dts: None,
-        expected_application: None,
-    }];
+    let queries = pinned_oracle_queries();
     let mut report = pollster::block_on(build_temporal_gpu_report(
         &ctx,
-        "contradiction-check",
+        "oracle-temporal-bilinear",
         FieldId::WindU,
         &refs,
-        Tolerance::new(ABS_TOL, REL_TOL),
+        comparison_policy(),
         &queries,
         &kernel,
     ))
     .expect("report must build");
 
+    let mut fabricated_queries = pinned_oracle_queries();
+    fabricated_queries[1].oracle_value = 15.5;
+    let fabricated = pollster::block_on(build_temporal_gpu_report(
+        &ctx,
+        "oracle-temporal-bilinear",
+        FieldId::WindU,
+        &refs,
+        comparison_policy(),
+        &fabricated_queries,
+        &kernel,
+    ));
+    assert!(matches!(
+        fabricated,
+        Err(GpuTemporalError::OracleContract { .. })
+    ));
+
     let mut cpu_replacement = report.rows[0].gpu_evidence.clone();
     cpu_replacement.execution.calculation_path = GpuCalculationPath::CpuReplacement;
     assert!(cpu_replacement.validate().is_err());
+
+    let mut contradictory_comparison = report.rows[0].clone();
+    contradictory_comparison
+        .gpu_evidence
+        .comparison
+        .max_absolute_error = Some(0.25);
+    assert!(contradictory_comparison.validate().is_err());
 
     let skipped = GpuCalculationEvidence {
         schema: GpuEvidenceSchema::default(),
@@ -546,10 +644,10 @@ fn test_gpu_evidence_fails_closed_on_contradiction() {
         candidate: GpuCandidateEvidence {
             implementation_id: "temporal-gpu".to_string(),
             revision: "0.1.0".to_string(),
-            shader_sha256:
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
-            input_sha256:
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+            shader_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_string(),
+            input_sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                .to_string(),
         },
         execution: GpuExecutionEvidence {
             status: GpuExecutionStatus::Skipped,
@@ -561,10 +659,10 @@ fn test_gpu_evidence_fails_closed_on_contradiction() {
         oracle: Some(PinnedOracleEvidence {
             implementation_id: "FLEXPART-11.1".to_string(),
             revision: "rev".to_string(),
-            executable_sha256:
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
-            output_sha256:
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+            executable_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_string(),
+            output_sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                .to_string(),
         }),
         comparison: flexpart_gpu::gpu::ComparisonEvidence::not_evaluated(),
     };
@@ -592,7 +690,7 @@ fn test_encode_composition_boundary_hides_nothing() {
         assert_skipped_evidence_fails_closed();
         return;
     };
-    let kernel = TemporalInterpolationKernel::new(&ctx);
+    let kernel = TemporalInterpolationKernel::new(&ctx).expect("temporal pipeline");
     let snapshots = [wind_snapshot(0, 10.0), wind_snapshot(3600, 20.0)];
     let refs: Vec<&Snapshot> = snapshots.iter().collect();
 
@@ -629,17 +727,29 @@ fn test_encode_composition_boundary_hides_nothing() {
         &ctx,
         &bracket_buffers,
         &output_end,
+        &uniforms_mid,
+        &bracket_end,
+        &kernel,
+        &mut encoder,
+    )
+    .expect_err("uniforms from another bracket must fail closed");
+    encode_temporal_blend(
+        &ctx,
+        &bracket_buffers,
+        &output_end,
         &uniforms_end,
         &bracket_end,
         &kernel,
         &mut encoder,
     )
-    .expect("second encode must succeed");
+    .expect("second valid encode must succeed");
     ctx.queue.submit(Some(encoder.finish()));
     let _ = ctx.device.poll(wgpu::Maintain::Wait);
 
-    let values_mid = pollster::block_on(download_temporal_output(&ctx, &output_mid)).expect("D2H mid");
-    let values_end = pollster::block_on(download_temporal_output(&ctx, &output_end)).expect("D2H end");
+    let values_mid =
+        pollster::block_on(download_temporal_output(&ctx, &output_mid)).expect("D2H mid");
+    let values_end =
+        pollster::block_on(download_temporal_output(&ctx, &output_end)).expect("D2H end");
     assert_close(f64::from(values_mid[0]), 15.0, "composed mid VALUE");
     assert_close(f64::from(values_end[0]), 20.0, "composed end VALUE");
 
@@ -653,9 +763,12 @@ fn test_encode_composition_boundary_hides_nothing() {
         &kernel,
     )
     .expect("dispatch convenience must succeed");
-    let values_conv = pollster::block_on(download_temporal_output(&ctx, &output_conv)).expect("D2H conv");
+    let values_conv =
+        pollster::block_on(download_temporal_output(&ctx, &output_conv)).expect("D2H conv");
     assert_close(f64::from(values_conv[0]), 15.0, "dispatch VALUE");
 
     let adapter = GpuAdapterEvidence::from_context(&ctx);
-    adapter.validate().expect("adapter provenance must validate");
+    adapter
+        .validate()
+        .expect("adapter provenance must validate");
 }

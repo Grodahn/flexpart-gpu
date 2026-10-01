@@ -16,6 +16,7 @@ pub mod deposition;
 pub mod evidence;
 pub mod gridding;
 pub mod hanna;
+pub mod horizontal;
 pub mod interpolation;
 pub mod langevin;
 pub mod langevin_fused;
@@ -90,6 +91,22 @@ pub use hanna::{
     compute_hanna_params_gpu, dispatch_hanna_params_gpu, dispatch_hanna_params_gpu_with_kernel,
     encode_hanna_params_gpu_with_kernel, GpuHannaError, HannaDispatchKernel,
     HannaParamsOutputBuffer,
+};
+pub use horizontal::{
+    build_horizontal_gpu_row, create_horizontal_output_buffer,
+    create_horizontal_query_buffers, create_horizontal_query_buffers_geographic,
+    create_horizontal_uniform_buffer, default_comparison_policy as default_horizontal_comparison_policy,
+    dispatch_horizontal_samples_and_wait, download_horizontal_output, encode_horizontal_samples,
+    horizontal_inputs_sha256, horizontal_shader_sha256, sample_horizontal_geographic_gpu,
+    sample_horizontal_gpu, GpuHorizontalError, HorizontalFieldBuffers, HorizontalGpuReport,
+    HorizontalGpuRow, HorizontalInterpolationKernel, HorizontalQueryBuffers,
+    HorizontalSampleOutput, HorizontalSampleQuery, HorizontalUniforms,
+    HORIZONTAL_GPU_ABSOLUTE_TOLERANCE, HORIZONTAL_GPU_CANDIDATE_DESCRIPTION,
+    HORIZONTAL_GPU_IMPLEMENTATION_ID, HORIZONTAL_GPU_RELATIVE_TOLERANCE,
+    HORIZONTAL_GPU_REPORT_SCHEMA_ID, HORIZONTAL_GPU_REPORT_SCHEMA_VERSION,
+    HORIZONTAL_ORACLE_EXECUTABLE_SHA256, HORIZONTAL_ORACLE_IMPLEMENTATION_ID,
+    HORIZONTAL_ORACLE_OUTPUT_SHA256_GEOGRAPHIC, HORIZONTAL_ORACLE_OUTPUT_SHA256_INTERIOR,
+    HORIZONTAL_ORACLE_OUTPUT_SHA256_PERIODIC, HORIZONTAL_ORACLE_REVISION,
 };
 pub use interpolation::{
     interpolate_wind_trilinear_gpu, GpuWindInterpolationError, WindInterpolationQuery,

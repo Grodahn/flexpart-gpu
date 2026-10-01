@@ -1,2 +1,17 @@
 *.sh text eol=lf
 reference/flexpart-11.1-seedable.patch text eol=lf
+
+# Canonical fixture text participates in exact-byte provenance. Keep its
+# checked-out LF bytes independent of core.autocrlf; binary fixtures remain
+# unclassified and byte-for-byte untouched by Git.
+fixtures/**/*.json text eol=lf
+fixtures/**/*.md text eol=lf
+fixtures/**/*.spec text eol=lf
+fixtures/**/*.txt text eol=lf
+fixtures/**/AGECLASSES text eol=lf
+fixtures/**/COMMAND text eol=lf
+fixtures/**/OUTGRID text eol=lf
+fixtures/**/RECEPTORS text eol=lf
+fixtures/**/RELEASES text eol=lf
+fixtures/**/SPECIES_024 text eol=lf
+fixtures/**/SPECIES_040 text eol=lf

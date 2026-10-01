@@ -17,9 +17,9 @@
 //!   and supported-domain checks;
 //! - geographic `lon/lat -> xt/yt` mapping with exact-endpoint snapping, so
 //!   provider metadata never enters the kernel;
-//! - conversion of validated `f64` coordinates to `f32` device queries, failing
+//! - conversion of validated cells and fractional distances to device queries, failing
 //!   closed on non-finite conversion;
-//! - derivation of expected indices/weights for evidence diagnostics only.
+//! - preservation of canonical cell indices/fractions and diagnostic weights.
 //!
 //! The host never computes the production sampled value. Supported bilinear
 //! combination executes in WGSL:
@@ -58,8 +58,8 @@ use super::{
     NumericalVerdict, PinnedOracleEvidence,
 };
 use crate::meteorology::horizontal::{
-    sample_horizontal, sample_horizontal_geographic, validate_horizontal_grid, HorizontalError,
-    HorizontalSample,
+    horizontal_sample_geometry, horizontal_sample_geometry_geographic, validate_horizontal_grid,
+    HorizontalError, HorizontalSampleGeometry,
 };
 use crate::meteorology::{HorizontalGrid, HorizontalStaggering, SchemaIdentity};
 
@@ -165,6 +165,16 @@ pub enum GpuHorizontalError {
         /// Device error text.
         message: String,
     },
+    /// A requested storage buffer exceeds the device's resource limits.
+    #[error("horizontal buffer {field} needs {bytes} bytes, exceeding device limit {limit}")]
+    BufferLimit {
+        /// Resource whose size was rejected.
+        field: &'static str,
+        /// Required storage bytes.
+        bytes: u64,
+        /// Maximum bytes allowed by this device.
+        limit: u64,
+    },
     /// A validated coordinate is not finite as `f32`.
     #[error("validated horizontal coordinate for {field} is not finite as f32")]
     NonFiniteDeviceCoordinate {
@@ -196,29 +206,69 @@ pub enum GpuHorizontalError {
 
 /// One device query in canonical grid-index space.
 ///
-/// `xt`/`yt` are the #72 grid indices uploaded as `f32`. Padding keeps the
-/// 16-byte storage stride required for `array<HorizontalQuery>`.
+/// `xt`/`yt` retain rounded grid coordinates for evidence. Integer cells and
+/// fractional distances preserve the canonical stencil. Padding keeps the
+/// 32-byte storage stride required for `array<HorizontalQuery>`.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct HorizontalSampleQuery {
     /// Canonical x grid index as `f32`.
     pub xt: f32,
     /// Canonical y grid index as `f32`.
     pub yt: f32,
+    ix: u32,
+    jy: u32,
+    ddx: f32,
+    ddy: f32,
     _pad0: f32,
     _pad1: f32,
 }
 
 impl HorizontalSampleQuery {
-    /// Build one device query from validated `f32` coordinates.
+    /// Build a query for exactly representable grid coordinates.
+    /// Use [`Self::from_geometry`] for host f64 coordinates to preserve the cell.
     #[must_use]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
     pub const fn new(xt: f32, yt: f32) -> Self {
         Self {
             xt,
             yt,
+            ix: xt as u32,
+            jy: yt as u32,
+            ddx: xt - (xt as u32) as f32,
+            ddy: yt - (yt as u32) as f32,
             _pad0: 0.0,
             _pad1: 0.0,
         }
+    }
+    /// Preserve the canonical cell before converting fractional distances to f32.
+    ///
+    /// # Errors
+    /// Returns an error if a cell index does not fit the device representation.
+    pub fn from_geometry(sample: &HorizontalSampleGeometry) -> Result<Self, GpuHorizontalError> {
+        let ix = u32::try_from(sample.ix).map_err(|_| GpuHorizontalError::ValueTooLarge {
+            field: "ix",
+            value: sample.ix,
+        })?;
+        let jy = u32::try_from(sample.jy).map_err(|_| GpuHorizontalError::ValueTooLarge {
+            field: "jy",
+            value: sample.jy,
+        })?;
+        #[allow(clippy::cast_possible_truncation)]
+        Ok(Self {
+            xt: sample.xt as f32,
+            yt: sample.yt as f32,
+            ix,
+            jy,
+            ddx: (sample.xt - f64::from(ix)) as f32,
+            ddy: (sample.yt - f64::from(jy)) as f32,
+            _pad0: 0.0,
+            _pad1: 0.0,
+        })
     }
 }
 
@@ -355,6 +405,8 @@ pub struct HorizontalFieldBuffers {
     ny: usize,
     is_periodic_x: bool,
     element_count: usize,
+    grid: HorizontalGrid,
+    field_sha256: String,
 }
 
 impl HorizontalFieldBuffers {
@@ -382,11 +434,9 @@ impl HorizontalFieldBuffers {
         }
         let is_periodic_x = validate_horizontal_grid(grid)?;
         let (nx, ny) = (grid.nx, grid.ny);
-        let expected = nx
-            .checked_mul(ny)
-            .ok_or(GpuHorizontalError::Horizontal(
-                HorizontalError::MalformedDimensions { nx, ny },
-            ))?;
+        let expected = nx.checked_mul(ny).ok_or(GpuHorizontalError::Horizontal(
+            HorizontalError::MalformedDimensions { nx, ny },
+        ))?;
         if field_values.len() != expected {
             return Err(GpuHorizontalError::Horizontal(
                 HorizontalError::ShapeMismatch {
@@ -403,31 +453,35 @@ impl HorizontalFieldBuffers {
             field: "ny",
             value: ny,
         })?;
-        let byte_len = field_values
-            .len()
-            .checked_mul(size_of::<f32>())
-            .ok_or(GpuHorizontalError::SizeOverflow {
+        let byte_len = field_values.len().checked_mul(size_of::<f32>()).ok_or(
+            GpuHorizontalError::SizeOverflow {
                 field: "horizontal_field",
-            })?;
-        let _byte_len_u64 =
+            },
+        )?;
+        let byte_len_u64 =
             u64::try_from(byte_len).map_err(|_| GpuHorizontalError::SizeOverflow {
                 field: "horizontal_field",
             })?;
-        let buffer =
-            ctx.device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("horizontal_field_values"),
-                    contents: bytemuck::cast_slice(field_values),
-                    usage: wgpu::BufferUsages::STORAGE
-                        | wgpu::BufferUsages::COPY_DST
-                        | wgpu::BufferUsages::COPY_SRC,
-                });
+        validate_storage_size(ctx, byte_len_u64, "horizontal_field")?;
+        push_device_error_scopes(&ctx.device);
+        let buffer = ctx
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("horizontal_field_values"),
+                contents: bytemuck::cast_slice(field_values),
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_DST
+                    | wgpu::BufferUsages::COPY_SRC,
+            });
+        pop_device_error_scopes(&ctx.device, "field upload")?;
         Ok(Self {
             buffer,
             nx,
             ny,
             is_periodic_x,
             element_count: expected,
+            grid: grid.clone(),
+            field_sha256: sha256_hex(bytemuck::cast_slice(field_values)),
         })
     }
 
@@ -464,6 +518,8 @@ impl HorizontalFieldBuffers {
 /// rounding in the shader.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HorizontalQueryBuffers {
+    grid: HorizontalGrid,
+    field_sha256: String,
     /// Packed `xt`/`yt` queries.
     pub buffer: wgpu::Buffer,
     query_count: usize,
@@ -518,6 +574,25 @@ fn checked_f32_byte_len(len: usize, field: &'static str) -> Result<u64, GpuHoriz
     u64::try_from(bytes).map_err(|_| GpuHorizontalError::SizeOverflow { field })
 }
 
+fn validate_storage_size(
+    ctx: &GpuContext,
+    bytes: u64,
+    field: &'static str,
+) -> Result<(), GpuHorizontalError> {
+    let limits = ctx.device.limits();
+    let limit = limits
+        .max_buffer_size
+        .min(u64::from(limits.max_storage_buffer_binding_size));
+    if bytes > limit {
+        return Err(GpuHorizontalError::BufferLimit {
+            field,
+            bytes,
+            limit,
+        });
+    }
+    Ok(())
+}
+
 fn f64_to_f32_coordinate(value: f64, field: &'static str) -> Result<f32, GpuHorizontalError> {
     if !value.is_finite() {
         return Err(GpuHorizontalError::NonFiniteDeviceCoordinate { field });
@@ -549,11 +624,11 @@ fn validate_candidate_revision(revision: &str) -> Result<(), GpuHorizontalError>
 /// Build validated device queries from canonical grid-index coordinates.
 ///
 /// Each `(xt, yt)` pair is validated with the exact #72
-/// [`sample_horizontal`] rules (supported domain, staggering, shape and
+/// [`horizontal_sample_geometry`] rules (supported domain, staggering, shape and
 /// sampled-corner finiteness) before `f32` conversion, so out-of-domain,
 /// malformed and non-finite inputs fail closed on the host and never reach
 /// device execution. Returns the query resource plus the diagnostic
-/// [`HorizontalSample`] records (indices/weights) used for evidence only; the
+/// [`HorizontalSampleGeometry`] records (indices/weights) used for evidence only; the
 /// sampled values themselves are never computed here.
 ///
 /// # Errors
@@ -565,7 +640,7 @@ pub fn create_horizontal_query_buffers(
     field_values: &[f32],
     staggering: HorizontalStaggering,
     coordinates: &[(f64, f64)],
-) -> Result<(HorizontalQueryBuffers, Vec<HorizontalSample>), GpuHorizontalError> {
+) -> Result<(HorizontalQueryBuffers, Vec<HorizontalSampleGeometry>), GpuHorizontalError> {
     if coordinates.is_empty() {
         return Err(GpuHorizontalError::EmptyQueries);
     }
@@ -578,11 +653,11 @@ pub fn create_horizontal_query_buffers(
     let mut diagnostics = Vec::with_capacity(coordinates.len());
     let mut device_queries = Vec::with_capacity(coordinates.len());
     for (xt, yt) in coordinates {
-        let sample = sample_horizontal(grid, field_values, staggering, *xt, *yt)?;
-        let xt_f32 = f64_to_f32_coordinate(*xt, "xt")?;
-        let yt_f32 = f64_to_f32_coordinate(*yt, "yt")?;
+        let sample = horizontal_sample_geometry(grid, field_values, staggering, *xt, *yt)?;
+        let _xt_f32 = f64_to_f32_coordinate(*xt, "xt")?;
+        let _yt_f32 = f64_to_f32_coordinate(*yt, "yt")?;
         diagnostics.push(sample);
-        device_queries.push(HorizontalSampleQuery::new(xt_f32, yt_f32));
+        device_queries.push(HorizontalSampleQuery::from_geometry(&sample)?);
     }
     let byte_len = device_queries
         .len()
@@ -590,19 +665,23 @@ pub fn create_horizontal_query_buffers(
         .ok_or(GpuHorizontalError::SizeOverflow {
             field: "horizontal_queries",
         })?;
-    let _byte_len_u64 =
-        u64::try_from(byte_len).map_err(|_| GpuHorizontalError::SizeOverflow {
-            field: "horizontal_queries",
-        })?;
-    let buffer =
-        ctx.device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("horizontal_sample_queries"),
-                contents: bytemuck::cast_slice(&device_queries),
-                usage: storage_usage(),
-            });
+    let byte_len_u64 = u64::try_from(byte_len).map_err(|_| GpuHorizontalError::SizeOverflow {
+        field: "horizontal_queries",
+    })?;
+    validate_storage_size(ctx, byte_len_u64, "horizontal_queries")?;
+    push_device_error_scopes(&ctx.device);
+    let buffer = ctx
+        .device
+        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("horizontal_sample_queries"),
+            contents: bytemuck::cast_slice(&device_queries),
+            usage: storage_usage(),
+        });
+    pop_device_error_scopes(&ctx.device, "query upload")?;
     Ok((
         HorizontalQueryBuffers {
+            grid: grid.clone(),
+            field_sha256: sha256_hex(bytemuck::cast_slice(field_values)),
             buffer,
             query_count: device_queries.len(),
         },
@@ -626,7 +705,7 @@ pub fn create_horizontal_query_buffers_geographic(
     field_values: &[f32],
     staggering: HorizontalStaggering,
     lonlat: &[(f64, f64)],
-) -> Result<(HorizontalQueryBuffers, Vec<HorizontalSample>), GpuHorizontalError> {
+) -> Result<(HorizontalQueryBuffers, Vec<HorizontalSampleGeometry>), GpuHorizontalError> {
     if lonlat.is_empty() {
         return Err(GpuHorizontalError::EmptyQueries);
     }
@@ -639,12 +718,17 @@ pub fn create_horizontal_query_buffers_geographic(
     let mut diagnostics = Vec::with_capacity(lonlat.len());
     let mut device_queries = Vec::with_capacity(lonlat.len());
     for (lon_deg, lat_deg) in lonlat {
-        let sample =
-            sample_horizontal_geographic(grid, field_values, staggering, *lon_deg, *lat_deg)?;
-        let xt_f32 = f64_to_f32_coordinate(sample.xt, "xt")?;
-        let yt_f32 = f64_to_f32_coordinate(sample.yt, "yt")?;
+        let sample = horizontal_sample_geometry_geographic(
+            grid,
+            field_values,
+            staggering,
+            *lon_deg,
+            *lat_deg,
+        )?;
+        let _xt_f32 = f64_to_f32_coordinate(sample.xt, "xt")?;
+        let _yt_f32 = f64_to_f32_coordinate(sample.yt, "yt")?;
         diagnostics.push(sample);
-        device_queries.push(HorizontalSampleQuery::new(xt_f32, yt_f32));
+        device_queries.push(HorizontalSampleQuery::from_geometry(&sample)?);
     }
     let byte_len = device_queries
         .len()
@@ -652,19 +736,23 @@ pub fn create_horizontal_query_buffers_geographic(
         .ok_or(GpuHorizontalError::SizeOverflow {
             field: "horizontal_queries",
         })?;
-    let _byte_len_u64 =
-        u64::try_from(byte_len).map_err(|_| GpuHorizontalError::SizeOverflow {
-            field: "horizontal_queries",
-        })?;
-    let buffer =
-        ctx.device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("horizontal_sample_queries"),
-                contents: bytemuck::cast_slice(&device_queries),
-                usage: storage_usage(),
-            });
+    let byte_len_u64 = u64::try_from(byte_len).map_err(|_| GpuHorizontalError::SizeOverflow {
+        field: "horizontal_queries",
+    })?;
+    validate_storage_size(ctx, byte_len_u64, "horizontal_queries")?;
+    push_device_error_scopes(&ctx.device);
+    let buffer = ctx
+        .device
+        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("horizontal_sample_queries"),
+            contents: bytemuck::cast_slice(&device_queries),
+            usage: storage_usage(),
+        });
+    pop_device_error_scopes(&ctx.device, "query upload")?;
     Ok((
         HorizontalQueryBuffers {
+            grid: grid.clone(),
+            field_sha256: sha256_hex(bytemuck::cast_slice(field_values)),
             buffer,
             query_count: device_queries.len(),
         },
@@ -683,18 +771,20 @@ pub fn create_horizontal_output_buffer(
     if query_count == 0 {
         return Err(GpuHorizontalError::EmptyQueries);
     }
-    let _count_u32 =
-        u32::try_from(query_count).map_err(|_| GpuHorizontalError::ValueTooLarge {
-            field: "query_count",
-            value: query_count,
-        })?;
+    let _count_u32 = u32::try_from(query_count).map_err(|_| GpuHorizontalError::ValueTooLarge {
+        field: "query_count",
+        value: query_count,
+    })?;
     let size = checked_f32_byte_len(query_count, "horizontal_output")?;
+    validate_storage_size(ctx, size, "horizontal_output")?;
+    push_device_error_scopes(&ctx.device);
     let buffer = ctx.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("horizontal_sample_output"),
         size,
         usage: storage_usage(),
         mapped_at_creation: false,
     });
+    pop_device_error_scopes(&ctx.device, "output allocation")?;
     Ok(HorizontalSampleOutput {
         buffer,
         query_count,
@@ -740,6 +830,7 @@ pub fn create_horizontal_uniform_buffer(
         query_count: query_count_u32,
         is_periodic_x: u32::from(is_periodic_x),
     };
+    push_device_error_scopes(&ctx.device);
     let buffer = ctx
         .device
         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -747,6 +838,7 @@ pub fn create_horizontal_uniform_buffer(
             contents: bytemuck::bytes_of(&params),
             usage: wgpu::BufferUsages::UNIFORM,
         });
+    pop_device_error_scopes(&ctx.device, "uniform upload")?;
     Ok(HorizontalUniforms {
         buffer,
         params,
@@ -775,6 +867,9 @@ pub fn encode_horizontal_samples(
     kernel: &HorizontalInterpolationKernel,
     encoder: &mut wgpu::CommandEncoder,
 ) -> Result<(), GpuHorizontalError> {
+    if queries.grid != fields.grid || queries.field_sha256 != fields.field_sha256 {
+        return Err(GpuHorizontalError::MismatchedGrid);
+    }
     if queries.query_count != output.query_count {
         return Err(GpuHorizontalError::CountMismatch {
             field: "horizontal_samples",
@@ -785,7 +880,9 @@ pub fn encode_horizontal_samples(
     if queries.query_count == 0 {
         return Err(GpuHorizontalError::EmptyQueries);
     }
-    if fields.nx != uniforms.nx || fields.ny != uniforms.ny || fields.is_periodic_x != uniforms.is_periodic_x
+    if fields.nx != uniforms.nx
+        || fields.ny != uniforms.ny
+        || fields.is_periodic_x != uniforms.is_periodic_x
     {
         return Err(GpuHorizontalError::MismatchedGrid);
     }
@@ -865,9 +962,9 @@ pub fn dispatch_horizontal_samples_and_wait(
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("horizontal_interpolation_encoder"),
         });
-    if let Err(error) = encode_horizontal_samples(
-        ctx, fields, queries, output, uniforms, kernel, &mut encoder,
-    ) {
+    if let Err(error) =
+        encode_horizontal_samples(ctx, fields, queries, output, uniforms, kernel, &mut encoder)
+    {
         let _ = pop_device_error_scopes(&ctx.device, "dispatch preparation");
         return Err(error);
     }
@@ -923,7 +1020,7 @@ pub async fn sample_horizontal_gpu(
     staggering: HorizontalStaggering,
     coordinates: &[(f64, f64)],
     kernel: &HorizontalInterpolationKernel,
-) -> Result<(Vec<f32>, Vec<HorizontalSample>), GpuHorizontalError> {
+) -> Result<(Vec<f32>, Vec<HorizontalSampleGeometry>), GpuHorizontalError> {
     let fields = HorizontalFieldBuffers::from_grid_and_values(ctx, grid, field_values, staggering)?;
     let (queries, diagnostics) =
         create_horizontal_query_buffers(ctx, grid, field_values, staggering, coordinates)?;
@@ -947,7 +1044,7 @@ pub async fn sample_horizontal_geographic_gpu(
     staggering: HorizontalStaggering,
     lonlat: &[(f64, f64)],
     kernel: &HorizontalInterpolationKernel,
-) -> Result<(Vec<f32>, Vec<HorizontalSample>), GpuHorizontalError> {
+) -> Result<(Vec<f32>, Vec<HorizontalSampleGeometry>), GpuHorizontalError> {
     let fields = HorizontalFieldBuffers::from_grid_and_values(ctx, grid, field_values, staggering)?;
     let (queries, diagnostics) =
         create_horizontal_query_buffers_geographic(ctx, grid, field_values, staggering, lonlat)?;
@@ -1004,7 +1101,7 @@ pub fn horizontal_inputs_sha256(
     struct NormalizedHorizontalInput<'a> {
         grid: serde_json::Value,
         field_values: &'a [f32],
-        queries: Vec<[f32; 2]>,
+        queries: Vec<[f64; 6]>,
         staggering: String,
     }
     let normalized = NormalizedHorizontalInput {
@@ -1012,7 +1109,16 @@ pub fn horizontal_inputs_sha256(
         field_values,
         queries: queries
             .iter()
-            .map(|query| [query.xt, query.yt])
+            .map(|query| {
+                [
+                    f64::from(query.xt),
+                    f64::from(query.yt),
+                    f64::from(query.ix),
+                    f64::from(query.jy),
+                    f64::from(query.ddx),
+                    f64::from(query.ddy),
+                ]
+            })
             .collect(),
         staggering: format!("{:?}", HorizontalStaggering::CellCenter),
     };
@@ -1036,7 +1142,9 @@ pub fn default_comparison_policy() -> Result<ComparisonPolicy, GpuHorizontalErro
     )?)
 }
 
-fn pinned_oracle_evidence_for_case(case_id: &str) -> Result<PinnedOracleEvidence, GpuHorizontalError> {
+fn pinned_oracle_evidence_for_case(
+    case_id: &str,
+) -> Result<PinnedOracleEvidence, GpuHorizontalError> {
     let output_sha256 = match case_id {
         "horizontal-interior" => HORIZONTAL_ORACLE_OUTPUT_SHA256_INTERIOR,
         "horizontal-periodic-wrap" => HORIZONTAL_ORACLE_OUTPUT_SHA256_PERIODIC,
@@ -1089,6 +1197,8 @@ pub struct HorizontalGpuRow {
     pub gpu_value: f32,
     /// Pinned oracle value.
     pub oracle_value: f32,
+    /// Normalized field values bound by the input hash.
+    pub field_values: Vec<f32>,
     /// CPU #72 diagnostic value (migration reference only, never the candidate).
     pub cpu_value: f32,
     /// Predeclared comparison policy.
@@ -1124,13 +1234,130 @@ pub struct HorizontalGpuReport {
     pub status: bool,
 }
 
+fn pinned_horizontal_contract() -> Result<serde_json::Value, GpuEvidenceError> {
+    serde_json::from_str(include_str!(
+        "../../fixtures/interpolation/contract-v1.json"
+    ))
+    .map_err(|_| GpuEvidenceError::InvalidComparisonState("invalid pinned horizontal fixture"))
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::float_cmp)]
+fn validate_pinned_row(row: &HorizontalGpuRow) -> Result<(), GpuEvidenceError> {
+    let invalid = || {
+        GpuEvidenceError::InvalidComparisonState("row does not match the pinned horizontal fixture")
+    };
+    let contract = pinned_horizontal_contract()?;
+    let case = contract["cases"]
+        .as_array()
+        .ok_or_else(invalid)?
+        .iter()
+        .find(|case| case["id"].as_str() == Some(row.case_id.as_str()))
+        .ok_or_else(invalid)?;
+    let input = case["input"].as_array().ok_or_else(invalid)?;
+    let metadata: Vec<f64> = input[2]
+        .as_str()
+        .ok_or_else(invalid)?
+        .split_whitespace()
+        .map(str::parse)
+        .collect::<Result<_, _>>()
+        .map_err(|_| invalid())?;
+    let golden = &case["golden"];
+    let nx = golden["CANONICAL_NX"]
+        .as_u64()
+        .and_then(|v| usize::try_from(v).ok())
+        .ok_or_else(invalid)?;
+    let ny = golden["CANONICAL_NY"]
+        .as_u64()
+        .and_then(|v| usize::try_from(v).ok())
+        .ok_or_else(invalid)?;
+    let field: Vec<f32> = input[4..4 + nx * ny]
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .ok_or_else(invalid)?
+                .parse::<f32>()
+                .map_err(|_| invalid())
+        })
+        .collect::<Result<_, _>>()?;
+    if row.grid.nx != nx
+        || row.grid.ny != ny
+        || metadata.len() != 4
+        || [
+            row.grid.xlon0_deg,
+            row.grid.ylat0_deg,
+            row.grid.dx_deg,
+            row.grid.dy_deg,
+        ] != metadata.as_slice()
+        || row.field_values != field
+    {
+        return Err(invalid());
+    }
+    let query = golden["queries"]
+        .as_array()
+        .ok_or_else(invalid)?
+        .iter()
+        .find(|query| {
+            query["XY"][0].as_f64().map(|v| v as f32) == Some(row.device_xt)
+                && query["XY"][1].as_f64().map(|v| v as f32) == Some(row.device_yt)
+        })
+        .ok_or_else(invalid)?;
+    for index in 0..4 {
+        if query["INDICES"][index].as_u64() != u64::try_from(row.oracle_indices[index]).ok()
+            || query["WEIGHTS"][index].as_f64() != Some(row.oracle_weights[index])
+        {
+            return Err(invalid());
+        }
+    }
+    if query["VALUE"][0].as_f64().map(|v| v as f32) != Some(row.oracle_value) {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
 impl HorizontalGpuRow {
     /// Validate structural honesty and fail closed on contradiction.
     ///
     /// # Errors
     /// Returns [`GpuEvidenceError`] for contradictory verdicts, differences
     /// or embedded evidence that cannot prove a claimed pass.
+    #[allow(clippy::float_cmp)] // Provenance reconstructs identical normalized inputs, not numerical parity.
     pub fn validate(&self) -> Result<(), GpuEvidenceError> {
+        let invalid = || {
+            GpuEvidenceError::InvalidComparisonState(
+                "horizontal row contradicts normalized inputs, geometry or facet verdicts",
+            )
+        };
+        let geometry = horizontal_sample_geometry(
+            &self.grid,
+            &self.field_values,
+            HorizontalStaggering::CellCenter,
+            self.sample_xt,
+            self.sample_yt,
+        )
+        .map_err(|_| invalid())?;
+        let query = HorizontalSampleQuery::from_geometry(&geometry).map_err(|_| invalid())?;
+        let weights = compare_finite_values(
+            &self.oracle_weights,
+            &self.candidate_weights,
+            self.comparison_policy,
+        )?;
+        if self.comparison_policy != default_comparison_policy().map_err(|_| invalid())?
+            || !self.cpu_value.is_finite()
+            || !self.absolute_difference.is_finite()
+            || self.is_periodic_x != geometry.is_periodic_x
+            || self.candidate_indices != [geometry.ix, geometry.jy, geometry.ixp, geometry.jyp]
+            || self.candidate_weights != geometry.weights
+            || self.device_xt != query.xt
+            || self.device_yt != query.yt
+            || self.indices_verdict != (self.candidate_indices == self.oracle_indices)
+            || self.weights_verdict != (weights.verdict == NumericalVerdict::Passed)
+            || self.gpu_evidence.candidate.input_sha256
+                != horizontal_inputs_sha256(&self.grid, &self.field_values, &[query])
+                    .map_err(|_| invalid())?
+        {
+            return Err(invalid());
+        }
+        validate_pinned_row(self)?;
         let comparison = compare_finite_values(
             &[f64::from(self.oracle_value)],
             &[f64::from(self.gpu_value)],
@@ -1163,8 +1390,11 @@ impl HorizontalGpuRow {
                 "embedded GPU oracle contradicts the pinned horizontal case",
             ));
         }
-        let expected_case_prefix = format!("horizontal-gpu/{}", self.case_id);
-        if !self.gpu_evidence.case_id.starts_with(&expected_case_prefix) {
+        let expected_case_id = format!(
+            "horizontal-gpu/{}:xt={:.6}:yt={:.6}",
+            self.case_id, self.sample_xt, self.sample_yt
+        );
+        if self.gpu_evidence.case_id != expected_case_id {
             return Err(GpuEvidenceError::InvalidComparisonState(
                 "embedded GPU case id contradicts the horizontal row case",
             ));
@@ -1252,6 +1482,23 @@ impl HorizontalGpuReport {
         if !self.status {
             return Err(GpuEvidenceError::NotPassing);
         }
+        let mut covered = std::collections::BTreeSet::new();
+        for row in &self.rows {
+            if !covered.insert((
+                row.case_id.as_str(),
+                row.device_xt.to_bits(),
+                row.device_yt.to_bits(),
+            )) {
+                return Err(GpuEvidenceError::InvalidComparisonState(
+                    "duplicate horizontal oracle query",
+                ));
+            }
+        }
+        if covered.len() != 7 {
+            return Err(GpuEvidenceError::InvalidComparisonState(
+                "incomplete pinned horizontal oracle coverage",
+            ));
+        }
         for row in &self.rows {
             row.gpu_evidence.require_paired_pass()?;
             if !row.row_verdict {
@@ -1276,7 +1523,7 @@ pub fn build_horizontal_gpu_row(
     ctx: &GpuContext,
     case_id: &str,
     grid: &HorizontalGrid,
-    diagnostic: &HorizontalSample,
+    diagnostic: &HorizontalSampleGeometry,
     device_query: &HorizontalSampleQuery,
     gpu_value: f32,
     oracle_indices: [usize; 4],
@@ -1297,26 +1544,23 @@ pub fn build_horizontal_gpu_row(
         comparison_policy,
     )?;
     let value_verdict = comparison.verdict == NumericalVerdict::Passed;
-    let candidate_indices = [
-        diagnostic.ix,
-        diagnostic.jy,
-        diagnostic.ixp,
-        diagnostic.jyp,
-    ];
+    let candidate_indices = [diagnostic.ix, diagnostic.jy, diagnostic.ixp, diagnostic.jyp];
     let indices_verdict = candidate_indices == oracle_indices;
-    let weights_verdict = diagnostic
-        .weights
-        .iter()
-        .zip(oracle_weights)
-        .all(|(candidate, oracle)| {
-            let absolute = (candidate - oracle).abs();
-            let scale = candidate.abs().max(oracle.abs());
-            let relative = if scale == 0.0 { 0.0 } else { absolute / scale };
-            absolute <= comparison_policy.absolute_tolerance
-                || relative <= comparison_policy.relative_tolerance
-        });
+    let weights_verdict =
+        diagnostic
+            .weights
+            .iter()
+            .zip(oracle_weights)
+            .all(|(candidate, oracle)| {
+                let absolute = (candidate - oracle).abs();
+                let scale = candidate.abs().max(oracle.abs());
+                let relative = if scale == 0.0 { 0.0 } else { absolute / scale };
+                absolute <= comparison_policy.absolute_tolerance
+                    || relative <= comparison_policy.relative_tolerance
+            });
     let row_verdict = value_verdict && indices_verdict && weights_verdict;
-    let input_sha = horizontal_inputs_sha256(grid, field_values, std::slice::from_ref(device_query))?;
+    let input_sha =
+        horizontal_inputs_sha256(grid, field_values, std::slice::from_ref(device_query))?;
     let case_evidence_id = format!(
         "horizontal-gpu/{case_id}:xt={:.6}:yt={:.6}",
         diagnostic.xt, diagnostic.yt
@@ -1341,7 +1585,7 @@ pub fn build_horizontal_gpu_row(
         comparison,
     };
     gpu_evidence.validate()?;
-    Ok(HorizontalGpuRow {
+    let row = HorizontalGpuRow {
         case_id: case_id.to_string(),
         grid: grid.clone(),
         is_periodic_x: diagnostic.is_periodic_x,
@@ -1356,6 +1600,7 @@ pub fn build_horizontal_gpu_row(
         gpu_value,
         oracle_value,
         cpu_value,
+        field_values: field_values.to_vec(),
         comparison_policy,
         absolute_difference: (f64::from(gpu_value) - f64::from(oracle_value)).abs(),
         value_verdict,
@@ -1363,7 +1608,14 @@ pub fn build_horizontal_gpu_row(
         weights_verdict,
         row_verdict,
         gpu_evidence,
-    })
+    };
+    if HorizontalSampleQuery::from_geometry(diagnostic)? != *device_query {
+        return Err(GpuHorizontalError::OracleContract {
+            message: "device query contradicts validated geometry",
+        });
+    }
+    row.validate()?;
+    Ok(row)
 }
 
 #[cfg(test)]

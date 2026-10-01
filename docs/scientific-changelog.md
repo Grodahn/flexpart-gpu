@@ -16,7 +16,7 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
-### 2026-10-02 — Validate vertical GPU evidence batches and runtime ordering (#88)
+### 2026-10-02 ï¿½ Validate vertical GPU evidence batches and runtime ordering (#88)
 **Impact**: none (host validation and verification; device arithmetic unchanged)
 **Files**: `src/gpu/vertical.rs`, `tests/vertical_gpu.rs`
 **Validation**: Regressions reproduce accepted empty/malformed input batches and
@@ -44,6 +44,21 @@ integration tests, six pinned-fixture contract tests, and `cargo clippy --all-ta
 missing/stale/failed-evidence cases. WGSL arithmetic and
 the pinned two-stage W semantics are unchanged; no new Fortran deviation is
 introduced. #76 composition and #77 consumer migration remain separate.
+
+### 2026-10-01 ï¿½ Preserve canonical horizontal cells in GPU sampling (#87)
+**Impact**: numerics (WGSL bilinear sampling preserves #72 cell selection near
+integer boundaries and the periodic seam before f32 rounding)
+**Files**: `src/gpu/horizontal.rs`, `src/meteorology/horizontal.rs`,
+`src/shaders/horizontal_interpolation.wgsl`, `tests/horizontal_gpu.rs`
+**Validation**: All seven immutable #71 FLEXPART 11.1 horizontal oracle queries
+pass with the existing absolute `1e-6` OR relative `1e-5` policy on the device.
+Regression tests cover valid f64 coordinates that round across cells or to the
+periodic endpoint, resource/input mismatches, device storage limits and tampered
+or incomplete evidence. Host validation prepares geometry without evaluating a
+CPU sampled value; weights and blending execute in WGSL. CPU sampling remains
+available for diagnostics. The split integer/fraction representation preserves
+the canonical f64 input boundary; it does not change the pinned f32 oracle
+fixtures, tolerances, or downstream composition/consumer ownership.
 
 ### 2026-09-28 â€” Complete interface-W vertical sampling (#73)
 **Impact**: numerics (interface-staggered pressure velocity now follows the

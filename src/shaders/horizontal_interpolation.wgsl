@@ -24,8 +24,8 @@
 //   endpoint snapping stays on the host so provider metadata never enters here.
 //
 // GPU responsibilities (this shader, f32):
-// - recompute indices, fractional distances, weights and the weighted sum for
-//   pre-validated coordinates entirely on the device;
+// - compute weights and the weighted sum for
+//   pre-validated cell indices and fractional distances on the device;
 // - preserve x/y flattening, weight ordering and the exact evaluation order
 //   p1*f00 + p2*f10 + p3*f01 + p4*f11;
 // - map the periodic ghost column nx to stored column 0; collapse exact last
@@ -46,6 +46,10 @@
 struct HorizontalQuery {
     xt: f32,
     yt: f32,
+    ix: u32,
+    jy: u32,
+    ddx: f32,
+    ddy: f32,
     _pad0: f32,
     _pad1: f32,
 };
@@ -88,33 +92,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     }
 
     let query = queries[idx];
-    let xt = query.xt;
-    let yt = query.yt;
-    let nx_f = f32(params.nx);
-    let ny_f = f32(params.ny);
-
-    // Defensive domain check. The host already validated the f64 coordinates
-    // against the supported #72 domain and fails closed before dispatch.
-    // NaN fails every comparison below and lands here as invalid.
-    var in_domain = false;
-    if (params.is_periodic_x == 1u) {
-        in_domain = xt >= 0.0 && xt < nx_f && yt >= 0.0 && yt <= ny_f - 1.0;
-    } else {
-        in_domain = xt >= 0.0 && xt <= nx_f - 1.0 && yt >= 0.0 && yt <= ny_f - 1.0;
-    }
-    if (!in_domain) {
-        write_invalid(idx);
-        return;
-    }
-
-    let ix = u32(floor(xt));
-    let jy = u32(floor(yt));
+    // Host preserves the f64 cell; only within-cell distances round to f32.
+    // Rounding a whole coordinate could otherwise cross a cell or the seam.
+    let ix = query.ix;
+    let jy = query.jy;
     if (ix >= params.nx || jy >= params.ny) {
         write_invalid(idx);
         return;
     }
-    let ddx = xt - f32(ix);
-    let ddy = yt - f32(jy);
+    let ddx = query.ddx;
+    let ddy = query.ddy;
     if (ddx < 0.0 || ddx > 1.0 || ddy < 0.0 || ddy > 1.0) {
         write_invalid(idx);
         return;

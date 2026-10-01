@@ -156,6 +156,34 @@ jobs:
                   assert evidence["oracle"]["output_sha256"] == output
                   assert evidence["comparison"]["verdict"] == "passed"
           PY
+      - name: Prove horizontal interpolation against the pinned FLEXPART oracle
+        run: |
+          set -euo pipefail
+          rm -f target/horizontal-gpu-evidence.json
+          cargo test --test horizontal_gpu -- --nocapture 2>&1 | tee target/ci-gate/horizontal-gpu.log
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path("target/horizontal-gpu-evidence.json").read_text(encoding="utf-8"))
+          assert report["schema"] == {"id": "flexpart-gpu.horizontal-gpu-evidence", "version": 1}
+          assert report["scenario_id"] == "horizontal-oracle-coverage"
+          assert report["status"] is True
+          assert len(report["rows"]) == 7
+          assert {row["case_id"] for row in report["rows"]} == {
+              "horizontal-interior", "horizontal-periodic-wrap", "horizontal-geographic-interior"
+          }
+          for row in report["rows"]:
+              assert row["row_verdict"] is True
+              evidence = row["gpu_evidence"]
+              assert evidence["execution"]["status"] == "passed"
+              assert evidence["execution"]["calculation_path"] == "wgsl_device"
+              assert evidence["execution"]["adapter"]["adapter_class"] == "software_wgsl"
+              assert evidence["candidate"]["revision"] == os.environ["FLEXPART_GPU_CANDIDATE_REVISION"]
+              assert evidence["oracle"]["revision"] == "c70586c2b7f5258850705325881c61f557ea9bd8"
+              assert evidence["comparison"]["verdict"] == "passed"
+          PY
       - name: Run corpus deterministic subset (Issue #6, point 2)
         run: |
           set -euo pipefail
@@ -192,6 +220,8 @@ jobs:
             target/ci-gate/sw-wgpu-advection.log
             target/ci-gate/accumulation-gpu.log
             target/ci-gate/accumulation-gpu/*.json
+            target/ci-gate/horizontal-gpu.log
+            target/horizontal-gpu-evidence.json
             target/ci-gate/temporal-gpu.log
             target/ci-gate/vertical-gpu.log
             target/ci-gate/vertical-gpu/*.json

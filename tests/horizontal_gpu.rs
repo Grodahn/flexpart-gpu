@@ -1,8 +1,8 @@
 //! Issue #87: GPU horizontal interpolation parity against the #71 oracle.
 //!
 //! The WGSL kernel `src/shaders/horizontal_interpolation.wgsl` executes index
-//! conversion, weight computation, gathering and blending entirely on the
-//! device. Host validation reuses `meteorology::horizontal` (the #72 contract)
+//! weight computation, gathering and blending on the
+//! device. Host validation preserves cell indices and reuses `meteorology::horizontal` (the #72 contract)
 //! so grid, staggering, domain and longitude semantics are identical. Evidence
 //! uses the #91 `GpuCalculationEvidence` model plus horizontal fields. CPU #72
 //! values appear diagnostically only; the pinned FLEXPART oracle remains
@@ -10,15 +10,14 @@
 //! (caller-owned encoder, no submit/wait/readback/field allocation).
 
 use flexpart_gpu::gpu::{
-    build_horizontal_gpu_row, create_horizontal_output_buffer,
-    create_horizontal_query_buffers, create_horizontal_uniform_buffer,
-    dispatch_horizontal_samples_and_wait, download_horizontal_output,
-    encode_horizontal_samples, horizontal_inputs_sha256, horizontal_shader_sha256,
-    sample_horizontal_geographic_gpu, sample_horizontal_gpu, ComparisonPolicy,
-    GpuAdapterEvidence, GpuCalculationEvidence, GpuCalculationPath, GpuCandidateEvidence,
-    GpuEvidenceError, GpuEvidenceSchema, GpuExecutionEvidence, GpuExecutionStatus,
-    GpuHorizontalError, HorizontalFieldBuffers, HorizontalGpuReport, HorizontalGpuRow,
-    HorizontalInterpolationKernel, HORIZONTAL_GPU_CANDIDATE_DESCRIPTION,
+    build_horizontal_gpu_row, create_horizontal_output_buffer, create_horizontal_query_buffers,
+    create_horizontal_uniform_buffer, dispatch_horizontal_samples_and_wait,
+    download_horizontal_output, encode_horizontal_samples, horizontal_inputs_sha256,
+    horizontal_shader_sha256, sample_horizontal_geographic_gpu, sample_horizontal_gpu,
+    ComparisonPolicy, GpuAdapterEvidence, GpuCalculationEvidence, GpuCalculationPath,
+    GpuCandidateEvidence, GpuEvidenceError, GpuEvidenceSchema, GpuExecutionEvidence,
+    GpuExecutionStatus, GpuHorizontalError, HorizontalFieldBuffers, HorizontalGpuReport,
+    HorizontalGpuRow, HorizontalInterpolationKernel, HORIZONTAL_GPU_CANDIDATE_DESCRIPTION,
     HORIZONTAL_GPU_IMPLEMENTATION_ID, HORIZONTAL_GPU_REPORT_SCHEMA_ID,
     HORIZONTAL_ORACLE_OUTPUT_SHA256_GEOGRAPHIC, HORIZONTAL_ORACLE_OUTPUT_SHA256_INTERIOR,
     HORIZONTAL_ORACLE_OUTPUT_SHA256_PERIODIC, HORIZONTAL_ORACLE_REVISION,
@@ -50,7 +49,14 @@ fn assert_close(actual: f64, expected: f64, what: &str) {
 fn try_gpu_context() -> Option<flexpart_gpu::gpu::GpuContext> {
     match pollster::block_on(flexpart_gpu::gpu::GpuContext::new()) {
         Ok(ctx) => Some(ctx),
-        Err(flexpart_gpu::gpu::GpuError::NoAdapter) => None,
+        Err(flexpart_gpu::gpu::GpuError::NoAdapter) => {
+            assert_ne!(
+                std::env::var("FLEXPART_GPU_SOFTWARE").as_deref(),
+                Ok("1"),
+                "required horizontal WGSL adapter missing"
+            );
+            None
+        }
         Err(err) => panic!("unexpected GPU init error: {err}"),
     }
 }
@@ -176,13 +182,20 @@ fn test_gpu_interior_matches_oracle() {
     assert_eq!(values.len(), 1);
     assert_close(f64::from(values[0]), 230.0, "GPU interior VALUE");
     assert_eq!(
-        (diagnostics[0].ix, diagnostics[0].jy, diagnostics[0].ixp, diagnostics[0].jyp),
+        (
+            diagnostics[0].ix,
+            diagnostics[0].jy,
+            diagnostics[0].ixp,
+            diagnostics[0].jyp
+        ),
         (1, 0, 2, 1)
     );
     assert!(!ctx.device_name().is_empty());
     // Adapter provenance must validate; execution proof is WGSL device.
     let adapter = GpuAdapterEvidence::from_context(&ctx);
-    adapter.validate().expect("adapter provenance must validate");
+    adapter
+        .validate()
+        .expect("adapter provenance must validate");
 }
 
 #[test]
@@ -204,7 +217,12 @@ fn test_gpu_exact_grid_point_selects_single_corner() {
     ))
     .expect("GPU exact grid point must succeed");
     assert_eq!(
-        (diagnostics[0].ix, diagnostics[0].jy, diagnostics[0].ixp, diagnostics[0].jyp),
+        (
+            diagnostics[0].ix,
+            diagnostics[0].jy,
+            diagnostics[0].ixp,
+            diagnostics[0].jyp
+        ),
         (2, 1, 3, 2)
     );
     assert_eq!(diagnostics[0].weights, [1.0, 0.0, 0.0, 0.0]);
@@ -231,7 +249,12 @@ fn test_gpu_edge_adjacent_and_corner() {
     ))
     .expect("GPU north edge must succeed");
     assert_eq!(
-        (diagnostics[0].ix, diagnostics[0].jy, diagnostics[0].ixp, diagnostics[0].jyp),
+        (
+            diagnostics[0].ix,
+            diagnostics[0].jy,
+            diagnostics[0].ixp,
+            diagnostics[0].jyp
+        ),
         (2, 2, 3, 2)
     );
     assert_close(f64::from(values[0]), 410.0, "GPU north-edge VALUE");
@@ -268,7 +291,12 @@ fn test_gpu_periodic_seam_uses_duplicate_column() {
     ))
     .expect("GPU periodic seam must succeed");
     assert_eq!(
-        (diagnostics[0].ix, diagnostics[0].jy, diagnostics[0].ixp, diagnostics[0].jyp),
+        (
+            diagnostics[0].ix,
+            diagnostics[0].jy,
+            diagnostics[0].ixp,
+            diagnostics[0].jyp
+        ),
         (3, 1, 4, 2)
     );
     assert!(diagnostics[0].is_periodic_x);
@@ -400,10 +428,7 @@ fn test_gpu_unsupported_staggering_malformed_and_shape_fail_closed() {
     let grid = regional_grid();
     let field = oracle_field();
 
-    for staggering in [
-        HorizontalStaggering::XFace,
-        HorizontalStaggering::YFace,
-    ] {
+    for staggering in [HorizontalStaggering::XFace, HorizontalStaggering::YFace] {
         let error = pollster::block_on(sample_horizontal_gpu(
             &ctx,
             &grid,
@@ -487,19 +512,19 @@ fn test_gpu_unsupported_staggering_malformed_and_shape_fail_closed() {
         Err(error) => error,
         Ok(_) => panic!("empty queries must fail closed"),
     };
-    assert!(matches!(
-        empty_queries,
-        GpuHorizontalError::EmptyQueries
-    ));
+    assert!(matches!(empty_queries, GpuHorizontalError::EmptyQueries));
 
     // Oversized output count fails closed without allocation.
     let overflow = match create_horizontal_output_buffer(&ctx, u32::MAX as usize + 1) {
         Err(error) => error,
         Ok(_) => panic!("oversized count must fail closed"),
     };
+    assert!(matches!(overflow, GpuHorizontalError::ValueTooLarge { .. }));
+
+    // Counts that fit u32 still must obey the selected device's storage limits.
     assert!(matches!(
-        overflow,
-        GpuHorizontalError::ValueTooLarge { .. }
+        create_horizontal_output_buffer(&ctx, u32::MAX as usize),
+        Err(GpuHorizontalError::BufferLimit { .. })
     ));
 
     // Zero-size output fails closed.
@@ -638,8 +663,7 @@ fn test_gpu_vs_oracle_parity_with_evidence() {
         let dims: Vec<String> = input[1].split_whitespace().map(str::to_string).collect();
         let nx: usize = dims[0].parse().expect("nx");
         let ny: usize = dims[1].parse().expect("ny");
-        let grid_tokens: Vec<String> =
-            input[2].split_whitespace().map(str::to_string).collect();
+        let grid_tokens: Vec<String> = input[2].split_whitespace().map(str::to_string).collect();
         let longitude_domain = if case_id == "horizontal-periodic-wrap" {
             LongitudeDomain::ZeroTo360
         } else {
@@ -685,10 +709,11 @@ fn test_gpu_vs_oracle_parity_with_evidence() {
         .expect("GPU oracle queries must succeed");
 
         // Device queries actually dispatched (f32 conversion of validated f64).
-        let device_queries: Vec<flexpart_gpu::gpu::HorizontalSampleQuery> = coordinates
+        let device_queries: Vec<_> = diagnostics
             .iter()
-            .map(|(xt, yt)| {
-                flexpart_gpu::gpu::HorizontalSampleQuery::new(*xt as f32, *yt as f32)
+            .map(|sample| {
+                flexpart_gpu::gpu::HorizontalSampleQuery::from_geometry(sample)
+                    .expect("device query")
             })
             .collect();
 
@@ -780,11 +805,11 @@ fn test_gpu_vs_oracle_parity_with_evidence() {
             &kernel,
         ))
         .expect("GPU geographic oracle must succeed");
-        let device_queries: Vec<flexpart_gpu::gpu::HorizontalSampleQuery> = diagnostics
+        let device_queries: Vec<_> = diagnostics
             .iter()
             .map(|sample| {
-                #[allow(clippy::cast_possible_truncation)]
-                flexpart_gpu::gpu::HorizontalSampleQuery::new(sample.xt as f32, sample.yt as f32)
+                flexpart_gpu::gpu::HorizontalSampleQuery::from_geometry(sample)
+                    .expect("device query")
             })
             .collect();
         for (index, golden) in golden_queries.iter().enumerate() {
@@ -845,7 +870,11 @@ fn test_gpu_vs_oracle_parity_with_evidence() {
         }
     }
 
-    assert_eq!(rows.len(), 7, "oracle coverage must span all pinned queries");
+    assert_eq!(
+        rows.len(),
+        7,
+        "oracle coverage must span all pinned queries"
+    );
     // Every row must prove WGSL execution with adapter provenance.
     for row in &rows {
         assert!(row.row_verdict, "row {} must pass", row.case_id);
@@ -890,6 +919,13 @@ fn test_gpu_vs_oracle_parity_with_evidence() {
     report
         .require_paired_pass()
         .expect("GPU report must prove paired pass");
+
+    let mut incomplete = report.clone();
+    incomplete.rows.pop();
+    assert!(incomplete.require_paired_pass().is_err());
+    let mut duplicate = report.clone();
+    duplicate.rows[0] = duplicate.rows[1].clone();
+    assert!(duplicate.require_paired_pass().is_err());
 
     let encoded = serde_json::to_string_pretty(&report).expect("serialize GPU report");
     let out_path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1035,29 +1071,19 @@ fn test_gpu_evidence_fails_closed_on_contradiction() {
             .expect("hash other inputs");
     let mut bad_input = row.clone();
     bad_input.gpu_evidence.candidate.input_sha256 = bad_input_hash;
-    // The row validator does not recompute the input hash from stored values,
-    // but the report-level honesty requires the hash to match dispatched work.
-    // Here we prove the hash itself is input-sensitive: different fields hash
-    // differently, so a mismatched identity cannot accidentally pass.
-    assert_ne!(
-        bad_input.gpu_evidence.candidate.input_sha256,
-        row.gpu_evidence.candidate.input_sha256
-    );
-    // Recompute the expected hash from the dispatched inputs and verify the
-    // row's hash matches; a tampered hash would fail this equality check.
-    let expected_input_hash =
-        horizontal_inputs_sha256(&grid, &field, std::slice::from_ref(&device_query))
-            .expect("recompute input hash");
-    assert_eq!(
-        row.gpu_evidence.candidate.input_sha256,
-        expected_input_hash,
-        "row input hash must match the dispatched grid/field/queries"
-    );
-    assert_ne!(
-        bad_input.gpu_evidence.candidate.input_sha256,
-        expected_input_hash,
-        "tampered input hash must not match the dispatched inputs"
-    );
+    assert!(bad_input.validate().is_err());
+    let mut bad_indices = row.clone();
+    bad_indices.oracle_indices[0] = 0;
+    assert!(bad_indices.validate().is_err());
+    let mut bad_weights = row.clone();
+    bad_weights.candidate_weights[0] = f64::NAN;
+    assert!(bad_weights.validate().is_err());
+    let mut bad_difference = row.clone();
+    bad_difference.absolute_difference = f64::NAN;
+    assert!(bad_difference.validate().is_err());
+    let mut bad_coordinate = row.clone();
+    bad_coordinate.device_xt = 2.0;
+    assert!(bad_coordinate.validate().is_err());
 
     // Contradictory verdict fails closed.
     let mut contradictory = row.clone();
@@ -1162,10 +1188,8 @@ fn test_encode_composition_boundary_hides_nothing() {
     .expect("queries H2D");
     let output_mid = create_horizontal_output_buffer(&ctx, 1).expect("output alloc");
     let output_end = create_horizontal_output_buffer(&ctx, 1).expect("output alloc");
-    let uniforms_mid =
-        create_horizontal_uniform_buffer(&ctx, &grid, 1).expect("uniforms");
-    let uniforms_end =
-        create_horizontal_uniform_buffer(&ctx, &grid, 1).expect("uniforms");
+    let uniforms_mid = create_horizontal_uniform_buffer(&ctx, &grid, 1).expect("uniforms");
+    let uniforms_end = create_horizontal_uniform_buffer(&ctx, &grid, 1).expect("uniforms");
 
     // Compose two sampling batches into one caller-owned encoder with a single
     // submission: no hidden submit/wait/readback between device stages.
@@ -1276,5 +1300,94 @@ fn test_dispatch_rounding_with_many_queries() {
             7.0 + 2.0 * xt + 3.0 * yt,
             "many-query linear VALUE",
         );
+    }
+}
+
+#[test]
+fn test_gpu_f64_cell_survives_coordinate_rounding() {
+    let Some(ctx) = try_gpu_context() else {
+        return;
+    };
+    let kernel = HorizontalInterpolationKernel::new(&ctx).expect("pipeline");
+    let grid = periodic_grid();
+    let field = oracle_field();
+    // Whole-coordinate f32 conversion rounds this supported point to nx.
+    let xt = 4.0 - 1.0e-8;
+    let (values, _) = pollster::block_on(sample_horizontal_gpu(
+        &ctx,
+        &grid,
+        &field,
+        HorizontalStaggering::CellCenter,
+        &[(xt, 0.5)],
+        &kernel,
+    ))
+    .expect("valid seam query");
+    let expected = sample_horizontal(&grid, &field, HorizontalStaggering::CellCenter, xt, 0.5)
+        .expect("CPU diagnostic");
+    assert_close(
+        f64::from(values[0]),
+        f64::from(expected.value),
+        "seam rounding",
+    );
+
+    let grid = regional_grid();
+    let mut field = oracle_field();
+    // Cell selection must stay below x=1, so column 2 is never sampled.
+    field[2] = f32::NAN;
+    field[6] = f32::NAN;
+    let xt = 1.0 - 1.0e-8;
+    let (values, _) = pollster::block_on(sample_horizontal_gpu(
+        &ctx,
+        &grid,
+        &field,
+        HorizontalStaggering::CellCenter,
+        &[(xt, 0.5)],
+        &kernel,
+    ))
+    .expect("valid cell query");
+    assert_close(f64::from(values[0]), 205.0, "cell rounding");
+}
+
+#[test]
+fn test_encode_rejects_queries_validated_for_other_inputs() {
+    let Some(ctx) = try_gpu_context() else {
+        return;
+    };
+    let kernel = HorizontalInterpolationKernel::new(&ctx).expect("pipeline");
+    let grid = regional_grid();
+    let field = oracle_field();
+    let fields = HorizontalFieldBuffers::from_grid_and_values(
+        &ctx,
+        &grid,
+        &field,
+        HorizontalStaggering::CellCenter,
+    )
+    .expect("field upload");
+    let output = create_horizontal_output_buffer(&ctx, 1).expect("output");
+    let uniforms = create_horizontal_uniform_buffer(&ctx, &grid, 1).expect("uniforms");
+    let mut other_grid = grid.clone();
+    other_grid.dx_deg = 0.5;
+    for (query_grid, query_field) in [(&other_grid, field.clone()), (&grid, vec![1.0; 12])] {
+        let (queries, _) = create_horizontal_query_buffers(
+            &ctx,
+            query_grid,
+            &query_field,
+            HorizontalStaggering::CellCenter,
+            &[(1.25, 0.5)],
+        )
+        .expect("queries");
+        let mut encoder = ctx.device.create_command_encoder(&Default::default());
+        assert!(matches!(
+            encode_horizontal_samples(
+                &ctx,
+                &fields,
+                &queries,
+                &output,
+                &uniforms,
+                &kernel,
+                &mut encoder
+            ),
+            Err(GpuHorizontalError::MismatchedGrid)
+        ));
     }
 }

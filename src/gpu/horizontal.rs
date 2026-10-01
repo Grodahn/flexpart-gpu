@@ -172,11 +172,8 @@ pub enum GpuHorizontalError {
         field: &'static str,
     },
     /// GPU output is non-finite where the oracle is finite.
-    #[error("non-finite GPU horizontal output at query {query_index}")]
-    NonFiniteOutputValue {
-        /// Index of the offending query.
-        query_index: usize,
-    },
+    #[error("non-finite GPU horizontal output")]
+    NonFiniteOutputValue,
     /// Candidate revision must be a 40-character lowercase Git SHA.
     #[error("candidate revision must be a 40-character lowercase Git SHA, got {value}")]
     InvalidCandidateRevision {
@@ -350,6 +347,7 @@ impl HorizontalInterpolationKernel {
 ///
 /// Lifetime: source bracket/resource lifetime. Uploaded once when the source
 /// field changes, not once per query.
+#[derive(Debug, Clone, PartialEq)]
 pub struct HorizontalFieldBuffers {
     /// Field values in x-fastest order (`offset = x + nx * y`).
     pub buffer: wgpu::Buffer,
@@ -397,16 +395,14 @@ impl HorizontalFieldBuffers {
                 },
             ));
         }
-        let _nx_u32 =
-            u32::try_from(nx).map_err(|_| GpuHorizontalError::ValueTooLarge {
-                field: "nx",
-                value: nx,
-            })?;
-        let _ny_u32 =
-            u32::try_from(ny).map_err(|_| GpuHorizontalError::ValueTooLarge {
-                field: "ny",
-                value: ny,
-            })?;
+        u32::try_from(nx).map_err(|_| GpuHorizontalError::ValueTooLarge {
+            field: "nx",
+            value: nx,
+        })?;
+        u32::try_from(ny).map_err(|_| GpuHorizontalError::ValueTooLarge {
+            field: "ny",
+            value: ny,
+        })?;
         let byte_len = field_values
             .len()
             .checked_mul(size_of::<f32>())
@@ -417,11 +413,6 @@ impl HorizontalFieldBuffers {
             u64::try_from(byte_len).map_err(|_| GpuHorizontalError::SizeOverflow {
                 field: "horizontal_field",
             })?;
-        if expected == 0 {
-            return Err(GpuHorizontalError::Horizontal(
-                HorizontalError::MalformedDimensions { nx, ny },
-            ));
-        }
         let buffer =
             ctx.device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -471,6 +462,7 @@ impl HorizontalFieldBuffers {
 /// coordinate is validated with the exact #72 supported-domain and corner
 /// rules before upload so fail-closed behavior never depends on `f32`
 /// rounding in the shader.
+#[derive(Debug, Clone, PartialEq)]
 pub struct HorizontalQueryBuffers {
     /// Packed `xt`/`yt` queries.
     pub buffer: wgpu::Buffer,
@@ -490,6 +482,7 @@ impl HorizontalQueryBuffers {
 /// Lifetime: dispatch lifetime, reusable as a device-resident input for later
 /// #76 composition. Host readback is allowed only at explicit validation or
 /// output boundaries.
+#[derive(Debug, Clone, PartialEq)]
 pub struct HorizontalSampleOutput {
     /// Sampled values, one per query.
     pub buffer: wgpu::Buffer,
@@ -505,6 +498,7 @@ impl HorizontalSampleOutput {
 }
 
 /// Typed uniform resource bound to one validated grid and query count.
+#[derive(Debug, Clone, PartialEq)]
 pub struct HorizontalUniforms {
     buffer: wgpu::Buffer,
     params: HorizontalParamsRaw,
@@ -590,7 +584,6 @@ pub fn create_horizontal_query_buffers(
         diagnostics.push(sample);
         device_queries.push(HorizontalSampleQuery::new(xt_f32, yt_f32));
     }
-    let _ = checked_f32_byte_len(0, "horizontal_queries")?;
     let byte_len = device_queries
         .len()
         .checked_mul(size_of::<HorizontalSampleQuery>())
@@ -713,6 +706,7 @@ pub fn create_horizontal_output_buffer(
 /// # Errors
 /// Returns [`GpuHorizontalError`] for invalid grids, zero queries or oversized
 /// dimensions.
+#[allow(clippy::similar_names)]
 pub fn create_horizontal_uniform_buffer(
     ctx: &GpuContext,
     grid: &HorizontalGrid,
@@ -722,11 +716,11 @@ pub fn create_horizontal_uniform_buffer(
         return Err(GpuHorizontalError::EmptyQueries);
     }
     let is_periodic_x = validate_horizontal_grid(grid)?;
-    let nx_u32 = u32::try_from(grid.nx).map_err(|_| GpuHorizontalError::ValueTooLarge {
+    let nx_param = u32::try_from(grid.nx).map_err(|_| GpuHorizontalError::ValueTooLarge {
         field: "nx",
         value: grid.nx,
     })?;
-    let ny_u32 = u32::try_from(grid.ny).map_err(|_| GpuHorizontalError::ValueTooLarge {
+    let ny_param = u32::try_from(grid.ny).map_err(|_| GpuHorizontalError::ValueTooLarge {
         field: "ny",
         value: grid.ny,
     })?;
@@ -741,8 +735,8 @@ pub fn create_horizontal_uniform_buffer(
         "horizontal uniform params must stay 16-byte aligned"
     );
     let params = HorizontalParamsRaw {
-        nx: nx_u32,
-        ny: ny_u32,
+        nx: nx_param,
+        ny: ny_param,
         query_count: query_count_u32,
         is_periodic_x: u32::from(is_periodic_x),
     };
@@ -902,9 +896,9 @@ pub async fn download_horizontal_output(
         "horizontal_sample_output",
     )
     .await?;
-    for (query_index, value) in values.iter().enumerate() {
+    for value in &values {
         if !value.is_finite() {
-            return Err(GpuHorizontalError::NonFiniteOutputValue { query_index });
+            return Err(GpuHorizontalError::NonFiniteOutputValue);
         }
     }
     Ok(values)
@@ -1062,6 +1056,11 @@ fn pinned_oracle_evidence_for_case(case_id: &str) -> Result<PinnedOracleEvidence
 }
 
 /// One machine-readable GPU-vs-oracle comparison row for #87.
+///
+/// The four boolean lanes are independent provenance/verdict facts owned by
+/// #71/#87 (value match, index match, weight match, combined row verdict);
+/// collapsing them into an enum would hide which fact failed.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HorizontalGpuRow {
     /// Pinned oracle case that produced this row.
@@ -1289,7 +1288,7 @@ pub fn build_horizontal_gpu_row(
     candidate_revision: &str,
 ) -> Result<HorizontalGpuRow, GpuHorizontalError> {
     if !gpu_value.is_finite() || !oracle_value.is_finite() || !cpu_value.is_finite() {
-        return Err(GpuHorizontalError::NonFiniteOutputValue { query_index: 0 });
+        return Err(GpuHorizontalError::NonFiniteOutputValue);
     }
     validate_candidate_revision(candidate_revision)?;
     let comparison = compare_finite_values(

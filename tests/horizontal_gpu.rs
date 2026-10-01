@@ -874,6 +874,7 @@ fn test_gpu_vs_oracle_parity_with_evidence() {
         );
     }
 
+    let all_pass = rows.iter().all(|row| row.row_verdict);
     let report = HorizontalGpuReport {
         schema: SchemaIdentity {
             id: HORIZONTAL_GPU_REPORT_SCHEMA_ID.to_string(),
@@ -883,11 +884,8 @@ fn test_gpu_vs_oracle_parity_with_evidence() {
         candidate: HORIZONTAL_GPU_CANDIDATE_DESCRIPTION.to_string(),
         comparison_policy: policy,
         rows,
-        status: true,
+        status: all_pass,
     };
-    // Status must match rows; validation below would fail otherwise.
-    let mut report = report;
-    report.status = report.rows.iter().all(|row| row.row_verdict);
     report.validate().expect("GPU report must validate");
     report
         .require_paired_pass()
@@ -1044,6 +1042,21 @@ fn test_gpu_evidence_fails_closed_on_contradiction() {
     assert_ne!(
         bad_input.gpu_evidence.candidate.input_sha256,
         row.gpu_evidence.candidate.input_sha256
+    );
+    // Recompute the expected hash from the dispatched inputs and verify the
+    // row's hash matches; a tampered hash would fail this equality check.
+    let expected_input_hash =
+        horizontal_inputs_sha256(&grid, &field, std::slice::from_ref(&device_query))
+            .expect("recompute input hash");
+    assert_eq!(
+        row.gpu_evidence.candidate.input_sha256,
+        expected_input_hash,
+        "row input hash must match the dispatched grid/field/queries"
+    );
+    assert_ne!(
+        bad_input.gpu_evidence.candidate.input_sha256,
+        expected_input_hash,
+        "tampered input hash must not match the dispatched inputs"
     );
 
     // Contradictory verdict fails closed.

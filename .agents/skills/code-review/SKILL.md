@@ -1,62 +1,67 @@
 ---
 name: code-review
-description: Review a FLEXPART-GPU pull request against its issue contract, repair every confirmed in-scope finding in the same autonomous run, verify once efficiently, push, and confirm CI without redundant inspection or test cycles.
+description: Review a FLEXPART-GPU PR against its current contract using bounded inspection and targeted-first validation; perform in-scope repairs and publish them when authorized by the request.
 ---
 
 # Code Review and Repair Workflow
 
-Use this skill for pull-request reviews, including reviews where confirmed findings should be fixed. Review and repair are one autonomous workflow; do not pause for approval between review, implementation, verification, push, and CI confirmation unless explicitly requested.
+Use for PR reviews and authorized review-and-repair work. Apply current
+`AGENTS.md` (injected content counts) and
+[the shared verification policy](../../../docs/agent-validation.md#agent-workflow-policy).
+A review-only request authorizes inspection and findings. When repairs and
+publishing are authorized, complete them in one autonomous workflow without
+repeated approval pauses. Use this skill alone for review with repairs unless
+a distinct implementation task is requested.
 
-## Scope
+## Scope and evidence
 
-- The referenced issue is the sole implementation contract.
-- Treat open dependencies as hard boundaries. Fail closed where their semantics are unresolved.
-- Do not implement adjacent behavior, clean up unrelated code, or fix unrelated test/CI failures.
-- If correctness would require expanding the issue contract, stop that path and report or record the dependency.
-- Preserve unrelated user changes. Use an isolated worktree only if the active worktree is dirty or on another task.
-- Use a single agent for the review-and-repair task.
+- The issue plus the explicit user request define the review contract. Apply
+  **Issue Definition & Task Slicing** from current `AGENTS.md`. Keep adjacent
+  behavior and unrelated baseline/CI failures outside the change.
+- For GPU review or repair, read `docs/GPU_CONTRACT.md` first. Require the
+  production GPU path, no silent CPU fallback, pinned-oracle authority, and
+  actual device-execution evidence at the issue's required validation level.
+- If correctness needs unresolved scientific semantics, an unnamed consumer,
+  external data/oracle, or another issue's contract, stop expanding scope and
+  record the dependency. Do not invent physics or new tolerances during review.
+- Preserve unrelated user changes and use a single agent unless delegation is
+  explicitly requested or required by applicable instructions.
+- Batch PR/issue metadata, dependencies, changed filenames, review state, and
+  concise check status. Inspect relevant patches, tests, callers, and normative
+  sources fully enough for correctness; bound displayed output, not review depth.
 
-## Efficient inspection
+## Review, repair, and verification
 
-- Fetch issue and PR metadata, changed files, review state, and checks in as few batched GitHub calls as practical.
-- Batch independent read-only repository inspections.
-- Use targeted searches and bounded snippets.
-- Do not emit full issue bodies, full diffs, complete API responses, successful test logs, or complete CI logs.
-- Prefer filenames, diff statistics, exact failing assertions, and the last relevant failure lines.
-- Treat an already-injected `AGENTS.md` as read; do not reopen, quote, or summarize it.
-- Keep intermediate updates to meaningful milestones or blockers only.
+Compare the complete in-scope diff and its evidence with the contract. Report
+confirmed correctness, scope, validation, or maintainability findings. Verify
+suspected problems before editing; avoid speculative churn. With repair
+authorization, fix confirmed in-scope findings together before the initial push.
 
-## Review and repair
+Run directly affected tests first. For supported focused corpus checks, default
+to `python scripts/agent_validation.py --check comparison --case <CASE>`;
+oracle-only checks use `--check oracle`. Follow the shared policy for supported
+selectors, valid caches, compact JSON, artifact paths, and failed-stage tails.
+Never equate a diagnostic execution `PASS` with scientific parity, or a
+candidate-only/zero-test/skipped run with required validation.
 
-1. Compare the PR against the issue contract and relevant dependencies.
-2. Identify only confirmed correctness, scope, validation, or maintainability findings that belong to that contract.
-3. Fix all confirmed in-scope findings together before the initial push.
-4. Do not convert speculative concerns into code churn; verify a suspected problem before editing.
-5. Update the PR title or description only when needed to state the actual completed scope or unresolved dependencies accurately.
+Once repairs are stable, run formatting, Clippy, Cargo tests, and issue-owned
+production/device/oracle/CI gates as required by the shared policy. Apply its
+strict instruction/documentation-only exception when appropriate. Review-only
+work may reuse valid evidence for the reviewed head and add checks necessary
+to resolve findings; it need not repeat every valid passing check.
+Retain full logs, preserve exit codes, and report compact outcomes. Re-run
+checks only when relevant changes or invalidated evidence require them.
 
-## Verification economy
+## Publish and finish
 
-1. First run tests directly covering changed or repaired behavior.
-2. Run `cargo fmt --all -- --check` and `cargo clippy` as required by the repository.
-3. Run the broader required test suite once after the repair is stable.
-4. Do not rerun a passing check unless relevant code changed afterward.
-5. Capture successful command output compactly.
-6. On failure, inspect only the relevant failing test, step, or minimal log section before widening the investigation.
-7. Distinguish failures caused by the PR from established unrelated baseline or infrastructure failures.
+For authorized repairs, normally push once after stable local verification.
+Update the existing PR description to match the completed scope and validation.
+Use an explicit lease for an authorized rebase. Poll concise CI status at least
+60 seconds apart, verify the pushed head, and inspect only relevant failed-step
+logs before widening investigation. Repush for in-scope repairs, required base
+updates, or user requests. Document demonstrated unrelated failures without
+changing adjacent code or describing the failed gate as green.
 
-## Push and CI
-
-- Push once after local verification passes.
-- Poll CI no more frequently than once per 60 seconds and request only concise status fields.
-- If CI fails, inspect the failed step and minimal relevant log section.
-- Fix and repush only when the failure is caused by this PR.
-- For an unrelated infrastructure or baseline failure, provide concise evidence without expanding scope.
-
-## Finish criteria
-
-Finish only when:
-
-- every confirmed in-scope review finding is fixed;
-- required local checks have completed;
-- PR checks are green, or a demonstrably unrelated external failure is documented; and
-- the final response concisely lists the findings/fixes, verification results, PR link, and any remaining issue-owned dependency.
+Finish with findings/fixes, verification and evidence paths, the PR link, and
+remaining blockers/dependencies. State omitted or unavailable checks honestly.
+Do not report completion of a scientific claim without its required evidence.

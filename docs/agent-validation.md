@@ -49,6 +49,62 @@ The comparison is restricted to the requested case plus that declared
 dependency, and the focused manifest hashes both oracle input/output trees.
 This prevents unrelated retained oracle results from changing a focused run.
 
+## Agent workflow policy
+
+This is the shared verification policy for repository agents. `AGENTS.md` and
+the implementation/review skills route here; #92 / PR #95 supply the existing
+compact execution infrastructure. This policy changes neither its scientific
+semantics nor the required CI gates.
+
+Choose the smallest check that can falsify the issue's claim:
+
+| Task or claim | First check | Stable final verification |
+| --- | --- | --- |
+| Instructions/documentation only | Check local links, skill frontmatter, current-main rule preservation, and `git diff --check` | Review the complete diff and confirm only instruction/documentation files changed; explain omitted executable checks in the PR. |
+| Rust or WGSL change | Relevant unit/integration target and exact test or narrow filter | `cargo fmt --all -- --check`, `cargo clippy`, `cargo test`, plus every issue-owned device/oracle/production gate. |
+| Supported focused corpus comparison | `python scripts/agent_validation.py --check comparison --case <CASE>` | Required broader corpus, production, and CI gates once the change is stable. |
+| Oracle-only investigation | `python scripts/agent_validation.py --check oracle --case <CASE>` | The owning oracle/reproducibility check; oracle-only success proves no candidate comparison. |
+| Scripts, workflows, fixtures, or build inputs | Directly affected checks and artifact/provenance audits | Required consumer and CI gates; these changes do not qualify for the documentation-only exception. |
+
+For a supported focused corpus check, use `agent_validation.py` by default
+instead of manually chaining candidate, oracle, audit, comparison, and manifest
+commands. Select the issue-relevant case; `ADV-ANA-001` is an example, not a
+universal scientific test. Check selectors against the current runner and
+corpus index. Unsupported cases require their owning documented path, not a
+substituted case or a candidate-only result presented as paired validation.
+
+Normal iterations keep Cargo, Docker, and the validated oracle cache. Let the
+existing cache identity checks rebuild stale inputs. Do not delete `target/`,
+run `cargo clean`, force Docker rebuilds, or pass `--clean` routinely. Use a
+clean run only for an explicit reproducibility obligation or a diagnosed cache
+problem. Do not duplicate oracle-building or comparison semantics in a new
+agent-specific wrapper.
+
+Start with compact JSON and the process exit status. Read `state`,
+`scientific_verdict`, case/revision identity, stage results, and evidence paths.
+`PASS` proves successful execution of the selected path only; the current
+comparison verdict remains `DIAGNOSTIC_NO_PARITY_VERDICT`. `FAIL`, `BLOCKED`,
+`ERROR`, non-zero exit, missing evidence, or skipped required execution cannot
+be described as passing validation. Keep actual WGSL/device execution and
+scientific comparison evidence separate as required by `GPU_CONTRACT.md`.
+
+Retain full output under `target/` and inspect the compact diagnostic first.
+Then inspect only the failed stage's named log and a bounded relevant excerpt
+(normally at most 30 lines of at most 500 characters each). Widen the excerpt
+or use `--verbose` only when that evidence is insufficient. For other commands,
+redirect stdout/stderr to a named log, preserve the subprocess exit status,
+and report the command, outcome, and log path; never let a tail/filter command
+mask failure. A filtered test with zero executed tests proves nothing.
+
+Run broader required checks once at the stable final state. Reuse a passing
+result only while its relevant source, fixtures, inputs, dependencies,
+toolchain, adapter/backend, and configuration remain valid; a relevant rebase
+or merge requires affected checks again. Record omitted, blocked, or unrelated
+failing checks with concise evidence rather than weakening a gate or expanding
+the task. Confirm that required CI checks belong to the pushed PR head, poll
+status no more often than every 60 seconds, and fetch failed-step logs only
+when needed. Green technical CI is not scientific parity.
+
 ## Retained artifacts
 
 - Compact summary and complete stage logs:

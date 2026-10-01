@@ -110,11 +110,19 @@ proof unless the owning issue explicitly defines CPU parity as normative.
 
 Workflow-specific instructions live under `.agents/skills/` and are mandatory when applicable:
 
-- For implementing an issue or scoped code change, invoke `$implementation`.
-- For reviewing a pull request, including review-and-repair work, invoke `$code-review`.
-- For creating, refining, splitting, or re-scoping GitHub issues, invoke `$issue-authoring`.
+- For implementing an issue or scoped change, read and apply
+  [implementation](.agents/skills/implementation/SKILL.md) (`$implementation`).
+- For reviewing a pull request, including authorized review-and-repair work, read and apply
+  [code-review](.agents/skills/code-review/SKILL.md) (`$code-review`).
+- For creating, refining, splitting, or re-scoping GitHub issues, read and apply
+  [issue-authoring](.agents/skills/issue-authoring/SKILL.md) (`$issue-authoring`).
 - A PR review that includes repairs uses `$code-review` alone unless a distinct implementation task is explicitly requested.
-- Do not reopen, quote, or summarize this `AGENTS.md` when it has already been injected or provided by the harness.
+- Treat an already-injected current `AGENTS.md` as read; inspect it again only to edit it,
+  resolve conflicts, or verify that supplied instructions match the current checkout.
+
+These skills govern execution workflow. The GPU contract, scientific requirements,
+code-quality rules, and **Issue Definition & Task Slicing** below remain normative.
+Read the linked file directly if named skill invocation is unavailable.
 
 ## Agent Execution Efficiency
 
@@ -122,15 +130,28 @@ Minimize model/tool round trips and command output without weakening correctness
 
 - Batch independent repository and GitHub inspections where practical.
 - Prefer targeted searches, bounded snippets, filenames, diff statistics, failing assertions, and the last relevant failure lines.
-- Do not emit full issue bodies, full diffs, complete API responses, complete successful test logs, or complete CI logs unless they are specifically needed to diagnose a failure.
+- Read the complete applicable contract and changed behavior when needed for correctness;
+  bound displayed output, not the evidence considered. Prefer selected GitHub JSON fields.
+- Retain full verification logs on disk; display concise results and artifact paths.
+  Do not dump complete successful test logs, API responses, or CI logs by default.
 - Make related in-scope changes together rather than repeatedly alternating between inspection, editing, and broad verification.
-- Run the narrowest tests that can falsify the changed behavior first. Run broader required verification once after the implementation is stable.
-- Do not rerun a passing check unless relevant code changed afterward.
+- Run the narrowest tests that can falsify the changed behavior first. Follow
+  [docs/agent-validation.md](docs/agent-validation.md#agent-workflow-policy) for the
+  default compact oracle/comparison path and the final verification decision.
+- Run broader required verification once after the implementation is stable. Required
+  production-path, pinned-oracle, device-execution, and CI gates still apply.
+- Reuse passing checks only while their relevant source, fixtures, inputs, dependencies,
+  toolchain, adapter/backend, and configuration remain valid. A relevant rebase or merge
+  invalidates that evidence. Re-run affected checks, not every check automatically.
 - On failure, inspect only the relevant failing test, step, or log section before widening the investigation.
 - Distinguish failures caused by the requested change from established unrelated baseline or infrastructure failures.
 - When CI confirmation is part of the task, poll no more frequently than once per 60 seconds and request concise status fields.
-- Normally push once after local verification passes. Repush only when a subsequent failure is caused by the current change.
-- Prefer one autonomous agent run for one bounded task. Do not create extra agents or approval pauses unless the task requires them.
+- Normally push once after stable local verification. Repush for an in-scope repair,
+  required base update, or user request; use an explicit `--force-with-lease` when a
+  requested rebase rewrites the existing remote branch.
+- Prefer one autonomous agent run for one bounded task. Delegate only when explicitly
+  requested or required by applicable instructions. Continue authorized repairs without
+  extra approval pauses; a review-only request does not authorize repairs or publishing.
 - Do not optimize against an arbitrary maximum number of tool calls; minimize redundant calls while preserving correctness and required evidence.
 
 ---
@@ -328,7 +349,8 @@ renaming).
 
 ### Per-task protocol
 
-1. Read this file before starting any task.
+1. Treat current injected instructions as read, and apply the matching workflow skill
+   from **Required Agent Workflows** before starting the task.
 2. For any GPU implementation, modification, composition, or review task, read and obey
    `docs/GPU_CONTRACT.md` before touching GPU code.
 3. When creating or refining issues, follow **Issue Definition & Task Slicing** above before implementation starts.
@@ -336,5 +358,9 @@ renaming).
    its methodology (scenario sizing, warm-up/sample settings, and GPU/CPU recipe separation).
 5. Read the referenced Fortran source to understand the algorithm being ported.
 6. Write tests before or alongside the implementation (not after).
-7. Run `cargo clippy` and `cargo test` before marking a task as done.
+7. Once implementation is stable, run `cargo fmt --all -- --check`, `cargo clippy`, and
+   `cargo test` for code changes, plus the issue-owned validation gates. For a strictly
+   instruction/documentation-only diff, verify links, skill manifests, rule preservation,
+   and diff scope instead; explain omitted Cargo/oracle runs in the PR. This exception
+   does not apply to scripts, workflows, fixtures, build settings, or executable behavior.
 8. Document any deviation from the Fortran reference in `docs/scientific-changelog.md`.

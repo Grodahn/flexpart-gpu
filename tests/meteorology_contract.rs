@@ -3,6 +3,7 @@ use flexpart_gpu::meteorology::{
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::{fs, process::Command};
 
 /// Pinned SHA-256 of the checked-in real-data fixture at commit time.
 ///
@@ -12,6 +13,14 @@ use sha2::{Digest, Sha256};
 /// changed file) fails loudly.
 const REAL_DATA_FIXTURE_SHA256: &str =
     "a88723556201302298e17ab01eba2bedd830bc29f99548f50f52d27805f28b13";
+
+/// SHA-256 produced by the pre-#106 Windows checkout mutation.
+///
+/// Git inserted `0x0d` before each of the fixture's 127 `0x0a` bytes, changing
+/// its length from 37,544 to 37,671 bytes. This digest records the reproduced
+/// failure without accepting the mutated representation as canonical.
+const PRE_FIX_CRLF_FIXTURE_SHA256: &str =
+    "b48447864fa2db4d61d8141a852099977dc78c729c9bb46d3b320c5f75dffec0";
 
 /// SHA-256 of the source native model-level GRIB, as documented in the
 /// provenance file and the original ETEX manifests.
@@ -161,7 +170,8 @@ fn real_data_fixture_provenance_metadata_is_present_and_consistent() {
     // The artifact digest must be the pinned value and the digest computed from
     // the embedded bytes: a stale, absent or malformed hash fails loudly.
     assert_eq!(provenance.artifact.sha256, REAL_DATA_FIXTURE_SHA256);
-    assert_eq!(sha256_hex(fixture_bytes), REAL_DATA_FIXTURE_SHA256);
+    verify_exact_sha256(fixture_bytes, REAL_DATA_FIXTURE_SHA256)
+        .expect("checked-in fixture must match exact-byte provenance");
 
     // The provenance must name the exact artifact and its size, and the
     // extraction script as the generation path.
@@ -270,10 +280,157 @@ fn real_data_fixture_provenance_metadata_is_present_and_consistent() {
     );
 }
 
+#[test]
+fn exact_byte_fixture_identity_rejects_crlf_and_content_mutation() {
+    let fixture_bytes = include_bytes!("../fixtures/meteorology/era5-etex-native-v1.json");
+    assert_eq!(fixture_bytes.len(), 37_544);
+    assert_eq!(sha256_hex(fixture_bytes), REAL_DATA_FIXTURE_SHA256);
+    assert!(
+        !fixture_bytes.windows(2).any(|pair| pair == b"\r\n"),
+        "the canonical fixture must be checked out with LF bytes"
+    );
+
+    let mut crlf_bytes = Vec::with_capacity(fixture_bytes.len() + 127);
+    for byte in fixture_bytes {
+        if *byte == b'\n' {
+            crlf_bytes.push(b'\r');
+        }
+        crlf_bytes.push(*byte);
+    }
+    assert_eq!(crlf_bytes.len(), 37_671);
+    assert_eq!(sha256_hex(&crlf_bytes), PRE_FIX_CRLF_FIXTURE_SHA256);
+    assert!(verify_exact_sha256(&crlf_bytes, REAL_DATA_FIXTURE_SHA256).is_err());
+
+    let mut content_mutation = fixture_bytes.to_vec();
+    let first_digit = content_mutation
+        .iter()
+        .position(u8::is_ascii_digit)
+        .expect("fixture contains numeric content");
+    content_mutation[first_digit] = if content_mutation[first_digit] == b'9' {
+        b'8'
+    } else {
+        content_mutation[first_digit] + 1
+    };
+    assert!(verify_exact_sha256(&content_mutation, REAL_DATA_FIXTURE_SHA256).is_err());
+
+    assert_ne!(sha256_hex(b"arbitrary\n"), sha256_hex(b"arbitrary\r\n"));
+}
+
+#[test]
+fn repository_policy_forces_lf_for_every_text_fixture_class() {
+    let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let safe_directory = format!("safe.directory={}", repository.display());
+    let fixture_path = "fixtures/meteorology/era5-etex-native-v1.json";
+    let tracked = Command::new("git")
+        .args(["-c", &safe_directory, "ls-files", "-z", "fixtures"])
+        .current_dir(repository)
+        .output()
+        .expect("git must be available to inspect the repository fixture policy");
+    assert!(
+        tracked.status.success(),
+        "git ls-files failed: {}",
+        String::from_utf8_lossy(&tracked.stderr)
+    );
+
+    let paths: Vec<&str> = tracked
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+        .map(|path| std::str::from_utf8(path).expect("tracked fixture path must be UTF-8"))
+        .collect();
+    let text_paths: Vec<&str> = paths
+        .iter()
+        .copied()
+        .filter(|path| !path.ends_with(".grib") && !path.ends_with(".npz"))
+        .collect();
+    assert!(!text_paths.is_empty());
+
+    let mut command = Command::new("git");
+    command
+        .args([
+            "-c",
+            &safe_directory,
+            "-c",
+            "core.autocrlf=true",
+            "check-attr",
+            "text",
+            "eol",
+            "--",
+        ])
+        .args(&text_paths)
+        .current_dir(repository);
+    let attributes = command
+        .output()
+        .expect("git must be available to resolve fixture attributes");
+    assert!(
+        attributes.status.success(),
+        "git check-attr failed: {}",
+        String::from_utf8_lossy(&attributes.stderr)
+    );
+    let attributes = String::from_utf8(attributes.stdout).expect("attribute output must be UTF-8");
+    for path in text_paths {
+        assert!(
+            attributes.contains(&format!("{path}: text: set")),
+            "canonical text fixture lacks an explicit text policy: {path}"
+        );
+        assert!(
+            attributes.contains(&format!("{path}: eol: lf")),
+            "canonical text fixture lacks the repository-owned LF policy: {path}"
+        );
+
+        let bytes = fs::read(repository.join(path)).expect("read checked-out canonical fixture");
+        assert!(
+            !bytes.windows(2).any(|pair| pair == b"\r\n"),
+            "canonical text fixture contains CRLF bytes: {path}"
+        );
+    }
+
+    let simulated_checkout = tempfile::tempdir().expect("create simulated checkout directory");
+    let checkout_prefix = format!("{}/", simulated_checkout.path().display()).replace('\\', "/");
+    let checkout = Command::new("git")
+        .args([
+            "-c",
+            &safe_directory,
+            "-c",
+            "core.autocrlf=true",
+            "-c",
+            "core.eol=crlf",
+            "checkout-index",
+            "--force",
+            &format!("--prefix={checkout_prefix}"),
+            "--",
+            fixture_path,
+        ])
+        .current_dir(repository)
+        .output()
+        .expect("git must be available to simulate a Windows-style checkout");
+    assert!(
+        checkout.status.success(),
+        "simulated checkout failed: {}",
+        String::from_utf8_lossy(&checkout.stderr)
+    );
+    let checked_out_bytes =
+        fs::read(simulated_checkout.path().join(fixture_path)).expect("read simulated checkout");
+    assert_eq!(checked_out_bytes.len(), 37_544);
+    assert_eq!(sha256_hex(&checked_out_bytes), REAL_DATA_FIXTURE_SHA256);
+    assert!(!checked_out_bytes.windows(2).any(|pair| pair == b"\r\n"));
+}
+
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("{:x}", hasher.finalize())
+}
+
+fn verify_exact_sha256(bytes: &[u8], expected: &str) -> Result<(), String> {
+    let actual = sha256_hex(bytes);
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "exact-byte SHA-256 mismatch: {actual} != {expected}"
+        ))
+    }
 }
 
 /// Minimal projection of the provenance JSON shape required by this fixture.

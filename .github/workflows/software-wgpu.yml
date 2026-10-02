@@ -100,6 +100,62 @@ jobs:
               assert evidence["oracle"]["revision"] == "c70586c2b7f5258850705325881c61f557ea9bd8"
               assert evidence["comparison"]["verdict"] == "passed"
           PY
+      - name: Prove canonical vertical GPU sampling against the pinned oracles
+        env:
+          FLEXPART_GPU_REQUIRE_VERTICAL: "1"
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-gate
+          cargo test --test vertical_gpu -- --nocapture --test-threads=1 2>&1 | tee target/ci-gate/vertical-gpu.log
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import math
+          import os
+          from pathlib import Path
+
+          def read(path):
+              return json.loads(Path(path).read_text(encoding="utf-8"))
+
+          contract = read("fixtures/interpolation/contract-v1.json")
+          provenance = read("fixtures/interpolation/contract-v1.provenance.json")
+          w = read("fixtures/interpolation/w-production-oracle-v1.json")
+          sample = Path("src/shaders/vertical_sample.wgsl").read_bytes()
+          remap = Path("src/shaders/vertical_remap_w.wgsl").read_bytes()
+          for scenario in ("vertical-model-levels", "real-era5-etex-temperature-column", "w-production-synthetic"):
+              is_w = scenario == "w-production-synthetic"
+              if is_w:
+                  expected = [q["pristine_w_m_s"] for q in w["synthetic_case"]["queries"]]
+                  executable = w["provenance"]["build"]["binary_sha256"]
+                  output = w["provenance"]["build"]["oracle_output_sha256"]
+              else:
+                  case = next(c for c in contract["cases"] if c["id"] == scenario)
+                  expected = [q["VALUE"][0] for q in case["golden"]["queries"]]
+                  executable = provenance["linked_flexpart"]["linked_object_set_sha256"]
+                  output = provenance["cases"][scenario]
+              report = read(f"target/ci-gate/vertical-gpu/{scenario}.json")
+              assert report["schema"] == {"id": "flexpart-gpu.vertical-gpu-evidence", "version": 1}
+              assert report["scenario_id"] == scenario and report["status"] is True
+              assert len(report["rows"]) == len(expected) > 0
+              shader = hashlib.sha256(sample + b"\n" + remap if is_w else sample).hexdigest()
+              relative = 1e-5 if is_w else 1e-4
+              assert report["comparison_policy"] == {"absolute_tolerance": 1e-6, "relative_tolerance": relative}
+              for row, oracle in zip(report["rows"], expected):
+                  assert row["row_verdict"] is True and row["value_verdict"] is True
+                  assert math.isfinite(row["gpu_value"]) and math.isfinite(row["oracle_value"])
+                  assert math.isclose(row["oracle_value"], oracle, rel_tol=1e-7, abs_tol=1e-12)
+                  assert math.isclose(row["gpu_value"], oracle, rel_tol=relative, abs_tol=1e-6)
+                  evidence = row["gpu_evidence"]
+                  assert evidence["execution"]["status"] == "passed"
+                  assert evidence["execution"]["calculation_path"] == "wgsl_device"
+                  assert evidence["execution"]["adapter"]["adapter_class"] == "software_wgsl"
+                  assert evidence["candidate"]["revision"] == os.environ["GITHUB_SHA"]
+                  assert evidence["candidate"]["shader_sha256"] == shader
+                  assert evidence["oracle"]["revision"] == provenance["pinned_commit"]
+                  assert evidence["oracle"]["executable_sha256"] == executable
+                  assert evidence["oracle"]["output_sha256"] == output
+                  assert evidence["comparison"]["verdict"] == "passed"
+          PY
       - name: Run corpus deterministic subset (Issue #6, point 2)
         run: |
           set -euo pipefail
@@ -137,6 +193,8 @@ jobs:
             target/ci-gate/accumulation-gpu.log
             target/ci-gate/accumulation-gpu/*.json
             target/ci-gate/temporal-gpu.log
+            target/ci-gate/vertical-gpu.log
+            target/ci-gate/vertical-gpu/*.json
             target/ci-gate/corpus-subset.log
             target/temporal-gpu-evidence.json
           retention-days: 30

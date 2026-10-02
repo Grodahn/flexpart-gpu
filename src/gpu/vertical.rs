@@ -7,10 +7,15 @@
 //!
 //! ## Scientific contract
 //!
-//! Model-level scalar/vector sampling follows
+//! Model-level scalar sampling follows
 //! `src/meteorology/vertical_sampling.rs` (#73), which ports FLEXPART 11.1
 //! `interpol_mod.f90:215-242` (`find_z_level_meters`, METRE mode),
 //! `:406-430` (`find_vert_vars_lin`) and `:539-547` (`vert_interpol`).
+//! Vector fields (such as `WindU`/`WindV`) are sampled as independent
+//! per-component scalar passes over the same column geometry; there is no
+//! fused multi-component kernel, mirroring the scalar CPU entrypoint.
+//! Center-staggered vertical motion uses the same single-stage sample kernel
+//! via [`physical_center_w_column_from_runtime`].
 //! Interface-staggered W follows the pristine `eta=no` two-stage production
 //! path frozen by #80:
 //!
@@ -72,10 +77,10 @@ use thiserror::Error;
 use wgpu::util::DeviceExt;
 
 use super::{
-    compare_finite_values, download_buffer_typed, ComparisonPolicy, GpuAdapterEvidence,
-    GpuBufferError, GpuCalculationEvidence, GpuCalculationPath, GpuCandidateEvidence, GpuContext,
-    GpuEvidenceError, GpuEvidenceSchema, GpuExecutionEvidence, GpuExecutionStatus,
-    NumericalVerdict, PinnedOracleEvidence,
+    compare_finite_values, download_buffer_typed, ComparisonEvidence, ComparisonPolicy,
+    GpuAdapterEvidence, GpuBufferError, GpuCalculationEvidence, GpuCalculationPath,
+    GpuCandidateEvidence, GpuContext, GpuEvidenceError, GpuEvidenceSchema, GpuExecutionEvidence,
+    GpuExecutionStatus, NumericalVerdict, PinnedOracleEvidence,
 };
 use crate::meteorology::{
     vertical::{NormalizedVerticalMotion, VerticalRuntimeView, VerticalTransformError},
@@ -95,26 +100,82 @@ const REMAP_SHADER_SOURCE: &str = include_str!("../shaders/vertical_remap_w.wgsl
 const WORKGROUP_SIZE_X: u32 = 64;
 
 /// Candidate implementation identity for machine-readable evidence.
+///
+/// Both the ordinary sample stage and the W two-stage bundle (remap plus
+/// sample) report this single identity; the executed shader bundle recorded
+/// alongside it distinguishes the stages.
 pub const VERTICAL_GPU_IMPLEMENTATION_ID: &str =
     "meteorology::vertical-gpu::encode_vertical_sample";
-/// Candidate implementation identity for the W remap stage.
-pub const VERTICAL_W_REMAP_IMPLEMENTATION_ID: &str =
-    "meteorology::vertical-gpu::encode_vertical_remap_w";
 /// Human-readable candidate description recorded in issue-specific reports.
 pub const VERTICAL_GPU_CANDIDATE_DESCRIPTION: &str =
     "meteorology::vertical-gpu::encode_vertical_sample+remap_w (WGSL device)";
 
 /// Pinned FLEXPART 11.1 revision owning the #71/#80 vertical oracles.
 pub const VERTICAL_ORACLE_REVISION: &str = "c70586c2b7f5258850705325881c61f557ea9bd8";
-/// Pinned oracle linked-object-set identity from #71/#80 provenance.
+/// Pinned oracle linked-object-set identity from #71 provenance.
+///
+/// This digest identifies the linked `.o` set of the #71 direct-interpolation
+/// oracle driver (`linked_object_set_sha256` in
+/// `fixtures/interpolation/contract-v1.provenance.json`) and is the
+/// executable identity for model-level evidence.
 pub const VERTICAL_ORACLE_EXECUTABLE_SHA256: &str =
     "388d1f824306df30fc74fbedc6464e86602b6a93ba782e9e1dad20ffacc3327c";
-/// Pinned per-artifact oracle output digest for the #71 vertical contract fixture.
-pub const VERTICAL_MODEL_ORACLE_OUTPUT_SHA256: &str =
-    "d537a239e69d609131abbddf870d0067272a6e675cd4c50ba059e223793cfaed";
-/// Pinned binary digest for the #80 W production oracle executable.
+/// Pinned per-case oracle output digest for the #71 `vertical-model-levels` case.
+///
+/// From the `cases` map in
+/// `fixtures/interpolation/contract-v1.provenance.json`; this digest
+/// identifies the oracle output artifact, not the fixture file.
+pub const VERTICAL_MODEL_ORACLE_OUTPUT_SHA256_MODEL_LEVELS: &str =
+    "95f72332cb4b5e8e2878debaba12bb41f4a45234514687a86d7ec9e7abcc2520";
+/// Pinned per-case oracle output digest for the #71
+/// `real-era5-etex-temperature-column` case.
+///
+/// From the `cases` map in
+/// `fixtures/interpolation/contract-v1.provenance.json`; this digest
+/// identifies the oracle output artifact, not the fixture file.
+pub const VERTICAL_MODEL_ORACLE_OUTPUT_SHA256_REAL_COLUMN: &str =
+    "5679760f10c75679ecd597979b5caadfd3bf30debbbf9b0fa1fc6af1aa9e3771";
+/// Pinned digest of the #80 W production oracle executable.
+///
+/// This is the `binary_sha256` recorded in the `build` section of
+/// `fixtures/interpolation/w-production-oracle-v1.json` provenance: the
+/// linked oracle binary actually executed for the production-path oracle.
+/// W evidence records this digest as the oracle executable identity.
 pub const VERTICAL_W_ORACLE_BINARY_SHA256: &str =
     "9e2ff66ab93a815cd90011943042e23ecf3f44a8ce000de9db819d02f9ef4c95";
+
+/// Pinned #71 model-level oracle case identified in machine-readable evidence.
+///
+/// Each case carries its own oracle-output digest from the `cases` map in
+/// `fixtures/interpolation/contract-v1.provenance.json`. A single shared
+/// digest cannot identify both cases, so evidence rows must name exactly one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerticalModelOracleCase {
+    /// Synthetic `vertical-model-levels` oracle case.
+    ModelLevels,
+    /// Real-data `real-era5-etex-temperature-column` oracle case.
+    RealEra5Column,
+}
+
+impl VerticalModelOracleCase {
+    /// Stable oracle case identifier matching the #71 contract fixture.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ModelLevels => "vertical-model-levels",
+            Self::RealEra5Column => "real-era5-etex-temperature-column",
+        }
+    }
+
+    /// Pinned oracle-output digest identifying this case's oracle artifact.
+    #[must_use]
+    pub const fn output_sha256(self) -> &'static str {
+        match self {
+            Self::ModelLevels => VERTICAL_MODEL_ORACLE_OUTPUT_SHA256_MODEL_LEVELS,
+            Self::RealEra5Column => VERTICAL_MODEL_ORACLE_OUTPUT_SHA256_REAL_COLUMN,
+        }
+    }
+}
 /// Pinned raw oracle output digest for the #80 W production oracle.
 pub const VERTICAL_W_ORACLE_OUTPUT_SHA256: &str =
     "730c08209e4ffd7f7c941926846e53bc9cd30b2b255d69eaf3b21e40337c2671";
@@ -202,9 +263,6 @@ pub enum GpuVerticalError {
         /// Shared grid count.
         shared: usize,
     },
-    /// Uniform buffer does not match the validated grid and query count.
-    #[error("vertical uniform metadata does not match the validated grid")]
-    MismatchedUniforms,
     /// GPU device scope reported an error.
     #[error("GPU {scope} error during vertical sampling: {message}")]
     Device {
@@ -362,10 +420,12 @@ impl VerticalSampleKernel {
                         },
                     ],
                 });
-        let pipeline =
-            ctx.create_compute_pipeline("vertical_sample_pipeline", &shader, "main", &[
-                &bind_group_layout,
-            ]);
+        let pipeline = ctx.create_compute_pipeline(
+            "vertical_sample_pipeline",
+            &shader,
+            "main",
+            &[&bind_group_layout],
+        );
         let kernel = Self {
             bind_group_layout,
             pipeline,
@@ -456,10 +516,12 @@ impl VerticalWRemapKernel {
                         },
                     ],
                 });
-        let pipeline =
-            ctx.create_compute_pipeline("vertical_remap_w_pipeline", &shader, "main", &[
-                &bind_group_layout,
-            ]);
+        let pipeline = ctx.create_compute_pipeline(
+            "vertical_remap_w_pipeline",
+            &shader,
+            "main",
+            &[&bind_group_layout],
+        );
         let kernel = Self {
             bind_group_layout,
             pipeline,
@@ -574,13 +636,21 @@ fn validate_finite_lane(values: &[f32], field: &'static str) -> Result<(), GpuVe
     Ok(())
 }
 
+/// Validate that `heights` is strictly increasing bottom-to-top.
+///
+/// The reported `index` is the lane-relative position of the lower element of
+/// the first non-increasing pair. Column-aware callers
+/// ([`physical_model_column_from_runtime`],
+/// [`physical_w_columns_from_runtime`]) report true column coordinates
+/// instead; this helper only serves column-free buffer constructors, which
+/// document the lane-relative convention in their errors.
 fn validate_strictly_increasing(heights: &[f32]) -> Result<(), GpuVerticalError> {
-    for pair in heights.windows(2) {
+    for (index, pair) in heights.windows(2).enumerate() {
         if !(pair[1] > pair[0]) {
             return Err(VerticalSamplingError::MalformedGeometry {
                 x: 0,
                 y: 0,
-                index: 0,
+                index,
                 lower_m: pair[0],
                 upper_m: pair[1],
             }
@@ -852,11 +922,7 @@ pub fn create_vertical_output_buffer(
 }
 
 #[inline]
-const fn canonical_index(
-    ordering: VerticalOrdering,
-    count: usize,
-    physical_index: usize,
-) -> usize {
+const fn canonical_index(ordering: VerticalOrdering, count: usize, physical_index: usize) -> usize {
     match ordering {
         VerticalOrdering::Increasing => count - 1 - physical_index,
         VerticalOrdering::Decreasing => physical_index,
@@ -898,9 +964,11 @@ pub fn physical_model_column_from_runtime(
     let horizontal = nx.checked_mul(ny).ok_or(GpuVerticalError::SizeOverflow {
         field: "vertical_horizontal",
     })?;
-    let expected = horizontal.checked_mul(nz).ok_or(GpuVerticalError::SizeOverflow {
-        field: "vertical_volume",
-    })?;
+    let expected = horizontal
+        .checked_mul(nz)
+        .ok_or(GpuVerticalError::SizeOverflow {
+            field: "vertical_volume",
+        })?;
     if values.len() != expected {
         return Err(VerticalSamplingError::ShapeMismatch {
             field,
@@ -929,13 +997,14 @@ pub fn physical_model_column_from_runtime(
             .into());
         }
         let flat = volume_offset(x, y, canonical, nx, ny);
-        let value = values.get(flat).copied().ok_or(
-            VerticalSamplingError::ShapeMismatch {
+        let value = values
+            .get(flat)
+            .copied()
+            .ok_or(VerticalSamplingError::ShapeMismatch {
                 field,
                 expected: nx * ny * nz,
                 actual: values.len(),
-            },
-        )?;
+            })?;
         if !value.is_finite() {
             return Err(VerticalSamplingError::NonFiniteFieldValue {
                 field,
@@ -948,12 +1017,100 @@ pub fn physical_model_column_from_runtime(
         heights.push(point.height_agl_m);
         lane.push(value);
     }
-    for pair in heights.windows(2) {
+    for (index, pair) in heights.windows(2).enumerate() {
         if !(pair[1] > pair[0]) {
             return Err(VerticalSamplingError::MalformedGeometry {
                 x,
                 y,
-                index: 0,
+                index,
+                lower_m: pair[0],
+                upper_m: pair[1],
+            }
+            .into());
+        }
+    }
+    Ok((heights, lane))
+}
+
+/// Extract a physical bottom-to-top center-staggered vertical-motion column.
+///
+/// This is the GPU counterpart of the CPU center-motion branch in
+/// [`crate::meteorology::vertical_sampling::sample_vertical`]: values and
+/// retained staggering come from the same #30 runtime transform as the
+/// geometry, so callers cannot recombine independently derived motion with
+/// runtime heights. Only [`VerticalStaggering::LevelCenter`] motion is
+/// accepted here; interface-staggered motion follows the two-stage
+/// [`physical_w_columns_from_runtime`] production path instead.
+///
+/// # Errors
+///
+/// Returns [`GpuVerticalError`] for missing motion, wrong staggering,
+/// non-finite values, or malformed geometry, mirroring the CPU
+/// fail-closed conditions.
+pub fn physical_center_w_column_from_runtime(
+    runtime: VerticalRuntimeView<'_>,
+    x: usize,
+    y: usize,
+) -> Result<(Vec<f32>, Vec<f32>), GpuVerticalError> {
+    let motion = runtime
+        .vertical_velocity()
+        .ok_or(VerticalSamplingError::MissingRuntimeVerticalMotion)?;
+    if motion.vertical_staggering() != VerticalStaggering::LevelCenter {
+        return Err(VerticalSamplingError::WrongStaggering {
+            field: FieldId::VerticalVelocity,
+            requested: VerticalStaggering::LevelCenter,
+        }
+        .into());
+    }
+    let (nx, ny, nz) = runtime.dimensions();
+    let ordering = runtime.provenance().source_vertical_ordering;
+    if nz < 2 {
+        return Err(VerticalSamplingError::InsufficientLevels { nz }.into());
+    }
+    let mut heights = Vec::with_capacity(nz);
+    let mut lane = Vec::with_capacity(nz);
+    for physical in 0..nz {
+        let canonical = canonical_index(ordering, nz, physical);
+        let point = runtime.level(x, y, canonical)?;
+        if !point.height_agl_m.is_finite() {
+            return Err(VerticalSamplingError::MalformedGeometry {
+                x,
+                y,
+                index: physical,
+                lower_m: point.height_agl_m,
+                upper_m: point.height_agl_m,
+            }
+            .into());
+        }
+        let flat = volume_offset(x, y, canonical, nx, ny);
+        let value =
+            motion
+                .values_ms()
+                .get(flat)
+                .copied()
+                .ok_or(VerticalSamplingError::ShapeMismatch {
+                    field: FieldId::VerticalVelocity,
+                    expected: nx * ny * nz,
+                    actual: motion.values_ms().len(),
+                })?;
+        if !value.is_finite() {
+            return Err(VerticalSamplingError::NonFiniteFieldValue {
+                field: FieldId::VerticalVelocity,
+                x,
+                y,
+                index: canonical,
+            }
+            .into());
+        }
+        heights.push(point.height_agl_m);
+        lane.push(value);
+    }
+    for (index, pair) in heights.windows(2).enumerate() {
+        if !(pair[1] > pair[0]) {
+            return Err(VerticalSamplingError::MalformedGeometry {
+                x,
+                y,
+                index,
                 lower_m: pair[0],
                 upper_m: pair[1],
             }
@@ -1050,23 +1207,19 @@ pub fn physical_w_columns_from_runtime(
         }
         level_heights.push(point.height_agl_m);
     }
-    for (lane, name) in [
-        (&interface_heights, "interface_heights"),
-        (&level_heights, "level_heights"),
-    ] {
-        for pair in lane.windows(2) {
+    for lane in [&interface_heights, &level_heights] {
+        for (index, pair) in lane.windows(2).enumerate() {
             if !(pair[1] > pair[0]) {
                 return Err(VerticalSamplingError::MalformedGeometry {
                     x,
                     y,
-                    index: 0,
+                    index,
                     lower_m: pair[0],
                     upper_m: pair[1],
                 }
                 .into());
             }
         }
-        let _ = name;
     }
     if interface_heights[0] != 0.0 {
         return Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
@@ -1084,11 +1237,7 @@ pub fn physical_w_columns_from_runtime(
         }
     }
     let top_level = level_heights[nz - 1];
-    let previous_shared = if nz >= 2 {
-        level_heights[nz - 2]
-    } else {
-        0.0
-    };
+    let previous_shared = if nz >= 2 { level_heights[nz - 2] } else { 0.0 };
     if top_level <= previous_shared || top_level > interface_top {
         return Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
             reason: "the top shared model height is incompatible with the W/interface domain",
@@ -1219,18 +1368,15 @@ pub fn resolve_query_heights_agl(
             for height in heights_m {
                 let agl = *height - terrain;
                 if !agl.is_finite() {
-                    return Err(
-                        VerticalSamplingError::NonFiniteHeight { height_m: agl }.into(),
-                    );
+                    return Err(VerticalSamplingError::NonFiniteHeight { height_m: agl }.into());
                 }
                 resolved.push(agl);
             }
             Ok(resolved)
         }
-        VerticalReference::ModelNative => Err(VerticalSamplingError::AmbiguousReference {
-            reference,
+        VerticalReference::ModelNative => {
+            Err(VerticalSamplingError::AmbiguousReference { reference }.into())
         }
-        .into()),
     }
 }
 
@@ -1510,9 +1656,7 @@ pub async fn sample_vertical_grid_gpu(
     let values = download_vertical_samples(ctx, &outputs).await?;
     for (index, value) in values.iter().enumerate() {
         if !value.is_finite() {
-            return Err(GpuVerticalError::NonFiniteOutputValue {
-                query_index: index,
-            });
+            return Err(GpuVerticalError::NonFiniteOutputValue { query_index: index });
         }
     }
     Ok(values)
@@ -1542,9 +1686,7 @@ pub async fn sample_vertical_w_gpu_two_stage(
     let values = download_vertical_samples(ctx, &outputs).await?;
     for (index, value) in values.iter().enumerate() {
         if !value.is_finite() {
-            return Err(GpuVerticalError::NonFiniteOutputValue {
-                query_index: index,
-            });
+            return Err(GpuVerticalError::NonFiniteOutputValue { query_index: index });
         }
     }
     Ok(values)
@@ -1593,19 +1735,20 @@ pub fn vertical_remap_shader_sha256() -> String {
 /// SHA-256 of the executed W two-stage bundle (sample + remap sources).
 #[must_use]
 pub fn vertical_w_bundle_shader_sha256() -> String {
-    let mut combined = Vec::with_capacity(
-        SAMPLE_SHADER_SOURCE.len() + REMAP_SHADER_SOURCE.len() + 1,
-    );
+    let mut combined =
+        Vec::with_capacity(SAMPLE_SHADER_SOURCE.len() + REMAP_SHADER_SOURCE.len() + 1);
     combined.extend_from_slice(SAMPLE_SHADER_SOURCE.as_bytes());
     combined.push(b'\n');
     combined.extend_from_slice(REMAP_SHADER_SOURCE.as_bytes());
     sha256_hex(&combined)
 }
 
-/// SHA-256 of the normalized JSON encoding of validated GPU inputs.
+/// SHA-256 of the normalized JSON encoding of validated model-level GPU inputs.
 ///
 /// Binds grid heights/values, query heights, staggering, and geometry identity
-/// so the hashed inputs provably correspond to the dispatched work.
+/// so the hashed inputs provably correspond to the dispatched work. For the
+/// two-stage W path use [`vertical_w_inputs_sha256`], which additionally binds
+/// the dispatched W source lanes.
 ///
 /// # Errors
 /// Returns [`GpuVerticalError::InputHash`] when JSON encoding fails.
@@ -1637,11 +1780,52 @@ pub fn vertical_inputs_sha256(
     Ok(sha256_hex(&json))
 }
 
+/// SHA-256 of the normalized JSON encoding of validated two-stage W GPU inputs.
+///
+/// Binds every host-to-device input of the W production path: the shared grid
+/// heights, the W source lanes (interface heights/values plus level heights),
+/// the query heights, and the geometry identity. The shared *values* buffer
+/// is device-computed by the remap kernel and therefore cannot be part of the
+/// dispatched-input binding; it is never hashed as an input.
+///
+/// # Errors
+/// Returns [`GpuVerticalError::InputHash`] when JSON encoding fails.
+pub fn vertical_w_inputs_sha256(
+    shared_heights_agl_m: &[f32],
+    interface_heights_agl_m: &[f32],
+    interface_values_ms: &[f32],
+    level_heights_agl_m: &[f32],
+    query_heights_agl_m: &[f32],
+    geometry_identity: &str,
+) -> Result<String, GpuVerticalError> {
+    #[derive(Serialize)]
+    struct NormalizedVerticalWInput<'a> {
+        shared_heights_agl_m: &'a [f32],
+        interface_heights_agl_m: &'a [f32],
+        interface_values_ms: &'a [f32],
+        level_heights_agl_m: &'a [f32],
+        query_heights_agl_m: &'a [f32],
+        staggering: String,
+        geometry_identity: &'a str,
+    }
+    let normalized = NormalizedVerticalWInput {
+        shared_heights_agl_m,
+        interface_heights_agl_m,
+        interface_values_ms,
+        level_heights_agl_m,
+        query_heights_agl_m,
+        staggering: format!("{:?}", VerticalStaggering::LevelInterface),
+        geometry_identity,
+    };
+    let json = serde_json::to_vec(&normalized).map_err(|err| GpuVerticalError::InputHash {
+        message: err.to_string(),
+    })?;
+    Ok(sha256_hex(&json))
+}
+
 /// Geometry identity string for evidence (provenance + level count + ordering).
 #[must_use]
-pub fn vertical_geometry_identity(
-    runtime: VerticalRuntimeView<'_>,
-) -> String {
+pub fn vertical_geometry_identity(runtime: VerticalRuntimeView<'_>) -> String {
     let provenance = runtime.provenance();
     let (nx, ny, nz) = runtime.dimensions();
     format!(
@@ -1683,20 +1867,56 @@ pub fn vertical_w_comparison_policy() -> Result<ComparisonPolicy, GpuEvidenceErr
     )
 }
 
-fn pinned_model_oracle_evidence() -> PinnedOracleEvidence {
+/// Pinned oracle evidence for one #71 model-level oracle case.
+///
+/// The executable digest is the linked-object-set identity from #71
+/// provenance; the output digest is the per-case oracle-output digest from
+/// the `cases` map in `fixtures/interpolation/contract-v1.provenance.json`.
+fn pinned_model_oracle_evidence_for_case(case: VerticalModelOracleCase) -> PinnedOracleEvidence {
     PinnedOracleEvidence {
         implementation_id: VERTICAL_MODEL_ORACLE_IMPLEMENTATION_ID.to_string(),
         revision: VERTICAL_ORACLE_REVISION.to_string(),
         executable_sha256: VERTICAL_ORACLE_EXECUTABLE_SHA256.to_string(),
-        output_sha256: VERTICAL_MODEL_ORACLE_OUTPUT_SHA256.to_string(),
+        output_sha256: case.output_sha256().to_string(),
     }
+}
+
+/// Resolve the pinned #71 model-level oracle case named by a row case id.
+///
+/// The row case id must contain exactly one known #71 oracle case identifier
+/// (`vertical-model-levels` or `real-era5-etex-temperature-column`); otherwise
+/// the row cannot be bound to a pinned output artifact and validation fails.
+///
+/// # Errors
+/// Returns [`GpuEvidenceError::InvalidComparisonState`] when the case id
+/// names zero or more than one known oracle case.
+fn model_oracle_case_from_row_case_id(
+    case_id: &str,
+) -> Result<VerticalModelOracleCase, GpuEvidenceError> {
+    let mut found: Option<VerticalModelOracleCase> = None;
+    for case in [
+        VerticalModelOracleCase::ModelLevels,
+        VerticalModelOracleCase::RealEra5Column,
+    ] {
+        if case_id.contains(case.as_str()) {
+            if found.is_some() {
+                return Err(GpuEvidenceError::InvalidComparisonState(
+                    "vertical row case id names more than one pinned model oracle case",
+                ));
+            }
+            found = Some(case);
+        }
+    }
+    found.ok_or(GpuEvidenceError::InvalidComparisonState(
+        "vertical row case id names no pinned model oracle case",
+    ))
 }
 
 fn pinned_w_oracle_evidence() -> PinnedOracleEvidence {
     PinnedOracleEvidence {
         implementation_id: VERTICAL_W_ORACLE_IMPLEMENTATION_ID.to_string(),
         revision: VERTICAL_ORACLE_REVISION.to_string(),
-        executable_sha256: VERTICAL_ORACLE_EXECUTABLE_SHA256.to_string(),
+        executable_sha256: VERTICAL_W_ORACLE_BINARY_SHA256.to_string(),
         output_sha256: VERTICAL_W_ORACLE_OUTPUT_SHA256.to_string(),
     }
 }
@@ -1800,15 +2020,21 @@ impl VerticalGpuRow {
                 "embedded GPU shader contradicts the vertical stage",
             ));
         }
-        let expected_oracle = if self.staggering == VerticalStaggering::LevelInterface {
-            pinned_w_oracle_evidence()
+        if self.staggering == VerticalStaggering::LevelInterface {
+            if self.gpu_evidence.oracle.as_ref() != Some(&pinned_w_oracle_evidence()) {
+                return Err(GpuEvidenceError::InvalidComparisonState(
+                    "embedded GPU oracle contradicts the pinned W production oracle",
+                ));
+            }
         } else {
-            pinned_model_oracle_evidence()
-        };
-        if self.gpu_evidence.oracle.as_ref() != Some(&expected_oracle) {
-            return Err(GpuEvidenceError::InvalidComparisonState(
-                "embedded GPU oracle contradicts the pinned vertical case",
-            ));
+            let expected_case = model_oracle_case_from_row_case_id(&self.case_id)?;
+            if self.gpu_evidence.oracle.as_ref()
+                != Some(&pinned_model_oracle_evidence_for_case(expected_case))
+            {
+                return Err(GpuEvidenceError::InvalidComparisonState(
+                    "embedded GPU oracle contradicts the pinned model oracle case",
+                ));
+            }
         }
         if !self.gpu_evidence.case_id.starts_with(&self.case_id) {
             return Err(GpuEvidenceError::InvalidComparisonState(
@@ -1831,8 +2057,7 @@ impl VerticalGpuRow {
                 "vertical row verdict contradicts value verdict",
             ));
         }
-        let expected_difference =
-            (f64::from(self.gpu_value) - f64::from(self.oracle_value)).abs();
+        let expected_difference = (f64::from(self.gpu_value) - f64::from(self.oracle_value)).abs();
         if (self.absolute_difference - expected_difference).abs() > 1.0e-12 {
             return Err(GpuEvidenceError::InvalidComparisonState(
                 "vertical absolute difference contradicts values",
@@ -1843,9 +2068,7 @@ impl VerticalGpuRow {
                 "vertical row indices must satisfy upper == lower + 1",
             ));
         }
-        if !(0.0..=1.0).contains(&self.weight_lower)
-            || !(0.0..=1.0).contains(&self.weight_upper)
-        {
+        if !(0.0..=1.0).contains(&self.weight_lower) || !(0.0..=1.0).contains(&self.weight_upper) {
             return Err(GpuEvidenceError::InvalidComparisonState(
                 "vertical row weights must lie in [0, 1]",
             ));
@@ -1926,18 +2149,57 @@ impl VerticalGpuReport {
     }
 }
 
-/// Build one GPU-vs-oracle row with #91 execution evidence.
+/// Borrowed W source lanes bound into two-stage evidence input hashes.
 ///
-/// `gpu_value` must come from actual device execution and `oracle_value` from
-/// the pinned #71/#80 oracle. `cpu_value` is diagnostic only. Level
-/// indices/weights are host-derived diagnostics from the identical #73
-/// primitive; they do not replace device execution proof.
-///
-/// # Errors
-/// Returns [`GpuVerticalError`] for invalid tolerances, non-finite values,
-/// invalid candidate provenance or evidence construction failures.
+/// These are the exact host-to-device remap inputs
+/// ([`VerticalWInterfaceInputs`]); the device-computed shared values are
+/// never an input and are therefore not hashed.
+#[derive(Debug, Clone, Copy)]
+pub struct VerticalWSourceLanes<'a> {
+    /// Interface heights AGL in physical bottom-to-top order (`nz + 1`).
+    pub interface_heights_agl_m: &'a [f32],
+    /// Interface values in physical bottom-to-top order (`nz + 1`).
+    pub interface_values_ms: &'a [f32],
+    /// Level heights AGL in physical bottom-to-top order (`nz`).
+    pub level_heights_agl_m: &'a [f32],
+}
+
 #[allow(clippy::too_many_arguments)]
-pub fn build_vertical_gpu_row(
+fn build_paired_gpu_evidence(
+    ctx: &GpuContext,
+    case_id: &str,
+    query_height_agl_m: f32,
+    shader_sha256: String,
+    input_sha256: String,
+    oracle: PinnedOracleEvidence,
+    comparison: ComparisonEvidence,
+    candidate_revision: &str,
+) -> Result<GpuCalculationEvidence, GpuEvidenceError> {
+    let gpu_evidence = GpuCalculationEvidence {
+        schema: GpuEvidenceSchema::default(),
+        case_id: format!("{case_id}/height={query_height_agl_m}"),
+        candidate: GpuCandidateEvidence {
+            implementation_id: VERTICAL_GPU_IMPLEMENTATION_ID.to_string(),
+            revision: candidate_revision.to_string(),
+            shader_sha256,
+            input_sha256,
+        },
+        execution: GpuExecutionEvidence {
+            status: GpuExecutionStatus::Passed,
+            calculation_path: GpuCalculationPath::WgslDevice,
+            adapter: Some(GpuAdapterEvidence::from_context(ctx)),
+            failure: None,
+            skip_reason: None,
+        },
+        oracle: Some(oracle),
+        comparison,
+    };
+    gpu_evidence.validate()?;
+    Ok(gpu_evidence)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_vertical_gpu_row(
     ctx: &GpuContext,
     case_id: &str,
     field_id: FieldId,
@@ -1955,9 +2217,9 @@ pub fn build_vertical_gpu_row(
     oracle_value: f32,
     cpu_value: f32,
     comparison_policy: ComparisonPolicy,
-    grid_heights_agl_m: &[f32],
-    grid_values: &[f32],
-    all_queries_agl_m: &[f32],
+    shader_sha256: String,
+    input_sha256: String,
+    oracle: PinnedOracleEvidence,
     candidate_revision: &str,
 ) -> Result<VerticalGpuRow, GpuVerticalError> {
     if !gpu_value.is_finite() || !oracle_value.is_finite() || !cpu_value.is_finite() {
@@ -1969,47 +2231,22 @@ pub fn build_vertical_gpu_row(
         });
     }
     validate_candidate_revision(candidate_revision)?;
-    let comparison =
-        compare_finite_values(&[f64::from(oracle_value)], &[f64::from(gpu_value)], comparison_policy)?;
-    let value_verdict = comparison.verdict == NumericalVerdict::Passed;
-    let input_sha = vertical_inputs_sha256(
-        grid_heights_agl_m,
-        grid_values,
-        all_queries_agl_m,
-        staggering,
-        geometry_identity,
+    let comparison = compare_finite_values(
+        &[f64::from(oracle_value)],
+        &[f64::from(gpu_value)],
+        comparison_policy,
     )?;
-    let (shader_sha, oracle) = if staggering == VerticalStaggering::LevelInterface {
-        (
-            vertical_w_bundle_shader_sha256(),
-            pinned_w_oracle_evidence(),
-        )
-    } else {
-        (
-            vertical_sample_shader_sha256(),
-            pinned_model_oracle_evidence(),
-        )
-    };
-    let gpu_evidence = GpuCalculationEvidence {
-        schema: GpuEvidenceSchema::default(),
-        case_id: format!("{case_id}/height={query_height_agl_m}"),
-        candidate: GpuCandidateEvidence {
-            implementation_id: VERTICAL_GPU_IMPLEMENTATION_ID.to_string(),
-            revision: candidate_revision.to_string(),
-            shader_sha256: shader_sha,
-            input_sha256: input_sha,
-        },
-        execution: GpuExecutionEvidence {
-            status: GpuExecutionStatus::Passed,
-            calculation_path: GpuCalculationPath::WgslDevice,
-            adapter: Some(GpuAdapterEvidence::from_context(ctx)),
-            failure: None,
-            skip_reason: None,
-        },
-        oracle: Some(oracle),
+    let value_verdict = comparison.verdict == NumericalVerdict::Passed;
+    let gpu_evidence = build_paired_gpu_evidence(
+        ctx,
+        case_id,
+        query_height_agl_m,
+        shader_sha256,
+        input_sha256,
+        oracle,
         comparison,
-    };
-    gpu_evidence.validate()?;
+        candidate_revision,
+    )?;
     Ok(VerticalGpuRow {
         case_id: case_id.to_string(),
         field_id,
@@ -2032,6 +2269,160 @@ pub fn build_vertical_gpu_row(
         row_verdict: value_verdict,
         gpu_evidence,
     })
+}
+
+/// Build one model-level GPU-vs-oracle row with #91 execution evidence.
+///
+/// `gpu_value` must come from actual device execution and `oracle_value` from
+/// the pinned #71 oracle case named by `model_case`; `cpu_value` is diagnostic
+/// only. Level indices/weights are host-derived diagnostics from the identical
+/// #73 primitive; they do not replace device execution proof. Vertical motion
+/// is rejected here (no pinned #71 model oracle exists for motion):
+/// center-staggered motion is covered by CPU-parity tests without paired
+/// oracle evidence, and interface motion requires
+/// [`build_vertical_w_gpu_row`].
+///
+/// # Errors
+/// Returns [`GpuVerticalError`] for motion fields, case-id mismatches,
+/// invalid tolerances, non-finite values, invalid candidate provenance or
+/// evidence construction failures.
+#[allow(clippy::too_many_arguments)]
+pub fn build_vertical_model_gpu_row(
+    ctx: &GpuContext,
+    case_id: &str,
+    model_case: VerticalModelOracleCase,
+    field_id: FieldId,
+    reference: VerticalReference,
+    requested_height_m: f32,
+    query_height_agl_m: f32,
+    terrain_asl_m: f32,
+    geometry_identity: &str,
+    lower_physical_index: usize,
+    upper_physical_index: usize,
+    weight_lower: f32,
+    weight_upper: f32,
+    gpu_value: f32,
+    oracle_value: f32,
+    cpu_value: f32,
+    comparison_policy: ComparisonPolicy,
+    grid_heights_agl_m: &[f32],
+    grid_values: &[f32],
+    all_queries_agl_m: &[f32],
+    candidate_revision: &str,
+) -> Result<VerticalGpuRow, GpuVerticalError> {
+    if !case_id.contains(model_case.as_str()) {
+        return Err(GpuVerticalError::OracleContract {
+            message: "model row case id must name its pinned #71 oracle case",
+        });
+    }
+    if field_id == FieldId::VerticalVelocity {
+        return Err(GpuVerticalError::OracleContract {
+            message: "model rows require a non-motion field with a pinned #71 oracle",
+        });
+    }
+    let input_sha = vertical_inputs_sha256(
+        grid_heights_agl_m,
+        grid_values,
+        all_queries_agl_m,
+        VerticalStaggering::LevelCenter,
+        geometry_identity,
+    )?;
+    finish_vertical_gpu_row(
+        ctx,
+        case_id,
+        field_id,
+        VerticalStaggering::LevelCenter,
+        reference,
+        requested_height_m,
+        query_height_agl_m,
+        terrain_asl_m,
+        geometry_identity,
+        lower_physical_index,
+        upper_physical_index,
+        weight_lower,
+        weight_upper,
+        gpu_value,
+        oracle_value,
+        cpu_value,
+        comparison_policy,
+        vertical_sample_shader_sha256(),
+        input_sha,
+        pinned_model_oracle_evidence_for_case(model_case),
+        candidate_revision,
+    )
+}
+
+/// Build one two-stage W GPU-vs-oracle row with #91 execution evidence.
+///
+/// `gpu_value` must come from actual two-stage device execution (remap plus
+/// sample) and `oracle_value` from the pinned #80 production-path oracle;
+/// `cpu_value` is diagnostic only. The input hash binds the shared grid
+/// heights, every dispatched W source lane, and the queries, so the hashed
+/// inputs provably correspond to the dispatched work.
+///
+/// # Errors
+/// Returns [`GpuVerticalError`] for non-W fields, invalid tolerances,
+/// non-finite values, invalid candidate provenance or evidence construction
+/// failures.
+#[allow(clippy::too_many_arguments)]
+pub fn build_vertical_w_gpu_row(
+    ctx: &GpuContext,
+    case_id: &str,
+    field_id: FieldId,
+    reference: VerticalReference,
+    requested_height_m: f32,
+    query_height_agl_m: f32,
+    terrain_asl_m: f32,
+    geometry_identity: &str,
+    lower_physical_index: usize,
+    upper_physical_index: usize,
+    weight_lower: f32,
+    weight_upper: f32,
+    gpu_value: f32,
+    oracle_value: f32,
+    cpu_value: f32,
+    comparison_policy: ComparisonPolicy,
+    shared_heights_agl_m: &[f32],
+    w_source: VerticalWSourceLanes<'_>,
+    all_queries_agl_m: &[f32],
+    candidate_revision: &str,
+) -> Result<VerticalGpuRow, GpuVerticalError> {
+    if field_id != FieldId::VerticalVelocity {
+        return Err(GpuVerticalError::OracleContract {
+            message: "W rows require the vertical-velocity field",
+        });
+    }
+    let input_sha = vertical_w_inputs_sha256(
+        shared_heights_agl_m,
+        w_source.interface_heights_agl_m,
+        w_source.interface_values_ms,
+        w_source.level_heights_agl_m,
+        all_queries_agl_m,
+        geometry_identity,
+    )?;
+    finish_vertical_gpu_row(
+        ctx,
+        case_id,
+        field_id,
+        VerticalStaggering::LevelInterface,
+        reference,
+        requested_height_m,
+        query_height_agl_m,
+        terrain_asl_m,
+        geometry_identity,
+        lower_physical_index,
+        upper_physical_index,
+        weight_lower,
+        weight_upper,
+        gpu_value,
+        oracle_value,
+        cpu_value,
+        comparison_policy,
+        vertical_w_bundle_shader_sha256(),
+        input_sha,
+        pinned_w_oracle_evidence(),
+        candidate_revision,
+    )
 }
 
 #[cfg(test)]

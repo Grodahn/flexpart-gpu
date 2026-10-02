@@ -690,20 +690,7 @@ fn validate_candidate_revision(revision: &str) -> Result<(), GpuVerticalError> {
     Ok(())
 }
 
-/// Create device-resident grid buffers from validated physical columns.
-///
-/// Heights must be finite and strictly increasing bottom-to-top; values must
-/// be finite; at least two levels are required. This is the low-level
-/// primitive used by both #71 oracle validation and #30 runtime paths.
-///
-/// # Errors
-/// Returns [`GpuVerticalError`] for empty, mismatched, non-finite, or
-/// non-monotonic inputs.
-pub fn create_vertical_grid_buffers(
-    ctx: &GpuContext,
-    heights_agl_m: &[f32],
-    values: &[f32],
-) -> Result<VerticalGridBuffers, GpuVerticalError> {
+fn validate_grid_columns(heights_agl_m: &[f32], values: &[f32]) -> Result<(), GpuVerticalError> {
     if heights_agl_m.len() < 2 || values.len() < 2 {
         return Err(VerticalSamplingError::InsufficientLevels {
             nz: heights_agl_m.len().min(values.len()),
@@ -721,47 +708,14 @@ pub fn create_vertical_grid_buffers(
     validate_finite_lane(heights_agl_m, "grid_heights_agl_m")?;
     validate_finite_lane(values, "grid_values")?;
     validate_strictly_increasing(heights_agl_m)?;
-    let _ = checked_byte_len(heights_agl_m.len(), "vertical_grid")?;
-
-    let heights = ctx
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("vertical_grid_heights"),
-            contents: bytemuck::cast_slice(heights_agl_m),
-            usage: storage_usage(),
-        });
-    let value_buffer = ctx
-        .device
-        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("vertical_grid_values"),
-            contents: bytemuck::cast_slice(values),
-            usage: storage_usage(),
-        });
-    Ok(VerticalGridBuffers {
-        heights,
-        values: value_buffer,
-        grid_count: heights_agl_m.len(),
-        heights_sha256: height_geometry_sha256(heights_agl_m.iter().copied()),
-    })
+    Ok(())
 }
 
-/// Create device-resident W/interface inputs from validated physical columns.
-///
-/// Interface heights must be strictly increasing with `[0] == 0.0`;
-/// interface values and level heights must be finite; level heights must be
-/// strictly increasing; `interface.len() == levels.len() + 1` with at least
-/// two model levels. Interior shared heights must lie strictly inside the
-/// interface domain, matching the CPU `remap_interface_motion_to_model_grid`
-/// preconditions.
-///
-/// # Errors
-/// Returns [`GpuVerticalError`] for any malformed geometry or shape mismatch.
-pub fn create_vertical_w_interface_inputs(
-    ctx: &GpuContext,
+fn validate_interface_columns(
     interface_heights_agl_m: &[f32],
     interface_values_ms: &[f32],
     level_heights_agl_m: &[f32],
-) -> Result<VerticalWInterfaceInputs, GpuVerticalError> {
+) -> Result<usize, GpuVerticalError> {
     let nz = level_heights_agl_m.len();
     if nz < 2 {
         return Err(VerticalSamplingError::InsufficientInterfaceLevels { nz }.into());
@@ -808,6 +762,70 @@ pub fn create_vertical_w_interface_inputs(
         .into());
     }
 
+    Ok(nz)
+}
+
+/// Create device-resident grid buffers from validated physical columns.
+///
+/// Heights must be finite and strictly increasing bottom-to-top; values must
+/// be finite; at least two levels are required. This is the low-level
+/// primitive used by both #71 oracle validation and #30 runtime paths.
+///
+/// # Errors
+/// Returns [`GpuVerticalError`] for empty, mismatched, non-finite, or
+/// non-monotonic inputs.
+pub fn create_vertical_grid_buffers(
+    ctx: &GpuContext,
+    heights_agl_m: &[f32],
+    values: &[f32],
+) -> Result<VerticalGridBuffers, GpuVerticalError> {
+    validate_grid_columns(heights_agl_m, values)?;
+    let _ = checked_byte_len(heights_agl_m.len(), "vertical_grid")?;
+
+    let heights = ctx
+        .device
+        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("vertical_grid_heights"),
+            contents: bytemuck::cast_slice(heights_agl_m),
+            usage: storage_usage(),
+        });
+    let value_buffer = ctx
+        .device
+        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("vertical_grid_values"),
+            contents: bytemuck::cast_slice(values),
+            usage: storage_usage(),
+        });
+    Ok(VerticalGridBuffers {
+        heights,
+        values: value_buffer,
+        grid_count: heights_agl_m.len(),
+        heights_sha256: height_geometry_sha256(heights_agl_m.iter().copied()),
+    })
+}
+
+/// Create device-resident W/interface inputs from validated physical columns.
+///
+/// Interface heights must be strictly increasing with `[0] == 0.0`;
+/// interface values and level heights must be finite; level heights must be
+/// strictly increasing; `interface.len() == levels.len() + 1` with at least
+/// two model levels. Interior shared heights must lie strictly inside the
+/// interface domain, matching the CPU `remap_interface_motion_to_model_grid`
+/// preconditions.
+///
+/// # Errors
+/// Returns [`GpuVerticalError`] for any malformed geometry or shape mismatch.
+pub fn create_vertical_w_interface_inputs(
+    ctx: &GpuContext,
+    interface_heights_agl_m: &[f32],
+    interface_values_ms: &[f32],
+    level_heights_agl_m: &[f32],
+) -> Result<VerticalWInterfaceInputs, GpuVerticalError> {
+    let nz = validate_interface_columns(
+        interface_heights_agl_m,
+        interface_values_ms,
+        level_heights_agl_m,
+    )?;
     let _ = checked_byte_len(nz + 1, "vertical_w_interfaces")?;
     let interface_heights = ctx
         .device
@@ -1777,7 +1795,7 @@ pub fn vertical_w_bundle_shader_sha256() -> String {
 /// the dispatched W source lanes.
 ///
 /// # Errors
-/// Returns [`GpuVerticalError::InputHash`] when JSON encoding fails.
+/// Returns [`GpuVerticalError`] for malformed device input batches or failed JSON encoding.
 pub fn vertical_inputs_sha256(
     grid_heights_agl_m: &[f32],
     grid_values: &[f32],
@@ -1793,8 +1811,10 @@ pub fn vertical_inputs_sha256(
         staggering: String,
         geometry_identity: &'a str,
     }
-    validate_finite_lane(grid_heights_agl_m, "grid_heights_agl_m")?;
-    validate_finite_lane(grid_values, "grid_values")?;
+    validate_grid_columns(grid_heights_agl_m, grid_values)?;
+    if query_heights_agl_m.is_empty() {
+        return Err(GpuVerticalError::EmptyQueries);
+    }
     validate_finite_lane(query_heights_agl_m, "query_heights_agl_m")?;
     let normalized = NormalizedVerticalInput {
         grid_heights_agl_m,
@@ -1818,7 +1838,7 @@ pub fn vertical_inputs_sha256(
 /// dispatched-input binding; it is never hashed as an input.
 ///
 /// # Errors
-/// Returns [`GpuVerticalError::InputHash`] when JSON encoding fails.
+/// Returns [`GpuVerticalError`] for malformed device input batches or failed JSON encoding.
 pub fn vertical_w_inputs_sha256(
     shared_heights_agl_m: &[f32],
     interface_heights_agl_m: &[f32],
@@ -1837,10 +1857,23 @@ pub fn vertical_w_inputs_sha256(
         staggering: String,
         geometry_identity: &'a str,
     }
-    validate_finite_lane(shared_heights_agl_m, "shared_heights_agl_m")?;
-    validate_finite_lane(interface_heights_agl_m, "interface_heights_agl_m")?;
-    validate_finite_lane(interface_values_ms, "interface_values_ms")?;
-    validate_finite_lane(level_heights_agl_m, "level_heights_agl_m")?;
+    let nz = validate_interface_columns(
+        interface_heights_agl_m,
+        interface_values_ms,
+        level_heights_agl_m,
+    )?;
+    if shared_heights_agl_m.len() != nz + 1
+        || shared_heights_agl_m[0] != 0.0
+        || shared_heights_agl_m[1..] != *level_heights_agl_m
+    {
+        return Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
+            reason: "shared grid heights differ from the W source model heights",
+        }
+        .into());
+    }
+    if query_heights_agl_m.is_empty() {
+        return Err(GpuVerticalError::EmptyQueries);
+    }
     validate_finite_lane(query_heights_agl_m, "query_heights_agl_m")?;
     let normalized = NormalizedVerticalWInput {
         shared_heights_agl_m,
@@ -2396,6 +2429,26 @@ fn finish_vertical_gpu_row(
     Ok(row)
 }
 
+fn validate_evidence_query(
+    grid_count: usize,
+    queries: &[f32],
+    query: f32,
+    lower: usize,
+    upper: usize,
+) -> Result<(), GpuVerticalError> {
+    if !queries.contains(&query) {
+        return Err(GpuVerticalError::OracleContract {
+            message: "row query is absent from the hashed device batch",
+        });
+    }
+    if lower.checked_add(1) != Some(upper) || upper >= grid_count {
+        return Err(GpuVerticalError::OracleContract {
+            message: "row indices are outside the hashed geometry",
+        });
+    }
+    Ok(())
+}
+
 /// Build one model-level GPU-vs-oracle row with #91 execution evidence.
 ///
 /// `gpu_value` must come from actual device execution and `oracle_value` from
@@ -2451,6 +2504,13 @@ pub fn build_vertical_model_gpu_row(
         all_queries_agl_m,
         VerticalStaggering::LevelCenter,
         geometry_identity,
+    )?;
+    validate_evidence_query(
+        grid_heights_agl_m.len(),
+        all_queries_agl_m,
+        query_height_agl_m,
+        lower_physical_index,
+        upper_physical_index,
     )?;
     finish_vertical_gpu_row(
         ctx,
@@ -2524,6 +2584,13 @@ pub fn build_vertical_w_gpu_row(
         w_source.level_heights_agl_m,
         all_queries_agl_m,
         geometry_identity,
+    )?;
+    validate_evidence_query(
+        shared_heights_agl_m.len(),
+        all_queries_agl_m,
+        query_height_agl_m,
+        lower_physical_index,
+        upper_physical_index,
     )?;
     finish_vertical_gpu_row(
         ctx,

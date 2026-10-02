@@ -15,14 +15,13 @@ use flexpart_gpu::gpu::{
     encode_vertical_remap_w_with_kernel, encode_vertical_sample_with_kernel,
     encode_vertical_w_two_stage_with_kernels, physical_center_w_column_from_runtime,
     physical_model_column_from_runtime, physical_w_columns_from_runtime, resolve_query_heights_agl,
-    sample_vertical_grid_gpu, sample_vertical_w_gpu_two_stage, vertical_geometry_identity,
-    vertical_model_comparison_policy, vertical_sample_shader_sha256,
-    vertical_w_bundle_shader_sha256, vertical_w_comparison_policy, GpuCalculationEvidence,
-    GpuCalculationPath, GpuCandidateEvidence, GpuContext, GpuError, GpuEvidenceError,
-    GpuEvidenceSchema, GpuExecutionEvidence, GpuExecutionStatus, PinnedOracleEvidence,
-    VerticalGpuReport, VerticalModelOracleCase, VerticalSampleKernel, VerticalWRemapKernel,
-    VerticalWSourceLanes, VERTICAL_GPU_CANDIDATE_DESCRIPTION, VERTICAL_GPU_REPORT_SCHEMA_ID,
-    VERTICAL_MODEL_ORACLE_OUTPUT_SHA256_MODEL_LEVELS,
+    sample_vertical_grid_gpu, vertical_geometry_identity, vertical_model_comparison_policy,
+    vertical_sample_shader_sha256, vertical_w_bundle_shader_sha256, vertical_w_comparison_policy,
+    GpuCalculationEvidence, GpuCalculationPath, GpuCandidateEvidence, GpuContext, GpuError,
+    GpuEvidenceError, GpuEvidenceSchema, GpuExecutionEvidence, GpuExecutionStatus,
+    PinnedOracleEvidence, VerticalGpuReport, VerticalModelOracleCase, VerticalSampleKernel,
+    VerticalWRemapKernel, VerticalWSourceLanes, VERTICAL_GPU_CANDIDATE_DESCRIPTION,
+    VERTICAL_GPU_REPORT_SCHEMA_ID, VERTICAL_MODEL_ORACLE_OUTPUT_SHA256_MODEL_LEVELS,
     VERTICAL_MODEL_ORACLE_OUTPUT_SHA256_REAL_COLUMN, VERTICAL_ORACLE_REVISION,
     VERTICAL_W_ORACLE_BINARY_SHA256, VERTICAL_W_ORACLE_OUTPUT_SHA256,
 };
@@ -126,6 +125,30 @@ fn synthetic_snapshot() -> flexpart_gpu::meteorology::Snapshot {
         "../fixtures/vertical/synthetic-column-v1.json"
     ))
     .expect("synthetic #30 fixture must parse")
+}
+
+fn reverse_single_column_storage(snapshot: &mut flexpart_gpu::meteorology::Snapshot) {
+    use flexpart_gpu::meteorology::VerticalOrdering;
+    assert_eq!(
+        (snapshot.horizontal_grid.nx, snapshot.horizontal_grid.ny),
+        (1, 1)
+    );
+    let coordinate = &mut snapshot.vertical_coordinate;
+    assert_eq!(coordinate.ordering, VerticalOrdering::Increasing);
+    coordinate.ordering = VerticalOrdering::Decreasing;
+    coordinate.level_values.reverse();
+    for lane in [
+        &mut coordinate.interface_values,
+        &mut coordinate.hybrid_a_interface_pa,
+        &mut coordinate.hybrid_b_interface,
+    ] {
+        lane.as_mut().expect("hybrid fixture lane").reverse();
+    }
+    for field in &mut snapshot.fields {
+        if field.shape.len() == 3 {
+            field.values.reverse();
+        }
+    }
 }
 
 fn cpu_indices_weights(heights: &[f32], query: f32) -> (usize, usize, f32, f32) {
@@ -552,32 +575,124 @@ fn gpu_model_storage_ordering_parity() {
     let Some(ctx) = gpu_context_or_skip() else {
         return;
     };
-    // Same physical column presented in both canonical orderings must give
-    // identical GPU results because the host normalizes to physical order.
-    let heights_phys = [100.0_f32, 500.0, 2000.0];
-    let values_phys = [1.0_f32, 7.0, 3.0];
-    let grid_phys = create_vertical_grid_buffers(&ctx, &heights_phys, &values_phys).expect("grid");
+    let increasing = synthetic_snapshot();
+    let mut decreasing = increasing.clone();
+    reverse_single_column_storage(&mut decreasing);
     let kernel = VerticalSampleKernel::new(&ctx).expect("kernel");
-    let queries = create_vertical_query_buffers(&ctx, &[250.0, 1500.0]).expect("queries");
-    let gpu_phys = pollster::block_on(sample_vertical_grid_gpu(
-        &ctx, &grid_phys, &queries, &kernel,
-    ))
-    .expect("GPU succeeds");
+    let mut baseline = None;
+    for snapshot in [&increasing, &decreasing] {
+        let geometry = reconstruct_vertical_geometry(snapshot).expect("geometry");
+        let runtime = geometry.runtime_view().expect("runtime");
+        let canonical = &snapshot
+            .fields
+            .iter()
+            .find(|field| field.id == FieldId::Temperature)
+            .expect("temperature")
+            .values;
+        let (heights, values) =
+            physical_model_column_from_runtime(runtime, FieldId::Temperature, canonical, 0, 0)
+                .expect("ordered column");
+        assert_eq!(values, vec![290.0, 280.0, 270.0]);
+        let query_heights = [
+            heights[0] - 10.0,
+            heights[0],
+            heights[0] + 0.25 * (heights[1] - heights[0]),
+            heights[1],
+            heights[2] + 10.0,
+        ];
+        let grid = create_vertical_grid_buffers(&ctx, &heights, &values).expect("grid");
+        let queries = create_vertical_query_buffers(&ctx, &query_heights).expect("queries");
+        let gpu = pollster::block_on(sample_vertical_grid_gpu(&ctx, &grid, &queries, &kernel))
+            .expect("GPU samples");
+        for (value, query) in gpu.iter().zip(query_heights) {
+            let diagnostic = sample_vertical(
+                runtime,
+                FieldId::Temperature,
+                VerticalStaggering::LevelCenter,
+                canonical,
+                0,
+                0,
+                query,
+                VerticalReference::AboveGroundLevel,
+            )
+            .expect("CPU diagnostic");
+            assert_close(
+                f64::from(*value),
+                f64::from(diagnostic.value),
+                ABS_TOL_MODEL,
+                REL_TOL_MODEL,
+                "ordered runtime sample",
+            );
+        }
+        if let Some(expected) = &baseline {
+            assert_eq!(&gpu, expected);
+        } else {
+            baseline = Some(gpu);
+        }
+    }
+}
 
-    // Simulate Decreasing canonical order: host would reverse before upload,
-    // ending at the same physical lanes. Directly uploading the same physical
-    // lanes proves the device is ordering-agnostic once normalized.
-    let grid_same =
-        create_vertical_grid_buffers(&ctx, &heights_phys, &values_phys).expect("same grid");
-    let gpu_same = pollster::block_on(sample_vertical_grid_gpu(
-        &ctx, &grid_same, &queries, &kernel,
+#[test]
+fn test_vertical_w_decreasing_storage_matches_pristine_oracle() {
+    let Some(ctx) = gpu_context_or_skip() else {
+        return;
+    };
+    let mut snapshot = synthetic_snapshot();
+    reverse_single_column_storage(&mut snapshot);
+    let mut motion: NativeVerticalMotion = serde_json::from_str(include_str!(
+        "../fixtures/vertical/synthetic-omega-interface-nonlinear-v1.json"
     ))
-    .expect("GPU same succeeds");
-    assert_eq!(gpu_phys, gpu_same);
-
-    // Wrong ordering (reversed heights) must fail closed, not silently pass.
-    let reversed_heights = [2000.0_f32, 500.0, 100.0];
-    assert!(create_vertical_grid_buffers(&ctx, &reversed_heights, &values_phys).is_err());
+    .expect("motion");
+    motion.values.reverse();
+    let geometry = reconstruct_vertical_geometry_with_motion(&snapshot, &motion).expect("geometry");
+    let runtime = geometry.runtime_view().expect("runtime");
+    let (heights, values, levels, shared_heights) =
+        physical_w_columns_from_runtime(runtime, 0, 0).expect("W column");
+    let inputs =
+        create_vertical_w_interface_inputs(&ctx, &heights, &values, &levels).expect("inputs");
+    let grid = create_vertical_shared_grid(&ctx, &shared_heights).expect("grid");
+    let sample = VerticalSampleKernel::new(&ctx).expect("sample");
+    let remap = VerticalWRemapKernel::new(&ctx).expect("remap");
+    let report = w_production_report();
+    let oracle_queries = report["synthetic_case"]["queries"]
+        .as_array()
+        .expect("queries");
+    let query_heights: Vec<f32> = oracle_queries
+        .iter()
+        .map(|q| {
+            checked_f64_to_f32(
+                q["particle_height_m_agl"].as_f64().expect("height"),
+                "query",
+            )
+        })
+        .collect();
+    let queries = create_vertical_query_buffers(&ctx, &query_heights).expect("queries");
+    let output = create_vertical_output_buffer(&ctx, query_heights.len()).expect("output");
+    let mut encoder = ctx
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    encode_vertical_w_two_stage_with_kernels(
+        &ctx,
+        &inputs,
+        &grid,
+        &queries,
+        &output,
+        &sample,
+        &remap,
+        &mut encoder,
+    )
+    .expect("two-stage encoding");
+    ctx.queue.submit(Some(encoder.finish()));
+    let gpu = pollster::block_on(download_vertical_samples(&ctx, &output)).expect("readback");
+    for (value, oracle) in gpu.iter().zip(oracle_queries) {
+        assert_close(
+            f64::from(*value),
+            oracle["pristine_w_m_s"].as_f64().expect("oracle W"),
+            ABS_TOL_W,
+            REL_TOL_W,
+            "decreasing storage W",
+        );
+    }
 }
 
 fn check_vertical_oracle_case_gpu(id: &str) {
@@ -772,16 +887,25 @@ fn gpu_w_two_stage_matches_80_pristine_oracle() {
         .collect();
     let query_buffers = create_vertical_query_buffers(&ctx, &query_heights).expect("queries");
 
-    // Full two-stage GPU path: remap then sample, no host value computation.
-    let gpu = pollster::block_on(sample_vertical_w_gpu_two_stage(
+    // The paired report exercises the same one-encoder surface offered to #76.
+    let outputs =
+        create_vertical_output_buffer(&ctx, query_buffers.query_count()).expect("outputs");
+    let mut encoder = ctx
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    encode_vertical_w_two_stage_with_kernels(
         &ctx,
         &interface_inputs,
         &shared_grid,
         &query_buffers,
+        &outputs,
         &sample_kernel,
         &remap_kernel,
-    ))
-    .expect("W two-stage GPU succeeds");
+        &mut encoder,
+    )
+    .expect("composed W encode");
+    ctx.queue.submit(Some(encoder.finish()));
+    let gpu = pollster::block_on(download_vertical_samples(&ctx, &outputs)).expect("W readback");
     assert_eq!(gpu.len(), 5);
 
     let (absolute, relative) = w_oracle_tolerances(&report);
@@ -1448,6 +1572,40 @@ fn gpu_evidence_fails_closed() {
         )
         .expect("row builds");
         row.validate().expect("baseline row validates");
+        let build_query_row = |batch: &[f32], lower, upper| {
+            build_vertical_model_gpu_row(
+                &ctx,
+                "vertical-gpu/vertical-model-levels/query-batch-guard",
+                VerticalModelOracleCase::ModelLevels,
+                FieldId::Temperature,
+                VerticalReference::AboveGroundLevel,
+                heights[0],
+                heights[0],
+                runtime.terrain_asl_m(0, 0).expect("terrain"),
+                &geometry_identity,
+                lower,
+                upper,
+                1.0,
+                0.0,
+                gpu[0],
+                gpu[0],
+                gpu[0],
+                policy,
+                &heights,
+                &lane,
+                batch,
+                &candidate_revision(),
+            )
+        };
+        assert!(
+            build_query_row(&[heights[0] + 1.0], 0, 1).is_err(),
+            "row query absent from the hashed device batch must fail"
+        );
+        assert!(
+            build_query_row(&[heights[0]], heights.len(), heights.len() + 1).is_err(),
+            "row indices outside the hashed geometry must fail"
+        );
+
         for invalid in [f64::NAN, f64::INFINITY] {
             let mut mutated = row.clone();
             mutated.absolute_difference = invalid;
@@ -1676,6 +1834,41 @@ fn test_vertical_evidence_non_finite_inputs_rejected() {
         )
         .is_err(),
         "infinite query must fail before hashing"
+    );
+}
+
+#[test]
+fn test_vertical_evidence_malformed_batches_rejected() {
+    use flexpart_gpu::gpu::{vertical_inputs_sha256, vertical_w_inputs_sha256};
+    for (heights, values, queries) in [
+        (&[][..], &[][..], &[][..]),
+        (&[0.0, 100.0][..], &[1.0][..], &[50.0][..]),
+        (&[100.0, 0.0][..], &[1.0, 2.0][..], &[50.0][..]),
+        (&[0.0, 100.0][..], &[1.0, 2.0][..], &[][..]),
+    ] {
+        assert!(
+            vertical_inputs_sha256(
+                heights,
+                values,
+                queries,
+                VerticalStaggering::LevelCenter,
+                "geometry"
+            )
+            .is_err(),
+            "a batch rejected by the device upload cannot produce passing evidence"
+        );
+    }
+    assert!(
+        vertical_w_inputs_sha256(
+            &[0.0, 75.0, 150.0],
+            &[0.0, 100.0, 200.0],
+            &[1.0, 2.0, 3.0],
+            &[50.0, 150.0],
+            &[50.0],
+            "geometry",
+        )
+        .is_err(),
+        "W evidence must bind the shared grid to its source levels"
     );
 }
 

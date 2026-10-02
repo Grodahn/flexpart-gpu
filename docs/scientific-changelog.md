@@ -16,6 +16,19 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-10-02 — Validate vertical GPU evidence batches and runtime ordering (#88)
+**Impact**: none (host validation and verification; device arithmetic unchanged)
+**Files**: `src/gpu/vertical.rs`, `tests/vertical_gpu.rs`
+**Validation**: Regressions reproduce accepted empty/malformed input batches and
+queries absent from their hashed batch. Evidence now shares the upload geometry
+checks and validates query membership and level-index bounds. Ordering checks
+exercise actual increasing/decreasing canonical snapshots through #30 runtime
+geometry, including all five pristine #80 W queries. The paired W report now
+uses the one-encoder composition API. All 24 GPU tests, 499 library tests,
+14 vertical integration tests and six fixture-contract tests pass; Clippy
+completes with existing repository warnings. No new Fortran deviation or
+#76/#77 consumer behavior is introduced.
+
 ### 2026-10-02 â€” Bind vertical GPU remapping and validation evidence (#88)
 **Impact**: numerics (reject mismatched shared W geometry before device encoding)
 **Files**: `src/gpu/vertical.rs`, `tests/vertical_gpu.rs`,

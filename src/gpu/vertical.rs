@@ -545,11 +545,13 @@ impl VerticalWRemapKernel {
 /// canonical #30 runtime geometry without a second coordinate system. Lifetime:
 /// column/source lifetime, reusable across many queries for that column.
 pub struct VerticalGridBuffers {
-    /// Grid heights AGL in metres, physical bottom-to-top.
+    /// Immutable grid heights AGL in metres, physical bottom-to-top.
+    /// Recreate this owner when geometry changes so its identity stays valid.
     pub heights: wgpu::Buffer,
     /// Grid field values, aligned with `heights`.
     pub values: wgpu::Buffer,
     grid_count: usize,
+    heights_sha256: String,
 }
 
 impl VerticalGridBuffers {
@@ -569,9 +571,11 @@ pub struct VerticalWInterfaceInputs {
     pub interface_heights: wgpu::Buffer,
     /// Interface geometric vertical velocity in m/s, length `nz+1`.
     pub interface_values: wgpu::Buffer,
-    /// Model-level heights AGL, length `nz`.
+    /// Immutable model-level heights AGL, length `nz`.
+    /// Recreate this owner when geometry changes so its identity stays valid.
     pub level_heights: wgpu::Buffer,
     model_level_count: usize,
+    shared_heights_sha256: String,
 }
 
 impl VerticalWInterfaceInputs {
@@ -614,6 +618,16 @@ impl VerticalSampleOutput {
 
 fn storage_usage() -> wgpu::BufferUsages {
     wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC
+}
+
+fn height_geometry_sha256(heights: impl IntoIterator<Item = f32>) -> String {
+    let mut hash = Sha256::new();
+    for height in heights {
+        // Signed zero denotes the same physical ground boundary.
+        let normalized = if height == 0.0 { 0.0 } else { height };
+        hash.update(normalized.to_le_bytes());
+    }
+    format!("{:x}", hash.finalize())
 }
 
 fn checked_byte_len(len: usize, field: &'static str) -> Result<u64, GpuVerticalError> {
@@ -727,6 +741,7 @@ pub fn create_vertical_grid_buffers(
         heights,
         values: value_buffer,
         grid_count: heights_agl_m.len(),
+        heights_sha256: height_geometry_sha256(heights_agl_m.iter().copied()),
     })
 }
 
@@ -820,6 +835,9 @@ pub fn create_vertical_w_interface_inputs(
         interface_values,
         level_heights,
         model_level_count: nz,
+        shared_heights_sha256: height_geometry_sha256(
+            std::iter::once(0.0).chain(level_heights_agl_m.iter().copied()),
+        ),
     })
 }
 
@@ -868,6 +886,7 @@ pub fn create_vertical_shared_grid(
         heights,
         values,
         grid_count: shared_heights_agl_m.len(),
+        heights_sha256: height_geometry_sha256(shared_heights_agl_m.iter().copied()),
     })
 }
 
@@ -1482,7 +1501,8 @@ pub fn encode_vertical_sample_with_kernel(
 /// `shared_grid.values` stays device-resident between the two stages.
 ///
 /// # Errors
-/// Returns [`GpuVerticalError`] for inconsistent level counts.
+/// Returns [`GpuVerticalError`] for inconsistent counts or a shared height
+/// grid that does not match the source's `[ground, model levels]` geometry.
 pub fn encode_vertical_remap_w_with_kernel(
     ctx: &GpuContext,
     inputs: &VerticalWInterfaceInputs,
@@ -1501,6 +1521,12 @@ pub fn encode_vertical_remap_w_with_kernel(
     }
     if nz < 2 {
         return Err(VerticalSamplingError::InsufficientInterfaceLevels { nz }.into());
+    }
+    if shared_grid.heights_sha256 != inputs.shared_heights_sha256 {
+        return Err(VerticalSamplingError::UnsupportedInterfaceRuntime {
+            reason: "shared grid heights differ from the W source model heights",
+        }
+        .into());
     }
     let nz_u32 = usize_to_u32(nz, "model_level_count")?;
     debug_assert_eq!(
@@ -1767,6 +1793,9 @@ pub fn vertical_inputs_sha256(
         staggering: String,
         geometry_identity: &'a str,
     }
+    validate_finite_lane(grid_heights_agl_m, "grid_heights_agl_m")?;
+    validate_finite_lane(grid_values, "grid_values")?;
+    validate_finite_lane(query_heights_agl_m, "query_heights_agl_m")?;
     let normalized = NormalizedVerticalInput {
         grid_heights_agl_m,
         grid_values,
@@ -1808,6 +1837,11 @@ pub fn vertical_w_inputs_sha256(
         staggering: String,
         geometry_identity: &'a str,
     }
+    validate_finite_lane(shared_heights_agl_m, "shared_heights_agl_m")?;
+    validate_finite_lane(interface_heights_agl_m, "interface_heights_agl_m")?;
+    validate_finite_lane(interface_values_ms, "interface_values_ms")?;
+    validate_finite_lane(level_heights_agl_m, "level_heights_agl_m")?;
+    validate_finite_lane(query_heights_agl_m, "query_heights_agl_m")?;
     let normalized = NormalizedVerticalWInput {
         shared_heights_agl_m,
         interface_heights_agl_m,
@@ -1843,7 +1877,8 @@ pub fn vertical_geometry_identity(runtime: VerticalRuntimeView<'_>) -> String {
 
 /// Build the repository-wide model-level comparison policy.
 ///
-/// Absolute `1e-6` plus relative `1e-4` matches the #71/#73 candidate rule.
+/// Absolute `1e-6` OR relative `1e-4` follows the #91 finite comparator.
+/// This is at least as strict as the additive #71/#73 fixture rule.
 ///
 /// # Errors
 /// Returns [`GpuEvidenceError`] for an invalid tolerance policy.
@@ -1856,7 +1891,8 @@ pub fn vertical_model_comparison_policy() -> Result<ComparisonPolicy, GpuEvidenc
 
 /// Build the repository-wide W/interface comparison policy.
 ///
-/// Absolute `1e-6` plus relative `1e-5` matches the #80 production oracle rule.
+/// Absolute `1e-6` OR relative `1e-5` follows the #91 finite comparator.
+/// This is at least as strict as the additive #80 fixture rule.
 ///
 /// # Errors
 /// Returns [`GpuEvidenceError`] for an invalid tolerance policy.
@@ -1984,12 +2020,65 @@ pub struct VerticalGpuReport {
 }
 
 impl VerticalGpuRow {
+    // Metadata identifies the exact f32 query dispatched, so numeric tolerances
+    // must not permit a different height/reference to masquerade as that query.
+    #[allow(clippy::float_cmp)]
+    fn validate_metadata(&self) -> Result<(), GpuEvidenceError> {
+        if ![
+            self.requested_height_m,
+            self.query_height_agl_m,
+            self.terrain_asl_m,
+            self.cpu_value,
+        ]
+        .iter()
+        .all(|value| value.is_finite())
+            || !self.absolute_difference.is_finite()
+        {
+            return Err(GpuEvidenceError::InvalidComparisonState(
+                "non-finite vertical row metadata",
+            ));
+        }
+        let resolved = match self.reference {
+            VerticalReference::AboveGroundLevel => self.requested_height_m,
+            VerticalReference::AboveMeanSeaLevel => self.requested_height_m - self.terrain_asl_m,
+            VerticalReference::ModelNative => {
+                return Err(GpuEvidenceError::InvalidComparisonState(
+                    "vertical row reference must be explicit AGL or ASL",
+                ))
+            }
+        };
+        if resolved != self.query_height_agl_m {
+            return Err(GpuEvidenceError::InvalidComparisonState(
+                "vertical row height resolution contradicts query",
+            ));
+        }
+        let relative_limit = match self.staggering {
+            VerticalStaggering::LevelCenter
+                if is_vertically_sampled(self.field_id)
+                    && self.field_id != FieldId::VerticalVelocity =>
+            {
+                VERTICAL_GPU_RELATIVE_TOLERANCE_MODEL
+            }
+            VerticalStaggering::LevelInterface if self.field_id == FieldId::VerticalVelocity => {
+                VERTICAL_GPU_RELATIVE_TOLERANCE_W
+            }
+            _ => {
+                return Err(GpuEvidenceError::InvalidComparisonState(
+                    "vertical row field or staggering is unsupported by the pinned oracle",
+                ))
+            }
+        };
+        validate_vertical_policy(self.comparison_policy, relative_limit)?;
+        Ok(())
+    }
+
     /// Validate structural honesty and fail closed on contradiction.
     ///
     /// # Errors
     /// Returns [`GpuEvidenceError`] for contradictory verdicts, differences
     /// or embedded evidence that cannot prove a claimed pass.
     pub fn validate(&self) -> Result<(), GpuEvidenceError> {
+        self.validate_metadata()?;
         let comparison = compare_finite_values(
             &[f64::from(self.oracle_value)],
             &[f64::from(self.gpu_value)],
@@ -2036,7 +2125,9 @@ impl VerticalGpuRow {
                 ));
             }
         }
-        if !self.gpu_evidence.case_id.starts_with(&self.case_id) {
+        if self.gpu_evidence.case_id
+            != format!("{}/height={}", self.case_id, self.query_height_agl_m)
+        {
             return Err(GpuEvidenceError::InvalidComparisonState(
                 "embedded GPU case id contradicts the vertical row case",
             ));
@@ -2063,7 +2154,7 @@ impl VerticalGpuRow {
                 "vertical absolute difference contradicts values",
             ));
         }
-        if self.upper_physical_index != self.lower_physical_index + 1 {
+        if self.lower_physical_index.checked_add(1) != Some(self.upper_physical_index) {
             return Err(GpuEvidenceError::InvalidComparisonState(
                 "vertical row indices must satisfy upper == lower + 1",
             ));
@@ -2093,6 +2184,15 @@ impl VerticalGpuReport {
     /// Returns [`GpuEvidenceError`] when the schema, verdicts, tolerances or
     /// embedded evidence are missing or contradictory.
     pub fn validate(&self) -> Result<(), GpuEvidenceError> {
+        validate_vertical_policy(
+            self.comparison_policy,
+            VERTICAL_GPU_RELATIVE_TOLERANCE_MODEL,
+        )?;
+        if self.scenario_id.trim().is_empty() {
+            return Err(GpuEvidenceError::InvalidComparisonState(
+                "vertical report scenario must not be empty",
+            ));
+        }
         if self.schema.id != VERTICAL_GPU_REPORT_SCHEMA_ID
             || self.schema.version != VERTICAL_GPU_REPORT_SCHEMA_VERSION
         {
@@ -2113,6 +2213,14 @@ impl VerticalGpuReport {
         }
         let candidate_revision = self.rows[0].gpu_evidence.candidate.revision.clone();
         for row in &self.rows {
+            if row.comparison_policy.absolute_tolerance > self.comparison_policy.absolute_tolerance
+                || row.comparison_policy.relative_tolerance
+                    > self.comparison_policy.relative_tolerance
+            {
+                return Err(GpuEvidenceError::InvalidComparisonState(
+                    "vertical row policy exceeds its report policy",
+                ));
+            }
             if row.gpu_evidence.candidate.revision != candidate_revision {
                 return Err(GpuEvidenceError::InvalidComparisonState(
                     "vertical GPU row candidate revision contradicts its report",
@@ -2147,6 +2255,21 @@ impl VerticalGpuReport {
         }
         Ok(())
     }
+}
+
+fn validate_vertical_policy(
+    policy: ComparisonPolicy,
+    relative_limit: f64,
+) -> Result<(), GpuEvidenceError> {
+    ComparisonPolicy::new(policy.absolute_tolerance, policy.relative_tolerance)?;
+    if policy.absolute_tolerance > VERTICAL_GPU_ABSOLUTE_TOLERANCE
+        || policy.relative_tolerance > relative_limit
+    {
+        return Err(GpuEvidenceError::InvalidComparisonState(
+            "vertical policy exceeds the issue-owned oracle tolerances",
+        ));
+    }
+    Ok(())
 }
 
 /// Borrowed W source lanes bound into two-stage evidence input hashes.
@@ -2247,7 +2370,7 @@ fn finish_vertical_gpu_row(
         comparison,
         candidate_revision,
     )?;
-    Ok(VerticalGpuRow {
+    let row = VerticalGpuRow {
         case_id: case_id.to_string(),
         field_id,
         staggering,
@@ -2268,7 +2391,9 @@ fn finish_vertical_gpu_row(
         value_verdict,
         row_verdict: value_verdict,
         gpu_evidence,
-    })
+    };
+    row.validate()?;
+    Ok(row)
 }
 
 /// Build one model-level GPU-vs-oracle row with #91 execution evidence.

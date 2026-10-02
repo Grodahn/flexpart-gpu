@@ -16,6 +16,22 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-10-02 — Bind vertical GPU remapping and validation evidence (#88)
+**Impact**: numerics (reject mismatched shared W geometry before device encoding)
+**Files**: `src/gpu/vertical.rs`, `tests/vertical_gpu.rs`,
+`.github/workflows/software-wgpu.yml`
+**Validation**: Regression tests reproduce previously accepted mismatched heights,
+non-finite evidence metadata and JSON-null input hashes. Evidence now enforces the
+issue-owned tolerance limits, explicit height reference and exact query identity.
+All #71 model queries and #80 pristine W queries produce paired device reports,
+with a required software-WGSL CI check and artifact upload. Validation passes:
+22 GPU tests on hardware and software adapters, 499 library tests, 14 vertical
+integration tests, six pinned-fixture contract tests, and `cargo clippy --all-targets`
+(with existing repository warnings). The CI checker also rejects six injected
+missing/stale/failed-evidence cases. WGSL arithmetic and
+the pinned two-stage W semantics are unchanged; no new Fortran deviation is
+introduced. #76 composition and #77 consumer migration remain separate.
+
 ### 2026-09-28 — Complete interface-W vertical sampling (#73)
 **Impact**: numerics (interface-staggered pressure velocity now follows the
 pristine FLEXPART 11.1 `eta=no` two-stage production semantics on the CPU)

@@ -24,8 +24,7 @@ use flexpart_gpu::gpu::{
     VerticalWSourceLanes, VERTICAL_GPU_CANDIDATE_DESCRIPTION, VERTICAL_GPU_REPORT_SCHEMA_ID,
     VERTICAL_MODEL_ORACLE_OUTPUT_SHA256_MODEL_LEVELS,
     VERTICAL_MODEL_ORACLE_OUTPUT_SHA256_REAL_COLUMN, VERTICAL_ORACLE_REVISION,
-    VERTICAL_W_ORACLE_BINARY_SHA256, VERTICAL_W_ORACLE_IMPLEMENTATION_ID,
-    VERTICAL_W_ORACLE_OUTPUT_SHA256,
+    VERTICAL_W_ORACLE_BINARY_SHA256, VERTICAL_W_ORACLE_OUTPUT_SHA256,
 };
 use flexpart_gpu::meteorology::{
     vertical::{
@@ -48,6 +47,11 @@ fn gpu_context_or_skip() -> Option<GpuContext> {
     match pollster::block_on(GpuContext::new()) {
         Ok(ctx) => Some(ctx),
         Err(GpuError::NoAdapter) => {
+            assert_ne!(
+                std::env::var("FLEXPART_GPU_REQUIRE_VERTICAL").as_deref(),
+                Ok("1"),
+                "required vertical validation cannot skip an adapter"
+            );
             eprintln!("no GPU adapter; skipping GPU vertical test (not evidence)");
             None
         }
@@ -79,9 +83,38 @@ fn checked_f64_to_f32(value: f64, what: &str) -> f32 {
     rounded
 }
 
+fn write_paired_report(
+    scenario: &str,
+    policy: flexpart_gpu::gpu::ComparisonPolicy,
+    rows: Vec<flexpart_gpu::gpu::VerticalGpuRow>,
+) {
+    let report = VerticalGpuReport {
+        schema: SchemaIdentity {
+            id: VERTICAL_GPU_REPORT_SCHEMA_ID.to_string(),
+            version: 1,
+        },
+        scenario_id: scenario.to_string(),
+        candidate: VERTICAL_GPU_CANDIDATE_DESCRIPTION.to_string(),
+        comparison_policy: policy,
+        status: rows.iter().all(|row| row.row_verdict),
+        rows,
+    };
+    let directory =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/ci-gate/vertical-gpu");
+    std::fs::create_dir_all(&directory).expect("evidence directory");
+    std::fs::write(
+        directory.join(format!("{scenario}.json")),
+        serde_json::to_vec_pretty(&report).expect("serialize report"),
+    )
+    .expect("write report");
+    report
+        .require_paired_pass()
+        .expect("all oracle queries prove paired GPU pass");
+}
+
 fn assert_close(actual: f64, expected: f64, abs: f64, rel: f64, what: &str) {
     let diff = (actual - expected).abs();
-    let tolerance = abs + rel * expected.abs().max(actual.abs());
+    let tolerance = abs.max(rel * expected.abs().max(actual.abs()));
     assert!(
         diff <= tolerance,
         "{what}: GPU {actual} != oracle {expected} (diff {diff}, tolerance {tolerance})"
@@ -172,6 +205,14 @@ fn w_production_report() -> Value {
         report["conclusion"].as_str().expect("conclusion"),
         "not_equivalent",
         "the frozen #80 conclusion pins direct sampling as non-equivalent"
+    );
+    assert_eq!(
+        report["provenance"]["build"]["binary_sha256"],
+        VERTICAL_W_ORACLE_BINARY_SHA256
+    );
+    assert_eq!(
+        report["provenance"]["build"]["oracle_output_sha256"],
+        VERTICAL_W_ORACLE_OUTPUT_SHA256
     );
     report
 }
@@ -631,68 +672,46 @@ fn check_vertical_oracle_case_gpu(id: &str) {
         );
     }
 
-    // Machine-readable paired evidence for the first strict-interior query:
-    // the GPU value is compared against the pinned golden (not against CPU),
-    // and the embedded oracle record must carry this case's output digest.
-    let interior = (0..queries.len())
-        .find(|index| {
-            let h = query_heights[*index];
-            h > heights[0] && h < heights[heights.len() - 1]
-        })
-        .unwrap_or_else(|| panic!("{id}: oracle case must contain an interior query"));
     let model_case = match id {
         "vertical-model-levels" => VerticalModelOracleCase::ModelLevels,
         "real-era5-etex-temperature-column" => VerticalModelOracleCase::RealEra5Column,
         _ => panic!("unknown #71 vertical oracle case {id}"),
     };
-    let (lower, upper, w_lower, w_upper) = cpu_indices_weights(&heights, query_heights[interior]);
-    let interior_oracle = goldens[interior]["VALUE"][0]
-        .as_f64()
-        .expect("interior oracle value");
-    // Host diagnostic from the identical primitive (never the candidate).
-    let cpu_diagnostic = values[lower] * w_lower + values[upper] * w_upper;
     let policy = vertical_model_comparison_policy().expect("model policy");
-    let row = build_vertical_model_gpu_row(
-        &ctx,
-        &format!("vertical-gpu/{id}/query-{interior}"),
-        model_case,
-        FieldId::Temperature,
-        VerticalReference::AboveGroundLevel,
-        query_heights[interior],
-        query_heights[interior],
-        0.0,
-        &format!("contract-v1:{id}"),
-        lower,
-        upper,
-        w_lower,
-        w_upper,
-        gpu[interior],
-        checked_f64_to_f32(interior_oracle, "interior oracle value"),
-        cpu_diagnostic,
-        policy,
-        &heights,
-        &values,
-        &query_heights,
-        &candidate_revision(),
-    )
-    .expect("model evidence row builds");
-    // The row oracle is the pinned golden, so CPU and oracle coincide here by
-    // construction; the paired pass below proves WGSL execution, adapter
-    // provenance, and the per-case output digest.
-    assert!(row.row_verdict, "{id}: interior evidence row must pass");
-    row.validate().expect("model evidence row validates");
-    row.gpu_evidence
-        .require_paired_pass()
-        .expect("model evidence proves paired GPU pass");
-    assert_eq!(
-        row.gpu_evidence
-            .oracle
-            .as_ref()
-            .expect("oracle")
-            .output_sha256,
-        expected_output_sha256,
-        "{id}: evidence must record this case's oracle output digest"
-    );
+    let revision = candidate_revision();
+    let mut rows = Vec::with_capacity(queries.len());
+    for (index, golden) in goldens.iter().enumerate() {
+        let (lower, upper, w_lower, w_upper) = cpu_indices_weights(&heights, query_heights[index]);
+        let oracle = golden["VALUE"][0].as_f64().expect("oracle value");
+        let cpu = values[lower] * w_lower + values[upper] * w_upper;
+        rows.push(
+            build_vertical_model_gpu_row(
+                &ctx,
+                &format!("vertical-gpu/{id}/query-{index}"),
+                model_case,
+                FieldId::Temperature,
+                VerticalReference::AboveGroundLevel,
+                query_heights[index],
+                query_heights[index],
+                0.0,
+                &format!("contract-v1:{id}"),
+                lower,
+                upper,
+                w_lower,
+                w_upper,
+                gpu[index],
+                checked_f64_to_f32(oracle, "oracle value"),
+                cpu,
+                policy,
+                &heights,
+                &values,
+                &query_heights,
+                &revision,
+            )
+            .expect("model evidence row"),
+        );
+    }
+    write_paired_report(id, policy, rows);
 }
 
 #[test]
@@ -769,7 +788,7 @@ fn gpu_w_two_stage_matches_80_pristine_oracle() {
     for (index, (query, _comparison)) in queries.iter().zip(comparisons).enumerate() {
         let expected = query["pristine_w_m_s"].as_f64().expect("pristine");
         let actual = f64::from(gpu[index]);
-        let tolerance = absolute + relative * actual.abs().max(expected.abs());
+        let tolerance = absolute.max(relative * actual.abs().max(expected.abs()));
         assert!(
             (actual - expected).abs() <= tolerance,
             "#80 query {}: GPU {actual} != pristine {expected} (tol {tolerance})",
@@ -806,73 +825,58 @@ fn gpu_w_two_stage_matches_80_pristine_oracle() {
         let _ = index;
     }
 
-    // Machine-readable evidence for the strict-interior non-equivalent case
-    // (query 3), which is the critical regression guard.
     let policy = vertical_w_comparison_policy().expect("W policy");
     let geometry_identity = vertical_geometry_identity(runtime);
-    let third_height = query_heights[2];
-    let third_oracle = queries[2]["pristine_w_m_s"]
-        .as_f64()
-        .expect("third pristine");
-    let cpu_third = sample_vertical(
-        runtime,
-        FieldId::VerticalVelocity,
-        VerticalStaggering::LevelInterface,
-        &[],
-        0,
-        0,
-        third_height,
-        VerticalReference::AboveGroundLevel,
-    )
-    .expect("third CPU");
-    let row = build_vertical_w_gpu_row(
-        &ctx,
-        "vertical-gpu/w-production-synthetic/query-3",
-        FieldId::VerticalVelocity,
-        VerticalReference::AboveGroundLevel,
-        third_height,
-        third_height,
-        runtime.terrain_asl_m(0, 0).expect("terrain"),
-        &geometry_identity,
-        cpu_third.lower_physical_index,
-        cpu_third.upper_physical_index,
-        cpu_third.weight_lower,
-        cpu_third.weight_upper,
-        gpu[2],
-        checked_f64_to_f32(third_oracle, "third oracle"),
-        cpu_third.value,
-        policy,
-        &shared_heights,
-        VerticalWSourceLanes {
-            interface_heights_agl_m: &interface_heights,
-            interface_values_ms: &interface_values,
-            level_heights_agl_m: &level_heights,
-        },
-        &query_heights,
-        &candidate_revision(),
-    )
-    .expect("evidence row builds");
-    assert!(row.row_verdict);
-    row.validate().expect("row validates");
-    row.gpu_evidence
-        .require_paired_pass()
-        .expect("paired pass proves GPU");
-    assert_eq!(
-        row.gpu_evidence.execution.calculation_path,
-        GpuCalculationPath::WgslDevice
-    );
-    // Adapter provenance distinguishes hardware from software WGSL.
-    assert!(row.gpu_evidence.execution.adapter.is_some());
-    // Oracle identity is the pinned #80 production oracle: revision, linked
-    // oracle binary, and raw oracle output digests.
-    let oracle = row.gpu_evidence.oracle.as_ref().expect("oracle");
-    assert_eq!(oracle.revision, VERTICAL_ORACLE_REVISION);
-    assert_eq!(
-        oracle.implementation_id,
-        VERTICAL_W_ORACLE_IMPLEMENTATION_ID
-    );
-    assert_eq!(oracle.executable_sha256, VERTICAL_W_ORACLE_BINARY_SHA256);
-    assert_eq!(oracle.output_sha256, VERTICAL_W_ORACLE_OUTPUT_SHA256);
+    let revision = candidate_revision();
+    let mut rows = Vec::with_capacity(queries.len());
+    for (index, query) in queries.iter().enumerate() {
+        let height = query_heights[index];
+        let cpu = sample_vertical(
+            runtime,
+            FieldId::VerticalVelocity,
+            VerticalStaggering::LevelInterface,
+            &[],
+            0,
+            0,
+            height,
+            VerticalReference::AboveGroundLevel,
+        )
+        .expect("CPU diagnostic");
+        let oracle = query["pristine_w_m_s"].as_f64().expect("pristine value");
+        rows.push(
+            build_vertical_w_gpu_row(
+                &ctx,
+                &format!(
+                    "vertical-gpu/w-production-synthetic/query-{}",
+                    query["query"]
+                ),
+                FieldId::VerticalVelocity,
+                VerticalReference::AboveGroundLevel,
+                height,
+                height,
+                runtime.terrain_asl_m(0, 0).expect("terrain"),
+                &geometry_identity,
+                cpu.lower_physical_index,
+                cpu.upper_physical_index,
+                cpu.weight_lower,
+                cpu.weight_upper,
+                gpu[index],
+                checked_f64_to_f32(oracle, "W oracle"),
+                cpu.value,
+                policy,
+                &shared_heights,
+                VerticalWSourceLanes {
+                    interface_heights_agl_m: &interface_heights,
+                    interface_values_ms: &interface_values,
+                    level_heights_agl_m: &level_heights,
+                },
+                &query_heights,
+                &revision,
+            )
+            .expect("W evidence row"),
+        );
+    }
+    write_paired_report("w-production-synthetic", policy, rows);
 }
 
 #[test]
@@ -1443,6 +1447,68 @@ fn gpu_evidence_fails_closed() {
             &candidate_revision(),
         )
         .expect("row builds");
+        row.validate().expect("baseline row validates");
+        for invalid in [f64::NAN, f64::INFINITY] {
+            let mut mutated = row.clone();
+            mutated.absolute_difference = invalid;
+            assert!(
+                mutated.validate().is_err(),
+                "non-finite difference must fail"
+            );
+        }
+        let mut mutated = row.clone();
+        mutated.requested_height_m = f32::NAN;
+        assert!(mutated.validate().is_err(), "non-finite height must fail");
+        let mut mutated = row.clone();
+        mutated.cpu_value = f32::NAN;
+        assert!(
+            mutated.validate().is_err(),
+            "non-finite diagnostic must fail"
+        );
+        let mut mutated = row.clone();
+        mutated.query_height_agl_m += 1.0;
+        assert!(
+            mutated.validate().is_err(),
+            "query identity must match evidence"
+        );
+        let mut mutated = row.clone();
+        mutated.lower_physical_index = usize::MAX;
+        assert!(
+            mutated.validate().is_err(),
+            "index overflow must fail without panic"
+        );
+        let mut mutated = row.clone();
+        mutated.comparison_policy.relative_tolerance = 1.0;
+        mutated.gpu_evidence.comparison = flexpart_gpu::gpu::compare_finite_values(
+            &[f64::from(mutated.oracle_value)],
+            &[f64::from(mutated.gpu_value)],
+            mutated.comparison_policy,
+        )
+        .expect("comparison");
+        assert!(mutated.validate().is_err(), "weakened tolerance must fail");
+        let mut report = VerticalGpuReport {
+            schema: SchemaIdentity {
+                id: VERTICAL_GPU_REPORT_SCHEMA_ID.to_string(),
+                version: 1,
+            },
+            scenario_id: "policy-guard".to_string(),
+            candidate: VERTICAL_GPU_CANDIDATE_DESCRIPTION.to_string(),
+            comparison_policy: policy,
+            rows: vec![row.clone()],
+            status: true,
+        };
+        report.require_paired_pass().expect("baseline report");
+        report.comparison_policy.relative_tolerance = 1.0;
+        assert!(
+            report.validate().is_err(),
+            "report tolerance must not be weakened"
+        );
+        report.comparison_policy = policy;
+        report.comparison_policy.relative_tolerance = 0.0;
+        assert!(
+            report.validate().is_err(),
+            "row policy must match report limits"
+        );
         row.gpu_evidence.candidate.shader_sha256 = "b".repeat(64);
         assert!(row.validate().is_err());
 
@@ -1556,6 +1622,61 @@ fn gpu_evidence_fails_closed() {
         )
         .is_err());
     }
+}
+
+#[test]
+fn test_vertical_w_remap_mismatched_shared_heights_rejected() {
+    let Some(ctx) = gpu_context_or_skip() else {
+        return;
+    };
+    let inputs = create_vertical_w_interface_inputs(
+        &ctx,
+        &[0.0, 100.0, 200.0],
+        &[0.0, 10.0, 20.0],
+        &[50.0, 150.0],
+    )
+    .expect("W inputs");
+    let kernel = VerticalWRemapKernel::new(&ctx).expect("kernel");
+    let wrong_grid = create_vertical_shared_grid(&ctx, &[0.0, 75.0, 175.0]).expect("shared grid");
+    let mut encoder = ctx
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    assert!(
+        encode_vertical_remap_w_with_kernel(&ctx, &inputs, &wrong_grid, &kernel, &mut encoder,)
+            .is_err(),
+        "same-sized geometry from another column must fail closed"
+    );
+    let matching_grid =
+        create_vertical_shared_grid(&ctx, &[-0.0, 50.0, 150.0]).expect("shared grid");
+    encode_vertical_remap_w_with_kernel(&ctx, &inputs, &matching_grid, &kernel, &mut encoder)
+        .expect("matching geometry including signed zero remains supported");
+}
+
+#[test]
+fn test_vertical_evidence_non_finite_inputs_rejected() {
+    assert!(
+        flexpart_gpu::gpu::vertical_inputs_sha256(
+            &[0.0, 100.0],
+            &[1.0, f32::NAN],
+            &[50.0],
+            VerticalStaggering::LevelCenter,
+            "geometry",
+        )
+        .is_err(),
+        "NaN must not become a hashed JSON null"
+    );
+    assert!(
+        flexpart_gpu::gpu::vertical_w_inputs_sha256(
+            &[0.0, 50.0, 150.0],
+            &[0.0, 100.0, 200.0],
+            &[1.0, 2.0, 3.0],
+            &[50.0, 150.0],
+            &[f32::INFINITY],
+            "geometry",
+        )
+        .is_err(),
+        "infinite query must fail before hashing"
+    );
 }
 
 #[test]

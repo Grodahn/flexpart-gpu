@@ -47,6 +47,27 @@ pub struct HorizontalSample {
     pub is_periodic_x: bool,
 }
 
+/// Validated horizontal stencil for device queries; contains no CPU sampled value.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct HorizontalSampleGeometry {
+    /// Canonical grid-index x coordinate after edge snapping.
+    pub xt: f64,
+    /// Canonical grid-index y coordinate after edge snapping.
+    pub yt: f64,
+    /// Lower x index (`int(xt)` for `xt >= 0`).
+    pub ix: usize,
+    /// Lower y index (`int(yt)` for `yt >= 0`).
+    pub jy: usize,
+    /// Upper x index (`ix + 1`, ghost `nx` for the periodic seam, or `ix` on an exact edge).
+    pub ixp: usize,
+    /// Upper y index (`jy + 1`, or `jy` on the exact last row).
+    pub jyp: usize,
+    /// Bilinear weights `[p1, p2, p3, p4]`.
+    pub weights: [f64; 4],
+    /// Whether the source grid was classified as periodic in x.
+    pub is_periodic_x: bool,
+}
+
 /// Fail-closed errors for canonical horizontal sampling.
 #[derive(Debug, Error, PartialEq)]
 pub enum HorizontalError {
@@ -192,6 +213,61 @@ pub fn sample_horizontal(
     xt: f64,
     yt: f64,
 ) -> Result<HorizontalSample, HorizontalError> {
+    let geometry = horizontal_sample_geometry(grid, field_values, staggering, xt, yt)?;
+    let HorizontalSampleGeometry {
+        xt,
+        yt,
+        ix,
+        jy,
+        ixp,
+        jyp,
+        weights,
+        is_periodic_x,
+    } = geometry;
+    let (nx, ny) = (grid.nx, grid.ny);
+    let value_00 = field_at(field_values, nx, ny, ix, jy, is_periodic_x)?;
+    let value_10 = field_at(field_values, nx, ny, ixp, jy, is_periodic_x)?;
+    let value_01 = field_at(field_values, nx, ny, ix, jyp, is_periodic_x)?;
+    let value_11 = field_at(field_values, nx, ny, ixp, jyp, is_periodic_x)?;
+
+    let value_f64 = weights[0] * value_00
+        + weights[1] * value_10
+        + weights[2] * value_01
+        + weights[3] * value_11;
+    if !value_f64.is_finite() {
+        return Err(HorizontalError::NonFiniteResult);
+    }
+    // f32 rounding is intentional: canonical fields store f32 samples.
+    #[allow(clippy::cast_possible_truncation)]
+    let value = value_f64 as f32;
+    if !value.is_finite() {
+        return Err(HorizontalError::NonFiniteResult);
+    }
+
+    Ok(HorizontalSample {
+        value,
+        xt,
+        yt,
+        ix,
+        jy,
+        ixp,
+        jyp,
+        weights,
+        is_periodic_x,
+    })
+}
+
+/// Validate the canonical stencil and finite corners without sampling on the CPU.
+///
+/// # Errors
+/// Returns the same input errors as [`sample_horizontal`].
+pub fn horizontal_sample_geometry(
+    grid: &HorizontalGrid,
+    field_values: &[f32],
+    staggering: HorizontalStaggering,
+    xt: f64,
+    yt: f64,
+) -> Result<HorizontalSampleGeometry, HorizontalError> {
     if staggering != HorizontalStaggering::CellCenter {
         return Err(HorizontalError::UnsupportedStaggering { staggering });
     }
@@ -249,27 +325,10 @@ pub fn sample_horizontal(
     let rddy = 1.0 - ddy;
     let weights = [rddx * rddy, ddx * rddy, rddx * ddy, ddx * ddy];
 
-    let value_00 = field_at(field_values, nx, ny, ix, jy, is_periodic_x)?;
-    let value_10 = field_at(field_values, nx, ny, ixp, jy, is_periodic_x)?;
-    let value_01 = field_at(field_values, nx, ny, ix, jyp, is_periodic_x)?;
-    let value_11 = field_at(field_values, nx, ny, ixp, jyp, is_periodic_x)?;
-
-    let value_f64 = weights[0] * value_00
-        + weights[1] * value_10
-        + weights[2] * value_01
-        + weights[3] * value_11;
-    if !value_f64.is_finite() {
-        return Err(HorizontalError::NonFiniteResult);
+    for (x, y) in [(ix, jy), (ixp, jy), (ix, jyp), (ixp, jyp)] {
+        field_at(field_values, nx, ny, x, y, is_periodic_x)?;
     }
-    // f32 rounding is intentional: canonical fields store f32 samples.
-    #[allow(clippy::cast_possible_truncation)]
-    let value = value_f64 as f32;
-    if !value.is_finite() {
-        return Err(HorizontalError::NonFiniteResult);
-    }
-
-    Ok(HorizontalSample {
-        value,
+    Ok(HorizontalSampleGeometry {
         xt,
         yt,
         ix,
@@ -300,6 +359,22 @@ pub fn sample_horizontal_geographic(
     lon_deg: f64,
     lat_deg: f64,
 ) -> Result<HorizontalSample, HorizontalError> {
+    let geometry =
+        horizontal_sample_geometry_geographic(grid, field_values, staggering, lon_deg, lat_deg)?;
+    sample_horizontal(grid, field_values, staggering, geometry.xt, geometry.yt)
+}
+
+/// Map geographic coordinates and validate a stencil without CPU sampling.
+///
+/// # Errors
+/// Returns the same input errors as [`sample_horizontal_geographic`].
+pub fn horizontal_sample_geometry_geographic(
+    grid: &HorizontalGrid,
+    field_values: &[f32],
+    staggering: HorizontalStaggering,
+    lon_deg: f64,
+    lat_deg: f64,
+) -> Result<HorizontalSampleGeometry, HorizontalError> {
     if !lon_deg.is_finite() || !lat_deg.is_finite() {
         return Err(HorizontalError::ImpossibleCoordinate {
             reason: "longitude and latitude must be finite",
@@ -348,7 +423,7 @@ pub fn sample_horizontal_geographic(
             longitude_domain: grid.longitude_domain,
         });
     }
-    sample_horizontal(grid, field_values, staggering, xt, yt)
+    horizontal_sample_geometry(grid, field_values, staggering, xt, yt)
 }
 
 fn grid_close(actual: f64, expected: f64) -> bool {

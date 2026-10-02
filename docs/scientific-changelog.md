@@ -16,7 +16,16 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
-### 2026-10-02 � Validate vertical GPU evidence batches and runtime ordering (#88)
+### 2026-10-02 — Identify the executed horizontal CI revision (#87)
+**Impact**: none (validation provenance; horizontal device arithmetic unchanged)
+**Files**: `.github/workflows/software-wgpu.yml`, `src/gpu/mod.rs`
+**Validation**: The horizontal software-WGSL step now records the checked-out
+GitHub merge revision and explicitly checks it against `git rev-parse HEAD`.
+This prevents evidence for an unexecuted PR head from being accepted. Both
+horizontal and vertical oracle gates survive the rebase. Only the new horizontal
+exports receive formatting repairs; no Fortran semantics or #76/#77 scope changes.
+
+### 2026-10-02 � Validate vertical GPU evidence batches and runtime ordering (#88)
 **Impact**: none (host validation and verification; device arithmetic unchanged)
 **Files**: `src/gpu/vertical.rs`, `tests/vertical_gpu.rs`
 **Validation**: Regressions reproduce accepted empty/malformed input batches and
@@ -45,7 +54,7 @@ missing/stale/failed-evidence cases. WGSL arithmetic and
 the pinned two-stage W semantics are unchanged; no new Fortran deviation is
 introduced. #76 composition and #77 consumer migration remain separate.
 
-### 2026-10-01 � Preserve canonical horizontal cells in GPU sampling (#87)
+### 2026-10-01 — Preserve canonical horizontal cells in GPU sampling (#87)
 **Impact**: numerics (WGSL bilinear sampling preserves #72 cell selection near
 integer boundaries and the periodic seam before f32 rounding)
 **Files**: `src/gpu/horizontal.rs`, `src/meteorology/horizontal.rs`,

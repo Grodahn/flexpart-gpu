@@ -93,9 +93,9 @@ pub use hanna::{
     HannaParamsOutputBuffer,
 };
 pub use horizontal::{
-    build_horizontal_gpu_row, create_horizontal_output_buffer,
-    create_horizontal_query_buffers, create_horizontal_query_buffers_geographic,
-    create_horizontal_uniform_buffer, default_comparison_policy as default_horizontal_comparison_policy,
+    build_horizontal_gpu_row, create_horizontal_output_buffer, create_horizontal_query_buffers,
+    create_horizontal_query_buffers_geographic, create_horizontal_uniform_buffer,
+    default_comparison_policy as default_horizontal_comparison_policy,
     dispatch_horizontal_samples_and_wait, download_horizontal_output, encode_horizontal_samples,
     horizontal_inputs_sha256, horizontal_shader_sha256, sample_horizontal_geographic_gpu,
     sample_horizontal_gpu, GpuHorizontalError, HorizontalFieldBuffers, HorizontalGpuReport,

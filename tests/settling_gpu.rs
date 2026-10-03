@@ -204,14 +204,9 @@ fn test_settling_fixtures_are_pinned_and_consistent() {
         hex.push(char::from_digit(u32::from(byte >> 4), 16).unwrap_or('0'));
         hex.push(char::from_digit(u32::from(byte & 0x0f), 16).unwrap_or('0'));
     }
-    // The checked-in canonical file is pretty-printed with sorted keys by the
-    // generator; hash equality here guards against silent fixture drift.
-    // (The generator records the same SHA in oracle.canonical_sha256.)
-    assert_eq!(hex.len(), 64, "canonical SHA must be 64 hex chars");
     assert_eq!(
-        oracle.canonical_sha256.len(),
-        64,
-        "oracle must carry a canonical SHA"
+        hex, oracle.canonical_sha256,
+        "canonical SHA must match oracle provenance"
     );
 }
 

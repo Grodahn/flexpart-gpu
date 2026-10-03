@@ -996,6 +996,15 @@ impl SettlingGpuRow {
     /// Returns [`GpuEvidenceError`] for contradictory verdicts, differences
     /// or embedded evidence that cannot prove a claimed pass.
     pub fn validate(&self) -> Result<(), GpuEvidenceError> {
+        self.validate_identity()?;
+        self.validate_values()?;
+        self.validate_evidence_consistency()?;
+        self.gpu_evidence.validate()?;
+        self.gpu_evidence.require_paired_pass()?;
+        Ok(())
+    }
+
+    fn validate_identity(&self) -> Result<(), GpuEvidenceError> {
         let invalid = || {
             GpuEvidenceError::InvalidComparisonState(
                 "settling row contradicts normalized inputs or facet verdicts",
@@ -1004,6 +1013,34 @@ impl SettlingGpuRow {
         if self.vector_id.trim().is_empty() || self.species_name.trim().is_empty() {
             return Err(invalid());
         }
+        if self.gpu_evidence.case_id != format!("settling-gpu/{}", self.vector_id) {
+            return Err(invalid());
+        }
+        if self.gpu_evidence.candidate.implementation_id != SETTLING_GPU_IMPLEMENTATION_ID {
+            return Err(invalid());
+        }
+        if self.gpu_evidence.candidate.shader_sha256 != settling_shader_sha256() {
+            return Err(invalid());
+        }
+        if !is_lowercase_git_sha(&self.gpu_evidence.candidate.revision) {
+            return Err(invalid());
+        }
+        let oracle = self.gpu_evidence.oracle.as_ref().ok_or_else(invalid)?;
+        if oracle.implementation_id != SETTLING_ORACLE_IMPLEMENTATION_ID {
+            return Err(invalid());
+        }
+        if oracle.revision != SETTLING_ORACLE_REVISION {
+            return Err(invalid());
+        }
+        Ok(())
+    }
+
+    fn validate_values(&self) -> Result<(), GpuEvidenceError> {
+        let invalid = || {
+            GpuEvidenceError::InvalidComparisonState(
+                "settling row contradicts normalized inputs or facet verdicts",
+            )
+        };
         if !self.gpu_settling_velocity_m_s.is_finite()
             || !self.oracle_settling_velocity_m_s.is_finite()
             || !self.absolute_difference.is_finite()
@@ -1023,6 +1060,17 @@ impl SettlingGpuRow {
         if (self.absolute_difference - expected_absolute).abs() > 1.0e-12 {
             return Err(invalid());
         }
+        let scale = f64::from(self.gpu_settling_velocity_m_s)
+            .abs()
+            .max(f64::from(self.oracle_settling_velocity_m_s).abs());
+        let expected_relative = if scale == 0.0 {
+            0.0
+        } else {
+            expected_absolute / scale
+        };
+        if (self.relative_difference - expected_relative).abs() > 1.0e-12 {
+            return Err(invalid());
+        }
         let comparison = compare_finite_values(
             &[f64::from(self.oracle_settling_velocity_m_s)],
             &[f64::from(self.gpu_settling_velocity_m_s)],
@@ -1035,8 +1083,60 @@ impl SettlingGpuRow {
         if self.gpu_evidence.comparison.verdict != comparison.verdict {
             return Err(invalid());
         }
-        self.gpu_evidence.validate()?;
-        self.gpu_evidence.require_paired_pass()?;
+        Ok(())
+    }
+
+    fn validate_evidence_consistency(&self) -> Result<(), GpuEvidenceError> {
+        let invalid = || {
+            GpuEvidenceError::InvalidComparisonState(
+                "settling row contradicts normalized inputs or facet verdicts",
+            )
+        };
+        let default_policy = default_comparison_policy().map_err(|_| invalid())?;
+        if self.comparison_policy != default_policy {
+            return Err(invalid());
+        }
+        let evidence_policy = self
+            .gpu_evidence
+            .comparison
+            .policy
+            .ok_or_else(invalid)?;
+        if evidence_policy != self.comparison_policy {
+            return Err(invalid());
+        }
+        let evidence_max_abs = self
+            .gpu_evidence
+            .comparison
+            .max_absolute_error
+            .ok_or_else(invalid)?;
+        if (evidence_max_abs - self.absolute_difference).abs() > 1.0e-12 {
+            return Err(invalid());
+        }
+        let evidence_max_rel = self
+            .gpu_evidence
+            .comparison
+            .max_relative_error
+            .ok_or_else(invalid)?;
+        if (evidence_max_rel - self.relative_difference).abs() > 1.0e-12 {
+            return Err(invalid());
+        }
+        if self.gpu_evidence.comparison.oracle_value_count != 1
+            || self.gpu_evidence.comparison.candidate_value_count != 1
+            || self.gpu_evidence.comparison.compared_value_count != 1
+        {
+            return Err(invalid());
+        }
+        let query = SettlingQuery {
+            diameter_um: self.diameter_um,
+            particle_density_kg_m3: self.particle_density_kg_m3,
+            temperature_k: self.temperature_k,
+            air_density_kg_m3: self.air_density_kg_m3,
+        };
+        let expected_input_sha =
+            settling_inputs_sha256(std::slice::from_ref(&query)).map_err(|_| invalid())?;
+        if self.gpu_evidence.candidate.input_sha256 != expected_input_sha {
+            return Err(invalid());
+        }
         Ok(())
     }
 }
@@ -1059,6 +1159,23 @@ impl SettlingGpuReport {
         if self.rows.is_empty() {
             return Err(GpuEvidenceError::InvalidComparisonState(
                 "settling report contains no rows",
+            ));
+        }
+        if self.scenario_id.trim().is_empty() || self.candidate.trim().is_empty() {
+            return Err(GpuEvidenceError::InvalidComparisonState(
+                "settling report scenario_id and candidate must be non-empty",
+            ));
+        }
+        let default_policy = default_comparison_policy()
+            .map_err(|_| GpuEvidenceError::InvalidComparisonState("invalid default policy"))?;
+        if self.comparison_policy != default_policy {
+            return Err(GpuEvidenceError::InvalidComparisonState(
+                "settling report comparison policy must match the issue-owned default",
+            ));
+        }
+        if self.units != SettlingReportUnits::default() {
+            return Err(GpuEvidenceError::InvalidComparisonState(
+                "settling report units must match the declared defaults",
             ));
         }
         for row in &self.rows {

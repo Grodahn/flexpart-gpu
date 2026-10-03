@@ -21,7 +21,8 @@ use flexpart_gpu::meteorology::{
     temporal::RequestedSampleTime,
     vertical::{
         reconstruct_vertical_geometry, reconstruct_vertical_geometry_with_motion,
-        NativeVerticalMotion,
+        NativeVerticalMotion, NativeVerticalMotionKind, NativeVerticalMotionProvenance,
+        NativeVerticalMotionSign, NativeVerticalMotionUnit,
     },
     Axis, Calendar, Field, FieldId, FieldTime, SignConvention, Snapshot, TemporalKind, Unit,
     VerticalReference, VerticalStaggering,
@@ -129,10 +130,47 @@ struct Case<'a> {
     stages: Vec<MeteorologyStage>,
     policy: ComparisonPolicy,
     source_snapshots: Vec<&'a Snapshot>,
+    source_indices: Vec<usize>,
 }
 
 fn stage_sequence(stages: &[MeteorologyStageRecord]) -> Vec<MeteorologyStage> {
     stages.iter().map(|s| s.stage).collect()
+}
+
+fn expected_records(case: &Case<'_>) -> Vec<MeteorologyStageRecord> {
+    use MeteorologyStage::{AccumulatedTransform, Horizontal, Temporal, Vertical, WRemap};
+    let mut records = Vec::new();
+    if case.stages.contains(&AccumulatedTransform) {
+        records.push(MeteorologyStageRecord {
+            stage: AccumulatedTransform,
+            source_index: None,
+            plane_index: None,
+        });
+    }
+    for index in &case.source_indices {
+        let spatial = if case.stages.contains(&WRemap) {
+            vec![WRemap, Vertical]
+        } else if case.stages.contains(&Vertical) {
+            vec![Horizontal, Horizontal, Horizontal, Vertical]
+        } else {
+            vec![Horizontal; case.expected.len()]
+        };
+        for (plane, stage) in spatial.into_iter().enumerate() {
+            records.push(MeteorologyStageRecord {
+                stage,
+                source_index: Some(*index),
+                plane_index: (stage == Horizontal).then_some(plane),
+            });
+        }
+    }
+    if case.stages.contains(&Temporal) {
+        records.push(MeteorologyStageRecord {
+            stage: Temporal,
+            source_index: None,
+            plane_index: None,
+        });
+    }
+    records
 }
 
 fn run_cases(
@@ -159,6 +197,12 @@ fn run_cases(
             stage_sequence(handoff.stages),
             case.stages,
             "{} field-specific ordering",
+            case.id
+        );
+        assert_eq!(
+            handoff.stages,
+            expected_records(case),
+            "{} source/plane identity",
             case.id
         );
         assert_eq!(handoff.metadata.value_count, case.expected.len());
@@ -230,16 +274,41 @@ fn run_cases(
             case.policy,
         )
         .unwrap();
-        let inputs = json!({"snapshots": case.source_snapshots, "request": case.request});
+        // Keep the canonical snapshot's typed serialization: f32 shortest-decimal
+        // encoding differs from promotion through serde_json::Value's f64 lanes.
+        let source_bytes: Vec<_> = case
+            .source_snapshots
+            .iter()
+            .map(|snapshot| serde_json::to_vec(snapshot).unwrap())
+            .collect();
+        let snapshots: Vec<Value> = source_bytes
+            .iter()
+            .map(|bytes| serde_json::from_slice(bytes).unwrap())
+            .collect();
+        let inputs = json!({"snapshots": snapshots, "request": case.request});
         let input_bytes = serde_json::to_vec(&inputs).unwrap();
         let input_path = directory.join(format!("{}-inputs.json", case.id));
         std::fs::write(input_path, &input_bytes).unwrap();
+        for (index, bytes) in source_bytes.iter().enumerate() {
+            std::fs::write(
+                directory.join(format!("{}-source-{index}.json", case.id)),
+                bytes,
+            )
+            .unwrap();
+        }
         assert_handoff_identity(&metadata, case);
+        let handoff_bytes = serde_json::to_vec(&serde_json::to_value(&metadata).unwrap()).unwrap();
+        std::fs::write(
+            directory.join(format!("{}-handoff.json", case.id)),
+            &handoff_bytes,
+        )
+        .unwrap();
         let row = json!({
             "case_id": case.id, "metadata": metadata,
-            "handoff_sha256": format!("{:x}", Sha256::digest(serde_json::to_vec(&metadata).unwrap())),
+            "handoff_sha256": format!("{:x}", Sha256::digest(&handoff_bytes)),
             "input_sha256": format!("{:x}", Sha256::digest(&input_bytes)),
             "encoded_stages": stages, "expected_stages": case.stages,
+            "expected_stage_records": expected_records(case),
             "device_to_device_copies": copies,
             "candidate_values": actual, "expected_values": case.expected,
             "comparison": comparison,
@@ -263,13 +332,43 @@ fn run_cases(
 }
 
 fn assert_handoff_identity(metadata: &MeteorologySampleMetadata, case: &Case<'_>) {
-    for hash in &metadata.source_snapshot_sha256 {
-        assert!(case
-            .source_snapshots
+    let history: Vec<_> = if case
+        .stages
+        .contains(&MeteorologyStage::AccumulatedTransform)
+    {
+        case.source_snapshots.clone()
+    } else {
+        case.source_indices
             .iter()
-            .any(|s| *hash == format!("{:x}", Sha256::digest(serde_json::to_vec(s).unwrap()))));
+            .map(|i| case.source_snapshots[*i])
+            .collect()
+    };
+    assert_eq!(
+        metadata.source_snapshot_sha256,
+        history
+            .iter()
+            .map(|s| format!("{:x}", Sha256::digest(serde_json::to_vec(s).unwrap())))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        metadata.source_times,
+        history
+            .iter()
+            .map(|s| s
+                .fields
+                .iter()
+                .find(|f| f.id == metadata.field_id)
+                .unwrap()
+                .time
+                .clone())
+            .collect::<Vec<_>>()
+    );
+    if let Some(bracket) = &metadata.temporal_bracket {
+        assert_eq!(
+            [bracket.lower_index, bracket.upper_index],
+            case.source_indices.as_slice()
+        );
     }
-    assert!(!metadata.source_snapshot_sha256.is_empty());
     for provenance in &metadata.geometry_provenance {
         assert!(metadata
             .source_snapshot_sha256
@@ -322,6 +421,13 @@ fn test_meteorology_field_specific_composition_device_handoff() {
     use MeteorologyStage::{
         AccumulatedTransform as A, Horizontal as H, Temporal as T, Vertical as V, WRemap as W,
     };
+    // Invalidate the aggregate verdict before any fallible device setup or execution.
+    // Retained per-case failures cannot coexist with an old passing aggregate.
+    let report_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target/ci-gate/meteorology-composition/report.json");
+    if report_path.exists() {
+        std::fs::remove_file(&report_path).unwrap();
+    }
     let ctx =
         pollster::block_on(GpuContext::new()).expect("#76 required GPU execution cannot skip");
     let kernels = MeteorologyCompositionKernels::new(&ctx).unwrap();
@@ -340,8 +446,18 @@ fn test_meteorology_field_specific_composition_device_handoff() {
     for value in &mut s1.fields.last_mut().unwrap().values {
         *value += 10.0;
     }
-    let surface =
-        CanonicalGpuField::upload(&ctx, FieldId::MixingHeight, &[&s0, &s1], &[None, None]).unwrap();
+    let mut s2 = s1.clone();
+    time(&mut s2, 7200);
+    for value in &mut s2.fields.last_mut().unwrap().values {
+        *value += 10.0;
+    }
+    let surface = CanonicalGpuField::upload(
+        &ctx,
+        FieldId::MixingHeight,
+        &[&s0, &s1, &s2],
+        &[None, None, None],
+    )
+    .unwrap();
 
     let mut m0 = s0.clone();
     let mut wind = surface_field(
@@ -422,6 +538,57 @@ fn test_meteorology_field_specific_composition_device_handoff() {
     let wquery = &w_oracle["synthetic_case"]["queries"][1];
     let wh = Some(MeteorologyHeight {
         meters: wquery["particle_height_m_agl"].as_f64().unwrap() as f32,
+        reference: VerticalReference::AboveGroundLevel,
+    });
+
+    // Reuse #88's center-motion input; exact lowest-level sampling isolates
+    // runtime binding, physical level reversal and downstream temporal composition.
+    let mut center_native = NativeVerticalMotion {
+        kind: NativeVerticalMotionKind::GeometricVelocity,
+        unit: NativeVerticalMotionUnit::MeterPerSecond,
+        sign: NativeVerticalMotionSign::PositiveUpward,
+        vertical_staggering: VerticalStaggering::LevelCenter,
+        values: vec![0.5, -0.25, 0.125],
+        provenance: NativeVerticalMotionProvenance {
+            source_id: "vertical-gpu-center-w-test".to_string(),
+        },
+    };
+    let mut c0 = base();
+    time(&mut c0, 0);
+    let mut center_field = surface_field(
+        &c0,
+        FieldId::VerticalVelocity,
+        Unit::MeterPerSecond,
+        SignConvention::PositiveUpward,
+        center_native.values.clone(),
+    );
+    center_field.shape.push(3);
+    center_field.axis_order.push(Axis::Z);
+    center_field.vertical_staggering = VerticalStaggering::LevelCenter;
+    c0.fields.push(center_field);
+    let cg0 = reconstruct_vertical_geometry_with_motion(&c0, &center_native).unwrap();
+    let mut c1 = c0.clone();
+    time(&mut c1, 3600);
+    center_native.values.iter_mut().for_each(|v| *v += 1.0);
+    c1.fields.last_mut().unwrap().values = center_native.values.clone();
+    let cg1 = reconstruct_vertical_geometry_with_motion(&c1, &center_native).unwrap();
+    let center_source = CanonicalGpuField::upload(
+        &ctx,
+        FieldId::VerticalVelocity,
+        &[&c0, &c1],
+        &[
+            Some(cg0.runtime_view().unwrap()),
+            Some(cg1.runtime_view().unwrap()),
+        ],
+    )
+    .unwrap();
+    let center_height = Some(MeteorologyHeight {
+        meters: cg0
+            .runtime_view()
+            .unwrap()
+            .level(0, 0, 2)
+            .unwrap()
+            .height_agl_m,
         reference: VerticalReference::AboveGroundLevel,
     });
 
@@ -529,7 +696,8 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             expected: vec![235.0],
             stages: vec![H, H, T],
             policy: horizontal_policy().unwrap(),
-            source_snapshots: vec![&s0, &s1],
+            source_snapshots: vec![&s0, &s1, &s2],
+            source_indices: vec![0, 1],
         },
         Case {
             id: "surface-first-endpoint",
@@ -538,16 +706,18 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             expected: vec![230.0],
             stages: vec![H, H, T],
             policy: horizontal_policy().unwrap(),
-            source_snapshots: vec![&s0, &s1],
+            source_snapshots: vec![&s0, &s1, &s2],
+            source_indices: vec![0, 1],
         },
         Case {
             id: "surface-last-endpoint",
             source: &surface,
-            request: request(1.25, 0.5, instant(3600), None),
-            expected: vec![240.0],
+            request: request(1.25, 0.5, instant(7200), None),
+            expected: vec![250.0],
             stages: vec![H, H, T],
             policy: horizontal_policy().unwrap(),
-            source_snapshots: vec![&s0, &s1],
+            source_snapshots: vec![&s0, &s1, &s2],
+            source_indices: vec![1, 2],
         },
         Case {
             id: "model-agl",
@@ -557,6 +727,27 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             stages: vec![H, H, H, V, H, H, H, V, T],
             policy: vertical_model_comparison_policy().unwrap(),
             source_snapshots: vec![&m0, &m1],
+            source_indices: vec![0, 1],
+        },
+        Case {
+            id: "surface-later-bracket",
+            source: &surface,
+            request: request(1.25, 0.5, instant(5400), None),
+            expected: vec![245.0],
+            stages: vec![H, H, T],
+            policy: horizontal_policy().unwrap(),
+            source_snapshots: vec![&s0, &s1, &s2],
+            source_indices: vec![1, 2],
+        },
+        Case {
+            id: "center-w",
+            source: &center_source,
+            request: request(0.0, 0.0, instant(1800), center_height),
+            expected: vec![0.625],
+            stages: vec![H, H, H, V, H, H, H, V, T],
+            policy: vertical_model_comparison_policy().unwrap(),
+            source_snapshots: vec![&c0, &c1],
+            source_indices: vec![0, 1],
         },
         Case {
             id: "model-asl",
@@ -566,6 +757,7 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             stages: vec![H, H, H, V, H, H, H, V, T],
             policy: vertical_model_comparison_policy().unwrap(),
             source_snapshots: vec![&m0, &m1],
+            source_indices: vec![0, 1],
         },
         Case {
             id: "interface-w",
@@ -575,6 +767,7 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             stages: vec![W, V, W, V, T],
             policy: vertical_w_comparison_policy().unwrap(),
             source_snapshots: vec![&w0, &w1],
+            source_indices: vec![0, 1],
         },
         Case {
             id: "interval-leading-rate",
@@ -593,6 +786,7 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             stages: vec![A, H],
             policy: accumulated_comparison_policy().unwrap(),
             source_snapshots: vec![&a0, &a1, &a2],
+            source_indices: vec![0],
         },
         Case {
             id: "interval-delta-amount",
@@ -611,6 +805,7 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             stages: vec![A, H],
             policy: accumulated_comparison_policy().unwrap(),
             source_snapshots: vec![&a0, &a1, &a2],
+            source_indices: vec![1],
         },
         Case {
             id: "interval-reset-si-rate",
@@ -629,6 +824,7 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             stages: vec![A, H],
             policy: accumulated_comparison_policy().unwrap(),
             source_snapshots: vec![&a0, &a1, &a2],
+            source_indices: vec![2],
         },
         Case {
             id: "static-class",
@@ -638,6 +834,7 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             stages: vec![H; 13],
             policy: horizontal_policy().unwrap(),
             source_snapshots: vec![&ancillary],
+            source_indices: vec![0],
         },
         Case {
             id: "static-scalar",
@@ -647,6 +844,7 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             stages: vec![H],
             policy: horizontal_policy().unwrap(),
             source_snapshots: vec![&ancillary],
+            source_indices: vec![0],
         },
         Case {
             id: "interval-mean-flux",
@@ -664,6 +862,7 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             stages: vec![H],
             policy: horizontal_policy().unwrap(),
             source_snapshots: vec![&flux_snapshot],
+            source_indices: vec![0],
         },
         Case {
             id: "interval-total",
@@ -681,6 +880,7 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             stages: vec![H],
             policy: horizontal_policy().unwrap(),
             source_snapshots: vec![&total_snapshot],
+            source_indices: vec![0],
         },
         Case {
             id: "model-below-domain",
@@ -698,6 +898,7 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             stages: vec![H, H, H, V, H, H, H, V, T],
             policy: vertical_model_comparison_policy().unwrap(),
             source_snapshots: vec![&m0, &m1],
+            source_indices: vec![0, 1],
         },
         Case {
             id: "model-above-domain",
@@ -715,6 +916,7 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             stages: vec![H, H, H, V, H, H, H, V, T],
             policy: vertical_model_comparison_policy().unwrap(),
             source_snapshots: vec![&m0, &m1],
+            source_indices: vec![0, 1],
         },
     ];
     let rows = run_cases(&ctx, &kernels, &cases);
@@ -736,11 +938,7 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             "consumer": "same-encoder device-copy adapter", "source_audit_test": "test_meteorology_encode_surface_has_no_host_completion"},
         "rows": rows, "status": "passed",
     });
-    std::fs::write(
-        "target/ci-gate/meteorology-composition/report.json",
-        serde_json::to_vec_pretty(&report).unwrap(),
-    )
-    .unwrap();
+    std::fs::write(report_path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
 }
 
 #[test]

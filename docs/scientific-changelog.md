@@ -24,7 +24,9 @@ shaders, physics kernels, or advection logic must add an entry here.
 existing encode APIs in caller-owned encoding with device-only intermediate
 copies. Evidence records stage order, adapter, handoff identity and numerical
 results under existing stage policies. Runtime geometry and motion provenance
-remain intact. No new Fortran deviation is introduced: nonuniform fractional
+remain intact. Review repairs align accumulated timestamp/hash history, verify
+complete stage/source/plane identity, bind source/handoff artifacts, and
+independently audit the numerical verdict. No new Fortran deviation is introduced: nonuniform fractional
 geometry (#118), precipitation time sampling (#119), and instantaneous surface-
 flux eligibility (#120) fail closed. #80/#88's single-column W limit remains.
 

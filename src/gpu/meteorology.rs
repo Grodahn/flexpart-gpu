@@ -223,9 +223,10 @@ pub struct MeteorologySampleMetadata {
     pub resolved_heights_agl_m: Vec<f32>,
     /// Number of output f32 values (one scalar or the canonical class lanes).
     pub value_count: usize,
-    /// Original field time metadata for the selected source(s).
+    /// Original field times, aligned one-to-one with `source_snapshot_sha256`.
+    /// Accumulated products retain the complete validated observation history.
     pub source_times: Vec<FieldTime>,
-    /// Hashes of the selected complete canonical snapshots.
+    /// Hashes of complete canonical snapshots in the same order as `source_times`.
     pub source_snapshot_sha256: Vec<String>,
     /// #30 runtime geometry identities for selected sources, when applicable.
     pub geometry_identity: Vec<String>,
@@ -542,6 +543,11 @@ impl<'ctx> CanonicalGpuField<'ctx> {
                 .to_string(),
         };
         let selected: Vec<_> = indices.iter().map(|i| &self.members[*i]).collect();
+        let history: Vec<_> = if quantity.is_some() {
+            self.members.iter().collect()
+        } else {
+            selected.clone()
+        };
         Ok(MeteorologySampleMetadata {
             field_id: self.field_id,
             unit,
@@ -552,16 +558,9 @@ impl<'ctx> CanonicalGpuField<'ctx> {
             request,
             resolved_heights_agl_m: spatial.iter().filter_map(|s| s.query_agl_m).collect(),
             value_count,
-            source_times: selected.iter().map(|s| s.field.time.clone()).collect(),
+            source_times: history.iter().map(|s| s.field.time.clone()).collect(),
             // Interval deltas depend on the complete declared observation sequence.
-            source_snapshot_sha256: if quantity.is_some() {
-                self.members
-                    .iter()
-                    .map(|s| s.snapshot_sha256.clone())
-                    .collect()
-            } else {
-                selected.iter().map(|s| s.snapshot_sha256.clone()).collect()
-            },
+            source_snapshot_sha256: history.iter().map(|s| s.snapshot_sha256.clone()).collect(),
             geometry_identity: selected
                 .iter()
                 .filter_map(|s| s.runtime.as_ref().map(|r| r.identity.clone()))
@@ -1213,7 +1212,7 @@ impl SpatialResources {
                 0,
                 destination,
                 plane_index as u64 * VALUE_BYTES,
-                4,
+                VALUE_BYTES,
             );
             device_copies += 1;
         }

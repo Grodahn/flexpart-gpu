@@ -34,6 +34,9 @@ query/time/height reference, resolved AGL heights, original timestamps and snaps
 hashes, instantaneous bracket/application/weights, interval/reset identity, and
 complete #30 geometry/motion provenance. Interface W retains its source interface
 staggering although the remapped intermediate uses `[ground, model levels]`.
+Source timestamps and snapshot hashes are aligned one-to-one: instantaneous
+handoffs retain the selected bracket; accumulated handoffs retain the complete
+validated observation sequence needed to identify delta/reset history.
 
 ## Field-specific paths
 
@@ -101,7 +104,8 @@ cargo test --test meteorology_composition -- --test-threads=1
 
 This target requires actual adapter execution and fails if no adapter exists.
 The device test covers surface endpoints/interior, model AGL/ASL and inherited
-bounds, interface W, leading/delta/reset accumulated products, interval totals,
+bounds, center/interface W, a later bracket in a three-member series,
+leading/delta/reset accumulated products, interval totals,
 interval means and static scalar/class fields. All producers and minimal downstream
 device-copy consumers share one caller submission. Only final consumer outputs are
 read back. A source audit rejects host-completion calls throughout composition and
@@ -112,8 +116,14 @@ geometry, representation and independent-context/resource incompatibility.
 composition/test source hashes, existing shader hashes, adapter classification,
 actual stage order/source indices, device-copy counts, handoff identity, expected
 and final values, existing stage comparison policies and pass/fail results.
-Per-case normalized inputs and hashes are retained beside it. Skipped execution
+Per-case normalized inputs, exact serialized source snapshots, and hashed handoff
+metadata are retained beside it. Tests assert complete stage/source/plane records
+and exact timestamp/hash alignment. CI independently checks expected records,
+source and handoff hashes, shader identity, copy counts, units and numerical
+comparison under the stage-owned policies. Skipped execution
 cannot pass. Numerical failures retain per-case evidence and fail the target.
+The aggregate report is invalidated before device setup, so failed reruns cannot
+leave a previous passing aggregate verdict.
 
 Stage science remains owned by the existing tests and artifacts:
 

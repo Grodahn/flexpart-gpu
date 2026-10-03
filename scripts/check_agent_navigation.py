@@ -24,24 +24,85 @@ NAVIGATION_FILES = (
     "src/validation/AGENTS.md",
 )
 LINK = re.compile(r"\[[^\]\n]+\]\(([^)\n]+)\)")
+REFERENCE_DEFINITION = re.compile(
+    r"^\s{0,3}\[([^\]]+)\]:\s*(<[^>]+>|\S+)(?:\s+.*)?$", re.MULTILINE
+)
+REFERENCE_LINK = re.compile(r"(?<!!)\[([^\]\n]+)\]\[([^\]\n]*)\]")
+SHORTCUT_LINK = re.compile(r"(?<![!\]])\[([^\]\n]+)\](?![(:\[])")
 INLINE_CODE = re.compile(r"(?<!`)`([^`\n]+)`(?!`)")
 
 
+def prose_lines(text: str) -> list[str]:
+    """Exclude fenced examples so sample headings cannot satisfy real anchors."""
+    lines = []
+    fence_character = None
+    fence_length = 0
+    for line in text.splitlines():
+        match = re.match(r"^\s{0,3}(`{3,}|~{3,})(.*)$", line)
+        if fence_character is None:
+            if match:
+                fence_character = match.group(1)[0]
+                fence_length = len(match.group(1))
+                lines.append("")
+            else:
+                lines.append(line)
+        elif (
+            match
+            and match.group(1)[0] == fence_character
+            and len(match.group(1)) >= fence_length
+            and not match.group(2).strip()
+        ):
+            fence_character = None
+            lines.append("")
+    return lines
+
+
 def heading_anchors(text: str) -> set[str]:
-    """Recognize GitHub heading anchors, including repeated headings."""
+    """Recognize ATX/Setext heading anchors outside fenced examples."""
     anchors = set()
     occurrences: dict[str, int] = {}
-    for line in text.splitlines():
-        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
-        if not match:
+    previous = ""
+    for line in prose_lines(text):
+        match = re.match(r"^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
+        heading = match.group(1) if match else None
+        if heading is None and previous.strip() and re.fullmatch(r" {0,3}(?:=+|-+)\s*", line):
+            heading = previous.strip()
+        previous = "" if heading is not None else line
+        if heading is None:
             continue
-        heading = match.group(1).lower()
-        # GitHub drops punctuation while retaining hyphens and underscores.
-        base = re.sub(r"[^\w\- ]", "", heading).replace(" ", "-")
+        base = re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-")
         count = occurrences.get(base, 0)
         anchors.add(base if count == 0 else f"{base}-{count}")
         occurrences[base] = count + 1
     return anchors
+
+
+def reference_label(label: str) -> str:
+    """Normalize reference labels according to Markdown whitespace/case rules."""
+    return " ".join(label.split()).casefold()
+
+
+def navigation_links(text: str) -> tuple[list[str], list[str]]:
+    """Read inline and reference links without treating fenced examples as prose."""
+    prose = "\n".join(prose_lines(text))
+    definitions = {}
+    for match in REFERENCE_DEFINITION.finditer(prose):
+        # Markdown uses the first definition when a label is repeated.
+        definitions.setdefault(reference_label(match.group(1)), match.group(2).strip("<>"))
+    links = [match.group(1).strip().strip("<>") for match in LINK.finditer(prose)]
+    failures = []
+    for match in REFERENCE_LINK.finditer(prose):
+        label = reference_label(match.group(2) or match.group(1))
+        if label not in definitions:
+            failures.append(f"undefined link reference {label}")
+        else:
+            links.append(definitions[label])
+    # A shortcut only becomes a Markdown link when its definition exists.
+    for match in SHORTCUT_LINK.finditer(prose):
+        label = reference_label(match.group(1))
+        if label in definitions:
+            links.append(definitions[label])
+    return links, failures
 
 
 def local_path(root: Path, source: Path, value: str) -> Path:
@@ -52,17 +113,67 @@ def local_path(root: Path, source: Path, value: str) -> Path:
     return target
 
 
+def exact_test_failure(root: Path, args: list[str]) -> str | None:
+    """Detect obvious exact-selector drift without invoking the Rust test harness."""
+    if args[:2] != ["cargo", "test"] or "--exact" not in args:
+        return None
+    if "--test" in args:
+        index = args.index("--test") + 1
+        if index >= len(args):
+            return None
+        source = root / "tests" / f"{args[index]}.rs"
+        selector_index = index + 1
+    elif "--lib" in args:
+        source = root / "src/lib.rs"
+        selector_index = args.index("--lib") + 1
+    else:
+        return None
+    if selector_index >= len(args) or args[selector_index].startswith("-"):
+        return "exact test command lacks a named selector"
+    selector = args[selector_index]
+    parts = selector.split("::")
+    for module in parts[:-1]:
+        if not source.is_file():
+            return f"missing exact-test source {source.relative_to(root)}"
+        content = source.read_text(encoding="utf-8")
+        declaration = re.search(
+            rf'(?:#\[path\s*=\s*"([^"]+)"\]\s*)?(?:pub\s+)?mod\s+{re.escape(module)}\s*([;{{])',
+            content,
+        )
+        if declaration is None:
+            return f"missing exact-test module for {selector}"
+        if declaration.group(2) == "{":
+            # Inline test modules stay in their parent source file.
+            continue
+        if declaration.group(1):
+            source = local_path(root, source, declaration.group(1))
+        else:
+            directory = source.parent if source.name in ("mod.rs", "lib.rs") else source.with_suffix("")
+            file_source = directory / f"{module}.rs"
+            source = file_source if file_source.is_file() else directory / module / "mod.rs"
+    if not source.is_file():
+        return f"missing exact-test source {source.relative_to(root)}"
+    content = source.read_text(encoding="utf-8")
+    test = re.search(
+        rf"#\[test\]\s*(?:#\[[^\]]+\]\s*)*(?:pub\s+)?fn\s+{re.escape(parts[-1])}\s*\(",
+        content,
+    )
+    if test is None:
+        return f"missing exact-test function {selector}"
+    return None
+
+
 def check_document(root: Path, relative: str) -> list[str]:
     """Return actionable drift failures for one navigation surface."""
     source = root / relative
     if not source.is_file():
         return [f"{relative}: missing navigation document"]
     content = source.read_text(encoding="utf-8")
-    failures = []
+    links, reference_failures = navigation_links(content)
+    failures = [f"{relative}: {failure}" for failure in reference_failures]
     if not content.strip():
         failures.append(f"{relative}: empty navigation document")
-    for match in LINK.finditer(content):
-        value = match.group(1).strip().strip("<>")
+    for value in links:
         url = urlsplit(value)
         repository_prefix = "/Grodahn/flexpart-gpu/blob/main/"
         if url.netloc == "github.com" and url.path.startswith(repository_prefix):
@@ -116,6 +227,12 @@ def check_document(root: Path, relative: str) -> list[str]:
                     failures.append(f"{relative}: missing command target {value}")
             except ValueError as error:
                 failures.append(f"{relative}: {error}")
+        try:
+            test_failure = exact_test_failure(root, args)
+        except ValueError as error:
+            test_failure = str(error)
+        if test_failure:
+            failures.append(f"{relative}: {test_failure}")
     return failures
 
 

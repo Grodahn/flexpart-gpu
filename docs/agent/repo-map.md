@@ -26,6 +26,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 - Canonical host boundary: [Snapshot/metadata](../../src/meteorology/mod.rs); provider ingestion [GRIB](../../src/io/grib2.rs), [NetCDF](../../src/io/netcdf.rs); [runtime geometry](../../src/meteorology/vertical.rs), [vertical transform](../../src/io/vertical_transform.rs).
 - GPU host + shader pairs: [horizontal](../../src/gpu/horizontal.rs) / [kernel](../../src/shaders/horizontal_interpolation.wgsl); [vertical](../../src/gpu/vertical.rs) / [sample](../../src/shaders/vertical_sample.wgsl), [W remap](../../src/shaders/vertical_remap_w.wgsl); [instantaneous time](../../src/gpu/temporal.rs) / [kernel](../../src/shaders/temporal_interpolation.wgsl); [accumulated intervals](../../src/gpu/accumulation.rs) / [kernel](../../src/shaders/accumulated_interval.wgsl).
+- Shared host validation/semantics: [horizontal](../../src/meteorology/horizontal.rs), [vertical sampling](../../src/meteorology/vertical_sampling.rs), [time bracket resolution](../../src/meteorology/temporal.rs), [interval metadata](../../src/meteorology/accumulation.rs). Read only the matching module alongside its GPU pair; CPU sampling remains diagnostic.
 - Authority: [schema](../meteorology-contract.md), [geometry](../vertical-transform.md), [spatial sampling](../interpolation-contract.md), [time](../temporal-interpolation.md), [interval/reset](../accumulation-contract.md), [GPU](../GPU_CONTRACT.md).
 - Oracle/fixtures: [interpolation](../../fixtures/interpolation/contract-v1.json), [provenance](../../fixtures/interpolation/contract-v1.provenance.json), [production W](../../fixtures/interpolation/w-production-oracle-v1.json), [temporal](../../fixtures/temporal/oracle-temporal-bilinear-scenario.json), [accumulation](../../fixtures/accumulation/contract-v1.json), [vertical columns](../../fixtures/vertical/).
 - Tests: [schema](../../tests/meteorology_contract.rs), [horizontal](../../tests/horizontal_gpu.rs), [vertical](../../tests/vertical_gpu.rs), [time](../../tests/temporal_gpu.rs), [accumulation](../../tests/accumulation_gpu.rs); [verification](test-map.md#meteorology).
@@ -107,6 +108,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 - GPU evidence: [typed schema/comparator](../../src/gpu/evidence.rs); no validation-specific shader/runtime.
 - Authority: [compact workflow](../agent-validation.md), [corpus matrix](../corpus-matrix.md), [evaluation](../evaluation.md), [provenance](../run-provenance.md), [stochastic identity](../oracle-stochastic-identity.md), [CI gates](../ci-gates.md).
 - Oracle/fixtures: [pinned revision](../../reference/flexpart-11.1.json), [corpus index](../../fixtures/corpus/corpus.json), [case schema](../../schemas/validation-case-v2.schema.json), [manifest schema](../../schemas/run-manifest-v1.schema.json).
+- Shared provenance owner: [run identities, artifact verification and manifest invariants](../../scripts/provenance/run_provenance.py); workflow-specific writers below call this module. Inspect it when a task changes consumed-input checks or manifest identity, rather than duplicating those checks in a writer.
 - Consumers: [focused runner](../../scripts/agent_validation.py), [corpus orchestration](../../scripts/run-corpus.sh), [input audit](../../scripts/corpus/audit_corpus_inputs.py), [comparison](../../scripts/corpus/compare_corpus.py), [provenance writer](../../scripts/corpus/write_corpus_manifest.py), [evaluation CLI](../../scripts/evaluate/evaluate_case.py).
 - Tests: [runner](../../scripts/test_agent_validation.py), [input audit](../../scripts/corpus/test_audit_corpus_inputs.py), [manifest](../../scripts/corpus/test_write_corpus_manifest_v1.py); [verification](test-map.md#validation-provenance).
 - Dependencies: normalized cases/inputs -> candidate + pinned oracle -> decoded outputs -> comparison/provenance. Input equivalence, execution, and scientific verdicts remain separate contracts.
@@ -117,4 +119,6 @@ Use [dry runs](navigation-dry-runs.md) as examples of selecting a bounded workin
 set. Check all navigation surfaces with `python scripts/check_agent_navigation.py`.
 [CI](../../.github/workflows/agent-navigation.yml) runs that checker and its
 [negative regression tests](../../scripts/test_check_agent_navigation.py).
-This checks path/anchor and command-target drift, not scientific semantics.
+This checks inline/reference path links, heading anchors outside fenced examples,
+command targets and named exact-test selectors. It inspects source declarations;
+it does not execute tests or prove scientific semantics.

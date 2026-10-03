@@ -104,7 +104,7 @@ Choose the artifact contract being changed.
 
 ## Navigation-only changes
 
-- `python scripts/check_agent_navigation.py` audits local links, anchors and documented command targets.
-- `python scripts/test_check_agent_navigation.py` proves broken links/anchors and missing command targets fail visibly.
+- `python scripts/check_agent_navigation.py` audits inline/reference links, real heading anchors, command targets and named exact-test selectors without executing those commands.
+- `python scripts/test_check_agent_navigation.py` covers broken links/references/anchors, missing command targets and renamed exact-test selectors.
 - Review root-rule preservation, skill frontmatter and the complete diff; run `git diff --check`.
 - No scientific computation changes: Cargo/oracle checks do not prove navigation quality. Checker/workflow changes require these executable checks and [navigation CI](../../.github/workflows/agent-navigation.yml).

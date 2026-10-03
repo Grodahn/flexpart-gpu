@@ -16,6 +16,18 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-10-03 - Compose canonical device-resident meteorology stages (#76)
+**Impact**: none (existing #87-#90 science; no new shader or consumer migration)
+**Files**: `src/gpu/meteorology.rs`, `tests/meteorology_composition.rs`,
+`.github/workflows/software-wgpu.yml`
+**Validation**: Field-specific surface/model/W/interval/static paths use the
+existing encode APIs in caller-owned encoding with device-only intermediate
+copies. Evidence records stage order, adapter, handoff identity and numerical
+results under existing stage policies. Runtime geometry and motion provenance
+remain intact. No new Fortran deviation is introduced: nonuniform fractional
+geometry (#118), precipitation time sampling (#119), and instantaneous surface-
+flux eligibility (#120) fail closed. #80/#88's single-column W limit remains.
+
 ### 2026-10-02 — Identify the executed horizontal CI revision (#87)
 **Impact**: none (validation provenance; horizontal device arithmetic unchanged)
 **Files**: `.github/workflows/software-wgpu.yml`, `src/gpu/mod.rs`

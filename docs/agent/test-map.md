@@ -73,8 +73,9 @@ Choose the subdomain; do not run every row for one field edit.
 
 - Fast resistance diagnostics: `cargo test --lib physics::deposition::tests`.
 - Device diagnostic: `cargo test --lib gpu::deposition::tests`; paired constant-deposition case: `python scripts/agent_validation.py --check comparison --case DRY-007`.
-- Evidence: mapped species/velocity, actual GPU mass removal and paired budget evidence; constant dry velocity does not prove settling physics.
-- Broader: owning deposition gate. #35 must define/run its settling calculation oracle; no standalone settling test target exists on this main revision.
+- Settling gate: set `FLEXPART_GPU_REQUIRE_SETTLING=1` and run `cargo test --test settling_gpu`; frozen provenance: `python scripts/generate_settling_oracle.py --audit`; direct reference regeneration: `python scripts/generate_settling_oracle.py --oracle-checkout <pinned-clean-checkout> --check`.
+- Evidence: deposition needs mapped species/velocity, actual GPU mass removal and paired budgets. #35 settling needs all 32 canonical rows, pinned raw-output/input/driver identities, downward velocities, unchanged device particle masses and actual WGSL adapter evidence; constant dry velocity does not prove settling physics.
+- Broader: owning deposition gate and required software-WGSL CI. The standalone #35 gate does not prove #37 timeloop composition, ground handling or deposition resistance.
 
 ## Decay-mass-ledger
 

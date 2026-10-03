@@ -27,7 +27,7 @@ LINK = re.compile(
     r"""\[[^\]\n]+\]\((<[^>]+>|[^\s)]+)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)"""
 )
 REFERENCE_DEFINITION = re.compile(
-    r"^\s{0,3}\[([^\]]+)\]:\s*(<[^>]+>|\S+)(?:\s+.*)?$", re.MULTILINE
+    r"^[ \t]{0,3}\[([^\]]+)\]:[ \t]*(<[^>]+>|\S+)(?:[ \t]+.*)?$", re.MULTILINE
 )
 REFERENCE_LINK = re.compile(r"(?<!!)\[([^\]\n]+)\]\[([^\]\n]*)\]")
 SHORTCUT_LINK = re.compile(r"(?<![!\]])\[([^\]\n]+)\](?![(:\[])")

@@ -16,6 +16,11 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-10-03 â€” Validate GPU gravitational settling velocity against FLEXPART 11.1 (#35)
+**Impact**: physics (new WGSL settling kernel; no existing physics altered)
+**Files**: `src/shaders/settling_velocity.wgsl`, `src/gpu/settling.rs`, `tests/settling_gpu.rs`, `fixtures/settling/`, `oracle/settling_oracle.f90`
+**Validation**: Review repairs replace the duplicated Fortran formulas with a driver linked to pristine pinned `part0` and `get_settling`; 32 vectors include all domain corners and the initial Re=0.02 bracket. Raw oracle output and source/build/object identities are retained and audited; the frozen audit also rejects rehashed changes to canonical units or domain. Host upload rejects directly constructed invalid queries, malformed/conflicting shapes, mixed gas carriers and invalid widths. Required software-WGSL CI records the executed revision and rendered shader hash. Stable-state verification results are recorded in PR #122. WGSL uses the algebraic single-bin diameter instead of Fortran's exp/log bin initialization; f32 rounding differences are compared under the declared 1% or 1e-9 m/s rule. No timeloop, ground, removal or gridding behavior is claimed.
+
 ### 2026-10-03 - Compose canonical device-resident meteorology stages (#76)
 **Impact**: none (existing #87-#90 science; no new shader or consumer migration)
 **Files**: `src/gpu/meteorology.rs`, `tests/meteorology_composition.rs`,
@@ -39,7 +44,7 @@ This prevents evidence for an unexecuted PR head from being accepted. Both
 horizontal and vertical oracle gates survive the rebase. Only the new horizontal
 exports receive formatting repairs; no Fortran semantics or #76/#77 scope changes.
 
-### 2026-10-02 — Validate vertical GPU evidence batches and runtime ordering (#88)
+### 2026-10-02 ï¿½ Validate vertical GPU evidence batches and runtime ordering (#88)
 **Impact**: none (host validation and verification; device arithmetic unchanged)
 **Files**: `src/gpu/vertical.rs`, `tests/vertical_gpu.rs`
 **Validation**: Regressions reproduce accepted empty/malformed input batches and

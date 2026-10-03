@@ -155,6 +155,58 @@ class NavigationTests(unittest.TestCase):
         self.write_map("[domain][owner]\n[owner]: absent.md\n[OWNER]: map.md\n")
         self.assertIn("missing link target absent.md", check_document(self.root, "docs/map.md")[0])
 
+    def test_exact_selector_cannot_use_a_sibling_or_nested_test(self):
+        (self.root / "tests").mkdir()
+        (self.root / "tests/real.rs").write_text(
+            "mod requested { mod nested { #[test] fn present() {} } }\n"
+            "mod sibling { #[test] fn present() {} }\n", encoding="utf-8",
+        )
+        self.write_map("`cargo test --test real requested::present -- --exact`")
+        self.assertIn("missing exact-test function", check_document(self.root, "docs/map.md")[0])
+
+    def test_exact_selector_ignores_commented_and_stringified_declarations(self):
+        (self.root / "tests").mkdir()
+        (self.root / "tests/real.rs").write_text(
+            "mod requested {\n"
+            "/* outer /* nested */ #[test] fn present() {} */\n"
+            '// #[test] fn present() {}\n'
+            'const EXAMPLE: &str = r#"#[test] fn present() { }"#;\n'
+            "}\n", encoding="utf-8",
+        )
+        self.write_map("`cargo test --test real requested::present -- --exact`")
+        self.assertIn("missing exact-test function", check_document(self.root, "docs/map.md")[0])
+
+    def test_inline_module_scope_ignores_literal_braces_and_lifetimes(self):
+        (self.root / "tests").mkdir()
+        (self.root / "tests/real.rs").write_text(
+            "mod requested {\n"
+            'const EXAMPLE: &str = r#" } /* "#;\n'
+            "const BRACE: char = '}';\n"
+            "fn borrow<'a>(v: &'a str) -> &'a str { v }\n"
+            "#[test] fn present() { let text = \"}\"; }\n"
+            "}\n", encoding="utf-8",
+        )
+        self.write_map("`cargo test --test real requested::present -- --exact`")
+        self.assertEqual(check_document(self.root, "docs/map.md"), [])
+
+    def test_inline_links_with_titles_check_only_the_destination(self):
+        self.write_map('[self](map.md "Map title") [missing](gone.md "Gone")\n')
+        failures = check_document(self.root, "docs/map.md")
+        self.assertEqual(failures, ["docs/map.md: missing link target gone.md"])
+
+    def test_inline_code_and_fenced_command_examples_are_not_live_links(self):
+        self.write_map(
+            "`[literal](gone.md)`\n"
+            "```markdown\n`cargo test --test removed`\n```\n"
+        )
+        self.assertEqual(check_document(self.root, "docs/map.md"), [])
+
+    def test_heading_suffix_collisions_get_distinct_anchors(self):
+        self.assertEqual(
+            heading_anchors("# Rules\n# Rules\n# Rules-1\n# Rules\n"),
+            {"rules", "rules-1", "rules-1-1", "rules-2"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

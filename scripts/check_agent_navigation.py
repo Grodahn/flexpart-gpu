@@ -23,13 +23,20 @@ NAVIGATION_FILES = (
     "src/simulation/AGENTS.md",
     "src/validation/AGENTS.md",
 )
-LINK = re.compile(r"\[[^\]\n]+\]\(([^)\n]+)\)")
+LINK = re.compile(
+    r"""\[[^\]\n]+\]\((<[^>]+>|[^\s)]+)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)"""
+)
 REFERENCE_DEFINITION = re.compile(
     r"^\s{0,3}\[([^\]]+)\]:\s*(<[^>]+>|\S+)(?:\s+.*)?$", re.MULTILINE
 )
 REFERENCE_LINK = re.compile(r"(?<!!)\[([^\]\n]+)\]\[([^\]\n]*)\]")
 SHORTCUT_LINK = re.compile(r"(?<![!\]])\[([^\]\n]+)\](?![(:\[])")
 INLINE_CODE = re.compile(r"(?<!`)`([^`\n]+)`(?!`)")
+CODE_SPAN = re.compile(r"(`+)([^\n]*?)\1(?!`)")
+RAW_STRING_OPEN = re.compile(r'(?:br|r)(#{0,255})"')
+CHARACTER_LITERAL = re.compile(
+    r"'(?:\\(?:x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f_]+\}|.)|[^\\'\n])'"
+)
 
 
 def prose_lines(text: str) -> list[str]:
@@ -72,7 +79,11 @@ def heading_anchors(text: str) -> set[str]:
             continue
         base = re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-")
         count = occurrences.get(base, 0)
-        anchors.add(base if count == 0 else f"{base}-{count}")
+        anchor = base if count == 0 else f"{base}-{count}"
+        while anchor in anchors:
+            count += 1
+            anchor = f"{base}-{count}"
+        anchors.add(anchor)
         occurrences[base] = count + 1
     return anchors
 
@@ -85,6 +96,7 @@ def reference_label(label: str) -> str:
 def navigation_links(text: str) -> tuple[list[str], list[str]]:
     """Read inline and reference links without treating fenced examples as prose."""
     prose = "\n".join(prose_lines(text))
+    prose = CODE_SPAN.sub(lambda match: " " * len(match.group(0)), prose)
     definitions = {}
     for match in REFERENCE_DEFINITION.finditer(prose):
         # Markdown uses the first definition when a label is repeated.
@@ -113,6 +125,85 @@ def local_path(root: Path, source: Path, value: str) -> Path:
     return target
 
 
+def rust_code(text: str) -> str:
+    """Mask comments/literals while preserving declaration offsets and braces."""
+    masked = list(text)
+    index = 0
+    while index < len(text):
+        start = index
+        keep_quotes = False
+        if text.startswith("//", index):
+            end = text.find("\n", index)
+            index = len(text) if end < 0 else end
+        elif text.startswith("/*", index):
+            depth = 1
+            index += 2
+            while index < len(text) and depth:
+                if text.startswith("/*", index):
+                    depth += 1
+                    index += 2
+                elif text.startswith("*/", index):
+                    depth -= 1
+                    index += 2
+                else:
+                    index += 1
+        else:
+            raw = RAW_STRING_OPEN.match(text, index) if text[index] in "br" else None
+            character = CHARACTER_LITERAL.match(text, index) if text[index] == "'" else None
+            if raw:
+                delimiter = '"' + raw.group(1)
+                end = text.find(delimiter, raw.end())
+                index = len(text) if end < 0 else end + len(delimiter)
+            elif text[index] == '"':
+                keep_quotes = True
+                index += 1
+                while index < len(text):
+                    if text[index] == "\\":
+                        index += 2
+                    elif text[index] == '"':
+                        index += 1
+                        break
+                    else:
+                        index += 1
+                index = min(index, len(text))
+            elif character:
+                index = character.end()
+            else:
+                index += 1
+                continue
+        for position in range(start, index):
+            if text[position] != "\n":
+                masked[position] = " "
+        if keep_quotes:
+            # Path attributes need visible delimiters and unchanged source offsets.
+            masked[start] = '"'
+            if text[index - 1] == '"':
+                masked[index - 1] = '"'
+    return "".join(masked)
+
+
+def scope_match(pattern: str, code: str) -> re.Match[str] | None:
+    """Find a declaration only at the current namespace's brace depth."""
+    for match in re.finditer(pattern, code):
+        preceding = code[:match.start()]
+        if preceding.count("{") == preceding.count("}"):
+            return match
+    return None
+
+
+def inline_module_end(code: str, opening: int) -> int:
+    """Bound an inline module without counting braces in comments/literals."""
+    depth = 1
+    for position in range(opening + 1, len(code)):
+        if code[position] == "{":
+            depth += 1
+        elif code[position] == "}":
+            depth -= 1
+            if depth == 0:
+                return position
+    raise ValueError("unclosed inline module in exact-test source")
+
+
 def exact_test_failure(root: Path, args: list[str]) -> str | None:
     """Detect obvious exact-selector drift without invoking the Rust test harness."""
     if args[:2] != ["cargo", "test"] or "--exact" not in args:
@@ -121,7 +212,7 @@ def exact_test_failure(root: Path, args: list[str]) -> str | None:
         index = args.index("--test") + 1
         if index >= len(args):
             return None
-        source = root / "tests" / f"{args[index]}.rs"
+        source = local_path(root, root / "command", f"tests/{args[index]}.rs")
         selector_index = index + 1
     elif "--lib" in args:
         source = root / "src/lib.rs"
@@ -132,31 +223,43 @@ def exact_test_failure(root: Path, args: list[str]) -> str | None:
         return "exact test command lacks a named selector"
     selector = args[selector_index]
     parts = selector.split("::")
+    if not source.is_file():
+        return f"missing exact-test source {source.relative_to(root)}"
+    content = source.read_text(encoding="utf-8")
+    code = rust_code(content)
+    module_directory = source.parent
+    attribute_directory = source.parent
     for module in parts[:-1]:
-        if not source.is_file():
-            return f"missing exact-test source {source.relative_to(root)}"
-        content = source.read_text(encoding="utf-8")
-        declaration = re.search(
-            rf'(?:#\[path\s*=\s*"([^"]+)"\]\s*)?(?:pub\s+)?mod\s+{re.escape(module)}\s*([;{{])',
-            content,
+        declaration = scope_match(
+            rf'(?:#\[path\s*=\s*"([^"]+)"\]\s*)?(?:pub(?:\([^)]*\))?\s+)?mod\s+{re.escape(module)}\s*([;{{])',
+            code,
         )
         if declaration is None:
             return f"missing exact-test module for {selector}"
         if declaration.group(2) == "{":
-            # Inline test modules stay in their parent source file.
+            opening = declaration.end() - 1
+            closing = inline_module_end(code, opening)
+            content = content[opening + 1:closing]
+            code = code[opening + 1:closing]
+            module_directory /= module
+            attribute_directory = module_directory
             continue
         if declaration.group(1):
-            source = local_path(root, source, declaration.group(1))
+            start, end = declaration.span(1)
+            source = local_path(root, attribute_directory / "module", content[start:end])
         else:
-            directory = source.parent if source.name in ("mod.rs", "lib.rs") else source.with_suffix("")
-            file_source = directory / f"{module}.rs"
-            source = file_source if file_source.is_file() else directory / module / "mod.rs"
-    if not source.is_file():
-        return f"missing exact-test source {source.relative_to(root)}"
-    content = source.read_text(encoding="utf-8")
-    test = re.search(
-        rf"#\[test\]\s*(?:#\[[^\]]+\]\s*)*(?:pub\s+)?fn\s+{re.escape(parts[-1])}\s*\(",
-        content,
+            file_source = module_directory / f"{module}.rs"
+            source = file_source if file_source.is_file() else module_directory / module / "mod.rs"
+            source = local_path(root, root / "command", source.as_posix())
+        if not source.is_file():
+            return f"missing exact-test source {source.relative_to(root)}"
+        content = source.read_text(encoding="utf-8")
+        code = rust_code(content)
+        module_directory = source.parent if source.name == "mod.rs" else source.with_suffix("")
+        attribute_directory = source.parent
+    test = scope_match(
+        rf"#\[test\]\s*(?:#\[[^\]]+\]\s*)*(?:pub(?:\([^)]*\))?\s+)?fn\s+{re.escape(parts[-1])}\s*\(",
+        code,
     )
     if test is None:
         return f"missing exact-test function {selector}"
@@ -198,7 +301,8 @@ def check_document(root: Path, relative: str) -> list[str]:
                 target.read_text(encoding="utf-8")
             ):
                 failures.append(f"{relative}: missing heading anchor {value}")
-    for match in INLINE_CODE.finditer(content):
+    prose = "\n".join(prose_lines(content))
+    for match in INLINE_CODE.finditer(prose):
         command = match.group(1)
         if not command.startswith(("python ", "python3 ", "bash ", "cargo ")):
             continue

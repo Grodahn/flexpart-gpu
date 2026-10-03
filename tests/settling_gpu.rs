@@ -83,32 +83,121 @@ fn read_canonical() -> CanonicalDoc {
 fn read_oracle() -> OracleDoc {
     let text = std::fs::read_to_string(fixture_dir().join("oracle-v1.json"))
         .expect("oracle settling fixture must exist");
-    serde_json::from_str(&text).expect("oracle fixture must parse")
+    let oracle: OracleDoc = serde_json::from_str(&text).expect("oracle fixture must parse");
+    audit_fixtures(&read_canonical(), &oracle);
+    oracle
+}
+
+fn hash_bytes(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    format!("{:x}", sha2::Sha256::digest(bytes))
+}
+
+fn audit_fixtures(canonical: &CanonicalDoc, oracle: &OracleDoc) {
+    assert_eq!(
+        canonical.schema.id,
+        "flexpart-gpu.settling-canonical-vectors"
+    );
+    assert_eq!(canonical.schema.version, 1);
+    assert_eq!(oracle.schema.id, "flexpart-gpu.settling-oracle");
+    assert_eq!(oracle.schema.version, 1);
+    assert_eq!(canonical.pinned_flexpart_revision, SETTLING_ORACLE_REVISION);
+    assert_eq!(oracle.pinned_revision, SETTLING_ORACLE_REVISION);
+    assert_eq!(
+        oracle.pinned_implementation,
+        SETTLING_ORACLE_IMPLEMENTATION_ID
+    );
+    assert_eq!(oracle.harness, "oracle/settling_oracle.f90");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("reference/flexpart-11.1.json")).expect("manifest"),
+    )
+    .expect("manifest JSON");
+    assert_eq!(manifest["pinned_commit"], SETTLING_ORACLE_REVISION);
+    assert_eq!(
+        oracle.canonical_sha256,
+        hash_bytes(
+            &std::fs::read(fixture_dir().join("canonical-vectors-v1.json"))
+                .expect("canonical bytes"),
+        )
+    );
+    let harness = std::fs::read_to_string(root.join(&oracle.harness)).expect("oracle driver");
+    assert_eq!(
+        oracle.harness_sha256,
+        hash_bytes(harness.replace("\r\n", "\n").as_bytes())
+    );
+    let raw = std::fs::read(fixture_dir().join("oracle-output-v1.txt")).expect("raw oracle output");
+    assert_eq!(oracle.output_sha256, hash_bytes(&raw));
+    let raw_values: BTreeMap<_, _> = std::str::from_utf8(&raw)
+        .expect("raw UTF-8")
+        .lines()
+        .map(|line| {
+            let fields: Vec<_> = line.split_whitespace().collect();
+            assert_eq!(fields.len(), 2);
+            (
+                fields[0].to_string(),
+                fields[1].parse::<f64>().expect("raw velocity"),
+            )
+        })
+        .collect();
+    let canonical_ids: std::collections::BTreeSet<_> =
+        canonical.vectors.iter().map(|v| &v.id).collect();
+    let oracle_ids: std::collections::BTreeSet<_> = oracle.values.iter().map(|v| &v.id).collect();
+    assert_eq!(
+        canonical_ids.len(),
+        canonical.vectors.len(),
+        "unique canonical ids"
+    );
+    assert_eq!(oracle_ids.len(), oracle.values.len(), "unique oracle ids");
+    assert_eq!(canonical_ids, oracle_ids, "exact oracle coverage");
+    assert_eq!(raw_values.len(), oracle.values.len());
+    for value in &oracle.values {
+        // serde_json and Rust's decimal parser can differ by one f64 ULP;
+        // the authoritative Fortran output and GPU comparison both use f32.
+        #[allow(clippy::cast_possible_truncation)]
+        let raw_value = raw_values[&value.id] as f32;
+        #[allow(clippy::cast_possible_truncation)]
+        let decoded_value = value.settling_velocity_m_s as f32;
+        assert_eq!(raw_value.to_bits(), decoded_value.to_bits());
+        assert!(value.settling_velocity_m_s.is_finite() && value.settling_velocity_m_s < 0.0);
+    }
 }
 
 fn candidate_revision() -> String {
-    if let Ok(revision) = std::env::var("FLEXPART_GPU_CANDIDATE_REVISION") {
-        let trimmed = revision.trim().to_string();
-        if !trimmed.is_empty() {
-            return trimmed;
-        }
-    }
     let output = Command::new("git")
-        .args(["rev-parse", "HEAD"])
+        .args([
+            "-c",
+            &format!("safe.directory={}", env!("CARGO_MANIFEST_DIR")),
+            "rev-parse",
+            "HEAD",
+        ])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("read candidate Git revision");
     assert!(output.status.success(), "git rev-parse HEAD must succeed");
-    String::from_utf8(output.stdout)
+    let actual = String::from_utf8(output.stdout)
         .expect("Git revision must be UTF-8")
         .trim()
-        .to_string()
+        .to_string();
+    if let Ok(revision) = std::env::var("FLEXPART_GPU_CANDIDATE_REVISION") {
+        assert_eq!(
+            revision.trim(),
+            actual,
+            "candidate revision must identify this checkout"
+        );
+    }
+    actual
 }
 
 fn try_gpu_context() -> Option<flexpart_gpu::gpu::GpuContext> {
     match pollster::block_on(flexpart_gpu::gpu::GpuContext::new()) {
         Ok(ctx) => Some(ctx),
         Err(flexpart_gpu::gpu::GpuError::NoAdapter) => {
+            assert_ne!(
+                std::env::var("FLEXPART_GPU_REQUIRE_SETTLING").as_deref(),
+                Ok("1"),
+                "required settling WGSL adapter missing"
+            );
             assert_ne!(
                 std::env::var("FLEXPART_GPU_SOFTWARE").as_deref(),
                 Ok("1"),
@@ -176,10 +265,10 @@ fn test_settling_fixtures_are_pinned_and_consistent() {
     );
     assert_eq!(
         canonical.vectors.len(),
-        14,
+        32,
         "canonical vector count is fixed"
     );
-    assert_eq!(oracle.values.len(), 14, "oracle value count is fixed");
+    assert_eq!(oracle.values.len(), 32, "oracle value count is fixed");
     for vector in &canonical.vectors {
         let value = oracle
             .values
@@ -192,22 +281,6 @@ fn test_settling_fixtures_are_pinned_and_consistent() {
             vector.id
         );
     }
-    // Canonical hash binding: recompute and compare to oracle provenance.
-    let canonical_bytes =
-        std::fs::read(fixture_dir().join("canonical-vectors-v1.json")).expect("read canonical");
-    let mut hasher = sha2::Sha256::new();
-    use sha2::Digest as _;
-    hasher.update(&canonical_bytes);
-    let digest = hasher.finalize();
-    let mut hex = String::with_capacity(64);
-    for byte in digest {
-        hex.push(char::from_digit(u32::from(byte >> 4), 16).unwrap_or('0'));
-        hex.push(char::from_digit(u32::from(byte & 0x0f), 16).unwrap_or('0'));
-    }
-    assert_eq!(
-        hex, oracle.canonical_sha256,
-        "canonical SHA must match oracle provenance"
-    );
 }
 
 #[test]
@@ -251,6 +324,31 @@ fn test_settling_carriers_use_per_species_properties() {
         ..aerosol_species("FIBER", 1000.0, 10.0)
     };
     assert!(SettlingCarrier::from_species_config(&non_spherical).is_err());
+    for shape in ["invalid", "NaN", "1D0"] {
+        let mut malformed = aerosol_species("INVALID-SHAPE", 1000.0, 10.0);
+        malformed
+            .raw
+            .insert("pshape".to_string(), shape.to_string());
+        assert!(SettlingCarrier::from_species_config(&malformed).is_err());
+    }
+    let mut conflicting = aerosol_species("CONFLICTING-SHAPE", 1000.0, 10.0);
+    conflicting
+        .raw
+        .insert("pshape".to_string(), "0".to_string());
+    conflicting.raw.insert("shape".to_string(), "2".to_string());
+    assert!(SettlingCarrier::from_species_config(&conflicting).is_err());
+    let mut mixed = aerosol_species("MIXED-GAS", 1000.0, 10.0);
+    mixed.relative_diffusivity = Some(0.8);
+    assert!(SettlingCarrier::from_species_config(&mixed).is_err());
+    assert!(
+        SettlingCarrier::from_species_config(&aerosol_species("ROUNDING", 1000.0, 100.000001))
+            .is_err()
+    );
+    for sigma in [None, Some(1.0), Some(f64::NAN)] {
+        let mut invalid = aerosol_species("INVALID-WIDTH", 1000.0, 10.0);
+        invalid.diameter_sigma = sigma;
+        assert!(SettlingCarrier::from_species_config(&invalid).is_err());
+    }
 
     // Out-of-domain carriers fail closed.
     let too_small = aerosol_species("TOO-SMALL", 1000.0, 0.001);
@@ -293,10 +391,12 @@ fn test_settling_gpu_matches_pinned_oracle() {
     let mut queries = Vec::with_capacity(canonical.vectors.len());
     for vector in &canonical.vectors {
         #[allow(clippy::cast_possible_truncation)]
-        let carrier = SettlingCarrier {
-            particle_density_kg_m3: vector.density_kg_m3 as f32,
-            diameter_um: vector.diameter_um as f32,
-        };
+        let carrier = SettlingCarrier::from_species_config(&aerosol_species(
+            &vector.species,
+            vector.density_kg_m3,
+            vector.diameter_um,
+        ))
+        .expect("canonical species carrier");
         #[allow(clippy::cast_possible_truncation)]
         let query = SettlingQuery::new(
             carrier,
@@ -345,10 +445,10 @@ fn test_settling_gpu_matches_pinned_oracle() {
         )
         .unwrap_or_else(|err| panic!("evidence row for {} must build: {err}", vector.id));
         row.validate().expect("row must be honest");
-        assert!(row.row_verdict, "row {} must pass 1% + 1e-9", vector.id);
         rows.push(row);
     }
 
+    let status = rows.iter().all(|row| row.row_verdict);
     let report = SettlingGpuReport {
         schema: SettlingReportSchema::default(),
         scenario_id: "settling-sphere-v1".to_string(),
@@ -356,14 +456,9 @@ fn test_settling_gpu_matches_pinned_oracle() {
         units: flexpart_gpu::gpu::SettlingReportUnits::default(),
         comparison_policy: policy,
         rows,
-        status: true,
+        status,
     };
-    // Status must reflect unanimous row verdicts.
-    assert!(report.rows.iter().all(|row| row.row_verdict));
     report.validate().expect("report must validate");
-    report
-        .require_paired_pass()
-        .expect("report must prove paired pass");
 
     // Machine-readable comparison output records inputs, units, oracle/GPU
     // values, errors and verdicts.
@@ -375,6 +470,34 @@ fn test_settling_gpu_matches_pinned_oracle() {
         serde_json::to_string_pretty(&report).expect("report must serialize"),
     )
     .expect("report must write");
+    report
+        .require_paired_pass()
+        .expect("report must prove paired pass");
+
+    // Honest numerical failures remain serializable, but cannot pass the gate.
+    let failed_row = build_settling_gpu_row(
+        &ctx,
+        "failure-diagnostic",
+        "AERO",
+        queries[0],
+        gpu_values[0] * 1.1,
+        report.rows[0].oracle_settling_velocity_m_s,
+        policy,
+        &revision,
+        oracle_evidence.clone(),
+    )
+    .expect("failed numerical evidence builds");
+    assert!(!failed_row.row_verdict);
+    failed_row
+        .validate()
+        .expect("failed verdict is structurally honest");
+    assert!(failed_row.gpu_evidence.require_paired_pass().is_err());
+    let mut duplicate_report = report.clone();
+    duplicate_report.rows.push(report.rows[0].clone());
+    assert!(duplicate_report.validate().is_err());
+    let mut invalid_row = report.rows[0].clone();
+    invalid_row.temperature_k = f32::NAN;
+    assert!(invalid_row.validate().is_err());
 
     // GPU execution proof: WGSL device path with adapter provenance.
     for row in &report.rows {
@@ -441,6 +564,7 @@ fn test_settling_velocity_alone_does_not_remove_mass() {
         Some(ctx) => ctx,
         None => return,
     };
+    let particles = flexpart_gpu::gpu::ParticleBuffers::from_store(&ctx, &store);
     let kernel = SettlingVelocityKernel::new(&ctx).expect("settling kernel compiles");
     let carrier = SettlingCarrier {
         particle_density_kg_m3: 1000.0,
@@ -452,12 +576,51 @@ fn test_settling_velocity_alone_does_not_remove_mass() {
     assert_eq!(velocities.len(), 1);
     assert!(velocities[0] < 0.0, "settling is downward");
 
-    let after: Vec<[f32; MAX_SPECIES]> = store
-        .as_slice()
-        .iter()
-        .map(|particle| particle.mass)
-        .collect();
+    let downloaded =
+        pollster::block_on(particles.download_particles(&ctx)).expect("particle readback");
+    let after: Vec<[f32; MAX_SPECIES]> = downloaded.iter().map(|particle| particle.mass).collect();
     assert_eq!(before, after, "settling velocities must not alter mass");
+}
+
+#[test]
+fn test_settling_direct_queries_are_rejected_before_upload() {
+    let valid = SettlingQuery::new(
+        SettlingCarrier {
+            diameter_um: 10.0,
+            particle_density_kg_m3: 1000.0,
+        },
+        293.15,
+        1.2,
+    )
+    .expect("valid query");
+    let invalid = [
+        SettlingQuery {
+            diameter_um: 0.0,
+            ..valid
+        },
+        SettlingQuery {
+            particle_density_kg_m3: f32::NAN,
+            ..valid
+        },
+        SettlingQuery {
+            temperature_k: 400.0,
+            ..valid
+        },
+        SettlingQuery {
+            air_density_kg_m3: 0.0,
+            ..valid
+        },
+    ];
+    for query in &invalid {
+        assert!(query.validate().is_err());
+        assert!(settling_inputs_sha256(&[*query]).is_err());
+    }
+    let Some(ctx) = try_gpu_context() else {
+        return;
+    };
+    for query in &invalid {
+        assert!(flexpart_gpu::gpu::create_settling_query_buffers(&ctx, &[*query]).is_err());
+    }
 }
 
 #[test]

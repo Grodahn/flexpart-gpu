@@ -78,9 +78,9 @@ pub const SETTLING_GPU_ABSOLUTE_TOLERANCE: f64 = 1.0e-9;
 pub const SETTLING_GPU_RELATIVE_TOLERANCE: f64 = 0.01;
 
 /// Declared valid particle diameter domain [um] (spherical carriers only).
-pub const SETTLING_DIAMETER_MIN_UM: f32 = 0.1;
+pub const SETTLING_DIAMETER_MIN_UM: f64 = 0.1;
 /// Declared valid particle diameter domain [um] (spherical carriers only).
-pub const SETTLING_DIAMETER_MAX_UM: f32 = 100.0;
+pub const SETTLING_DIAMETER_MAX_UM: f64 = 100.0;
 
 /// Declared valid particle density domain [kg/m3].
 pub const SETTLING_DENSITY_MIN_KG_M3: f32 = 500.0;
@@ -225,18 +225,25 @@ impl SettlingCarrier {
         // Non-spherical shapes are never approximated silently. `SpeciesConfig`
         // validation already rejects `PSHAPE != 0`; re-check the raw map here
         // so a direct carrier conversion cannot bypass that guardrail.
-        if let Some(shape) = species.raw.iter().find_map(|(key, value)| {
+        for (key, value) in &species.raw {
             if key.eq_ignore_ascii_case("pshape") || key.eq_ignore_ascii_case("shape") {
-                value.parse::<f64>().ok()
-            } else {
-                None
+                let shape = value
+                    .trim()
+                    .replace(['d', 'D'], "e")
+                    .parse::<f64>()
+                    .map_err(|_| invalid(format!("invalid {key}={value}")))?;
+                if !shape.is_finite() || shape != 0.0 {
+                    return Err(invalid(format!(
+                        "unsupported non-spherical PSHAPE={shape} (only PSHAPE=0 spheres)"
+                    )));
+                }
             }
-        }) {
-            if shape != 0.0 {
-                return Err(invalid(format!(
-                    "unsupported non-spherical PSHAPE={shape} (only PSHAPE=0 spheres)"
-                )));
-            }
+        }
+        if species
+            .relative_diffusivity
+            .is_some_and(|value| value > 0.0)
+        {
+            return Err(invalid("PRELDIFF > 0 identifies a gas carrier".to_string()));
         }
         let density = species.particle_density_kg_m3.ok_or_else(|| {
             invalid("missing PDENSITY (settling requires an aerosol carrier)".to_string())
@@ -244,8 +251,23 @@ impl SettlingCarrier {
         let diameter = species.mean_diameter_um.ok_or_else(|| {
             invalid("missing PDIA (settling requires a positive diameter)".to_string())
         })?;
-        if !density.is_finite() || !diameter.is_finite() {
-            return Err(invalid("PDENSITY/PDIA must be finite".to_string()));
+        if !density.is_finite()
+            || !(f64::from(SETTLING_DENSITY_MIN_KG_M3)..=f64::from(SETTLING_DENSITY_MAX_KG_M3))
+                .contains(&density)
+            || !diameter.is_finite()
+            || !(SETTLING_DIAMETER_MIN_UM..=SETTLING_DIAMETER_MAX_UM).contains(&diameter)
+        {
+            return Err(invalid(
+                "PDENSITY/PDIA outside the declared domain".to_string(),
+            ));
+        }
+        if !species
+            .diameter_sigma
+            .is_some_and(|sigma| sigma.is_finite() && sigma > 1.0)
+        {
+            return Err(invalid(
+                "PDSIGMA must be finite and greater than 1".to_string(),
+            ));
         }
         #[allow(clippy::cast_possible_truncation)]
         let carrier = Self {
@@ -267,8 +289,8 @@ impl SettlingCarrier {
             message,
         };
         if !self.diameter_um.is_finite()
-            || self.diameter_um < SETTLING_DIAMETER_MIN_UM
-            || self.diameter_um > SETTLING_DIAMETER_MAX_UM
+            || f64::from(self.diameter_um) < SETTLING_DIAMETER_MIN_UM
+            || f64::from(self.diameter_um) > SETTLING_DIAMETER_MAX_UM
         {
             return Err(invalid(format!(
                 "diameter_um {} outside [{}, {}]",
@@ -307,6 +329,22 @@ pub struct SettlingQuery {
 }
 
 impl SettlingQuery {
+    /// Revalidate public fields before upload or evidence construction.
+    ///
+    /// # Errors
+    /// Returns an input error for carriers or air states outside the supported domain.
+    pub fn validate(&self) -> Result<(), GpuSettlingError> {
+        Self::new(
+            SettlingCarrier {
+                diameter_um: self.diameter_um,
+                particle_density_kg_m3: self.particle_density_kg_m3,
+            },
+            self.temperature_k,
+            self.air_density_kg_m3,
+        )
+        .map(|_| ())
+    }
+
     /// Build a validated query from a carrier and local air state.
     ///
     /// # Errors
@@ -557,14 +595,17 @@ fn validate_candidate_revision(revision: &str) -> Result<(), GpuSettlingError> {
 ///
 /// # Errors
 /// Returns [`GpuSettlingError`] for empty input, oversized counts, or
-/// device-limit violations. Per-query domain validation must already have
-/// succeeded in [`SettlingQuery::new`]; this function never invents inputs.
+/// device-limit violations, or invalid per-query fields, including queries
+/// constructed directly instead of through [`SettlingQuery::new`].
 pub fn create_settling_query_buffers(
     ctx: &GpuContext,
     queries: &[SettlingQuery],
 ) -> Result<SettlingQueryBuffers, GpuSettlingError> {
     if queries.is_empty() {
         return Err(GpuSettlingError::EmptyQueries);
+    }
+    for query in queries {
+        query.validate()?;
     }
     let _count_u32 = u32::try_from(queries.len()).map_err(|_| GpuSettlingError::ValueTooLarge {
         field: "query_count",
@@ -803,8 +844,8 @@ pub async fn download_settling_velocities(
 
 /// Compute settling velocities with GPU-executed arithmetic.
 ///
-/// Isolated oracle-verification workflow. Validates nothing beyond the
-/// already-validated [`SettlingQuery`] inputs, executes the WGSL kernel,
+/// Isolated oracle-verification workflow. Revalidates [`SettlingQuery`]
+/// inputs before upload, executes the WGSL kernel,
 /// reads back at an explicit validation boundary and fails closed on
 /// non-finite outputs. No CPU fallback exists: any GPU failure surfaces as
 /// an error.
@@ -839,7 +880,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// SHA-256 of the executed WGSL bundle.
 #[must_use]
 pub fn settling_shader_sha256() -> String {
-    sha256_hex(SHADER_SOURCE.as_bytes())
+    sha256_hex(render_shader_with_workgroup_size(SHADER_SOURCE, WORKGROUP_SIZE_X).as_bytes())
 }
 
 /// SHA-256 of the normalized JSON encoding of dispatched GPU inputs.
@@ -853,6 +894,12 @@ pub fn settling_inputs_sha256(queries: &[SettlingQuery]) -> Result<String, GpuSe
     #[derive(Serialize)]
     struct NormalizedSettlingInput {
         queries: Vec<[f64; 4]>,
+    }
+    if queries.is_empty() {
+        return Err(GpuSettlingError::EmptyQueries);
+    }
+    for query in queries {
+        query.validate()?;
     }
     let normalized = NormalizedSettlingInput {
         queries: queries
@@ -1000,7 +1047,6 @@ impl SettlingGpuRow {
         self.validate_values()?;
         self.validate_evidence_consistency()?;
         self.gpu_evidence.validate()?;
-        self.gpu_evidence.require_paired_pass()?;
         Ok(())
     }
 
@@ -1096,11 +1142,7 @@ impl SettlingGpuRow {
         if self.comparison_policy != default_policy {
             return Err(invalid());
         }
-        let evidence_policy = self
-            .gpu_evidence
-            .comparison
-            .policy
-            .ok_or_else(invalid)?;
+        let evidence_policy = self.gpu_evidence.comparison.policy.ok_or_else(invalid)?;
         if evidence_policy != self.comparison_policy {
             return Err(invalid());
         }
@@ -1181,6 +1223,13 @@ impl SettlingGpuReport {
         for row in &self.rows {
             row.validate()?;
         }
+        let ids: std::collections::BTreeSet<_> =
+            self.rows.iter().map(|row| &row.vector_id).collect();
+        if ids.len() != self.rows.len() {
+            return Err(GpuEvidenceError::InvalidComparisonState(
+                "duplicate settling vector ids",
+            ));
+        }
         let expected_status = self.rows.iter().all(|row| row.row_verdict);
         if self.status != expected_status {
             return Err(GpuEvidenceError::InvalidComparisonState(
@@ -1199,6 +1248,9 @@ impl SettlingGpuReport {
         self.validate()?;
         if !self.status {
             return Err(GpuEvidenceError::NotPassing);
+        }
+        for row in &self.rows {
+            row.gpu_evidence.require_paired_pass()?;
         }
         Ok(())
     }
@@ -1225,6 +1277,15 @@ pub fn build_settling_gpu_row(
     candidate_revision: &str,
     oracle: PinnedOracleEvidence,
 ) -> Result<SettlingGpuRow, GpuSettlingError> {
+    query.validate()?;
+    if comparison_policy != default_comparison_policy()?
+        || oracle.implementation_id != SETTLING_ORACLE_IMPLEMENTATION_ID
+        || oracle.revision != SETTLING_ORACLE_REVISION
+    {
+        return Err(GpuSettlingError::OracleContract {
+            message: "comparison policy or oracle identity contradicts issue #35",
+        });
+    }
     if vector_id.trim().is_empty() {
         return Err(GpuSettlingError::OracleContract {
             message: "vector_id must not be empty",

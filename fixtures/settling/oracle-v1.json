@@ -1,11 +1,73 @@
 {
-  "canonical_sha256": "d60273bdb33b9b1b502be4b420f0bbfe316de883fcb7f3f41b1b7bfd736404f1",
-  "executable_sha256": "76eab3636aff3c334c99737ecd03684e195f8399999bd59c13c36a0bc576e6c6",
+  "canonical_sha256": "476188e767f577f77b3b8991728f832005d6058cbcff3f5d54e06b5e4d6b6a90",
+  "executable_sha256": "6d0516306156a54b435cf6129eef8e7f0df86752a0edbcfbb5afd4af0ed65ce8",
   "harness": "oracle/settling_oracle.f90",
-  "harness_sha256": "58dd006cae2fe018d8c939fa0e6c6146d26591a2f80c637da26e0c42fde166f8",
-  "output_sha256": "8e847caa0545d5b4d9d863204c5613b7fbf0c8b266c3bcad8b47d80f0270be8e",
+  "harness_sha256": "4b32f055c44e4c1d27e4c5f8feb042be14304345abd123f31ae81abfcd26f9df",
+  "output_sha256": "1ae445d18a8a3a995927c8551db61d0b88fc1dc48370371cd702d61fd3a8ba48",
   "pinned_implementation": "FLEXPART-11.1 settling_mod::get_settling (sphere)",
   "pinned_revision": "c70586c2b7f5258850705325881c61f557ea9bd8",
+  "provenance": {
+    "checkout_clean": true,
+    "compiler": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+    "docker_image_id": "sha256:379b52d9850d8c676910144e9461f5a83645de009e35169cba707b0cea68f125",
+    "dockerfile_sha256": "5a3b039924fa1154083167a6b83abfdb78414250bd8cf19c2f243e5a71c376c1",
+    "executable_sha256": "6d0516306156a54b435cf6129eef8e7f0df86752a0edbcfbb5afd4af0ed65ce8",
+    "input_sha256": "dfa308db07f6eb7664c008d022feb003424bda89273370bb96c2fc3a3e796359",
+    "linked_objects_sha256": {
+      "advance_mod.o": "a08af0008b7c835a82aa8c5bb6c0ac9b809624b0dfa31aa070054cb70c29e7d9",
+      "binary_output_mod.o": "9c697712bc037d6d260a45f6c19d0d4acc0092c4f784f63d8a45410a98675126",
+      "cbl_mod.o": "c12bd795e1e0d7edf3519c85d1c0f09bb3ef8280fe0dc81290f7054268599521",
+      "chemistry_mod.o": "6848bb15dc9619733fb73efef7cbe2abbfc440b70a182e441613f7dffb1883c8",
+      "class_gribfile_mod.o": "4303e7bebfdf1ba3b7d7df5b8de2f06d2366b3e104b2014ec3f32788190f85b8",
+      "cmapf_mod.o": "7405cb451f5898065f14b32d300fa97287da221ed14ddb5a3d0b3376cf898952",
+      "com_mod.o": "a5604b1c9c3c15d134259a3312f16e70cd611b5370fd84efde0a498f9522b9b8",
+      "conv_mod.o": "3cc1cdddf9ab04276150054e8dcfdf1630a82dfc9c9b7c55d1409f3e51a78ef9",
+      "date_mod.o": "64a862cbc01931291a0247cf018ed17bfca6f360b0cafeeaec5cc6300aa6deed",
+      "drydepo_mod.o": "d9df9ea96701aee543022c258d2a82bf4e3afa7693c3d4530331c92b161a37e9",
+      "emissions_mod.o": "106110e5fad4441cd223bb03550f0333e4617237ed89c6125c15a62de3b369da",
+      "erf_mod.o": "52aa3e23da891cb55e8caa0bb89125b4f466f17785f10e3c178d88bab8812a06",
+      "flux_mod.o": "b1e238f15014baa84a1fcf1d52f132a98b3374d5a045b298322b421b7cc46c1d",
+      "getfields_mod.o": "596699dece6e7e991c40a98ca88f48833488a55da34badf5bbfae640291a056e",
+      "initdomain_mod.o": "b86610a3d612530ae8d21e99fba04c5b8a7ddd77e304715526a2d28375563a5b",
+      "initialise_mod.o": "2041e16ec41a1311b699b1936cb0c7850f0b60f28354fa8d2a0bc1a73b160b19",
+      "interpol_mod.o": "4a1d64de6f7823a5b7538ae0b9bf02de8eee778f30a38e38c417155f7fe17350",
+      "mean_mod.o": "80d0f13dc4cc9cab7ca01904815d133c927c91a9ea0b66b5b6d57e471e714fc2",
+      "netcdf_output_mod.o": "286d0cd990cc33ceb5c037a7a8a8a119832ac5e2acbd21ef4931e1abd5d0e280",
+      "outgrid_mod.o": "7f4271e3839a522adb797c78f6966f073882ac6e321a2c8d55fec5033301df60",
+      "output_mod.o": "a3338bbdf41022ae61968fb7c6b0403f5e7103507f1c38a11b06a19121291d34",
+      "par_mod.o": "24fb370894eb6349c6f1140260f2d8f6461aea6126bd6efec43d1851d4b2409e",
+      "particle_mod.o": "8aab225abc01a4c6fc20dc705246e2ca2c502f2f700b392ae8247f1a2b70f380",
+      "pbl_profile_mod.o": "ce2ce647151338e41bcdca6e338e2c26e44727036ba80e0e7224bf498812ec70",
+      "plume_mod.o": "8f0d609007226743b32304bc0023d23302cdfddccff61fd584a8f9599fa9050c",
+      "point_mod.o": "295a5ee9543d874cd422d8a5bcc369bec22a6dd66ab010be73debf2ddb882a60",
+      "qvsat_mod.o": "c78d041ef1f0872ea13bf05dac0189f99e17abfa83641303550679876f5308d6",
+      "random_mod.o": "772b5c06ba00e257bcaddfd8e052a675f2498aab9f1ad8c9fa9868a69038cf54",
+      "readoptions_mod.o": "9295cf3546d2eeccdbed8d68d86653275fa729f9bee9bc7e043b33d39e5c26d9",
+      "receptor_mod.o": "132d2448d1272ca94baab36c58d14b9f81f21bff431fed84de28000bf162957b",
+      "receptor_netcdf_mod.o": "4defbe1c14c5a63d8a13b649318679e34b1c72a33a4bebed46bb77d4c830f026",
+      "restart_mod.o": "5b2da6566f4f058b629cc3c08aa9ecffc2d2abaa9739c881c98673113a87a3ff",
+      "settling_mod.o": "a4407e02d92c9d830d9bc8fc46a02d0553c879cf2fd4e84dc555f2fc6a56ac3d",
+      "sort_mod.o": "a678e0252a2104e931297b24d968733c561f441ca1f51c2689b7f77cb9dd9524",
+      "timemanager_mod.o": "c4aa3cab934a2eddedaa947246209dadb57fc71ae36a2260dfdc83b72adf3f69",
+      "totals_mod.o": "619e18b77eb3b16fcc45dc37a605bccfa668a65f7b3e8cf0da97307343c4d882",
+      "turbulence_mod.o": "79c47469bcb4a244b72a8b74b47a4a74fcd470d0fa7416264e73f573bef0d8fa",
+      "txt_output_mod.o": "8af1f5a96204bc19844def7da5332ada98c70526a36180f02d412e63caa8cf90",
+      "unc_mod.o": "d2cf16ae8c9dac189e3e244115a08728a100bd1b607954d1324e0848ff0e1dae",
+      "verttransform_mod.o": "3912c1b12685e8fed0ba1273a81ab78bfd9c3f54bd7cb5a023d15e797e4f95a0",
+      "wetdepo_mod.o": "42568ebc38eca6602a2114aeca0711cdf2c877c6acac31e44fd3e75c947c371f",
+      "windfields_mod.o": "6d542ebfcbc070647cd5fe082af299ec18cb06a3e31c240523a2ec896aecf2b7",
+      "xmass_mod.o": "3309877bcffb6cbef03a4b01fe2f5e8ff7fb9358d411f4a647afe2ce5abaefb5"
+    },
+    "recipe_sha256": "9ee23858d826f78292f8dd95ca64cd369ce29bcf1534f983acb2e21b29ce9bd3",
+    "source_archive_sha256": "922c9ce518710cae7af2d1558e770c682b9fb1fc7d6a8a4d576699dcace375d3",
+    "source_files_sha256": {
+      "drydepo_mod.f90": "779d21d2790c2118373c66f9394d00596612ced63ebd2efe50fde5d9e26ff585",
+      "par_mod.f90": "3164314b5d7212ff5136b5605634fe3c34426aef1320c9fb499ded31f021a9db",
+      "readoptions_mod.f90": "2d28cacdcc65bf22f5c3ec9e4934d07611e3039f5e051ffb2e0b0d7573d3daff",
+      "settling_mod.f90": "0d9dba082515315cae3ab8a707b5436e5993e18c42c68a9015d34eebbb9400dc"
+    }
+  },
+  "raw_output": "fixtures/settling/oracle-output-v1.txt",
   "schema": {
     "id": "flexpart-gpu.settling-oracle",
     "version": 1
@@ -25,7 +87,7 @@
     },
     {
       "id": "SETTLE-004",
-      "settling_velocity_m_s": -6.660237704636529e-05
+      "settling_velocity_m_s": -7.270745845744386e-05
     },
     {
       "id": "SETTLE-005",
@@ -45,7 +107,7 @@
     },
     {
       "id": "SETTLE-009",
-      "settling_velocity_m_s": -0.026552697643637657
+      "settling_velocity_m_s": -0.026552701368927956
     },
     {
       "id": "SETTLE-010",
@@ -66,6 +128,78 @@
     {
       "id": "SETTLE-014",
       "settling_velocity_m_s": -0.14310896396636963
+    },
+    {
+      "id": "SETTLE-015",
+      "settling_velocity_m_s": -5.789851229565102e-07
+    },
+    {
+      "id": "SETTLE-016",
+      "settling_velocity_m_s": -5.789851229565102e-07
+    },
+    {
+      "id": "SETTLE-017",
+      "settling_velocity_m_s": -3.9917762251207023e-07
+    },
+    {
+      "id": "SETTLE-018",
+      "settling_velocity_m_s": -3.9917762251207023e-07
+    },
+    {
+      "id": "SETTLE-019",
+      "settling_velocity_m_s": -3.4739105103653856e-06
+    },
+    {
+      "id": "SETTLE-020",
+      "settling_velocity_m_s": -3.4739105103653856e-06
+    },
+    {
+      "id": "SETTLE-021",
+      "settling_velocity_m_s": -2.3950656213855837e-06
+    },
+    {
+      "id": "SETTLE-022",
+      "settling_velocity_m_s": -2.3950656213855837e-06
+    },
+    {
+      "id": "SETTLE-023",
+      "settling_velocity_m_s": -0.18475742638111115
+    },
+    {
+      "id": "SETTLE-024",
+      "settling_velocity_m_s": -0.16360560059547424
+    },
+    {
+      "id": "SETTLE-025",
+      "settling_velocity_m_s": -0.13183890283107758
+    },
+    {
+      "id": "SETTLE-026",
+      "settling_velocity_m_s": -0.12136141210794449
+    },
+    {
+      "id": "SETTLE-027",
+      "settling_velocity_m_s": -0.9328240156173706
+    },
+    {
+      "id": "SETTLE-028",
+      "settling_velocity_m_s": -0.7372019290924072
+    },
+    {
+      "id": "SETTLE-029",
+      "settling_velocity_m_s": -0.7021147608757019
+    },
+    {
+      "id": "SETTLE-030",
+      "settling_velocity_m_s": -0.5823690891265869
+    },
+    {
+      "id": "SETTLE-031",
+      "settling_velocity_m_s": -0.014051012694835663
+    },
+    {
+      "id": "SETTLE-032",
+      "settling_velocity_m_s": -0.013989485800266266
     }
   ]
 }

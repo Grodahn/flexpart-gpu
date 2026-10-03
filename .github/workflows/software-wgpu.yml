@@ -190,6 +190,53 @@ jobs:
               assert evidence["oracle"]["revision"] == "c70586c2b7f5258850705325881c61f557ea9bd8"
               assert evidence["comparison"]["verdict"] == "passed"
           PY
+      - name: Prove settling against the pinned FLEXPART routines
+        env:
+          FLEXPART_GPU_REQUIRE_SETTLING: "1"
+          FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          rm -f target/settling-gpu-evidence.json
+          python3 scripts/generate_settling_oracle.py --audit
+          python3 -m unittest discover -s scripts -p test_generate_settling_oracle.py
+          cargo test --test settling_gpu -- --nocapture 2>&1 | tee target/ci-gate/settling-gpu.log
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import struct
+          from pathlib import Path
+
+          def read(path):
+              return json.loads(Path(path).read_bytes())
+
+          report = read("target/settling-gpu-evidence.json")
+          canonical = read("fixtures/settling/canonical-vectors-v1.json")
+          oracle = read("fixtures/settling/oracle-v1.json")
+          actual = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          assert actual == os.environ["FLEXPART_GPU_CANDIDATE_REVISION"]
+          assert report["schema"] == {"id": "flexpart-gpu.settling-gpu-evidence", "version": 1}
+          assert report["status"] is True
+          assert len(report["rows"]) == len(canonical["vectors"]) == 32
+          assert {row["vector_id"] for row in report["rows"]} == {v["id"] for v in canonical["vectors"]}
+          shader = Path("src/shaders/settling_velocity.wgsl").read_bytes().decode().replace("__WORKGROUP_SIZE_X__", "64")
+          shader_hash = hashlib.sha256(shader.encode()).hexdigest()
+          values = {v["id"]: v["settling_velocity_m_s"] for v in oracle["values"]}
+          for row in report["rows"]:
+              assert row["row_verdict"] is True
+              assert struct.pack("!f", row["oracle_settling_velocity_m_s"]) == struct.pack("!f", values[row["vector_id"]])
+              evidence = row["gpu_evidence"]
+              assert evidence["execution"]["status"] == "passed"
+              assert evidence["execution"]["calculation_path"] == "wgsl_device"
+              assert evidence["execution"]["adapter"]["adapter_class"] == "software_wgsl"
+              assert evidence["candidate"]["revision"] == actual
+              assert evidence["candidate"]["shader_sha256"] == shader_hash
+              assert evidence["oracle"]["revision"] == oracle["pinned_revision"]
+              assert evidence["oracle"]["executable_sha256"] == oracle["executable_sha256"]
+              assert evidence["oracle"]["output_sha256"] == oracle["output_sha256"]
+              assert evidence["comparison"]["verdict"] == "passed"
+          PY
       - name: Run corpus deterministic subset (Issue #6, point 2)
         run: |
           set -euo pipefail
@@ -233,4 +280,6 @@ jobs:
             target/ci-gate/vertical-gpu/*.json
             target/ci-gate/corpus-subset.log
             target/temporal-gpu-evidence.json
+            target/settling-gpu-evidence.json
+            target/ci-gate/settling-gpu.log
           retention-days: 30

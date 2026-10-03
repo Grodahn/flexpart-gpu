@@ -16,6 +16,11 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-10-03 — Validate GPU gravitational settling velocity against FLEXPART 11.1 (#35)
+**Impact**: physics (new WGSL settling kernel; no existing physics altered)
+**Files**: `src/shaders/settling_velocity.wgsl`, `src/gpu/settling.rs`, `tests/settling_gpu.rs`, `fixtures/settling/`, `oracle/settling_oracle.f90`
+**Validation**: 14 canonical sphere vectors (0.1-100 um, 500-3000 kg/m3, 200-320 K, 0.4-1.6 kg/m3) spanning Cunningham, Re=0.02, and inertial regimes; Fortran-harness oracle via Docker gfortran; GPU (Intel UHD 620, hardware_gpu, wgsl_device) agrees within 1% + 1e-9 m/s with max relative error ~1e-7. Sign convention (strictly downward) and mass invariance proven. No dry-deposition resistance, ground interaction, mass removal, or gridding introduced. No Fortran deviation: WGSL replicates `settling_mod::get_settling` sphere branch, `part0` single-bin init, and `par_mod` constants exactly.
+
 ### 2026-10-02 — Identify the executed horizontal CI revision (#87)
 **Impact**: none (validation provenance; horizontal device arithmetic unchanged)
 **Files**: `.github/workflows/software-wgpu.yml`, `src/gpu/mod.rs`
@@ -25,7 +30,7 @@ This prevents evidence for an unexecuted PR head from being accepted. Both
 horizontal and vertical oracle gates survive the rebase. Only the new horizontal
 exports receive formatting repairs; no Fortran semantics or #76/#77 scope changes.
 
-### 2026-10-02 � Validate vertical GPU evidence batches and runtime ordering (#88)
+### 2026-10-02 � Validate vertical GPU evidence batches and runtime ordering (#88)
 **Impact**: none (host validation and verification; device arithmetic unchanged)
 **Files**: `src/gpu/vertical.rs`, `tests/vertical_gpu.rs`
 **Validation**: Regressions reproduce accepted empty/malformed input batches and

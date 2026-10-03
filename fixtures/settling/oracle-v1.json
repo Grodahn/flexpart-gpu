@@ -1,0 +1,71 @@
+{
+  "canonical_sha256": "d60273bdb33b9b1b502be4b420f0bbfe316de883fcb7f3f41b1b7bfd736404f1",
+  "executable_sha256": "76eab3636aff3c334c99737ecd03684e195f8399999bd59c13c36a0bc576e6c6",
+  "harness": "oracle/settling_oracle.f90",
+  "harness_sha256": "58dd006cae2fe018d8c939fa0e6c6146d26591a2f80c637da26e0c42fde166f8",
+  "output_sha256": "8e847caa0545d5b4d9d863204c5613b7fbf0c8b266c3bcad8b47d80f0270be8e",
+  "pinned_implementation": "FLEXPART-11.1 settling_mod::get_settling (sphere)",
+  "pinned_revision": "c70586c2b7f5258850705325881c61f557ea9bd8",
+  "schema": {
+    "id": "flexpart-gpu.settling-oracle",
+    "version": 1
+  },
+  "values": [
+    {
+      "id": "SETTLE-001",
+      "settling_velocity_m_s": -8.568160865252139e-07
+    },
+    {
+      "id": "SETTLE-002",
+      "settling_velocity_m_s": -9.937189133779611e-06
+    },
+    {
+      "id": "SETTLE-003",
+      "settling_velocity_m_s": -3.635372922872193e-05
+    },
+    {
+      "id": "SETTLE-004",
+      "settling_velocity_m_s": -6.660237704636529e-05
+    },
+    {
+      "id": "SETTLE-005",
+      "settling_velocity_m_s": -0.001157639198936522
+    },
+    {
+      "id": "SETTLE-006",
+      "settling_velocity_m_s": -0.003037970280274749
+    },
+    {
+      "id": "SETTLE-007",
+      "settling_velocity_m_s": -0.008512328378856182
+    },
+    {
+      "id": "SETTLE-008",
+      "settling_velocity_m_s": -0.012053747661411762
+    },
+    {
+      "id": "SETTLE-009",
+      "settling_velocity_m_s": -0.026552697643637657
+    },
+    {
+      "id": "SETTLE-010",
+      "settling_velocity_m_s": -0.0710948258638382
+    },
+    {
+      "id": "SETTLE-011",
+      "settling_velocity_m_s": -0.24791988730430603
+    },
+    {
+      "id": "SETTLE-012",
+      "settling_velocity_m_s": -0.003655052278190851
+    },
+    {
+      "id": "SETTLE-013",
+      "settling_velocity_m_s": -0.000606791814789176
+    },
+    {
+      "id": "SETTLE-014",
+      "settling_velocity_m_s": -0.14310896396636963
+    }
+  ]
+}

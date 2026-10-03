@@ -97,7 +97,21 @@ Choose the artifact contract being changed.
 - Focused wrapper: `python scripts/test_agent_validation.py`.
 - Input equivalence: `python scripts/corpus/test_audit_corpus_inputs.py`.
 - Corpus manifest: `python scripts/corpus/test_write_corpus_manifest_v1.py`; shared provenance: `python scripts/provenance/test_run_provenance.py`.
-- Canonical case validation: `cargo test --lib validation::case::tests`.
+- Canonical case validation: `cargo test --lib validation::case::` (all eight private responsibility modules).
+- Focused case checks: choose the owner below; use [shared fixtures/schema helper](../../src/validation/case/test_support.rs) only when needed to interpret a test.
+
+| Case responsibility | Focused check |
+| --- | --- |
+| Root domain/integration, units, physics consistency | `cargo test --lib validation::case::manifest::tests` |
+| Document/schema parsing and serialization | `cargo test --lib validation::case::document::tests` |
+| Release geometry, inventory/species, chronology | `cargo test --lib validation::case::release::tests` |
+| Meteorology identity and profile | `cargo test --lib validation::case::meteorology::tests` |
+| Output timing/direction and grid | `cargo test --lib validation::case::output::tests` |
+| Candidate/oracle RNG identity | `cargo test --lib validation::case::stochastic::tests` |
+| Oracle COMMAND configuration | `cargo test --lib validation::case::oracle::tests` |
+| External reference/artifact handoff | `cargo test --lib validation::case::handoff::tests` |
+
+- Public facade/compact and pretty serialized-byte regression: `cargo test --test validation_case_contract`; [pre-decomposition snapshot](../../tests/fixtures/validation-case-serialization-v2.txt).
 - Consumer check for supported cases: `python scripts/agent_validation.py --check comparison --case ADV-ANA-001`; other cases use their existing documented entry.
 - Evidence: fail-closed missing/stale input/output and hash checks, actual subprocess statuses, manifest and comparison report. `PASS` describes execution; `DIAGNOSTIC_NO_PARITY_VERDICT` remains the current corpus verdict.
 - Broader: `bash scripts/ci-gate.sh --particles 1000 --require-flex-extract-oracle` when changing its consumed contracts; full corpus/ETEX only when required by the owning issue. [Existing policy](../agent-validation.md) governs prerequisites/cache reuse.

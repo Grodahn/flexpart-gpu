@@ -106,6 +106,19 @@ proof unless the owning issue explicitly defines CPU parity as normative.
 
 ---
 
+## Task Navigation
+
+Before implementation or review, select the relevant domain in
+[the repository map](docs/agent/repo-map.md) and its
+[focused verification entry](docs/agent/test-map.md). Read those listed
+implementation/contract/test surfaces first; follow named dependencies only when
+the task crosses their handoff. Use scoped symbol searches before broad discovery.
+The map locates current code and evidence; it does not supersede global hard
+rules, the GPU contract, or the owning issue's proof obligations.
+[Navigation dry runs](docs/agent/navigation-dry-runs.md) show bounded working sets.
+Keep mapped paths current and run `python scripts/check_agent_navigation.py`
+when changing a navigation surface or moving a mapped file.
+
 ## Required Agent Workflows
 
 Workflow-specific instructions live under `.agents/skills/` and are mandatory when applicable:

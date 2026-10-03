@@ -59,3 +59,13 @@ Finish with the implemented scope, checks and evidence paths, PR/commit link,
 and any unresolved dependency or blocked check. Required checks must pass or
 have a demonstrated unrelated baseline/infrastructure failure documented;
 that failure remains a failure. Do not claim parity from execution or green CI.
+
+## Bounded task context
+
+Before discovery, select the applicable row in
+[the repository map](../../../docs/agent/repo-map.md) and
+[the test map](../../../docs/agent/test-map.md). Start with listed paths and
+named handoffs; widen inspection only for a missing symbol or crossed dependency.
+For an existing issue picked up for implementation after #123, add/update its
+compact Agent context when useful and authorized; use the issue-authoring guidance.
+A review-only request does not authorize editing issue metadata.

@@ -190,6 +190,148 @@ jobs:
               assert evidence["oracle"]["revision"] == "c70586c2b7f5258850705325881c61f557ea9bd8"
               assert evidence["comparison"]["verdict"] == "passed"
           PY
+      - name: Prove field-specific canonical meteorology composition
+        run: |
+          set -euo pipefail
+          cargo test --test meteorology_composition -- --test-threads=1 2>&1 | tee target/ci-gate/meteorology-composition.log
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import math
+          import subprocess
+          from pathlib import Path
+
+          directory = Path("target/ci-gate/meteorology-composition")
+          report = json.loads((directory / "report.json").read_text())
+          assert report["schema"] == {"id": "flexpart-gpu.meteorology-composition-evidence", "version": 1}
+          assert report["candidate_revision"] == subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          assert report["composition_source_sha256"] == hashlib.sha256(Path("src/gpu/meteorology.rs").read_bytes()).hexdigest()
+          assert report["test_source_sha256"] == hashlib.sha256(Path("tests/meteorology_composition.rs").read_bytes()).hexdigest()
+          sample = Path("src/shaders/vertical_sample.wgsl").read_bytes()
+          remap = Path("src/shaders/vertical_remap_w.wgsl").read_bytes()
+          assert report["stage_shader_sha256"] == {
+              "horizontal": hashlib.sha256(Path("src/shaders/horizontal_interpolation.wgsl").read_bytes()).hexdigest(),
+              "vertical": hashlib.sha256(sample).hexdigest(),
+              "w_bundle": hashlib.sha256(sample + b"\n" + remap).hexdigest(),
+              "temporal": hashlib.sha256(Path("src/shaders/temporal_interpolation.wgsl").read_bytes()).hexdigest(),
+              "accumulation": hashlib.sha256(Path("src/shaders/accumulated_interval.wgsl").read_bytes()).hexdigest(),
+          }
+          assert report["status"] == "passed"
+          execution = report["execution"]
+          assert execution["status"] == "passed"
+          assert execution["calculation_path"] == "wgsl_device"
+          assert execution["adapter"]["adapter_class"] == "software_wgsl"
+          assert report["residency_proof"]["caller_composition_submissions"] == 1
+          assert report["residency_proof"]["intermediate_readbacks"] == 0
+          expected_cases = {
+              "instantaneous-surface", "surface-first-endpoint", "surface-last-endpoint",
+              "model-agl", "model-asl", "model-below-domain", "model-above-domain",
+              "interface-w", "interval-leading-rate", "interval-delta-amount",
+              "interval-reset-si-rate", "interval-total", "interval-mean-flux",
+              "static-class", "static-scalar",
+              "surface-later-bracket", "center-w",
+          }
+          assert len(report["rows"]) == len(expected_cases)
+          assert {row["case_id"] for row in report["rows"]} == expected_cases
+          def record(stage, source=None, plane=None):
+              return {"stage": stage, "source_index": source, "plane_index": plane}
+
+          for row in report["rows"]:
+              case = row["case_id"]
+              assert row["status"] == "passed"
+              assert json.loads((directory / (case + ".json")).read_text()) == row
+              selected = [0]
+              stages = []
+              if case.startswith("model-") or case == "center-w":
+                  selected = [0, 1]
+                  for source in selected:
+                      stages += [record("horizontal", source, plane) for plane in range(3)]
+                      stages += [record("vertical", source)]
+                  stages += [record("temporal")]
+                  copies = 10
+              elif case == "interface-w":
+                  selected = [0, 1]
+                  for source in selected:
+                      stages += [record("w_remap", source), record("vertical", source)]
+                  stages += [record("temporal")]
+                  copies = 4
+              elif case in {"instantaneous-surface", "surface-first-endpoint", "surface-last-endpoint", "surface-later-bracket"}:
+                  selected = [1, 2] if case in {"surface-last-endpoint", "surface-later-bracket"} else [0, 1]
+                  stages = [record("horizontal", source, 0) for source in selected] + [record("temporal")]
+                  copies = 4
+              elif case in {"interval-leading-rate", "interval-delta-amount", "interval-reset-si-rate"}:
+                  source = {"interval-leading-rate": 0, "interval-delta-amount": 1, "interval-reset-si-rate": 2}[case]
+                  stages = [record("accumulated_transform"), record("horizontal", source, 0)]
+                  selected = [0, 1, 2]
+                  copies = 2
+              else:
+                  copies = 13 if case == "static-class" else 1
+                  stages = [record("horizontal", 0, plane) for plane in range(copies)]
+              assert row["encoded_stages"] == row["expected_stage_records"] == stages
+              assert row["expected_stages"] == [s["stage"] for s in stages]
+              assert row["device_to_device_copies"] == copies
+              inputs = (directory / (row["case_id"] + "-inputs.json")).read_bytes()
+              assert row["input_sha256"] == hashlib.sha256(inputs).hexdigest()
+              inputs = json.loads(inputs)
+              metadata = row["metadata"]
+              handoff = (directory / (case + "-handoff.json")).read_bytes()
+              assert row["handoff_sha256"] == hashlib.sha256(handoff).hexdigest()
+              assert json.loads(handoff) == metadata
+              assert inputs["request"] == metadata["request"]
+              snapshots = []
+              hashes = []
+              for index, snapshot in enumerate(inputs["snapshots"]):
+                  source = (directory / f"{case}-source-{index}.json").read_bytes()
+                  assert json.loads(source) == snapshot
+                  snapshots.append(snapshot)
+                  hashes.append(hashlib.sha256(source).hexdigest())
+              assert metadata["source_snapshot_sha256"] == [hashes[i] for i in selected]
+              fields = [next(f for f in snapshots[i]["fields"] if f["id"] == metadata["field_id"]) for i in selected]
+              assert metadata["source_times"] == [f["time"] for f in fields]
+              unit = {
+                  "interval-leading-rate": "millimeter_per_hour",
+                  "interval-delta-amount": "kilogram_per_square_meter",
+                  "interval-reset-si-rate": "kilogram_per_square_meter_per_second",
+              }.get(case, fields[0]["unit"])
+              assert metadata["unit"] == unit
+              for key in ("sign", "horizontal_staggering", "vertical_staggering"):
+                  assert all(f[key] == metadata[key] for f in fields)
+              assert all(snapshots[i]["horizontal_grid"] == metadata["horizontal_grid"] for i in selected)
+              bracket = metadata["temporal_bracket"]
+              if any(s["stage"] == "temporal" for s in stages):
+                  assert [bracket["lower_index"], bracket["upper_index"]] == selected
+                  assert bracket["source_timestamps"] == {
+                      "lower_epoch_seconds": fields[0]["time"]["valid_time_epoch_seconds"],
+                      "upper_epoch_seconds": fields[1]["time"]["valid_time_epoch_seconds"],
+                  }
+              else:
+                  assert bracket is None
+              count = row["metadata"]["value_count"]
+              assert count == (13 if case == "static-class" else 1)
+              assert len(row["candidate_values"]) == len(row["expected_values"]) == count
+              assert all(math.isfinite(v) for v in row["candidate_values"] + row["expected_values"])
+              assert row["comparison"]["verdict"] == "passed"
+              assert row["comparison"]["compared_value_count"] == count
+              assert row["comparison"]["first_failure"] is None
+              policy = row["comparison"]["policy"]
+              relative = 1e-4 if case.startswith("model-") or case == "center-w" else 1e-5
+              if stages[0]["stage"] == "accumulated_transform":
+                  relative = 1e-6
+              assert policy == {"absolute_tolerance": 1e-6, "relative_tolerance": relative}
+              for actual, expected in zip(row["candidate_values"], row["expected_values"]):
+                  error = abs(actual - expected)
+                  assert error <= policy["absolute_tolerance"] or error <= policy["relative_tolerance"] * max(abs(actual), abs(expected))
+              assert row["metadata"]["source_snapshot_sha256"]
+              assert len(row["metadata"]["geometry_identity"]) == len(row["metadata"]["geometry_provenance"])
+              geometries = metadata["geometry_provenance"]
+              assert len(geometries) == (2 if any(s["stage"] == "vertical" for s in stages) else 0)
+              assert [g["source_snapshot_sha256"] for g in geometries] == (metadata["source_snapshot_sha256"] if geometries else [])
+              assert len(metadata["motion_provenance"]) == (2 if case in {"interface-w", "center-w"} else 0)
+          for reference in report["stage_evidence_references"]:
+              path = Path(reference)
+              assert path.exists(), reference
+              assert list(path.glob("*.json")) if path.is_dir() else path.stat().st_size > 0
+          PY
       - name: Run corpus deterministic subset (Issue #6, point 2)
         run: |
           set -euo pipefail
@@ -233,4 +375,6 @@ jobs:
             target/ci-gate/vertical-gpu/*.json
             target/ci-gate/corpus-subset.log
             target/temporal-gpu-evidence.json
+            target/ci-gate/meteorology-composition.log
+            target/ci-gate/meteorology-composition/*.json
           retention-days: 30

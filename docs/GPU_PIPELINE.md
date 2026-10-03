@@ -317,6 +317,8 @@ A GPU calculation change should be rejected or sent back for explicit architectu
 
 ## Related documentation
 
+- [`gpu-meteorology-composition.md`](gpu-meteorology-composition.md) - #76 public handoff, field-specific paths, evidence and unsupported boundaries.
+
 - [`GPU_CONTRACT.md`](GPU_CONTRACT.md) — normative repository-wide GPU rules.
 - [`architecture.md`](architecture.md) — broader repository architecture and current GPU implementation.
 - [`science/simulation-flow.md`](science/simulation-flow.md) — detailed current time-loop execution flow.

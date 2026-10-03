@@ -1,0 +1,20 @@
+name: Agent navigation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  navigation:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reject navigation path and command-target drift
+        run: python scripts/check_agent_navigation.py
+      - name: Test fail-closed navigation checks
+        run: python scripts/test_check_agent_navigation.py

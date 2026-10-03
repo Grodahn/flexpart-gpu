@@ -20,6 +20,7 @@ pub mod horizontal;
 pub mod interpolation;
 pub mod langevin;
 pub mod langevin_fused;
+pub mod meteorology;
 pub mod particle_step;
 pub mod pbl;
 pub mod pbl_reflection;

@@ -41,6 +41,25 @@ class SettlingOracleTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     oracle.audit_fixtures()
 
+    def test_audit_rejects_rehashed_unit_and_domain_changes(self):
+        original = oracle.FIXTURE_DIR
+        with tempfile.TemporaryDirectory() as tmp:
+            fixtures = Path(tmp)
+            for name in ("canonical-vectors-v1.json", "oracle-v1.json", "oracle-output-v1.txt"):
+                (fixtures / name).write_bytes((original / name).read_bytes())
+            canonical = json.loads((fixtures / "canonical-vectors-v1.json").read_bytes())
+            document = json.loads((fixtures / "oracle-v1.json").read_bytes())
+            with patch.object(oracle, "FIXTURE_DIR", fixtures):
+                for section, value in (("units", "metre"), ("valid_domain", [0.1, 1000.0])):
+                    mutated = copy.deepcopy(canonical)
+                    mutated[section]["diameter_um"] = value
+                    path = fixtures / "canonical-vectors-v1.json"
+                    path.write_text(json.dumps(mutated), encoding="utf-8")
+                    document["canonical_sha256"] = oracle.sha256_file(path)
+                    (fixtures / "oracle-v1.json").write_text(json.dumps(document), encoding="utf-8")
+                    with self.subTest(section=section), self.assertRaises(ValueError):
+                        oracle.audit_fixtures()
+
     def test_unpinned_and_dirty_checkouts_are_rejected(self):
         for results in (["0" * 40], [oracle.pinned_revision(), " M src/settling_mod.f90"]):
             with patch.object(oracle, "git", side_effect=results), self.assertRaises(ValueError):

@@ -136,18 +136,38 @@ def decode_outputs(data: bytes, vectors: list[dict]) -> dict[str, float]:
     return outputs
 
 
+def canonical_document() -> dict:
+    """Define the input units, supported domain and finite oracle coverage."""
+    return {
+        "schema": {"id": "flexpart-gpu.settling-canonical-vectors", "version": 1},
+        "pinned_flexpart_revision": pinned_revision(),
+        "units": {
+            "diameter_um": "micrometre",
+            "particle_density_kg_m3": "kilogram_per_cubic_metre",
+            "temperature_k": "kelvin",
+            "air_density_kg_m3": "kilogram_per_cubic_metre",
+            "settling_velocity_m_s": "metre_per_second (negative, downward)",
+        },
+        "valid_domain": {
+            "diameter_um": [0.1, 100.0],
+            "particle_density_kg_m3": [500.0, 3000.0],
+            "temperature_k": [200.0, 320.0],
+            "air_density_kg_m3": [0.4, 1.6],
+        },
+        "vectors": CANONICAL_VECTORS,
+    }
+
+
 def audit_fixtures() -> None:
     """Fail closed on stale driver, raw output, inputs, or decoded velocities."""
     canonical_path = FIXTURE_DIR / "canonical-vectors-v1.json"
     canonical = json.loads(canonical_path.read_bytes())
     oracle = json.loads((FIXTURE_DIR / "oracle-v1.json").read_bytes())
     raw = (FIXTURE_DIR / "oracle-output-v1.txt").read_bytes()
-    if canonical["schema"] != {"id": "flexpart-gpu.settling-canonical-vectors", "version": 1}:
-        raise ValueError("unsupported canonical schema")
+    if canonical != canonical_document():
+        raise ValueError("canonical inputs, units or domain differ from the declared contract")
     if oracle["schema"] != {"id": "flexpart-gpu.settling-oracle", "version": 1}:
         raise ValueError("unsupported oracle schema")
-    if canonical["vectors"] != CANONICAL_VECTORS:
-        raise ValueError("canonical vectors differ from the declared coverage")
     if canonical["pinned_flexpart_revision"] != pinned_revision() or oracle["pinned_revision"] != pinned_revision():
         raise ValueError("unpinned fixture revision")
     if oracle["canonical_sha256"] != sha256_file(canonical_path) or oracle["output_sha256"] != sha256_bytes(raw):
@@ -249,24 +269,7 @@ def main() -> int:
     canonical_path = FIXTURE_DIR / "canonical-vectors-v1.json"
     oracle_path = FIXTURE_DIR / "oracle-v1.json"
 
-    canonical_doc = {
-        "schema": {"id": "flexpart-gpu.settling-canonical-vectors", "version": 1},
-        "pinned_flexpart_revision": pinned_revision(),
-        "units": {
-            "diameter_um": "micrometre",
-            "particle_density_kg_m3": "kilogram_per_cubic_metre",
-            "temperature_k": "kelvin",
-            "air_density_kg_m3": "kilogram_per_cubic_metre",
-            "settling_velocity_m_s": "metre_per_second (negative, downward)",
-        },
-        "valid_domain": {
-            "diameter_um": [0.1, 100.0],
-            "particle_density_kg_m3": [500.0, 3000.0],
-            "temperature_k": [200.0, 320.0],
-            "air_density_kg_m3": [0.4, 1.6],
-        },
-        "vectors": CANONICAL_VECTORS,
-    }
+    canonical_doc = canonical_document()
     canonical_bytes = json.dumps(canonical_doc, indent=2, sort_keys=True).encode()
     canonical_sha = sha256_bytes(canonical_bytes)
 

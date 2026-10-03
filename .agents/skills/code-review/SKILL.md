@@ -65,3 +65,13 @@ changing adjacent code or describing the failed gate as green.
 Finish with findings/fixes, verification and evidence paths, the PR link, and
 remaining blockers/dependencies. State omitted or unavailable checks honestly.
 Do not report completion of a scientific claim without its required evidence.
+
+## Bounded task context
+
+Before discovery, select the applicable row in
+[the repository map](../../../docs/agent/repo-map.md) and
+[the test map](../../../docs/agent/test-map.md). Start with listed paths and
+named handoffs; widen inspection only for a missing symbol or crossed dependency.
+For an existing issue picked up for implementation after #123, add/update its
+compact Agent context when useful and authorized; use the issue-authoring guidance.
+A review-only request does not authorize editing issue metadata.

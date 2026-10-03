@@ -37,3 +37,19 @@ rather than mandating expensive clean rebuilds or full corpora for every edit.
 Batch relevant read-only issue/dependency inspections and display concise
 changes. Creating or editing GitHub issues still requires authorization from
 the user request; this skill does not authorize unrelated external actions.
+
+## Agent context
+
+For new or materially refined implementation issues, include a compact Agent
+context block when useful. Link the relevant domain in
+[the canonical repository map](../../../docs/agent/repo-map.md); do not duplicate
+architecture prose. Name read-first contracts, expected implementation paths,
+allowed adjacent producer/consumer inspection, concrete out-of-scope areas, and
+a focused command from [the test map](../../../docs/agent/test-map.md).
+Use [the implementation issue template](../../../.github/ISSUE_TEMPLATE/implementation.md).
+
+When an existing issue is materially refined or picked up for implementation
+after #123, add/update this block within authorized issue editing. Do not bulk
+backfill open issues or change scientific scope, dependencies, tolerances or
+acceptance semantics to add navigation metadata. Root navigation keeps existing
+issues discoverable without a metadata rewrite.

@@ -19,7 +19,21 @@ shaders, physics kernels, or advection logic must add an entry here.
 ### 2026-10-03 — Validate GPU gravitational settling velocity against FLEXPART 11.1 (#35)
 **Impact**: physics (new WGSL settling kernel; no existing physics altered)
 **Files**: `src/shaders/settling_velocity.wgsl`, `src/gpu/settling.rs`, `tests/settling_gpu.rs`, `fixtures/settling/`, `oracle/settling_oracle.f90`
-**Validation**: Review repairs replace the duplicated Fortran formulas with a driver linked to pristine pinned `part0` and `get_settling`; 32 vectors include all domain corners and the initial Re=0.02 bracket. Raw oracle output and source/build/object identities are retained and audited. Host upload rejects directly constructed invalid queries, malformed/conflicting shapes, mixed gas carriers and invalid widths. Required software-WGSL CI records the executed revision and rendered shader hash. Stable-state verification results are recorded in PR #122. WGSL uses the algebraic single-bin diameter instead of Fortran's exp/log bin initialization; f32 rounding differences are compared under the declared 1% or 1e-9 m/s rule. No timeloop, ground, removal or gridding behavior is claimed.
+**Validation**: Review repairs replace the duplicated Fortran formulas with a driver linked to pristine pinned `part0` and `get_settling`; 32 vectors include all domain corners and the initial Re=0.02 bracket. Raw oracle output and source/build/object identities are retained and audited; the frozen audit also rejects rehashed changes to canonical units or domain. Host upload rejects directly constructed invalid queries, malformed/conflicting shapes, mixed gas carriers and invalid widths. Required software-WGSL CI records the executed revision and rendered shader hash. Stable-state verification results are recorded in PR #122. WGSL uses the algebraic single-bin diameter instead of Fortran's exp/log bin initialization; f32 rounding differences are compared under the declared 1% or 1e-9 m/s rule. No timeloop, ground, removal or gridding behavior is claimed.
+
+### 2026-10-03 - Compose canonical device-resident meteorology stages (#76)
+**Impact**: none (existing #87-#90 science; no new shader or consumer migration)
+**Files**: `src/gpu/meteorology.rs`, `tests/meteorology_composition.rs`,
+`.github/workflows/software-wgpu.yml`
+**Validation**: Field-specific surface/model/W/interval/static paths use the
+existing encode APIs in caller-owned encoding with device-only intermediate
+copies. Evidence records stage order, adapter, handoff identity and numerical
+results under existing stage policies. Runtime geometry and motion provenance
+remain intact. Review repairs align accumulated timestamp/hash history, verify
+complete stage/source/plane identity, bind source/handoff artifacts, and
+independently audit the numerical verdict. No new Fortran deviation is introduced: nonuniform fractional
+geometry (#118), precipitation time sampling (#119), and instantaneous surface-
+flux eligibility (#120) fail closed. #80/#88's single-column W limit remains.
 
 ### 2026-10-02 — Identify the executed horizontal CI revision (#87)
 **Impact**: none (validation provenance; horizontal device arithmetic unchanged)

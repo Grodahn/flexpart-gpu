@@ -440,6 +440,32 @@ mod tests {
         assert_scalar_close(actual.tlw, expected.tlw);
     }
 
+    fn assert_langevin_particle_close(actual: &Particle, expected: &Particle) {
+        // Retain the existing Langevin position and turbulent-velocity tolerances.
+        assert_relative_eq!(actual.pos_z, expected.pos_z, epsilon = 1.0e-7);
+        for (actual_velocity, expected_velocity) in [
+            (actual.turb_u, expected.turb_u),
+            (actual.turb_v, expected.turb_v),
+            (actual.turb_w, expected.turb_w),
+        ] {
+            assert_relative_eq!(
+                actual_velocity,
+                expected_velocity,
+                epsilon = 5.0e-5,
+                max_relative = 5.0e-5
+            );
+        }
+        let mut unchanged_fields = *actual;
+        unchanged_fields.pos_z = expected.pos_z;
+        unchanged_fields.turb_u = expected.turb_u;
+        unchanged_fields.turb_v = expected.turb_v;
+        unchanged_fields.turb_w = expected.turb_w;
+        assert_eq!(
+            bytemuck::bytes_of(&unchanged_fields),
+            bytemuck::bytes_of(expected)
+        );
+    }
+
     #[test]
     fn test_hanna_langevin_capacity_output_serves_active_prefix() {
         use crate::gpu::{
@@ -462,6 +488,7 @@ mod tests {
         let pbl_buffers = PblBuffers::from_state(&ctx, &pbl).expect("PBL upload");
         let key = [0xDECA_FBAD, 0x1234_5678];
         let counter = [7, 9, 11, 13];
+        let mut input_identities = std::collections::HashSet::new();
         for active in [1, 3, 8] {
             for substeps in [0, 4] {
                 let particles: Vec<_> = (0..8)
@@ -547,10 +574,7 @@ mod tests {
                         .iter()
                         .find(|p| p.release_point == identity)
                         .expect("particle identity retained");
-                    assert_eq!(
-                        bytemuck::bytes_of(&actual[slot]),
-                        bytemuck::bytes_of(reference)
-                    );
+                    assert_langevin_particle_close(&actual[slot], reference);
                     assert_eq!(actual[slot].mass, particles[slot].mass);
                     if slot < active {
                         assert_hanna_close(&hanna[slot], &control_hanna[slot]);
@@ -565,8 +589,36 @@ mod tests {
                         );
                     }
                 }
-                let input_bytes = bytemuck::cast_slice::<Particle, u8>(&particles);
-                eprintln!("HANNA-PREFIX-139: adapter={:?} capacity=8 active={active} substeps={substeps} key={key:?} counter={counter:?} input_sha256={:x} inputs={particles:?} pbl={pbl:?} hanna={hanna:?} control_hanna={control_hanna:?} outputs={actual:?} control={expected:?}", ctx.adapter_info(), Sha256::digest(input_bytes));
+                // Hash the finite normalized handoff, including both dispatches,
+                // so different PBL/RNG/substep inputs cannot share a particle-only identity.
+                let mut input_hash = Sha256::new();
+                input_hash.update(b"hanna-langevin-prefix-139-v1");
+                input_hash.update(8_u32.to_le_bytes());
+                input_hash.update(bytemuck::cast_slice::<Particle, u8>(&particles));
+                input_hash.update(bytemuck::bytes_of(&HannaDispatchParams {
+                    pbl_nx: 3,
+                    pbl_ny: 1,
+                    particle_count: active as u32,
+                    _pad0: 0,
+                }));
+                for field in [&pbl.ustar, &pbl.wstar, &pbl.hmix, &pbl.oli] {
+                    for value in field {
+                        input_hash.update(value.to_le_bytes());
+                    }
+                }
+                input_hash.update(bytemuck::bytes_of(&key));
+                input_hash.update(bytemuck::bytes_of(&counter));
+                input_hash.update(step.dt_seconds.to_le_bytes());
+                input_hash.update(step.rho_grad_over_rho.to_le_bytes());
+                input_hash.update(step.n_substeps.to_le_bytes());
+                input_hash.update(step.min_height_m.to_le_bytes());
+                input_hash.update(bytemuck::cast_slice::<HannaParams, u8>(&sentinel));
+                let input_sha256 = format!("{:x}", input_hash.finalize());
+                assert!(
+                    input_identities.insert(input_sha256.clone()),
+                    "dispatch cases need distinct input identities"
+                );
+                eprintln!("HANNA-PREFIX-139: adapter={:?} capacity=8 active={active} substeps={substeps} key={key:?} counter={counter:?} step={step:?} input_sha256={input_sha256} inputs={particles:?} pbl={pbl:?} sentinel={sentinel:?} hanna={hanna:?} control_hanna={control_hanna:?} outputs={actual:?} control={expected:?}", ctx.adapter_info());
             }
         }
     }

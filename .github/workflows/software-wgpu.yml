@@ -433,7 +433,9 @@ jobs:
           cargo test --lib gpu::hanna::tests -- --test-threads=1 --nocapture > target/ci-gate/hanna-prefix.log 2>&1
           cargo test --lib gpu::langevin::tests -- --test-threads=1 --nocapture > target/ci-gate/langevin.log 2>&1
           for active in 1 3 8; do
-            grep -q "HANNA-PREFIX-139: .*capacity=8 active=$active" target/ci-gate/hanna-prefix.log
+            for substeps in 0 4; do
+              grep -q "HANNA-PREFIX-139: .*capacity=8 active=$active substeps=$substeps" target/ci-gate/hanna-prefix.log
+            done
           done
           grep -q "HANNA-BOUNDS-139" target/ci-gate/hanna-prefix.log
           for compaction in 0 1; do

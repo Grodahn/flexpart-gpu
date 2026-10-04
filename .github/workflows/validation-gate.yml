@@ -32,6 +32,10 @@ jobs:
         working-directory: flexpart-gpu
         run: cargo test --lib
 
+      - name: Preserve validation case serialized contract
+        working-directory: flexpart-gpu
+        run: cargo test --test validation_case_contract
+
       - name: Run canonical meteorology contract tests
         run: |
           set -euo pipefail

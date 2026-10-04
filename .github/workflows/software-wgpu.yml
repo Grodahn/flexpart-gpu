@@ -396,6 +396,19 @@ jobs:
           grep -q "TIMELOOP-ORDER-126" target/ci-gate/timeloop-validation.log
           grep -q "TIMELOOP-DEFERRED-126" target/ci-gate/timeloop-validation.log
           grep -q "TIMELOOP-ERROR-126" target/ci-gate/timeloop-validation.log
+      - name: Prove dry-deposition capacity/prefix handoff (#135)
+        run: |
+          set -euo pipefail
+          cargo test --lib gpu::deposition::tests -- --test-threads=1 --nocapture > target/ci-gate/dry-prefix.log 2>&1
+          grep -q "DRY-PREFIX-135" target/ci-gate/dry-prefix.log
+          grep -q "DRY-BOUNDS-135" target/ci-gate/dry-prefix.log
+          for compaction in 0 1; do
+            log="target/ci-gate/dry-forward-${compaction}.log"
+            FLEXPART_GPU_COMPACTION="$compaction" FLEXPART_GPU_VALIDATION=0 RUST_LOG=flexpart_gpu=info cargo test --test forward_timeloop test_forward_timeloop_dry_deposition_multiple_active_and_full_capacity -- --exact --nocapture > "$log" 2>&1
+            grep -q "DRY-FORWARD-135: capacity=8 active=1" "$log"
+            grep -q "DRY-FORWARD-135: capacity=8 active=3" "$log"
+            grep -q "DRY-FORWARD-135: capacity=8 active=8" "$log"
+          done
       - name: Run corpus deterministic subset (Issue #6, point 2)
         run: |
           set -euo pipefail
@@ -437,6 +450,8 @@ jobs:
             target/ci-gate/temporal-gpu.log
             target/ci-gate/vertical-gpu.log
             target/ci-gate/vertical-gpu/*.json
+            target/ci-gate/dry-prefix.log
+            target/ci-gate/dry-forward-*.log
             target/ci-gate/corpus-subset.log
             target/ci-gate/timeloop-production.log
             target/ci-gate/timeloop-validation.log

@@ -350,6 +350,19 @@ fn test_forward_timeloop_operator_call_order_is_preserved() {
 #[test]
 fn test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advance() {
     let _gpu_test_guard = lock_gpu_tests();
+    check_transport_deposition_prefix(1, 0.3);
+}
+
+#[test]
+fn test_forward_timeloop_dry_deposition_multiple_active_and_full_capacity() {
+    let _gpu_test_guard = lock_gpu_tests();
+    for particle_count in [1, 3, 8] {
+        check_transport_deposition_prefix(particle_count, 0.0);
+    }
+}
+
+fn check_transport_deposition_prefix(particle_count: usize, wet_coefficient_s_inv: f32) {
+    let _ = env_logger::builder().is_test(true).try_init();
     use flexpart_gpu::simulation::ParticleForcingField;
 
     let releases = vec![ReleaseConfig {
@@ -361,7 +374,7 @@ fn test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advan
         z_min: 1.0,
         z_max: 1.0,
         mass_kg: 1.0,
-        particle_count: 1,
+        particle_count: particle_count as u64,
         species_masses_kg: None,
         raw: BTreeMap::new(),
     }];
@@ -390,12 +403,14 @@ fn test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advan
     let surface = synthetic_surface_fields(64, 64);
     let forcing = ForwardStepForcing {
         dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.8)],
-        wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(0.3)],
+        wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(
+            wet_coefficient_s_inv,
+        )],
         wet_precipitating_fraction: ParticleForcingField::Uniform(0.5),
         decay_constant_s_inv: vec![0.1],
         rho_grad_over_rho: 0.0,
     };
-    let mut expected_mass = 1.0_f32;
+    let mut expected_mass = 1.0_f32 / particle_count as f32;
     for (index, wind) in [&still, &upward].into_iter().enumerate() {
         let met = MetTimeBracket {
             wind_t0: wind,
@@ -409,19 +424,35 @@ fn test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advan
         assert_eq!(report.step_index, index);
         assert_eq!(report.simulation_time_seconds, start + index as i64);
         assert_eq!(report.timestamp, format!("2024010100000{index}"));
-        assert_eq!(report.released_count, usize::from(index == 0));
+        assert_eq!(
+            report.released_count,
+            if index == 0 { particle_count } else { 0 }
+        );
+        assert_eq!(driver.particle_store().active_count(), particle_count);
         assert_eq!(driver.current_time_seconds(), start + index as i64 + 1);
         let dry_probability = if index == 0 {
             1.0 - (-0.2_f32).exp()
         } else {
             0.0
         };
-        let wet_probability = 0.5 * (1.0 - (-0.3_f32).exp());
+        let wet_probability = 0.5 * (1.0 - (-wet_coefficient_s_inv).exp());
         assert!((report.dry_deposition_probability[0][0] - dry_probability).abs() < 1.0e-5);
-        assert!((report.wet_deposition_probability[0][0] - wet_probability).abs() < 1.0e-5);
+
         expected_mass *= (1.0 - dry_probability) * (1.0 - wet_probability) * (-0.1_f32).exp();
         let particle = driver.particle_store().get(0).expect("released particle");
-        assert!((particle.mass[0] - expected_mass).abs() < 1.0e-5);
+        for slot in 0..particle_count {
+            let active = driver.particle_store().get(slot).expect("active prefix");
+            assert!((active.mass[0] - expected_mass).abs() < 1.0e-5);
+            assert!((report.dry_deposition_probability[slot][0] - dry_probability).abs() < 1.0e-5);
+            if wet_coefficient_s_inv > 0.0 {
+                assert!(
+                    (report.wet_deposition_probability[slot][0] - wet_probability).abs() < 1.0e-5
+                );
+            } else {
+                assert!(report.wet_deposition_probability.is_empty());
+            }
+        }
+        eprintln!("DRY-FORWARD-135: capacity=8 active={particle_count} compaction={} step={index} dt=1 href=2 vdep=0.8 wet_lambda={wet_coefficient_s_inv} wet_fraction=0.5 decay=0.1 mass={} dry={:?} wet={:?}", std::env::var("FLEXPART_GPU_COMPACTION").unwrap_or_default(), particle.mass[0], report.dry_deposition_probability, report.wet_deposition_probability);
         if index == 1 {
             assert!(
                 particle.pos_z > 4.0,

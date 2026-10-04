@@ -16,6 +16,11 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-10-04 — Accept capacity-backed dry-deposition IO for active-prefix dispatch (#135)
+**Impact**: none (resource bounds only; no deviation from the existing dry-deposition equations or numerical policy)
+**Files**: `src/gpu/deposition.rs`, `tests/forward_timeloop.rs`, `.github/workflows/software-wgpu.yml`
+**Validation**: Required-adapter WGSL tests exercise capacity 8 with active counts 1, 3 and 8, species/particle lane identity against a full-capacity device control, untouched trailing slots, and undersized-resource rejection before submission. Dry-only forward driver checks retain the existing tolerances with compaction on/off in the fused production path and compaction off in the separated path. The original mixed dry/wet/decay compaction-on case now reaches the excluded wet-deposition length mismatch; that blocker and the separated-path Hanna output mismatch remain separate follow-ups. Final results and adapter provenance are recorded in the issue #135 PR; this resource repair does not claim FLEXPART scientific parity.
+
 ### 2026-10-03 — Validate GPU gravitational settling velocity against FLEXPART 11.1 (#35)
 **Impact**: physics (new WGSL settling kernel; no existing physics altered)
 **Files**: `src/shaders/settling_velocity.wgsl`, `src/gpu/settling.rs`, `tests/settling_gpu.rs`, `fixtures/settling/`, `oracle/settling_oracle.f90`

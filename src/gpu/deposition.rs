@@ -135,6 +135,7 @@ impl DryDepositionDispatchKernel {
 ///
 /// Forcing and probability buffers hold one `vec4` per particle slot, lane `s`
 /// carrying species slot `s` ([`MAX_SPECIES`] lanes, unused lanes zero).
+/// Resources may retain full capacity while encoding only the particle dispatch prefix.
 pub struct DryDepositionIoBuffers {
     pub deposition_velocity_m_s: wgpu::Buffer,
     pub deposition_probability: wgpu::Buffer,
@@ -314,7 +315,10 @@ pub fn dispatch_dry_deposition_probability_gpu_with_kernel(
     Ok(())
 }
 
-/// Encode dry deposition dispatch into a caller-provided command encoder.
+/// Encode dry deposition for the current particle prefix into the caller's encoder.
+///
+/// Capacity-sized IO remains resident; each resource must cover every accessed
+/// slot. Encoding does not submit, synchronize, resize, or read back resources.
 pub fn encode_dry_deposition_probability_gpu_with_kernel(
     ctx: &GpuContext,
     particles: &ParticleBuffers,
@@ -327,12 +331,45 @@ pub fn encode_dry_deposition_probability_gpu_with_kernel(
     if particle_count == 0 {
         return Ok(());
     }
-    if io.particle_count != particle_count {
+    if io.particle_count < particle_count {
         return Err(GpuDryDepositionError::LengthMismatch {
             field: "deposition_velocity_m_s",
             expected: particle_count,
             actual: io.particle_count,
         });
+    }
+    // Public buffer handles can be replaced independently of their slot metadata.
+    // Validate actual storage before binding so a short buffer cannot silently
+    // lose accesses through WGSL robust bounds handling.
+    for (buffer, slot_size, field) in [
+        (
+            &particles.particle_buffer,
+            size_of::<Particle>(),
+            "particles",
+        ),
+        (
+            &io.deposition_velocity_m_s,
+            size_of::<[f32; MAX_SPECIES]>(),
+            "deposition_velocity_m_s",
+        ),
+        (
+            &io.deposition_probability,
+            size_of::<[f32; MAX_SPECIES]>(),
+            "deposition_probability",
+        ),
+    ] {
+        let required_bytes = particle_count
+            .checked_mul(slot_size)
+            .and_then(|bytes| u64::try_from(bytes).ok())
+            .ok_or(GpuDryDepositionError::SizeOverflow { field })?;
+        if buffer.size() < required_bytes {
+            return Err(GpuDryDepositionError::LengthMismatch {
+                field,
+                expected: particle_count,
+                actual: usize::try_from(buffer.size() / slot_size as u64)
+                    .map_err(|_| GpuDryDepositionError::SizeOverflow { field })?,
+            });
+        }
     }
     if !params.dt_seconds.is_finite() {
         return Err(GpuDryDepositionError::InvalidTimeStep {
@@ -572,6 +609,228 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_dry_deposition_capacity_io_preserves_active_prefix_and_tail() {
+        use sha2::{Digest, Sha256};
+
+        let ctx = pollster::block_on(GpuContext::new()).expect("prefix regression requires WGSL");
+        let kernel = DryDepositionDispatchKernel::new(&ctx);
+        let params = DryDepositionStepParams {
+            dt_seconds: 1.0,
+            reference_height_m: 2.0,
+        };
+        for active_count in [1, 3, 8] {
+            let particles: Vec<_> = (0..8)
+                .map(|slot| {
+                    let mut particle = particle_at(0.5, 0.5, 1.0, (slot + 1) as f32);
+                    particle.release_point = slot;
+                    particle.mass = [1.0, 2.0, 3.0, 4.0].map(|mass| mass * (slot + 1) as f32);
+                    if slot as usize >= active_count {
+                        particle.deactivate();
+                    }
+                    particle
+                })
+                .collect();
+            let velocities: Vec<_> = (0..8)
+                .map(|slot| [0.0, 0.4, 0.8, 1.2].map(|velocity| velocity + slot as f32 * 0.1))
+                .collect();
+            let mut prefix = ParticleBuffers::from_particles(&ctx, &particles);
+            prefix.set_dispatch_count(active_count);
+            let control = ParticleBuffers::from_particles(&ctx, &particles);
+            let prefix_io =
+                DryDepositionIoBuffers::from_species_velocities(&ctx, &velocities).expect("IO");
+            let control_io =
+                DryDepositionIoBuffers::from_species_velocities(&ctx, &velocities).expect("IO");
+            let sentinel = vec![[0.75; MAX_SPECIES]; 8];
+            ctx.queue.write_buffer(
+                &prefix_io.deposition_probability,
+                0,
+                bytemuck::cast_slice(&sentinel),
+            );
+            let mut encoder = ctx
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            encode_dry_deposition_probability_gpu_with_kernel(
+                &ctx,
+                &prefix,
+                &prefix_io,
+                params,
+                &kernel,
+                &mut encoder,
+            )
+            .expect("prefix encode");
+            encode_dry_deposition_probability_gpu_with_kernel(
+                &ctx,
+                &control,
+                &control_io,
+                params,
+                &kernel,
+                &mut encoder,
+            )
+            .expect("control encode");
+            ctx.queue.submit(Some(encoder.finish()));
+            let updated =
+                pollster::block_on(prefix.download_particles(&ctx)).expect("prefix readback");
+            let expected =
+                pollster::block_on(control.download_particles(&ctx)).expect("control readback");
+            let probability =
+                pollster::block_on(prefix_io.download_probabilities(&ctx)).expect("probability");
+            let control_probability = pollster::block_on(control_io.download_probabilities(&ctx))
+                .expect("control probability");
+            assert_eq!(prefix.capacity(), 8);
+            assert_eq!(prefix_io.particle_count(), 8);
+            for slot in 0..8 {
+                assert_eq!(updated[slot].release_point, particles[slot].release_point);
+                if slot < active_count {
+                    assert_eq!(
+                        bytemuck::bytes_of(&updated[slot]),
+                        bytemuck::bytes_of(&expected[slot])
+                    );
+                    assert_eq!(probability[slot], control_probability[slot]);
+                    for lane in 0..MAX_SPECIES {
+                        let survival = (-velocities[slot][lane] / 4.0_f32).exp();
+                        assert_relative_eq!(
+                            updated[slot].mass[lane],
+                            particles[slot].mass[lane] * survival,
+                            epsilon = 1.0e-6,
+                            max_relative = 1.0e-6
+                        );
+                    }
+                } else {
+                    assert_eq!(
+                        bytemuck::bytes_of(&updated[slot]),
+                        bytemuck::bytes_of(&particles[slot])
+                    );
+                    assert_eq!(
+                        probability[slot], sentinel[slot],
+                        "tail must not be encoded"
+                    );
+                    assert_eq!(control_probability[slot], [0.0; MAX_SPECIES]);
+                }
+            }
+            let mut input_hash = Sha256::new();
+            input_hash.update(bytemuck::cast_slice::<Particle, u8>(&particles));
+            input_hash.update(bytemuck::cast_slice::<[f32; MAX_SPECIES], u8>(&velocities));
+            input_hash.update(bytemuck::bytes_of(&DryDepositionDispatchParamsRaw {
+                particle_count: active_count as u32,
+                dt_seconds: 1.0,
+                reference_height_m: 2.0,
+                _pad0: 0.0,
+            }));
+            eprintln!("DRY-PREFIX-135: adapter={:?} capacity=8 active={active_count} input_sha256={:x} masses={:?} probabilities={probability:?}", ctx.adapter_info(), input_hash.finalize(), updated.iter().map(|p| p.mass).collect::<Vec<_>>());
+        }
+    }
+
+    #[test]
+    fn test_dry_deposition_invalid_prefix_resources_fail_before_submission() {
+        let ctx = pollster::block_on(GpuContext::new()).expect("bounds regression requires WGSL");
+        let kernel = DryDepositionDispatchKernel::new(&ctx);
+        let mut particles =
+            ParticleBuffers::from_particles(&ctx, &[particle_at(0.5, 0.5, 1.0, 1.0); 8]);
+        particles.set_dispatch_count(3);
+        let params = DryDepositionStepParams {
+            dt_seconds: 1.0,
+            reference_height_m: 2.0,
+        };
+        let mut encoder = ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let short_io =
+            DryDepositionIoBuffers::from_species_velocities(&ctx, &[[0.8; MAX_SPECIES]; 2])
+                .expect("short IO");
+        assert!(matches!(
+            encode_dry_deposition_probability_gpu_with_kernel(
+                &ctx,
+                &particles,
+                &short_io,
+                params,
+                &kernel,
+                &mut encoder
+            ),
+            Err(GpuDryDepositionError::LengthMismatch {
+                field: "deposition_velocity_m_s",
+                expected: 3,
+                actual: 2
+            })
+        ));
+        for field in [
+            "particles",
+            "deposition_velocity_m_s",
+            "deposition_probability",
+        ] {
+            let mut buffers =
+                ParticleBuffers::from_particles(&ctx, &[particle_at(0.5, 0.5, 1.0, 1.0); 8]);
+            buffers.set_dispatch_count(3);
+            let mut io =
+                DryDepositionIoBuffers::from_species_velocities(&ctx, &[[0.8; MAX_SPECIES]; 8])
+                    .expect("IO");
+            let slot_size = if field == "particles" {
+                size_of::<Particle>()
+            } else {
+                size_of::<[f32; MAX_SPECIES]>()
+            };
+            // Less than three complete slots, despite full-capacity metadata.
+            let short = ctx.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("undersized dry resource"),
+                size: (3 * slot_size - 4) as u64,
+                usage: wgpu::BufferUsages::STORAGE,
+                mapped_at_creation: false,
+            });
+            match field {
+                "particles" => buffers.particle_buffer = short,
+                "deposition_velocity_m_s" => io.deposition_velocity_m_s = short,
+                _ => io.deposition_probability = short,
+            }
+            let error = encode_dry_deposition_probability_gpu_with_kernel(
+                &ctx,
+                &buffers,
+                &io,
+                params,
+                &kernel,
+                &mut encoder,
+            )
+            .expect_err("short actual storage");
+            assert!(
+                matches!(error, GpuDryDepositionError::LengthMismatch { field: actual_field, expected: 3, actual: 2 } if actual_field == field)
+            );
+        }
+        let io = DryDepositionIoBuffers::from_species_velocities(&ctx, &[[0.8; MAX_SPECIES]; 8])
+            .expect("IO");
+        assert!(matches!(
+            encode_dry_deposition_probability_gpu_with_kernel(
+                &ctx,
+                &particles,
+                &io,
+                DryDepositionStepParams {
+                    dt_seconds: f32::NAN,
+                    ..params
+                },
+                &kernel,
+                &mut encoder
+            ),
+            Err(GpuDryDepositionError::InvalidTimeStep { .. })
+        ));
+        for reference_height_m in [0.0, -1.0, f32::INFINITY] {
+            assert!(matches!(
+                encode_dry_deposition_probability_gpu_with_kernel(
+                    &ctx,
+                    &particles,
+                    &io,
+                    DryDepositionStepParams {
+                        reference_height_m,
+                        ..params
+                    },
+                    &kernel,
+                    &mut encoder
+                ),
+                Err(GpuDryDepositionError::InvalidReferenceHeight { .. })
+            ));
+        }
+        // No command buffer is submitted on any invalid path.
+        drop(encoder);
+        eprintln!("DRY-BOUNDS-135: undersized IO/storage and invalid parameters rejected before submission; adapter={:?}", ctx.adapter_info());
     }
 
     #[test]

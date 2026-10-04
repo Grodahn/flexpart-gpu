@@ -34,6 +34,14 @@ jobs:
         working-directory: flexpart-gpu
         run: cargo fmt --all -- --check
 
+      - name: Install Lavapipe (software Vulkan)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers vulkan-tools
+          icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          test -n "$icd"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+
       - name: Run full Rust library test suite
         working-directory: flexpart-gpu
         run: cargo test --lib
@@ -55,14 +63,6 @@ jobs:
           test -s target/ci-gate/vertical-sampling/vertical-interface-w-production-oracle.json
           cargo test --test meteorology_contract
           python3 scripts/test_oracle_run_manifest.py
-
-      - name: Install Lavapipe (software Vulkan)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers vulkan-tools
-          icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
-          test -n "$icd"
-          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
 
       - name: Clone pinned FLEXPART 11.1 oracle
         run: |

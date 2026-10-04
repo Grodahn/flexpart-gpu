@@ -151,9 +151,7 @@ pub fn encode_langevin_fused_gpu(
     }
     let (pbl_nx, pbl_ny) = pbl.shape;
     if pbl_nx == 0 || pbl_ny == 0 {
-        return Err(GpuLangevinFusedError::ZeroPblShape {
-            shape: pbl.shape,
-        });
+        return Err(GpuLangevinFusedError::ZeroPblShape { shape: pbl.shape });
     }
 
     let pc_u32 = usize_to_u32(particle_count, "particle_count")?;

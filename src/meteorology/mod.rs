@@ -114,9 +114,7 @@ pub enum VerticalOrdering {
     Decreasing,
 }
 
-#[derive(
-    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
-)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldId {
     WindU,
@@ -155,9 +153,15 @@ impl FieldId {
     fn is_3d(self) -> bool {
         matches!(
             self,
-            Self::WindU | Self::WindV | Self::VerticalVelocity | Self::Temperature
-                | Self::SpecificHumidity | Self::Pressure | Self::AirDensity
-                | Self::DensityGradient | Self::CloudTotalWater
+            Self::WindU
+                | Self::WindV
+                | Self::VerticalVelocity
+                | Self::Temperature
+                | Self::SpecificHumidity
+                | Self::Pressure
+                | Self::AirDensity
+                | Self::DensityGradient
+                | Self::CloudTotalWater
         )
     }
 
@@ -239,7 +243,6 @@ pub enum SignConvention {
     SignedScalar,
 }
 
-
 /// Named physics requirement sets derived from the pinned FLEXPART 11.1 consumer trace.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
@@ -274,36 +277,241 @@ pub struct FieldSpec {
 }
 
 pub const FIELD_SPECS: &[FieldSpec] = &[
-    FieldSpec { id: FieldId::WindU, unit: Unit::MeterPerSecond, sign: SignConvention::PositiveEastward, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::Advection, RequirementSet::PblTurbulence] },
-    FieldSpec { id: FieldId::WindV, unit: Unit::MeterPerSecond, sign: SignConvention::PositiveNorthward, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::Advection, RequirementSet::PblTurbulence] },
-    FieldSpec { id: FieldId::VerticalVelocity, unit: Unit::MeterPerSecond, sign: SignConvention::PositiveUpward, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::Advection] },
-    FieldSpec { id: FieldId::Temperature, unit: Unit::Kelvin, sign: SignConvention::SignedScalar, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence, RequirementSet::Convection, RequirementSet::WetDeposition, RequirementSet::Settling] },
-    FieldSpec { id: FieldId::SpecificHumidity, unit: Unit::KilogramPerKilogram, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence, RequirementSet::Convection, RequirementSet::WetDeposition] },
-    FieldSpec { id: FieldId::Pressure, unit: Unit::Pascal, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::Convection] },
-    FieldSpec { id: FieldId::AirDensity, unit: Unit::KilogramPerCubicMeter, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence, RequirementSet::WetDeposition, RequirementSet::Settling] },
-    FieldSpec { id: FieldId::DensityGradient, unit: Unit::KilogramPerQuarticMeter, sign: SignConvention::SignedScalar, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence] },
-    FieldSpec { id: FieldId::SurfacePressure, unit: Unit::Pascal, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence, RequirementSet::Convection, RequirementSet::DryDeposition] },
-    FieldSpec { id: FieldId::Orography, unit: Unit::Meter, sign: SignConvention::SignedScalar, temporal_policy: TemporalPolicy::Static, requirement_sets: &[] },
-    FieldSpec { id: FieldId::LandSeaMask, unit: Unit::Fraction, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::Static, requirement_sets: &[] },
-    FieldSpec { id: FieldId::SnowDepth, unit: Unit::Meter, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::DryDeposition] },
-    FieldSpec { id: FieldId::WindU10m, unit: Unit::MeterPerSecond, sign: SignConvention::PositiveEastward, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence] },
-    FieldSpec { id: FieldId::WindV10m, unit: Unit::MeterPerSecond, sign: SignConvention::PositiveNorthward, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence] },
-    FieldSpec { id: FieldId::Temperature2m, unit: Unit::Kelvin, sign: SignConvention::SignedScalar, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence, RequirementSet::Convection, RequirementSet::DryDeposition] },
-    FieldSpec { id: FieldId::Dewpoint2m, unit: Unit::Kelvin, sign: SignConvention::SignedScalar, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence, RequirementSet::Convection, RequirementSet::DryDeposition] },
-    FieldSpec { id: FieldId::LargeScalePrecipitation, unit: Unit::KilogramPerSquareMeter, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::PrecipitationAmount, requirement_sets: &[RequirementSet::WetDeposition, RequirementSet::DryDeposition] },
-    FieldSpec { id: FieldId::ConvectivePrecipitation, unit: Unit::KilogramPerSquareMeter, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::PrecipitationAmount, requirement_sets: &[RequirementSet::WetDeposition, RequirementSet::DryDeposition] },
-    FieldSpec { id: FieldId::TotalCloudCover, unit: Unit::Fraction, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::WetDeposition] },
-    FieldSpec { id: FieldId::CloudTotalWater, unit: Unit::KilogramPerKilogram, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::WetDeposition] },
-    FieldSpec { id: FieldId::SensibleHeatFlux, unit: Unit::WattPerSquareMeter, sign: SignConvention::PositiveUpwardFlux, temporal_policy: TemporalPolicy::SurfaceFluxRate, requirement_sets: &[RequirementSet::PblTurbulence] },
-    FieldSpec { id: FieldId::SurfaceSolarRadiation, unit: Unit::WattPerSquareMeter, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::SurfaceFluxRate, requirement_sets: &[RequirementSet::DryDeposition] },
-    FieldSpec { id: FieldId::SurfaceStressEastward, unit: Unit::NewtonPerSquareMeter, sign: SignConvention::PositiveEastward, temporal_policy: TemporalPolicy::SurfaceFluxRate, requirement_sets: &[RequirementSet::PblTurbulence] },
-    FieldSpec { id: FieldId::SurfaceStressNorthward, unit: Unit::NewtonPerSquareMeter, sign: SignConvention::PositiveNorthward, temporal_policy: TemporalPolicy::SurfaceFluxRate, requirement_sets: &[RequirementSet::PblTurbulence] },
-    FieldSpec { id: FieldId::FrictionVelocity, unit: Unit::MeterPerSecond, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence, RequirementSet::DryDeposition] },
-    FieldSpec { id: FieldId::ConvectiveVelocityScale, unit: Unit::MeterPerSecond, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence] },
-    FieldSpec { id: FieldId::MixingHeight, unit: Unit::Meter, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence] },
-    FieldSpec { id: FieldId::TropopauseHeight, unit: Unit::Meter, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence] },
-    FieldSpec { id: FieldId::InverseObukhovLength, unit: Unit::PerMeter, sign: SignConvention::SignedScalar, temporal_policy: TemporalPolicy::Instantaneous, requirement_sets: &[RequirementSet::PblTurbulence, RequirementSet::DryDeposition] },
-    FieldSpec { id: FieldId::LandUseFractions, unit: Unit::Fraction, sign: SignConvention::NonNegative, temporal_policy: TemporalPolicy::Static, requirement_sets: &[RequirementSet::DryDeposition] },
+    FieldSpec {
+        id: FieldId::WindU,
+        unit: Unit::MeterPerSecond,
+        sign: SignConvention::PositiveEastward,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::Advection, RequirementSet::PblTurbulence],
+    },
+    FieldSpec {
+        id: FieldId::WindV,
+        unit: Unit::MeterPerSecond,
+        sign: SignConvention::PositiveNorthward,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::Advection, RequirementSet::PblTurbulence],
+    },
+    FieldSpec {
+        id: FieldId::VerticalVelocity,
+        unit: Unit::MeterPerSecond,
+        sign: SignConvention::PositiveUpward,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::Advection],
+    },
+    FieldSpec {
+        id: FieldId::Temperature,
+        unit: Unit::Kelvin,
+        sign: SignConvention::SignedScalar,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[
+            RequirementSet::PblTurbulence,
+            RequirementSet::Convection,
+            RequirementSet::WetDeposition,
+            RequirementSet::Settling,
+        ],
+    },
+    FieldSpec {
+        id: FieldId::SpecificHumidity,
+        unit: Unit::KilogramPerKilogram,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[
+            RequirementSet::PblTurbulence,
+            RequirementSet::Convection,
+            RequirementSet::WetDeposition,
+        ],
+    },
+    FieldSpec {
+        id: FieldId::Pressure,
+        unit: Unit::Pascal,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::Convection],
+    },
+    FieldSpec {
+        id: FieldId::AirDensity,
+        unit: Unit::KilogramPerCubicMeter,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[
+            RequirementSet::PblTurbulence,
+            RequirementSet::WetDeposition,
+            RequirementSet::Settling,
+        ],
+    },
+    FieldSpec {
+        id: FieldId::DensityGradient,
+        unit: Unit::KilogramPerQuarticMeter,
+        sign: SignConvention::SignedScalar,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::PblTurbulence],
+    },
+    FieldSpec {
+        id: FieldId::SurfacePressure,
+        unit: Unit::Pascal,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[
+            RequirementSet::PblTurbulence,
+            RequirementSet::Convection,
+            RequirementSet::DryDeposition,
+        ],
+    },
+    FieldSpec {
+        id: FieldId::Orography,
+        unit: Unit::Meter,
+        sign: SignConvention::SignedScalar,
+        temporal_policy: TemporalPolicy::Static,
+        requirement_sets: &[],
+    },
+    FieldSpec {
+        id: FieldId::LandSeaMask,
+        unit: Unit::Fraction,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::Static,
+        requirement_sets: &[],
+    },
+    FieldSpec {
+        id: FieldId::SnowDepth,
+        unit: Unit::Meter,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::DryDeposition],
+    },
+    FieldSpec {
+        id: FieldId::WindU10m,
+        unit: Unit::MeterPerSecond,
+        sign: SignConvention::PositiveEastward,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::PblTurbulence],
+    },
+    FieldSpec {
+        id: FieldId::WindV10m,
+        unit: Unit::MeterPerSecond,
+        sign: SignConvention::PositiveNorthward,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::PblTurbulence],
+    },
+    FieldSpec {
+        id: FieldId::Temperature2m,
+        unit: Unit::Kelvin,
+        sign: SignConvention::SignedScalar,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[
+            RequirementSet::PblTurbulence,
+            RequirementSet::Convection,
+            RequirementSet::DryDeposition,
+        ],
+    },
+    FieldSpec {
+        id: FieldId::Dewpoint2m,
+        unit: Unit::Kelvin,
+        sign: SignConvention::SignedScalar,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[
+            RequirementSet::PblTurbulence,
+            RequirementSet::Convection,
+            RequirementSet::DryDeposition,
+        ],
+    },
+    FieldSpec {
+        id: FieldId::LargeScalePrecipitation,
+        unit: Unit::KilogramPerSquareMeter,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::PrecipitationAmount,
+        requirement_sets: &[RequirementSet::WetDeposition, RequirementSet::DryDeposition],
+    },
+    FieldSpec {
+        id: FieldId::ConvectivePrecipitation,
+        unit: Unit::KilogramPerSquareMeter,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::PrecipitationAmount,
+        requirement_sets: &[RequirementSet::WetDeposition, RequirementSet::DryDeposition],
+    },
+    FieldSpec {
+        id: FieldId::TotalCloudCover,
+        unit: Unit::Fraction,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::WetDeposition],
+    },
+    FieldSpec {
+        id: FieldId::CloudTotalWater,
+        unit: Unit::KilogramPerKilogram,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::WetDeposition],
+    },
+    FieldSpec {
+        id: FieldId::SensibleHeatFlux,
+        unit: Unit::WattPerSquareMeter,
+        sign: SignConvention::PositiveUpwardFlux,
+        temporal_policy: TemporalPolicy::SurfaceFluxRate,
+        requirement_sets: &[RequirementSet::PblTurbulence],
+    },
+    FieldSpec {
+        id: FieldId::SurfaceSolarRadiation,
+        unit: Unit::WattPerSquareMeter,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::SurfaceFluxRate,
+        requirement_sets: &[RequirementSet::DryDeposition],
+    },
+    FieldSpec {
+        id: FieldId::SurfaceStressEastward,
+        unit: Unit::NewtonPerSquareMeter,
+        sign: SignConvention::PositiveEastward,
+        temporal_policy: TemporalPolicy::SurfaceFluxRate,
+        requirement_sets: &[RequirementSet::PblTurbulence],
+    },
+    FieldSpec {
+        id: FieldId::SurfaceStressNorthward,
+        unit: Unit::NewtonPerSquareMeter,
+        sign: SignConvention::PositiveNorthward,
+        temporal_policy: TemporalPolicy::SurfaceFluxRate,
+        requirement_sets: &[RequirementSet::PblTurbulence],
+    },
+    FieldSpec {
+        id: FieldId::FrictionVelocity,
+        unit: Unit::MeterPerSecond,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::PblTurbulence, RequirementSet::DryDeposition],
+    },
+    FieldSpec {
+        id: FieldId::ConvectiveVelocityScale,
+        unit: Unit::MeterPerSecond,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::PblTurbulence],
+    },
+    FieldSpec {
+        id: FieldId::MixingHeight,
+        unit: Unit::Meter,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::PblTurbulence],
+    },
+    FieldSpec {
+        id: FieldId::TropopauseHeight,
+        unit: Unit::Meter,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::PblTurbulence],
+    },
+    FieldSpec {
+        id: FieldId::InverseObukhovLength,
+        unit: Unit::PerMeter,
+        sign: SignConvention::SignedScalar,
+        temporal_policy: TemporalPolicy::Instantaneous,
+        requirement_sets: &[RequirementSet::PblTurbulence, RequirementSet::DryDeposition],
+    },
+    FieldSpec {
+        id: FieldId::LandUseFractions,
+        unit: Unit::Fraction,
+        sign: SignConvention::NonNegative,
+        temporal_policy: TemporalPolicy::Static,
+        requirement_sets: &[RequirementSet::DryDeposition],
+    },
 ];
 
 fn requirements_for(set: RequirementSet) -> Requirements {
@@ -522,7 +730,9 @@ impl Snapshot {
         if self.vertical_coordinate.kind == VerticalCoordinateKind::HybridSigmaPressure
             && !seen.contains(&FieldId::SurfacePressure)
         {
-            return Err(ContractError::MissingRequiredField(FieldId::SurfacePressure));
+            return Err(ContractError::MissingRequiredField(
+                FieldId::SurfacePressure,
+            ));
         }
 
         for id in &requirements.required_fields {
@@ -673,23 +883,16 @@ fn validate_grid(grid: &HorizontalGrid) -> Result<(), ContractError> {
     // complete Y cell coverage rather than only the origin so #31 never has to
     // guess how an apparently valid grid behaves beyond a pole.
     let south_edge = grid.ylat0_deg - 0.5 * grid.dy_deg;
-    let north_edge =
-        grid.ylat0_deg + (grid.ny.saturating_sub(1) as f64 + 0.5) * grid.dy_deg;
+    let north_edge = grid.ylat0_deg + (grid.ny.saturating_sub(1) as f64 + 0.5) * grid.dy_deg;
     if south_edge < -90.0 - GRID_TOLERANCE_DEG || north_edge > 90.0 + GRID_TOLERANCE_DEG {
         return Err(ContractError::InvalidHorizontalGrid);
     }
 
     let (lon_min, lon_max, origin_valid) = match grid.longitude_domain {
-        LongitudeDomain::Minus180To180 => (
-            -180.0,
-            180.0,
-            (-180.0..=180.0).contains(&grid.xlon0_deg),
-        ),
-        LongitudeDomain::ZeroTo360 => (
-            0.0,
-            360.0,
-            (0.0..360.0).contains(&grid.xlon0_deg),
-        ),
+        LongitudeDomain::Minus180To180 => {
+            (-180.0, 180.0, (-180.0..=180.0).contains(&grid.xlon0_deg))
+        }
+        LongitudeDomain::ZeroTo360 => (0.0, 360.0, (0.0..360.0).contains(&grid.xlon0_deg)),
     };
     if !origin_valid {
         return Err(ContractError::InvalidHorizontalGrid);
@@ -705,11 +908,8 @@ fn validate_grid(grid: &HorizontalGrid) -> Result<(), ContractError> {
     // longitude-domain seam.
     if !grid.is_periodic_x() {
         let west_edge = grid.xlon0_deg - 0.5 * grid.dx_deg;
-        let east_edge =
-            grid.xlon0_deg + (grid.nx.saturating_sub(1) as f64 + 0.5) * grid.dx_deg;
-        if west_edge < lon_min - GRID_TOLERANCE_DEG
-            || east_edge > lon_max + GRID_TOLERANCE_DEG
-        {
+        let east_edge = grid.xlon0_deg + (grid.nx.saturating_sub(1) as f64 + 0.5) * grid.dx_deg;
+        if west_edge < lon_min - GRID_TOLERANCE_DEG || east_edge > lon_max + GRID_TOLERANCE_DEG {
             return Err(ContractError::InvalidHorizontalGrid);
         }
     }
@@ -875,7 +1075,10 @@ fn validate_time(id: FieldId, time: &FieldTime) -> Result<(), ContractError> {
             }
         }
         TemporalPolicy::SurfaceFluxRate => {
-            if !matches!(time.kind, TemporalKind::Instantaneous | TemporalKind::IntervalMean) {
+            if !matches!(
+                time.kind,
+                TemporalKind::Instantaneous | TemporalKind::IntervalMean
+            ) {
                 return Err(ContractError::InvalidTemporalMetadata(id));
             }
             match time.kind {
@@ -920,12 +1123,18 @@ fn validate_domain(field: &Field) -> Result<(), ContractError> {
     if matches!(
         field.id,
         FieldId::LandSeaMask | FieldId::TotalCloudCover | FieldId::LandUseFractions
-    ) && field.values.iter().any(|value| !(0.0..=1.0).contains(value))
+    ) && field
+        .values
+        .iter()
+        .any(|value| !(0.0..=1.0).contains(value))
     {
         return Err(ContractError::InvalidValueDomain(field.id));
     }
     if field.id == FieldId::SpecificHumidity
-        && field.values.iter().any(|value| !(0.0..=1.0).contains(value))
+        && field
+            .values
+            .iter()
+            .any(|value| !(0.0..=1.0).contains(value))
     {
         return Err(ContractError::InvalidValueDomain(field.id));
     }
@@ -945,8 +1154,11 @@ fn validate_domain(field: &Field) -> Result<(), ContractError> {
     }
     if matches!(
         field.id,
-        FieldId::Temperature | FieldId::Temperature2m | FieldId::Dewpoint2m
-            | FieldId::Pressure | FieldId::SurfacePressure
+        FieldId::Temperature
+            | FieldId::Temperature2m
+            | FieldId::Dewpoint2m
+            | FieldId::Pressure
+            | FieldId::SurfacePressure
     ) && field.values.iter().any(|value| *value <= 0.0)
     {
         return Err(ContractError::InvalidValueDomain(field.id));
@@ -1024,7 +1236,10 @@ mod tests {
                 field(FieldId::VerticalVelocity, vec![0.0; 4]),
                 field(FieldId::Temperature, vec![280.0; 4]),
                 field(FieldId::SpecificHumidity, vec![0.004; 4]),
-                field(FieldId::Pressure, vec![90_000.0, 80_000.0, 90_000.0, 80_000.0]),
+                field(
+                    FieldId::Pressure,
+                    vec![90_000.0, 80_000.0, 90_000.0, 80_000.0],
+                ),
             ],
         }
     }
@@ -1067,13 +1282,9 @@ mod tests {
     fn advection_requirement_is_wind_only() {
         assert_eq!(
             Requirements::advection().required_fields,
-            [
-                FieldId::WindU,
-                FieldId::WindV,
-                FieldId::VerticalVelocity,
-            ]
-            .into_iter()
-            .collect()
+            [FieldId::WindU, FieldId::WindV, FieldId::VerticalVelocity,]
+                .into_iter()
+                .collect()
         );
     }
 
@@ -1116,7 +1327,10 @@ mod tests {
         let end = docs
             .find("<!-- END GENERATED FIELD SPEC MATRIX -->")
             .expect("generated field-spec matrix end marker");
-        assert!(end > begin, "generated field-spec matrix markers out of order");
+        assert!(
+            end > begin,
+            "generated field-spec matrix markers out of order"
+        );
         let block = &docs[begin..end];
 
         for spec in FIELD_SPECS {
@@ -1143,7 +1357,10 @@ mod tests {
         let end = docs
             .find("<!-- END DETAILED FIELD TRACE MATRIX -->")
             .expect("detailed field-trace matrix end marker");
-        assert!(end > begin, "detailed field-trace matrix markers out of order");
+        assert!(
+            end > begin,
+            "detailed field-trace matrix markers out of order"
+        );
         let block = &docs[begin..end];
 
         for spec in FIELD_SPECS {
@@ -1172,10 +1389,14 @@ mod tests {
     #[test]
     fn missing_field_fails_closed() {
         let mut value = snapshot();
-        value.fields.retain(|field| field.id != FieldId::VerticalVelocity);
+        value
+            .fields
+            .retain(|field| field.id != FieldId::VerticalVelocity);
         assert_eq!(
             value.validate(&Requirements::advection()),
-            Err(ContractError::MissingRequiredField(FieldId::VerticalVelocity))
+            Err(ContractError::MissingRequiredField(
+                FieldId::VerticalVelocity
+            ))
         );
     }
 
@@ -1355,7 +1576,9 @@ mod tests {
 
         assert_eq!(
             value.validate(&Requirements::advection()),
-            Err(ContractError::InconsistentSnapshotTime(FieldId::Temperature))
+            Err(ContractError::InconsistentSnapshotTime(
+                FieldId::Temperature
+            ))
         );
 
         let mut value = snapshot();
@@ -1367,7 +1590,9 @@ mod tests {
         temperature.time.calendar = Calendar::ProlepticGregorian;
         assert_eq!(
             value.validate(&Requirements::advection()),
-            Err(ContractError::InconsistentSnapshotTime(FieldId::Temperature))
+            Err(ContractError::InconsistentSnapshotTime(
+                FieldId::Temperature
+            ))
         );
     }
 
@@ -1429,7 +1654,10 @@ mod tests {
         let mut encoded = serde_json::to_value(snapshot()).expect("serialize snapshot");
         encoded["fields"][0]["time"]["calendar"] = serde_json::Value::String("julian".into());
         let decoded = serde_json::from_value::<Snapshot>(encoded);
-        assert!(decoded.is_err(), "unsupported calendars must fail deserialization");
+        assert!(
+            decoded.is_err(),
+            "unsupported calendars must fail deserialization"
+        );
     }
 
     #[test]
@@ -1512,7 +1740,9 @@ mod tests {
 
         assert_eq!(
             value.validate(&Requirements::advection()),
-            Err(ContractError::MissingRequiredField(FieldId::SurfacePressure))
+            Err(ContractError::MissingRequiredField(
+                FieldId::SurfacePressure
+            ))
         );
     }
 
@@ -1712,7 +1942,9 @@ mod tests {
         });
         assert_eq!(
             value.validate(&Requirements::advection()),
-            Err(ContractError::InvalidTemporalMetadata(FieldId::LargeScalePrecipitation))
+            Err(ContractError::InvalidTemporalMetadata(
+                FieldId::LargeScalePrecipitation
+            ))
         );
     }
 }

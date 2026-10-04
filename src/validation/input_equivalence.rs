@@ -33,9 +33,7 @@ impl InputEquivalenceVerdict {
     pub fn parse(value: &str) -> Result<Self, InputEquivalenceError> {
         match value {
             "INPUT_EQUIVALENT" => Ok(Self::InputEquivalent),
-            "INPUT_EQUIVALENCE_NOT_DEMONSTRATED" => {
-                Ok(Self::InputEquivalenceNotDemonstrated)
-            }
+            "INPUT_EQUIVALENCE_NOT_DEMONSTRATED" => Ok(Self::InputEquivalenceNotDemonstrated),
             "INPUT_MISMATCH" => Ok(Self::InputMismatch),
             "INTEGRITY_ERROR" => Ok(Self::IntegrityError),
             other => Err(InputEquivalenceError::UnknownVerdict(other.to_string())),
@@ -124,8 +122,7 @@ mod tests {
             InputEquivalenceVerdict::IntegrityError,
         ] {
             assert_eq!(
-                InputEquivalenceVerdict::parse(verdict.as_str())
-                    .expect("parse must succeed"),
+                InputEquivalenceVerdict::parse(verdict.as_str()).expect("parse must succeed"),
                 verdict
             );
         }

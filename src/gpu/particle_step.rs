@@ -20,13 +20,15 @@ use bytemuck::{Pod, Zeroable};
 use thiserror::Error;
 use wgpu::util::DeviceExt;
 
-use crate::physics::{philox_counter_add, LangevinStep, PhiloxCounter, PhiloxKey, VelocityToGridScale};
-
-use super::{
-    render_shader_with_workgroup_size, runtime_workgroup_size, GpuContext,
-    ParticleBuffers, PblBuffers, WorkgroupKernel,
+use crate::physics::{
+    philox_counter_add, LangevinStep, PhiloxCounter, PhiloxKey, VelocityToGridScale,
 };
+
 use super::buffers::DualWindBuffers;
+use super::{
+    render_shader_with_workgroup_size, runtime_workgroup_size, GpuContext, ParticleBuffers,
+    PblBuffers, WorkgroupKernel,
+};
 
 const SHADER_TEMPLATE: &str = include_str!("../shaders/particle_step.wgsl");
 
@@ -101,9 +103,27 @@ impl PackedPblBuffer {
         let component_bytes = (cell_count * std::mem::size_of::<f32>()) as u64;
 
         encoder.copy_buffer_to_buffer(&pbl.ustar, 0, &self.buffer, 0, component_bytes);
-        encoder.copy_buffer_to_buffer(&pbl.wstar, 0, &self.buffer, component_bytes, component_bytes);
-        encoder.copy_buffer_to_buffer(&pbl.hmix, 0, &self.buffer, 2 * component_bytes, component_bytes);
-        encoder.copy_buffer_to_buffer(&pbl.oli, 0, &self.buffer, 3 * component_bytes, component_bytes);
+        encoder.copy_buffer_to_buffer(
+            &pbl.wstar,
+            0,
+            &self.buffer,
+            component_bytes,
+            component_bytes,
+        );
+        encoder.copy_buffer_to_buffer(
+            &pbl.hmix,
+            0,
+            &self.buffer,
+            2 * component_bytes,
+            component_bytes,
+        );
+        encoder.copy_buffer_to_buffer(
+            &pbl.oli,
+            0,
+            &self.buffer,
+            3 * component_bytes,
+            component_bytes,
+        );
     }
 
     /// Allocate-and-pack (legacy helper for standalone dispatch).
@@ -140,7 +160,10 @@ impl PackedDepositionBuffer {
         });
         buffer.slice(..).get_mapped_range_mut().fill(0);
         buffer.unmap();
-        Self { buffer, particle_count }
+        Self {
+            buffer,
+            particle_count,
+        }
     }
 
     /// Write deposition arrays into this persistent buffer via queue writes.
@@ -157,9 +180,21 @@ impl PackedDepositionBuffer {
         debug_assert_eq!(precipitating_fraction.len(), n);
 
         let stride = (n * std::mem::size_of::<f32>()) as u64;
-        ctx.queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(deposition_velocity_m_s));
-        ctx.queue.write_buffer(&self.buffer, stride, bytemuck::cast_slice(scavenging_coefficient_s_inv));
-        ctx.queue.write_buffer(&self.buffer, 2 * stride, bytemuck::cast_slice(precipitating_fraction));
+        ctx.queue.write_buffer(
+            &self.buffer,
+            0,
+            bytemuck::cast_slice(deposition_velocity_m_s),
+        );
+        ctx.queue.write_buffer(
+            &self.buffer,
+            stride,
+            bytemuck::cast_slice(scavenging_coefficient_s_inv),
+        );
+        ctx.queue.write_buffer(
+            &self.buffer,
+            2 * stride,
+            bytemuck::cast_slice(precipitating_fraction),
+        );
     }
 
     /// Write all zeros (no deposition) into this persistent buffer.
@@ -331,13 +366,13 @@ impl ParticleStepDispatchKernel {
                             },
                             count: None,
                         },
-                        storage_ro(1),  // wind_u_t0
-                        storage_ro(2),  // wind_v_t0
-                        storage_ro(3),  // wind_w_t0
-                        storage_ro(4),  // wind_u_t1
-                        storage_ro(5),  // wind_v_t1
-                        storage_ro(6),  // wind_w_t1
-                        storage_ro(7),  // packed_pbl
+                        storage_ro(1), // wind_u_t0
+                        storage_ro(2), // wind_v_t0
+                        storage_ro(3), // wind_w_t0
+                        storage_ro(4), // wind_u_t1
+                        storage_ro(5), // wind_v_t1
+                        storage_ro(6), // wind_w_t1
+                        storage_ro(7), // packed_pbl
                         // 8: uniform params
                         wgpu::BindGroupLayoutEntry {
                             binding: 8,
@@ -349,7 +384,7 @@ impl ParticleStepDispatchKernel {
                             },
                             count: None,
                         },
-                        storage_ro(9),  // packed_deposition
+                        storage_ro(9), // packed_deposition
                     ],
                 });
 
@@ -454,16 +489,46 @@ fn create_bind_group<'a>(
         label: Some("particle_step_bg"),
         layout,
         entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: particles.particle_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: dual_wind.u_ms_t0.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: dual_wind.v_ms_t0.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 3, resource: dual_wind.w_ms_t0.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 4, resource: dual_wind.u_ms_t1.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 5, resource: dual_wind.v_ms_t1.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 6, resource: dual_wind.w_ms_t1.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 7, resource: packed_pbl.buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 8, resource: params_buffer.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 9, resource: packed_deposition.buffer.as_entire_binding() },
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: particles.particle_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: dual_wind.u_ms_t0.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: dual_wind.v_ms_t0.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: dual_wind.w_ms_t0.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: dual_wind.u_ms_t1.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: dual_wind.v_ms_t1.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 6,
+                resource: dual_wind.w_ms_t1.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 7,
+                resource: packed_pbl.buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 8,
+                resource: params_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 9,
+                resource: packed_deposition.buffer.as_entire_binding(),
+            },
         ],
     })
 }
@@ -559,8 +624,16 @@ pub fn encode_particle_step_gpu_persistent(
     }
 
     let pc_u32 = usize_to_u32(particle_count, "particle_count")?;
-    let params = build_params(input, pc_u32, resources.wind_shape, resources.packed_pbl.shape, key, base_counter)?;
-    ctx.queue.write_buffer(&resources.params_buffer, 0, bytemuck::bytes_of(&params));
+    let params = build_params(
+        input,
+        pc_u32,
+        resources.wind_shape,
+        resources.packed_pbl.shape,
+        key,
+        base_counter,
+    )?;
+    ctx.queue
+        .write_buffer(&resources.params_buffer, 0, bytemuck::bytes_of(&params));
 
     {
         let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -616,7 +689,14 @@ pub fn encode_particle_step_gpu(
     }
 
     let pc_u32 = usize_to_u32(particle_count, "particle_count")?;
-    let params = build_params(input, pc_u32, dual_wind.shape, packed_pbl.shape, key, base_counter)?;
+    let params = build_params(
+        input,
+        pc_u32,
+        dual_wind.shape,
+        packed_pbl.shape,
+        key,
+        base_counter,
+    )?;
 
     let params_buffer = ctx
         .device
@@ -627,8 +707,13 @@ pub fn encode_particle_step_gpu(
         });
 
     let bind_group = create_bind_group(
-        ctx, &kernel.bind_group_layout,
-        particles, dual_wind, packed_pbl, &params_buffer, packed_deposition,
+        ctx,
+        &kernel.bind_group_layout,
+        particles,
+        dual_wind,
+        packed_pbl,
+        &params_buffer,
+        packed_deposition,
     );
 
     {

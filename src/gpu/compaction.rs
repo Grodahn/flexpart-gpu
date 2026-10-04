@@ -104,8 +104,7 @@ impl CompactionPipelines {
     #[must_use]
     pub fn new(ctx: &GpuContext) -> Self {
         let workgroup_size_x = COMPACTION_WORKGROUP_SIZE;
-        let shader_source =
-            render_shader_with_workgroup_size(SHADER_TEMPLATE, workgroup_size_x);
+        let shader_source = render_shader_with_workgroup_size(SHADER_TEMPLATE, workgroup_size_x);
         let shader = ctx.load_shader("compaction_shader", &shader_source);
 
         let bind_group_layout =
@@ -287,17 +286,10 @@ impl CompactionBuffers {
     /// # Errors
     ///
     /// Returns [`GpuBufferError`] on readback failure.
-    pub async fn download_active_count(
-        &self,
-        ctx: &GpuContext,
-    ) -> Result<u32, GpuBufferError> {
-        let data = download_buffer_typed::<u32>(
-            ctx,
-            &self.active_count_buf,
-            1,
-            "compaction_active_count",
-        )
-        .await?;
+    pub async fn download_active_count(&self, ctx: &GpuContext) -> Result<u32, GpuBufferError> {
+        let data =
+            download_buffer_typed::<u32>(ctx, &self.active_count_buf, 1, "compaction_active_count")
+                .await?;
         Ok(data[0])
     }
 }
@@ -330,13 +322,9 @@ pub async fn compact_active_particles(
 
     encode_and_submit_compaction(ctx, particles, buffers, pipelines)?;
 
-    let active_counts = download_buffer_typed::<u32>(
-        ctx,
-        &buffers.active_count_buf,
-        1,
-        "compaction_active_count",
-    )
-    .await?;
+    let active_counts =
+        download_buffer_typed::<u32>(ctx, &buffers.active_count_buf, 1, "compaction_active_count")
+            .await?;
 
     Ok(CompactionResult {
         active_count: active_counts[0],
@@ -417,13 +405,13 @@ pub fn encode_compaction(
         _pad1: 0,
     };
 
-    let params_buffer =
-        ctx.device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("compaction_params"),
-                contents: bytemuck::bytes_of(&params),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
+    let params_buffer = ctx
+        .device
+        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("compaction_params"),
+            contents: bytemuck::bytes_of(&params),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
 
     let bind_group =
         create_compaction_bind_group(ctx, particles, buffers, pipelines, &params_buffer);
@@ -465,13 +453,13 @@ pub fn encode_compaction_with_reorder(
         _pad1: 0,
     };
 
-    let params_buffer =
-        ctx.device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("compaction_reorder_params"),
-                contents: bytemuck::bytes_of(&params),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
+    let params_buffer = ctx
+        .device
+        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("compaction_reorder_params"),
+            contents: bytemuck::bytes_of(&params),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
 
     let bind_group =
         create_compaction_bind_group(ctx, particles, buffers, pipelines, &params_buffer);
@@ -613,10 +601,9 @@ mod tests {
         ))
         .expect("compaction succeeds");
 
-        let indices = pollster::block_on(
-            buffers.download_compacted_indices(&ctx, result.active_count),
-        )
-        .expect("index download succeeds");
+        let indices =
+            pollster::block_on(buffers.download_compacted_indices(&ctx, result.active_count))
+                .expect("index download succeeds");
 
         Some((result, indices))
     }

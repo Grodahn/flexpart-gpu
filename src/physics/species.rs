@@ -259,7 +259,10 @@ mod tests {
         let mut species = test_species(None, None, None, None, None, None);
         species.dry_deposition_velocity = Some(0.02);
         let input = gas_deposition_input(&species).expect("constant velocity enabled");
-        assert_eq!(input.relative_diffusivity_to_h2o.to_bits(), 0.0_f32.to_bits());
+        assert_eq!(
+            input.relative_diffusivity_to_h2o.to_bits(),
+            0.0_f32.to_bits()
+        );
         assert_eq!(input.constant_dry_velocity_m_s, Some(0.02));
 
         species.relative_diffusivity = Some(0.8);

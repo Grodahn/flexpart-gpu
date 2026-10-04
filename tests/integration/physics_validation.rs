@@ -21,8 +21,7 @@ use flexpart_gpu::gpu::GpuError;
 use flexpart_gpu::io::TimeBoundsBehavior;
 use flexpart_gpu::physics::VelocityToGridScale;
 use flexpart_gpu::simulation::{
-    ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket,
-    TimeLoopError,
+    ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket, TimeLoopError,
 };
 use flexpart_gpu::wind::{SurfaceFields, WindField3D, WindFieldGrid};
 use ndarray::Array1;
@@ -62,9 +61,15 @@ const PI: f32 = std::f32::consts::PI;
 
 fn wind_grid() -> WindFieldGrid {
     WindFieldGrid::new(
-        NX, NY, WIND_NZ, WIND_NZ, WIND_NZ,
-        DX_DEG as f32, DY_DEG as f32,
-        XLON0 as f32, YLAT0 as f32,
+        NX,
+        NY,
+        WIND_NZ,
+        WIND_NZ,
+        WIND_NZ,
+        DX_DEG as f32,
+        DY_DEG as f32,
+        XLON0 as f32,
+        YLAT0 as f32,
         Array1::from_vec(WIND_HEIGHTS.to_vec()),
     )
 }
@@ -184,8 +189,8 @@ fn physics_validation_advection_turbulence_pbl() {
     };
 
     let forcing = ForwardStepForcing::default();
-    let reports = pollster::block_on(driver.run_to_end(&met, &forcing))
-        .expect("simulation should complete");
+    let reports =
+        pollster::block_on(driver.run_to_end(&met, &forcing)).expect("simulation should complete");
 
     assert_eq!(
         reports.len(),
@@ -217,10 +222,8 @@ fn physics_validation_advection_turbulence_pbl() {
     // --- 3. Horizontal advection direction ---
     let release_grid_x = (RELEASE_LON - XLON0) / DX_DEG;
     let release_grid_y = (RELEASE_LAT - YLAT0) / DY_DEG;
-    let mean_gx: f64 =
-        active.iter().map(|p| p.grid_x()).sum::<f64>() / active_count as f64;
-    let mean_gy: f64 =
-        active.iter().map(|p| p.grid_y()).sum::<f64>() / active_count as f64;
+    let mean_gx: f64 = active.iter().map(|p| p.grid_x()).sum::<f64>() / active_count as f64;
+    let mean_gy: f64 = active.iter().map(|p| p.grid_y()).sum::<f64>() / active_count as f64;
 
     // u=+5 m/s → particles should move in +x (eastward)
     assert!(

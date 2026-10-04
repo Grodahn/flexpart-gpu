@@ -9,11 +9,10 @@ use flexpart_gpu::gpu::{
     accumulate_concentration_grid_gpu, advect_particles_gpu, apply_dry_deposition_step_gpu,
     apply_wet_deposition_step_gpu, auto_tune_key_kernels, compute_hanna_params_gpu,
     encode_langevin_fused_gpu, save_autotune_report_default,
-    update_particles_turbulence_langevin_gpu, ConcentrationGridShape,
-    ConcentrationGriddingParams, DryDepositionStepParams, GpuContext, GpuError,
-    LangevinFusedDispatchKernel, MAX_OUTPUT_LEVELS, ParticleBuffers,
+    update_particles_turbulence_langevin_gpu, ConcentrationGridShape, ConcentrationGriddingParams,
+    DryDepositionStepParams, GpuContext, GpuError, LangevinFusedDispatchKernel, ParticleBuffers,
     PblBuffers, ScopedWorkgroupOverride, WetDepositionStepParams, WindBuffers,
-    WorkgroupAutoTuneOptions, WorkgroupKernel,
+    WorkgroupAutoTuneOptions, WorkgroupKernel, MAX_OUTPUT_LEVELS,
 };
 use flexpart_gpu::io::{
     compute_pbl_parameters_from_met, interpolate_surface_fields_linear,
@@ -484,11 +483,11 @@ fn maybe_run_workgroup_autotune(runtime: BenchRuntimeConfig, ctx: &GpuContext) {
                     .entry(candidate)
                     .or_insert_with(|| LangevinFusedDispatchKernel::new(ctx));
                 let started = std::time::Instant::now();
-                let mut encoder = ctx
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("bench_autotune_langevin_fused"),
-                    });
+                let mut encoder =
+                    ctx.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("bench_autotune_langevin_fused"),
+                        });
                 let next_counter = encode_langevin_fused_gpu(
                     ctx,
                     &particle_buffers,

@@ -7,9 +7,9 @@
 use flexpart_gpu::constants::HREF;
 use flexpart_gpu::gpu::{
     accumulate_concentration_grid_gpu, apply_dry_deposition_step_gpu,
-    apply_wet_deposition_step_gpu, DryDepositionStepParams, GpuContext, GpuError,
-    ParticleBuffers, WetDepositionStepParams,
-    ConcentrationGridShape, ConcentrationGriddingParams, MAX_OUTPUT_LEVELS,
+    apply_wet_deposition_step_gpu, ConcentrationGridShape, ConcentrationGriddingParams,
+    DryDepositionStepParams, GpuContext, GpuError, ParticleBuffers, WetDepositionStepParams,
+    MAX_OUTPUT_LEVELS,
 };
 use flexpart_gpu::particles::{Particle, ParticleInit, MAX_SPECIES};
 
@@ -17,12 +17,7 @@ use flexpart_gpu::particles::{Particle, ParticleInit, MAX_SPECIES};
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn make_particle(
-    cell_x: i32,
-    cell_y: i32,
-    pos_z_m: f32,
-    species0_mass: f32,
-) -> Particle {
+fn make_particle(cell_x: i32, cell_y: i32, pos_z_m: f32, species0_mass: f32) -> Particle {
     let mut mass = [0.0_f32; MAX_SPECIES];
     mass[0] = species0_mass;
     Particle::new(&ParticleInit {
@@ -319,8 +314,8 @@ fn total_mass_conserved_with_deposition_gpu() {
 
     for _step in 0..n_steps {
         let mass_before = {
-            let ps = pollster::block_on(particle_buffers.download_particles(&ctx))
-                .expect("readback");
+            let ps =
+                pollster::block_on(particle_buffers.download_particles(&ctx)).expect("readback");
             total_mass_species0(&ps)
         };
 
@@ -336,8 +331,8 @@ fn total_mass_conserved_with_deposition_gpu() {
         .expect("dry deposition should succeed");
 
         let mass_after_dry = {
-            let ps = pollster::block_on(particle_buffers.download_particles(&ctx))
-                .expect("readback");
+            let ps =
+                pollster::block_on(particle_buffers.download_particles(&ctx)).expect("readback");
             total_mass_species0(&ps)
         };
         let dry_removed = mass_before - mass_after_dry;
@@ -353,8 +348,8 @@ fn total_mass_conserved_with_deposition_gpu() {
         .expect("wet deposition should succeed");
 
         let mass_after_wet = {
-            let ps = pollster::block_on(particle_buffers.download_particles(&ctx))
-                .expect("readback");
+            let ps =
+                pollster::block_on(particle_buffers.download_particles(&ctx)).expect("readback");
             total_mass_species0(&ps)
         };
         let wet_removed = mass_after_dry - mass_after_wet;

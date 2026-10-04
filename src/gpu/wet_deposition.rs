@@ -464,7 +464,11 @@ pub fn encode_wet_deposition_probability_gpu_with_kernel(
         });
         cpass.set_pipeline(&kernel.pipeline);
         cpass.set_bind_group(0, &bind_group, &[]);
-        super::dispatch_1d(&mut cpass, raw_params.particle_count, kernel.workgroup_size_x);
+        super::dispatch_1d(
+            &mut cpass,
+            raw_params.particle_count,
+            kernel.workgroup_size_x,
+        );
     }
     Ok(())
 }

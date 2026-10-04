@@ -203,17 +203,16 @@ pub struct VerticalRuntimeView<'a> {
 impl VerticalTransformResult {
     /// Validate all derived array shapes before exposing this result to #31.
     pub fn runtime_view(&self) -> Result<VerticalRuntimeView<'_>, VerticalTransformError> {
-        let horizontal = self
-            .nx
-            .checked_mul(self.ny)
-            .ok_or(VerticalTransformError::RuntimeShapeMismatch {
-                field: "horizontal",
-                expected: usize::MAX,
-                actual: 0,
-            })?;
-        let level_count = horizontal
-            .checked_mul(self.nz)
-            .ok_or(VerticalTransformError::RuntimeShapeMismatch {
+        let horizontal =
+            self.nx
+                .checked_mul(self.ny)
+                .ok_or(VerticalTransformError::RuntimeShapeMismatch {
+                    field: "horizontal",
+                    expected: usize::MAX,
+                    actual: 0,
+                })?;
+        let level_count = horizontal.checked_mul(self.nz).ok_or(
+            VerticalTransformError::RuntimeShapeMismatch {
                 field: "level_geometry",
                 expected: usize::MAX,
                 actual: 0,
@@ -449,7 +448,9 @@ pub enum VerticalTransformError {
         expected: usize,
         actual: usize,
     },
-    #[error("vertical runtime index out of bounds: x={x}, y={y}, z={z:?}, shape=({nx},{ny},{nz:?})")]
+    #[error(
+        "vertical runtime index out of bounds: x={x}, y={y}, z={z:?}, shape=({nx},{ny},{nz:?})"
+    )]
     RuntimeIndexOutOfBounds {
         x: usize,
         y: usize,
@@ -460,7 +461,9 @@ pub enum VerticalTransformError {
     },
     #[error("release height must use explicit AGL or ASL reference, got {reference:?}")]
     UnsupportedReleaseHeightReference { reference: VerticalReference },
-    #[error("invalid release height {height_m} m for {reference:?} over terrain {terrain_asl_m} m ASL")]
+    #[error(
+        "invalid release height {height_m} m for {reference:?} over terrain {terrain_asl_m} m ASL"
+    )]
     InvalidReleaseHeight {
         height_m: f32,
         reference: VerticalReference,
@@ -566,13 +569,13 @@ pub fn reconstruct_hybrid_pressure(
     let ny = snapshot.horizontal_grid.ny;
     let nz = vertical.level_values.len();
     let interface_count = nz + 1;
-    let expected_surface_count = nx
-        .checked_mul(ny)
-        .ok_or(VerticalTransformError::ShapeMismatch {
-            field: "surface_pressure",
-            expected: usize::MAX,
-            actual: surface_pressure.values.len(),
-        })?;
+    let expected_surface_count =
+        nx.checked_mul(ny)
+            .ok_or(VerticalTransformError::ShapeMismatch {
+                field: "surface_pressure",
+                expected: usize::MAX,
+                actual: surface_pressure.values.len(),
+            })?;
     if surface_pressure.values.len() != expected_surface_count {
         return Err(VerticalTransformError::ShapeMismatch {
             field: "surface_pressure",
@@ -801,15 +804,14 @@ pub fn reconstruct_vertical_geometry(
         }
     }
 
-    let (interface_height_agl_m, interface_height_asl_m) =
-        reconstruct_flexpart_w_heights(
-            snapshot.vertical_coordinate.ordering,
-            nx,
-            ny,
-            nz,
-            &height_agl_m,
-            terrain,
-        )?;
+    let (interface_height_agl_m, interface_height_asl_m) = reconstruct_flexpart_w_heights(
+        snapshot.vertical_coordinate.ordering,
+        nx,
+        ny,
+        nz,
+        &height_agl_m,
+        terrain,
+    )?;
 
     Ok(VerticalTransformResult {
         nx,
@@ -1227,12 +1229,10 @@ pub fn eta_dot_to_pressure_velocity(
                     nz,
                     nz - k,
                 );
-                let deta_dt = f64::from(
-                    native_motion.values[volume_offset(x, y, level_index, nx, ny)],
-                );
+                let deta_dt =
+                    f64::from(native_motion.values[volume_offset(x, y, level_index, nx, ny)]);
 
-                let scaled =
-                    2.0_f64 * deta_dt * ps * (dak_pa / ps + dbk) / (dak_pa / p00 + dbk);
+                let scaled = 2.0_f64 * deta_dt * ps * (dak_pa / ps + dbk) / (dak_pa / p00 + dbk);
                 if !scaled.is_finite() {
                     return Err(VerticalTransformError::InvalidEtaDotTransform { x, y, k });
                 }
@@ -1307,8 +1307,7 @@ fn reconstruct_flexpart_w_heights(
                 for k in 1..nz {
                     w_bottom_up[k] = 0.5 * (uv_bottom_up[k] + uv_bottom_up[k + 1]);
                 }
-                w_bottom_up[nz] =
-                    w_bottom_up[nz - 1] + uv_bottom_up[nz] - uv_bottom_up[nz - 1];
+                w_bottom_up[nz] = w_bottom_up[nz - 1] + uv_bottom_up[nz] - uv_bottom_up[nz - 1];
             }
 
             for k in 1..=nz {
@@ -1440,13 +1439,10 @@ fn flexpart_hypsometric_layer_thickness_m(
 ) -> f32 {
     let scale = R_AIR / GA;
     let pressure_log = (previous_pressure_pa / current_pressure_pa).ln();
-    let delta_virtual_temperature =
-        current_virtual_temperature_k - previous_virtual_temperature_k;
+    let delta_virtual_temperature = current_virtual_temperature_k - previous_virtual_temperature_k;
 
     if delta_virtual_temperature.abs() > 0.2 {
-        scale
-            * pressure_log
-            * delta_virtual_temperature
+        scale * pressure_log * delta_virtual_temperature
             / (current_virtual_temperature_k / previous_virtual_temperature_k).ln()
     } else {
         scale * pressure_log * current_virtual_temperature_k
@@ -1944,8 +1940,9 @@ mod tests {
 
     #[test]
     fn hybrid_pressure_uses_local_surface_pressure_and_declared_ordering() {
-        let increasing = reconstruct_hybrid_pressure(&hybrid_snapshot(VerticalOrdering::Increasing))
-            .expect("increasing pressure coordinate must reconstruct");
+        let increasing =
+            reconstruct_hybrid_pressure(&hybrid_snapshot(VerticalOrdering::Increasing))
+                .expect("increasing pressure coordinate must reconstruct");
         assert_eq!(
             increasing.interface_pressure_pa,
             vec![50_000.0, 45_000.0, 75_000.0, 67_500.0, 100_000.0, 90_000.0]
@@ -1955,8 +1952,9 @@ mod tests {
             vec![62_500.0, 56_250.0, 87_500.0, 78_750.0]
         );
 
-        let decreasing = reconstruct_hybrid_pressure(&hybrid_snapshot(VerticalOrdering::Decreasing))
-            .expect("decreasing pressure coordinate must reconstruct");
+        let decreasing =
+            reconstruct_hybrid_pressure(&hybrid_snapshot(VerticalOrdering::Decreasing))
+                .expect("decreasing pressure coordinate must reconstruct");
         assert_eq!(
             decreasing.interface_pressure_pa,
             vec![100_000.0, 90_000.0, 75_000.0, 67_500.0, 50_000.0, 45_000.0]
@@ -1965,8 +1963,7 @@ mod tests {
 
     #[test]
     fn flexpart_hypsometric_near_isothermal_branch_matches_analytic_solution() {
-        let actual =
-            flexpart_hypsometric_layer_thickness_m(100_000.0, 90_000.0, 300.0, 300.0);
+        let actual = flexpart_hypsometric_layer_thickness_m(100_000.0, 90_000.0, 300.0, 300.0);
         let expected = (R_AIR / GA) * (100_000.0_f32 / 90_000.0).ln() * 300.0;
         assert_relative_eq!(actual, expected, max_relative = 1.0e-6);
     }
@@ -2510,11 +2507,7 @@ mod tests {
     #[test]
     fn release_and_height_reference_arithmetic_overflow_fails_closed() {
         assert!(matches!(
-            resolve_release_height(
-                f32::MAX,
-                VerticalReference::AboveGroundLevel,
-                f32::MAX,
-            ),
+            resolve_release_height(f32::MAX, VerticalReference::AboveGroundLevel, f32::MAX,),
             Err(VerticalTransformError::InvalidReleaseHeight { .. })
         ));
 
@@ -2590,5 +2583,4 @@ mod tests {
             }
         ));
     }
-
 }

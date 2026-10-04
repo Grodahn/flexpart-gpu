@@ -35,6 +35,12 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Rust formatting
+        working-directory: flexpart-gpu
+        run: cargo fmt --all -- --check
 
       - name: Install Lavapipe (software Vulkan)
         run: |

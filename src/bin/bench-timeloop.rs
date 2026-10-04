@@ -167,9 +167,11 @@ fn main() {
     // Warmup
     for i in 0..warmup_steps {
         let t = Instant::now();
-        pollster::block_on(driver.run_timestep(&met, &forcing))
-            .expect("warmup step failed");
-        eprintln!("  warmup step {i}: {:.3} ms", t.elapsed().as_secs_f64() * 1e3);
+        pollster::block_on(driver.run_timestep(&met, &forcing)).expect("warmup step failed");
+        eprintln!(
+            "  warmup step {i}: {:.3} ms",
+            t.elapsed().as_secs_f64() * 1e3
+        );
     }
     eprintln!("warmup:        {warmup_steps} steps done");
 
@@ -177,8 +179,7 @@ fn main() {
     let mut times_us = Vec::with_capacity(measure_steps);
     for _ in 0..measure_steps {
         let t = Instant::now();
-        pollster::block_on(driver.run_timestep(&met, &forcing))
-            .expect("measure step failed");
+        pollster::block_on(driver.run_timestep(&met, &forcing)).expect("measure step failed");
         times_us.push(t.elapsed().as_micros() as f64);
     }
 

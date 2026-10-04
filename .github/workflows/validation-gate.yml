@@ -27,6 +27,12 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Rust formatting
+        working-directory: flexpart-gpu
+        run: cargo fmt --all -- --check
 
       - name: Run full Rust library test suite
         working-directory: flexpart-gpu

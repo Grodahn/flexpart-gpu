@@ -15,8 +15,8 @@ pub mod species;
 pub mod wet_scavenging;
 
 pub use advection::{
-    advect_particle_cpu, advect_particle_cpu_euler, advect_particles_cpu,
-    VelocityToGridScale, MAX_VERTICAL_LEVELS,
+    advect_particle_cpu, advect_particle_cpu_euler, advect_particles_cpu, VelocityToGridScale,
+    MAX_VERTICAL_LEVELS,
 };
 pub use cbl::{
     cbl_transition_factor, compute_cbl_bigaussian_pdf, compute_cbl_moments, infer_cbl_branch,

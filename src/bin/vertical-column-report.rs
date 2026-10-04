@@ -41,13 +41,12 @@ fn main() -> Result<()> {
             .with_context(|| format!("read native motion {}", motion_path.display()))?;
         let motion: NativeVerticalMotion = serde_json::from_str(&motion_source)
             .with_context(|| format!("parse native motion {}", motion_path.display()))?;
-        reconstruct_vertical_geometry_with_motion(&snapshot, &motion)
-            .with_context(|| {
-                format!(
-                    "reconstruct vertical geometry and motion {}",
-                    input.display()
-                )
-            })?
+        reconstruct_vertical_geometry_with_motion(&snapshot, &motion).with_context(|| {
+            format!(
+                "reconstruct vertical geometry and motion {}",
+                input.display()
+            )
+        })?
     } else {
         reconstruct_vertical_geometry(&snapshot)
             .with_context(|| format!("reconstruct vertical geometry {}", input.display()))?

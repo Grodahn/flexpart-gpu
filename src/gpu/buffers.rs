@@ -869,11 +869,7 @@ impl DualWindBuffers {
     /// # Errors
     ///
     /// Returns [`GpuBufferError`] on shape mismatch or length mismatch.
-    pub fn upload_t0(
-        &self,
-        ctx: &GpuContext,
-        wind: &WindField3D,
-    ) -> Result<(), GpuBufferError> {
+    pub fn upload_t0(&self, ctx: &GpuContext, wind: &WindField3D) -> Result<(), GpuBufferError> {
         let host = WindHostData::try_from(wind)?;
         self.upload_t0_host(ctx, &host)
     }
@@ -883,11 +879,7 @@ impl DualWindBuffers {
     /// # Errors
     ///
     /// Returns [`GpuBufferError`] on shape mismatch or length mismatch.
-    pub fn upload_t1(
-        &self,
-        ctx: &GpuContext,
-        wind: &WindField3D,
-    ) -> Result<(), GpuBufferError> {
+    pub fn upload_t1(&self, ctx: &GpuContext, wind: &WindField3D) -> Result<(), GpuBufferError> {
         let host = WindHostData::try_from(wind)?;
         self.upload_t1_host(ctx, &host)
     }
@@ -909,9 +901,27 @@ impl DualWindBuffers {
                 actual: format!("{:?}", host.shape),
             });
         }
-        write_exact_pod_slice(&ctx.queue, &self.u_ms_t0, "dual_wind_u_t0", self.cell_count, &host.u_ms)?;
-        write_exact_pod_slice(&ctx.queue, &self.v_ms_t0, "dual_wind_v_t0", self.cell_count, &host.v_ms)?;
-        write_exact_pod_slice(&ctx.queue, &self.w_ms_t0, "dual_wind_w_t0", self.cell_count, &host.w_ms)?;
+        write_exact_pod_slice(
+            &ctx.queue,
+            &self.u_ms_t0,
+            "dual_wind_u_t0",
+            self.cell_count,
+            &host.u_ms,
+        )?;
+        write_exact_pod_slice(
+            &ctx.queue,
+            &self.v_ms_t0,
+            "dual_wind_v_t0",
+            self.cell_count,
+            &host.v_ms,
+        )?;
+        write_exact_pod_slice(
+            &ctx.queue,
+            &self.w_ms_t0,
+            "dual_wind_w_t0",
+            self.cell_count,
+            &host.w_ms,
+        )?;
         if let Some(texture) = &self.sampled_wind_uvw_t0 {
             upload_sampled_wind_texture_3d(ctx, texture, host);
         }
@@ -935,9 +945,27 @@ impl DualWindBuffers {
                 actual: format!("{:?}", host.shape),
             });
         }
-        write_exact_pod_slice(&ctx.queue, &self.u_ms_t1, "dual_wind_u_t1", self.cell_count, &host.u_ms)?;
-        write_exact_pod_slice(&ctx.queue, &self.v_ms_t1, "dual_wind_v_t1", self.cell_count, &host.v_ms)?;
-        write_exact_pod_slice(&ctx.queue, &self.w_ms_t1, "dual_wind_w_t1", self.cell_count, &host.w_ms)?;
+        write_exact_pod_slice(
+            &ctx.queue,
+            &self.u_ms_t1,
+            "dual_wind_u_t1",
+            self.cell_count,
+            &host.u_ms,
+        )?;
+        write_exact_pod_slice(
+            &ctx.queue,
+            &self.v_ms_t1,
+            "dual_wind_v_t1",
+            self.cell_count,
+            &host.v_ms,
+        )?;
+        write_exact_pod_slice(
+            &ctx.queue,
+            &self.w_ms_t1,
+            "dual_wind_w_t1",
+            self.cell_count,
+            &host.w_ms,
+        )?;
         if let Some(texture) = &self.sampled_wind_uvw_t1 {
             upload_sampled_wind_texture_3d(ctx, texture, host);
         }

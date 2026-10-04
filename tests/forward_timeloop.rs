@@ -361,6 +361,14 @@ fn test_forward_timeloop_dry_deposition_multiple_active_and_full_capacity() {
     }
 }
 
+#[test]
+fn test_forward_timeloop_mixed_deposition_multiple_active_and_full_capacity() {
+    let _gpu_test_guard = lock_gpu_tests();
+    for particle_count in [1, 3, 8] {
+        check_transport_deposition_prefix(particle_count, 0.3);
+    }
+}
+
 fn check_transport_deposition_prefix(particle_count: usize, wet_coefficient_s_inv: f32) {
     let _ = env_logger::builder().is_test(true).try_init();
     use flexpart_gpu::simulation::ParticleForcingField;
@@ -453,6 +461,9 @@ fn check_transport_deposition_prefix(particle_count: usize, wet_coefficient_s_in
             }
         }
         eprintln!("DRY-FORWARD-135: capacity=8 active={particle_count} compaction={} step={index} dt=1 href=2 vdep=0.8 wet_lambda={wet_coefficient_s_inv} wet_fraction=0.5 decay=0.1 mass={} dry={:?} wet={:?}", std::env::var("FLEXPART_GPU_COMPACTION").unwrap_or_default(), particle.mass[0], report.dry_deposition_probability, report.wet_deposition_probability);
+        if wet_coefficient_s_inv > 0.0 {
+            eprintln!("WET-FORWARD-138: capacity=8 active={particle_count} compaction={} step={index} dt=1 href=2 vdep=0.8 wet_lambda={wet_coefficient_s_inv} wet_fraction=0.5 decay=0.1 masses={:?} dry={:?} wet={:?}", std::env::var("FLEXPART_GPU_COMPACTION").unwrap_or_default(), driver.particle_store().as_slice().iter().map(|p| p.mass).collect::<Vec<_>>(), report.dry_deposition_probability, report.wet_deposition_probability);
+        }
         if index == 1 {
             assert!(
                 particle.pos_z > 4.0,

@@ -16,6 +16,11 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-10-04 — Accept capacity-backed wet-deposition IO for active-prefix dispatch (#138)
+**Impact**: none (resource bounds only; no deviation from the existing wet-deposition equations or numerical policy)
+**Files**: `src/gpu/wet_deposition.rs`, `tests/forward_timeloop.rs`, `.github/workflows/software-wgpu.yml`
+**Validation**: The original post-#135 mixed dry/wet/decay driver regression and capacity-8 cases with active counts 1, 3 and 8 execute real WGSL with compaction on/off at the unchanged 1e-5 analytical tolerance. Wet kernel tests retain the existing 1e-6 tolerance and compare distinct particle/species forcing lanes against a full-capacity device control, preserve inactive tail sentinels, and reject undersized logical IO, each of the four actual storage buffers, and nonfinite timesteps before submission. Full logs retain inputs, hashes, adapter provenance, masses and probabilities; required software-WGSL CI retains the focused evidence. No shader, forcing/indexing, operator order, lifetime, submission/readback, precipitation or mass semantics change. The separated-Hanna compaction handoff remains owned by #139. Final gate results are recorded in the issue #138 PR; this resource repair does not claim FLEXPART scientific parity.
+
 ### 2026-10-04 — Accept capacity-backed dry-deposition IO for active-prefix dispatch (#135)
 **Impact**: none (resource bounds only; no deviation from the existing dry-deposition equations or numerical policy)
 **Files**: `src/gpu/deposition.rs`, `tests/forward_timeloop.rs`, `.github/workflows/software-wgpu.yml`

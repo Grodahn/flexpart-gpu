@@ -112,6 +112,7 @@ Choose the artifact contract being changed.
 | Oracle COMMAND configuration | `cargo test --lib validation::case::oracle::tests` |
 | External reference/artifact handoff | `cargo test --lib validation::case::handoff::tests` |
 
+- Boundary regressions: `cargo test --lib validation::case::output::tests::sampling_interval_exceeding_averaging_window_rejected -- --exact` and `cargo test --lib validation::case::stochastic::tests::direct_serde_deserialization_requires_nullable_oracle_state_fields -- --exact`. These belong to the output and RNG owners even when parsing/serialization is part of the assertion.
 - Public facade/compact and pretty serialized-byte regression: `cargo test --test validation_case_contract`; [pre-decomposition snapshot](../../tests/fixtures/validation-case-serialization-v2.txt).
 - Consumer check for supported cases: `python scripts/agent_validation.py --check comparison --case ADV-ANA-001`; other cases use their existing documented entry.
 - Evidence: fail-closed missing/stale input/output and hash checks, actual subprocess statuses, manifest and comparison report. `PASS` describes execution; `DIAGNOSTIC_NO_PARITY_VERDICT` remains the current corpus verdict.

@@ -247,6 +247,24 @@ mod tests {
     use std::path::Path;
 
     #[test]
+    fn sampling_interval_exceeding_averaging_window_rejected() {
+        let mut manifest = make_minimal_manifest();
+        manifest.output.sampling_interval_s = 1800;
+        manifest.output.averaging_window_s = 900;
+        let err = manifest.validate().expect_err("sample > average fails");
+        assert!(
+            matches!(
+                err,
+                ValidationCaseError::AmbiguousField {
+                    field: "output.sampling_interval_s",
+                    ..
+                }
+            ),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
     fn simulation_direction_round_trips_and_maps_to_flexpart_ldirect() {
         let forward: SimulationDirection =
             serde_json::from_str("\"forward\"").expect("forward variant");

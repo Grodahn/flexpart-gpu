@@ -40,8 +40,8 @@ Representative task: inspect a rejected output timing or output-grid declaration
 Before: the primary module is approximately 247 KiB including unrelated RNG,
 meteorology, release, parsing and handoff tests. After: start at the stable facade
 and inspect `output.rs`, which owns the output model, checks and focused tests
-(about 480 lines, about 18 KiB), alongside the 64-line facade (about 3 KiB). The
-primary source surface is therefore about 21 KiB, approximately 91% smaller.
+(about 500 lines, about 19 KiB), alongside the 64-line facade (about 3 KiB). The
+primary source surface is therefore about 22 KiB, approximately 91% smaller.
 Inspect `manifest.rs` only for validation order or root field composition, and
 `oracle.rs` only when the declared synchronization interval is the handoff in
 question. Navigation/test entries identify those boundaries directly.

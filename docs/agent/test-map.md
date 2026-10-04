@@ -27,12 +27,14 @@ Choose the subdomain; do not run every row for one field edit.
 
 | Surface | Fast focused check | Required device/oracle evidence |
 | --- | --- | --- |
-| Canonical metadata | `cargo test --test meteorology_contract` | Host schema only; [contract](../meteorology-contract.md). |
+| Canonical metadata | `cargo test --lib meteorology::field::tests` and `cargo test --lib meteorology::snapshot::tests`, then `cargo test --test meteorology_contract` | Host schema and compact/pretty serialized-byte regression only; [contract](../meteorology-contract.md). |
 | Horizontal | `cargo test --test horizontal_gpu test_gpu_interior_matches_oracle -- --exact` | Stable full `cargo test --test horizontal_gpu`; fresh horizontal report tied to revision and interpolation pin. |
 | Vertical / W | `cargo test --test vertical_gpu` | Use `FLEXPART_GPU_REQUIRE_VERTICAL=1` for required execution; per-scenario reports checked by software CI. [Spatial contract](../interpolation-contract.md). |
 | Instantaneous time | `cargo test --test temporal_gpu test_gpu_linear_interior_interpolation -- --exact` | `cargo test --test temporal_gpu test_gpu_vs_oracle_parity -- --exact`; temporal report and paired row evidence. |
 | Accumulated intervals | `cargo test --test accumulation_contract` | `cargo test --test accumulation_gpu`; interval/cell evidence and pinned numpf contract. |
 
+- Canonical metadata validation lives in the private owners linked by the [repository map](repo-map.md#meteorology); snapshot boundary tests exercise grid/coordinate/time checks through the supported facade. Sampling/device tests retain their public entry points.
+- Composition regression: `cargo test --test meteorology_composition -- --test-threads=1`; [existing composition tests](../../tests/meteorology_composition.rs).
 - Host geometry has its own [focused verification entry](#vertical-geometry); [direct oracle driver](../../scripts/vertical/direct_oracle_driver.f90) and [production W driver](../../scripts/interpolation/w_production_oracle.sh) are owned by the linked geometry/spatial contracts.
 - Broader gates: [software WGSL workflow](../../.github/workflows/software-wgpu.yml) for device fixtures; [technical gate](../../.github/workflows/validation-gate.yml) for pinned geometry/flex_extract oracles. Kernel evidence does not prove #76/#77 production adoption.
 

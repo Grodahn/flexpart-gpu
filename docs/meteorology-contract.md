@@ -16,7 +16,11 @@ Schema identity:
 - id: flexpart-gpu.canonical-meteorology
 - version: 1
 
-The Rust implementation lives in src/meteorology/mod.rs.
+The stable Rust API lives in `src/meteorology/mod.rs`. Private metadata owners
+implement the contract: `field.rs` owns the matrix/layout/requirements, `schema.rs`
+owns identity/errors, `grid.rs` and `coordinate.rs` own source coordinates,
+`time.rs` owns source timestamps, and `snapshot.rs` composes validation. Sampling
+and derived runtime geometry retain their existing domain modules.
 
 ## Canonical invariants
 
@@ -75,7 +79,8 @@ wind-only (`wind_u`, `wind_v`, `vertical_velocity`), while thermodynamic fields 
 PBL/convection/deposition/transform paths that actually consume them.
 
 The compact contract table below is mechanically tied to `FIELD_SPECS` in
-`src/meteorology/mod.rs`. Unit tests fail when a field, unit, sign, temporal policy or
+`src/meteorology/field.rs`, exposed through the canonical facade. Unit tests fail
+when a field, unit, sign, temporal policy or
 physics requirement-set membership drifts from this table. The detailed oracle trace tables
 that follow add scientific provenance and interpolation notes on top of this machine-checked core.
 

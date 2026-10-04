@@ -34,16 +34,19 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## Simulation
 
-- Production owner: [forward/backward drivers and forcing](../../src/simulation/timeloop.rs); [release scheduling](../../src/release/mod.rs), [configuration](../../src/config/mod.rs), [particle state](../../src/particles/mod.rs).
+- Stable production entry: [simulation-driver facade](../../src/simulation/timeloop.rs); [forward state/lifecycle](../../src/simulation/timeloop/forward.rs), [timestep phases/advance](../../src/simulation/timeloop/forward/timestep.rs), [ordered GPU operators/submission](../../src/simulation/timeloop/forward/operators.rs), [backward attribution](../../src/simulation/timeloop/backward.rs).
+- Preparation: [bracket handoff](../../src/simulation/timeloop/meteorology.rs), [prefetch/bracket/PBL inputs](../../src/simulation/timeloop/forward/meteorology.rs), [forcing shapes/cache](../../src/simulation/timeloop/forcing.rs), [forcing validation/uploads](../../src/simulation/timeloop/forward/forcing.rs).
+- Host boundaries: [particle sync/sort](../../src/simulation/timeloop/forward/particles.rs), [explicit gridding](../../src/simulation/timeloop/forward/output.rs), [reports](../../src/simulation/timeloop/reports.rs), [errors](../../src/simulation/timeloop/error.rs); [configuration/validation](../../src/simulation/timeloop/config.rs), [time/bracket bounds](../../src/simulation/timeloop/time.rs), [runtime options](../../src/simulation/timeloop/options.rs).
+- Inputs: [release scheduling](../../src/release/mod.rs), [configuration](../../src/config/mod.rs), [particle state](../../src/particles/mod.rs).
 - GPU: stage encoders in the rows below; [compaction](../../src/gpu/compaction.rs) / [kernel](../../src/shaders/compaction.wgsl).
-- Authority: [GPU contract](../GPU_CONTRACT.md), [pipeline](../GPU_PIPELINE.md), [simulation flow](../science/simulation-flow.md).
+- Authority: [GPU contract](../GPU_CONTRACT.md), [pipeline](../GPU_PIPELINE.md), [simulation flow](../science/simulation-flow.md), [pre-move inventory and preserved ordering](timeloop-decomposition.md).
 - Fixtures: [canonical corpus cases](../../fixtures/corpus/cases/), [candidate physics identity](../../reference/candidate-physics/candidate-forward-timeloop-v1.json).
 - Tests: [forward](../../tests/forward_timeloop.rs), [backward](../../tests/backward_timeloop.rs), [production physics](../../tests/integration/physics_validation.rs); [verification](test-map.md#simulation).
 - Dependencies: meteorology/release -> transport/PBL/deposition/decay -> output. Preserve explicit host output boundaries; do not introduce intermediate readback to connect device stages.
 
 ## Transport-advection
 
-- Production: [time loop](../../src/simulation/timeloop.rs), [coordinate/velocity units](../../src/coords/mod.rs).
+- Production: [forward operator sequence](../../src/simulation/timeloop/forward/operators.rs), [coordinate/velocity units](../../src/coords/mod.rs).
 - GPU: [advection dispatch](../../src/gpu/advection.rs), [particle step/reflection](../../src/gpu/particle_step.rs); [buffer](../../src/shaders/advection.wgsl), [dual bracket](../../src/shaders/advection_dual_wind.wgsl), [texture](../../src/shaders/advection_texture.wgsl), [dual texture](../../src/shaders/advection_texture_dual_wind.wgsl), [particle step](../../src/shaders/particle_step.wgsl).
 - Authority: [advection science](../science/advection.md), [GPU contract](../GPU_CONTRACT.md); [CPU diagnostic](../../src/physics/advection.rs) is not the production GPU proof.
 - Fixtures: [ADV-ANA-001](../../fixtures/corpus/cases/ADV-ANA-001.json), [Fortran inputs](../../fixtures/corpus/fortran/ADV-ANA-001/).
@@ -52,7 +55,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## PBL-turbulence
 
-- Production: [time loop](../../src/simulation/timeloop.rs); host inputs [PBL preparation](../../src/io/pbl_params.rs), [PBL state](../../src/pbl/mod.rs).
+- Production: [forward operator sequence](../../src/simulation/timeloop/forward/operators.rs); host inputs [PBL preparation](../../src/io/pbl_params.rs), [PBL state](../../src/pbl/mod.rs).
 - GPU: [PBL diagnostics](../../src/gpu/pbl.rs) / [kernel](../../src/shaders/pbl_diagnostics.wgsl); [Hanna](../../src/gpu/hanna.rs) / [kernel](../../src/shaders/hanna_params.wgsl); [fused Langevin](../../src/gpu/langevin_fused.rs) / [kernel](../../src/shaders/langevin_fused.wgsl); [split Langevin](../../src/gpu/langevin.rs) / [kernel](../../src/shaders/langevin.wgsl); [reflection](../../src/gpu/pbl_reflection.rs) / [kernel](../../src/shaders/pbl_reflection.wgsl).
 - Authority: [diffusion science](../science/turbulent-diffusion.md), [known limitations](../science/known-limitations.md), [GPU contract](../GPU_CONTRACT.md).
 - Fixtures: [stable](../../fixtures/corpus/cases/PBL-STABLE-004.json), [neutral](../../fixtures/corpus/cases/PBL-NEUTRAL-005.json), [unstable](../../fixtures/corpus/cases/PBL-UNSTABLE-006.json).
@@ -68,7 +71,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## Wet-deposition
 
-- Production: [forcing and composed step](../../src/simulation/timeloop.rs), [species inputs](../../src/physics/species.rs).
+- Production: [forcing uploads](../../src/simulation/timeloop/forward/forcing.rs) and [composed step](../../src/simulation/timeloop/forward/operators.rs), [species inputs](../../src/physics/species.rs).
 - GPU: [wet deposition](../../src/gpu/wet_deposition.rs) / [kernel](../../src/shaders/wet_deposition.wgsl).
 - Authority: [deposition science](../science/deposition.md), [interval precipitation](../accumulation-contract.md), [GPU contract](../GPU_CONTRACT.md).
 - Fixtures: [WET-008](../../fixtures/corpus/cases/WET-008.json), [Fortran inputs](../../fixtures/corpus/fortran/WET-008/), [wet species identity](../../reference/species-physics/species-040-wet-aerosol-v1.json).
@@ -77,7 +80,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## Dry-deposition-settling
 
-- Production: [dry forcing and step](../../src/simulation/timeloop.rs); [species mapping](../../src/physics/species.rs).
+- Production: [dry forcing uploads](../../src/simulation/timeloop/forward/forcing.rs) and [operator step](../../src/simulation/timeloop/forward/operators.rs); [species mapping](../../src/physics/species.rs).
 - GPU: [dry probability/mass update](../../src/gpu/deposition.rs) / [kernel](../../src/shaders/dry_deposition.wgsl); [standalone settling velocity](../../src/gpu/settling.rs) / [kernel](../../src/shaders/settling_velocity.wgsl).
 - Authority: [deposition science](../science/deposition.md), [settling science and domain](../science/settling.md), [limitations](../science/known-limitations.md), [GPU contract](../GPU_CONTRACT.md).
 - Fixtures: [DRY-007](../../fixtures/corpus/cases/DRY-007.json), [Fortran inputs](../../fixtures/corpus/fortran/DRY-007/), [constant dry identity](../../reference/species-physics/species-040-dry-constant-v1.json); settling [canonical vectors](../../fixtures/settling/canonical-vectors-v1.json), [pinned oracle](../../fixtures/settling/oracle-v1.json), [raw output](../../fixtures/settling/oracle-output-v1.txt) and [direct driver](../../oracle/settling_oracle.f90).
@@ -86,7 +89,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## Decay-mass-ledger
 
-- Production: [decay scheduling and step reports](../../src/simulation/timeloop.rs), [particle species masses](../../src/particles/mod.rs), [species decay constants](../../src/physics/species.rs). Accounting spans these surfaces; no separate mass-ledger module exists.
+- Production: [decay operator](../../src/simulation/timeloop/forward/operators.rs), [step reports](../../src/simulation/timeloop/reports.rs), [particle species masses](../../src/particles/mod.rs), [species decay constants](../../src/physics/species.rs). Accounting spans these surfaces; no separate mass-ledger module exists.
 - GPU: [decay](../../src/gpu/decay.rs) / [kernel](../../src/shaders/decay.wgsl); deposition removal uses the two preceding GPU rows.
 - Authority: [species configuration](../species-config.md), [GPU contract](../GPU_CONTRACT.md), issue-owned conservation tolerances.
 - Fixtures: [inert species](../../reference/species-physics/species-024-inert-v1.json); analytical per-species decay inputs in [module tests](../../src/gpu/decay.rs).
@@ -95,7 +98,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## Gridding-output
 
-- Production boundary: [time-loop output](../../src/simulation/timeloop.rs), [NetCDF writer](../../src/io/netcdf_output.rs).
+- Production boundary: [driver output boundary](../../src/simulation/timeloop/forward/output.rs), [NetCDF writer](../../src/io/netcdf_output.rs).
 - GPU: [concentration gridding](../../src/gpu/gridding.rs) / [kernel](../../src/shaders/concentration_gridding.wgsl); explicit D2H for host output.
 - Authority: [gridding science](../science/concentration-gridding.md), [case output-grid contract](../../schemas/validation-case-v2.schema.json), [GPU contract](../GPU_CONTRACT.md).
 - Fixtures: [corpus output-grid manifests](../../fixtures/corpus/cases/), [ETEX mini](../../fixtures/etex/mini/README.md).

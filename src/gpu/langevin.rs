@@ -121,6 +121,10 @@ pub enum GpuLangevinError {
     },
     #[error("value for {field} does not fit in u32: {value}")]
     ValueTooLarge { field: &'static str, value: usize },
+    #[error("Hanna buffer storage too small: expected {expected} bytes, got {actual}")]
+    InsufficientHannaStorage { expected: u64, actual: u64 },
+    #[error("byte-size overflow while preparing Hanna input")]
+    HannaSizeOverflow,
 }
 
 fn usize_to_u32(value: usize, field: &'static str) -> Result<u32, GpuLangevinError> {
@@ -245,6 +249,9 @@ pub fn update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel(
 }
 
 /// Encode Langevin dispatch into a caller-provided command encoder.
+/// Consumes the same slot-indexed dispatch prefix produced by Hanna. Both the
+/// logical Hanna range and actual storage must cover it; trailing slots are not
+/// accessed. Counter advancement remains based on the dispatched particle count.
 pub fn encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel(
     ctx: &GpuContext,
     particles: &ParticleBuffers,
@@ -257,7 +264,7 @@ pub fn encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_ker
     encoder: &mut wgpu::CommandEncoder,
 ) -> Result<PhiloxCounter, GpuLangevinError> {
     let particle_count = particles.particle_count();
-    if particle_count != hanna_params_len {
+    if particle_count > hanna_params_len {
         return Err(GpuLangevinError::MismatchedInputLengths {
             particle_slots: particle_count,
             hanna_params: hanna_params_len,
@@ -265,6 +272,16 @@ pub fn encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_ker
     }
     if particle_count == 0 {
         return Ok(base_counter);
+    }
+    let required_bytes = particle_count
+        .checked_mul(std::mem::size_of::<HannaParams>())
+        .and_then(|bytes| u64::try_from(bytes).ok())
+        .ok_or(GpuLangevinError::HannaSizeOverflow)?;
+    if hanna_params_buffer.size() < required_bytes {
+        return Err(GpuLangevinError::InsufficientHannaStorage {
+            expected: required_bytes,
+            actual: hanna_params_buffer.size(),
+        });
     }
     if !step.dt_seconds.is_finite() || step.dt_seconds <= 0.0 {
         return Err(GpuLangevinError::InvalidTimeStep {

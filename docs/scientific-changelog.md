@@ -16,6 +16,11 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ## Entries
 
+### 2026-10-04 — Bound separated Hanna and Langevin accesses by the dispatch prefix (#139)
+**Impact**: none (resource bounds only; no deviation from existing equations or numerical policy)
+**Files**: `src/gpu/hanna.rs`, `src/gpu/langevin.rs`, `.github/workflows/software-wgpu.yml`
+**Validation**: Capacity-8 outputs serve active prefixes 1, 3 and 8 through real Hanna and Langevin WGSL with a full-capacity device control, distinct particle identities, preserved mass and trailing sentinels. Logical ranges and actual storage too small for the accessed prefix fail before binding/submission. Existing analytical tests and tolerances remain unchanged; the #135 dry-only and #138 mixed driver regressions run with compaction on/off in separated and fused modes. The existing slot-based RNG and counter advancement, operator order, resident lifetime and caller-owned submission/readback are unchanged. Final gate results and retained adapter/input/output evidence are recorded in the #139 PR. This finite resource handoff does not establish new FLEXPART scientific parity.
+
 ### 2026-10-04 — Accept capacity-backed wet-deposition IO for active-prefix dispatch (#138)
 **Impact**: none (resource bounds only; no deviation from the existing wet-deposition equations or numerical policy)
 **Files**: `src/gpu/wet_deposition.rs`, `tests/forward_timeloop.rs`, `.github/workflows/software-wgpu.yml`

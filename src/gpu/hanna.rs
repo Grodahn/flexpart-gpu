@@ -62,12 +62,14 @@ fn checked_byte_len<T>(len: usize, field: &'static str) -> Result<usize, GpuHann
 }
 
 /// Reusable GPU output buffer holding one [`HannaParams`] entry per particle slot.
+/// Capacity may exceed the accessed dispatch prefix; unaccessed slots are retained.
 pub struct HannaParamsOutputBuffer {
     pub buffer: wgpu::Buffer,
     particle_count: usize,
 }
 
 impl HannaParamsOutputBuffer {
+    /// Allocate resident turbulence parameter storage for the simulation capacity.
     pub fn new(ctx: &GpuContext, particle_count: usize) -> Result<Self, GpuHannaError> {
         let output_bytes = checked_byte_len::<HannaParams>(particle_count, "hanna_params_outputs")?;
         let output_size = if output_bytes == 0 {
@@ -92,6 +94,7 @@ impl HannaParamsOutputBuffer {
     }
 
     #[must_use]
+    /// Return the logical number of output slots available to GPU consumers.
     pub fn particle_count(&self) -> usize {
         self.particle_count
     }
@@ -264,6 +267,8 @@ pub fn dispatch_hanna_params_gpu_with_kernel(
 }
 
 /// Encode Hanna parameter dispatch into a caller-provided command encoder.
+/// The logical output range and actual storage must cover the particle dispatch
+/// prefix. Only that prefix is written; capacity and submission ownership stay unchanged.
 pub fn encode_hanna_params_gpu_with_kernel(
     ctx: &GpuContext,
     particles: &ParticleBuffers,
@@ -276,11 +281,24 @@ pub fn encode_hanna_params_gpu_with_kernel(
     if particle_count == 0 {
         return Ok(());
     }
-    if output.particle_count != particle_count {
+    if output.particle_count < particle_count {
         return Err(GpuHannaError::LengthMismatch {
             field: "hanna_params_outputs",
             expected: particle_count,
             actual: output.particle_count,
+        });
+    }
+    let required_bytes = checked_byte_len::<HannaParams>(particle_count, "hanna_params_outputs")?;
+    let required_bytes =
+        u64::try_from(required_bytes).map_err(|_| GpuHannaError::SizeOverflow {
+            field: "hanna_params_outputs",
+        })?;
+    if output.buffer.size() < required_bytes {
+        return Err(GpuHannaError::LengthMismatch {
+            field: "hanna_params_outputs_storage",
+            expected: particle_count,
+            actual: usize::try_from(output.buffer.size() / size_of::<HannaParams>() as u64)
+                .unwrap_or(usize::MAX),
         });
     }
 
@@ -420,6 +438,196 @@ mod tests {
         assert_scalar_close(actual.tlu, expected.tlu);
         assert_scalar_close(actual.tlv, expected.tlv);
         assert_scalar_close(actual.tlw, expected.tlw);
+    }
+
+    #[test]
+    fn test_hanna_langevin_capacity_output_serves_active_prefix() {
+        use crate::gpu::{
+            encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel,
+            LangevinDispatchKernel,
+        };
+        use crate::physics::{philox_counter_add, LangevinStep};
+        use sha2::{Digest, Sha256};
+
+        let ctx = pollster::block_on(GpuContext::new()).expect("prefix regression requires WGSL");
+        let hanna_kernel = HannaDispatchKernel::new(&ctx);
+        let langevin_kernel = LangevinDispatchKernel::new(&ctx);
+        let mut pbl = PblState::new(3, 1);
+        for slot in 0..3 {
+            pbl.ustar[[slot, 0]] = 0.25 + slot as f32 * 0.05;
+            pbl.wstar[[slot, 0]] = if slot == 0 { 1.8 } else { 0.0 };
+            pbl.hmix[[slot, 0]] = 900.0;
+            pbl.oli[[slot, 0]] = [-0.02, 0.0, 0.01][slot];
+        }
+        let pbl_buffers = PblBuffers::from_state(&ctx, &pbl).expect("PBL upload");
+        let key = [0xDECA_FBAD, 0x1234_5678];
+        let counter = [7, 9, 11, 13];
+        for active in [1, 3, 8] {
+            for substeps in [0, 4] {
+                let particles: Vec<_> = (0..8)
+                    .map(|slot| {
+                        let mut particle =
+                            make_particle((slot % 3) as f32, 0.0, 80.0 + slot as f32 * 13.0);
+                        particle.release_point = 100 + slot as i32;
+                        particle.mass = [1.0 + slot as f32; MAX_SPECIES];
+                        particle.turb_u = slot as f32 * 0.1;
+                        particle.turb_v = -0.2;
+                        particle.turb_w = 0.3;
+                        if slot >= active {
+                            particle.deactivate();
+                        }
+                        particle
+                    })
+                    .collect();
+                let mut prefix = ParticleBuffers::from_particles(&ctx, &particles);
+                prefix.set_dispatch_count(active);
+                let control = ParticleBuffers::from_particles(&ctx, &particles);
+                let output = HannaParamsOutputBuffer::new(&ctx, 8).expect("resident output");
+                let control_output = HannaParamsOutputBuffer::new(&ctx, 8).expect("control output");
+                let sentinel: Vec<HannaParams> = (0..8)
+                    .map(|slot| HannaParams {
+                        sigu: 123.0 + slot as f32,
+                        ..HannaParams::zeroed()
+                    })
+                    .collect();
+                ctx.queue
+                    .write_buffer(&output.buffer, 0, bytemuck::cast_slice(&sentinel));
+                let step = LangevinStep {
+                    n_substeps: substeps,
+                    ..LangevinStep::legacy(1.0, 2.5e-4)
+                };
+                let mut encoder = ctx
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+                for (buffers, result) in [(&prefix, &output), (&control, &control_output)] {
+                    encode_hanna_params_gpu_with_kernel(
+                        &ctx,
+                        buffers,
+                        &pbl_buffers,
+                        result,
+                        &hanna_kernel,
+                        &mut encoder,
+                    )
+                    .expect("Hanna prefix encode");
+                    let next = encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel(
+                        &ctx, buffers, &result.buffer, result.particle_count(), step, key, counter, &langevin_kernel, &mut encoder,
+                    ).expect("Langevin prefix encode");
+                    assert_eq!(
+                        next,
+                        philox_counter_add(
+                            counter,
+                            buffers.particle_count() as u64 * if substeps <= 2 { 1 } else { 2 }
+                        )
+                    );
+                }
+                ctx.queue.submit(Some(encoder.finish()));
+                let actual =
+                    pollster::block_on(prefix.download_particles(&ctx)).expect("prefix readback");
+                let expected =
+                    pollster::block_on(control.download_particles(&ctx)).expect("control readback");
+                let hanna = pollster::block_on(download_buffer_typed::<HannaParams>(
+                    &ctx,
+                    &output.buffer,
+                    8,
+                    "prefix",
+                ))
+                .expect("Hanna readback");
+                let control_hanna = pollster::block_on(download_buffer_typed::<HannaParams>(
+                    &ctx,
+                    &control_output.buffer,
+                    8,
+                    "control",
+                ))
+                .expect("control Hanna readback");
+                assert_eq!(prefix.capacity(), 8);
+                assert_eq!(output.particle_count(), 8);
+                for slot in 0..8 {
+                    let identity = actual[slot].release_point;
+                    let reference = expected
+                        .iter()
+                        .find(|p| p.release_point == identity)
+                        .expect("particle identity retained");
+                    assert_eq!(
+                        bytemuck::bytes_of(&actual[slot]),
+                        bytemuck::bytes_of(reference)
+                    );
+                    assert_eq!(actual[slot].mass, particles[slot].mass);
+                    if slot < active {
+                        assert_hanna_close(&hanna[slot], &control_hanna[slot]);
+                    } else {
+                        assert_eq!(
+                            bytemuck::bytes_of(&hanna[slot]),
+                            bytemuck::bytes_of(&sentinel[slot])
+                        );
+                        assert_eq!(
+                            bytemuck::bytes_of(&actual[slot]),
+                            bytemuck::bytes_of(&particles[slot])
+                        );
+                    }
+                }
+                let input_bytes = bytemuck::cast_slice::<Particle, u8>(&particles);
+                eprintln!("HANNA-PREFIX-139: adapter={:?} capacity=8 active={active} substeps={substeps} key={key:?} counter={counter:?} input_sha256={:x} inputs={particles:?} pbl={pbl:?} hanna={hanna:?} control_hanna={control_hanna:?} outputs={actual:?} control={expected:?}", ctx.adapter_info(), Sha256::digest(input_bytes));
+            }
+        }
+    }
+
+    #[test]
+    fn test_hanna_langevin_undersized_prefix_fails_before_submission() {
+        use crate::gpu::{
+            encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel,
+            GpuLangevinError, LangevinDispatchKernel,
+        };
+        use crate::physics::LangevinStep;
+
+        let ctx = pollster::block_on(GpuContext::new()).expect("bounds regression requires WGSL");
+        let kernel = HannaDispatchKernel::new(&ctx);
+        let consumer = LangevinDispatchKernel::new(&ctx);
+        let mut particles =
+            ParticleBuffers::from_particles(&ctx, &[make_particle(0.0, 0.0, 80.0); 8]);
+        particles.set_dispatch_count(3);
+        let pbl = PblBuffers::from_state(&ctx, &PblState::new(1, 1)).expect("PBL");
+        let mut encoder = ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        for slots in [0, 1, 2] {
+            let output = HannaParamsOutputBuffer::new(&ctx, slots).expect("short output");
+            assert!(
+                matches!(encode_hanna_params_gpu_with_kernel(&ctx, &particles, &pbl, &output, &kernel, &mut encoder), Err(GpuHannaError::LengthMismatch { field: "hanna_params_outputs", expected: 3, actual }) if actual == slots)
+            );
+            assert!(
+                matches!(encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel(&ctx, &particles, &output.buffer, slots, LangevinStep::legacy(1.0, 0.0), [1, 2], [0; 4], &consumer, &mut encoder), Err(GpuLangevinError::MismatchedInputLengths { particle_slots: 3, hanna_params }) if hanna_params == slots)
+            );
+        }
+        for bytes in [4, size_of::<HannaParams>() as u64 * 3 - 4] {
+            let mut output = HannaParamsOutputBuffer::new(&ctx, 8).expect("logical capacity");
+            output.buffer = ctx.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("undersized Hanna storage"),
+                size: bytes,
+                usage: wgpu::BufferUsages::STORAGE,
+                mapped_at_creation: false,
+            });
+            assert!(matches!(
+                encode_hanna_params_gpu_with_kernel(
+                    &ctx,
+                    &particles,
+                    &pbl,
+                    &output,
+                    &kernel,
+                    &mut encoder
+                ),
+                Err(GpuHannaError::LengthMismatch {
+                    field: "hanna_params_outputs_storage",
+                    expected: 3,
+                    ..
+                })
+            ));
+            assert!(
+                matches!(encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel(&ctx, &particles, &output.buffer, 8, LangevinStep::legacy(1.0, 0.0), [1, 2], [0; 4], &consumer, &mut encoder), Err(GpuLangevinError::InsufficientHannaStorage { actual, .. }) if actual == bytes)
+            );
+        }
+        // Finishing an empty encoder proves rejection happened before any invalid binding.
+        let _commands = encoder.finish();
+        eprintln!("HANNA-BOUNDS-139: logical ranges 0/1/2 and actual storage below active=3 rejected before submission");
     }
 
     #[test]

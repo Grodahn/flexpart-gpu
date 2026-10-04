@@ -33,8 +33,30 @@ Choose the subdomain; do not run every row for one field edit.
 | Instantaneous time | `cargo test --test temporal_gpu test_gpu_linear_interior_interpolation -- --exact` | `cargo test --test temporal_gpu test_gpu_vs_oracle_parity -- --exact`; temporal report and paired row evidence. |
 | Accumulated intervals | `cargo test --test accumulation_contract` | `cargo test --test accumulation_gpu`; interval/cell evidence and pinned numpf contract. |
 
-- Geometry host regression: `cargo test --test integration vertical_runtime`; [direct oracle driver](../../scripts/vertical/direct_oracle_driver.f90) and [production W driver](../../scripts/interpolation/w_production_oracle.sh) are owned by the linked geometry/spatial contracts.
+- Host geometry has its own [focused verification entry](#vertical-geometry); [direct oracle driver](../../scripts/vertical/direct_oracle_driver.f90) and [production W driver](../../scripts/interpolation/w_production_oracle.sh) are owned by the linked geometry/spatial contracts.
 - Broader gates: [software WGSL workflow](../../.github/workflows/software-wgpu.yml) for device fixtures; [technical gate](../../.github/workflows/validation-gate.yml) for pinned geometry/flex_extract oracles. Kernel evidence does not prove #76/#77 production adoption.
+
+## Vertical geometry
+
+Start at the [stable facade](../../src/meteorology/vertical.rs) and select its
+[responsibility owner](repo-map.md#vertical-geometry).
+
+| Responsibility | Focused check | Test surface |
+| --- | --- | --- |
+| Hybrid pressure, local surface anchor and storage direction | `cargo test --lib meteorology::vertical::pressure::tests` | [pressure](../../src/meteorology/vertical/tests/pressure.rs) |
+| Model-level integration and surface thermodynamics | `cargo test --lib meteorology::vertical::model_levels::tests` | [model levels](../../src/meteorology/vertical/tests/model_levels.rs) |
+| W/interface construction and derived ASL validity | `cargo test --lib meteorology::vertical::interfaces::tests` | [interfaces](../../src/meteorology/vertical/tests/interfaces.rs) |
+| Motion kind/unit/sign/staggering and rejection | `cargo test --lib meteorology::vertical::motion::tests` | [motion](../../src/meteorology/vertical/tests/motion.rs) |
+| Validation-only calc_etadot | `cargo test --lib meteorology::vertical::eta_dot::tests` | [eta-dot](../../src/meteorology/vertical/tests/eta_dot.rs) |
+| Terrain, release heights and AGL/ASL validity | `cargo test --lib meteorology::vertical::terrain::tests` | [terrain](../../src/meteorology/vertical/tests/terrain.rs) |
+| Derived-state shape rejection | `cargo test --lib meteorology::vertical::runtime::tests` | [runtime](../../src/meteorology/vertical/tests/runtime.rs) |
+| Snapshot/motion provenance binding | `cargo test --lib meteorology::vertical::provenance::tests` | [provenance](../../src/meteorology/vertical/tests/provenance.rs) |
+
+- Complete relocated host suite: `cargo test --lib meteorology::vertical::` (all 24 original regressions).
+- Public facade serialization/runtime identity: `cargo test --test vertical_geometry_contract`; hashes captured before #127 cover model levels and W/interfaces, both storage directions and single/multiple columns with nonzero and below-sea-level terrain.
+- Runtime/release handoff: `cargo test --test integration vertical_runtime`; model-level and #80 interface-W oracle regressions: `cargo test --test integration vertical_sampling`; frozen #80 verdict/provenance: `cargo test --test w_production_oracle`.
+- GPU consumer check: `cargo test --test vertical_gpu` with `FLEXPART_GPU_REQUIRE_VERTICAL=1` and actual device evidence. This does not change or complete #128/#88.
+- Final: normal Rust checks and navigation audit; [technical CI](../../.github/workflows/validation-gate.yml) runs `scripts/ci-gate.sh --particles 1000 --require-flex-extract-oracle`, including fresh pinned #30 synthetic/real columns, calc_etadot and #80 evidence reproduction; [software CI](../../.github/workflows/software-wgpu.yml) requires actual WGSL execution. Existing fixtures/tolerances/verdicts remain authoritative, including #80 `not_equivalent`; these checks do not create a new parity claim.
 
 ## Simulation
 

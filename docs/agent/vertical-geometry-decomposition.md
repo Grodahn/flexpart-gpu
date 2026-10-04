@@ -20,7 +20,7 @@ neither science nor verdicts.
 | Serialized input hashing and transform provenance | `provenance.rs` |
 | Shared fail-closed error vocabulary | `error.rs` |
 | X-fastest offsets and model-level traversal shared by geometry owners; canonical field lookup | `layout.rs` |
-| Existing unit regressions and synthetic builders | `tests/`, grouped by responsibility with shared `support.rs` |
+| Existing unit regressions and synthetic builders | `tests/`, grouped by responsibility with shared [test_support.rs](../../src/meteorology/vertical/test_support.rs) |
 
 `src/meteorology/vertical.rs` remains the stable canonical facade, with explicit
 re-exports of the existing public types/functions. Implementation modules stay
@@ -59,7 +59,7 @@ the source-only comparison.
 The representative source working set is 88.6% smaller in bytes and 86.7%
 smaller in lines. Optional [addressing](../../src/meteorology/vertical/layout.rs)
 and [error definitions](../../src/meteorology/vertical/error.rs) are named
-handoffs; inspecting both adds approximately 5.7 KB and still avoids loading
+handoffs; inspecting both adds 6,077 UTF-8 bytes (LF) and still avoids loading
 model-level, W, motion, eta-dot and provenance implementations. A column-bound
 release task additionally opens the [runtime view](../../src/meteorology/vertical/runtime.rs).
 These counts measure source selection, not model tokens or runtime performance.

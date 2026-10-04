@@ -35,7 +35,7 @@ pub struct ForwardTimeLoopConfig {
     /// Optional particle spatial sorting for better GPU memory locality (O-01).
     pub spatial_sort: Option<ForwardSpatialSortConfig>,
     /// If true, download the full particle buffer after each timestep to keep
-    /// host-side [`ParticleStore`] synchronized in lockstep.
+    /// host-side [`ParticleStore`](crate::particles::ParticleStore) synchronized in lockstep.
     ///
     /// Set to `false` in performance mode to defer host synchronization.
     pub sync_particle_store_each_step: bool,

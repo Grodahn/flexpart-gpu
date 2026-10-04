@@ -47,7 +47,8 @@ jobs:
           set -euo pipefail
           cd flexpart-gpu
           cargo test --lib meteorology::tests
-          cargo test --lib meteorology::vertical::tests
+          cargo test --lib meteorology::vertical::
+          cargo test --test vertical_geometry_contract
           cargo test --lib meteorology::vertical_sampling::tests
           cargo test --test integration vertical_runtime
           cargo test --test integration vertical_sampling

@@ -78,11 +78,11 @@ path moves. Markdown links are the machine-readable path surface, audited by
 ## Dry-deposition-settling
 
 - Production: [dry forcing and step](../../src/simulation/timeloop.rs); [species mapping](../../src/physics/species.rs).
-- GPU: [dry probability/mass update](../../src/gpu/deposition.rs) / [kernel](../../src/shaders/dry_deposition.wgsl).
-- Authority: [deposition science](../science/deposition.md), [limitations](../science/known-limitations.md), [GPU contract](../GPU_CONTRACT.md).
-- Fixtures: [DRY-007](../../fixtures/corpus/cases/DRY-007.json), [Fortran inputs](../../fixtures/corpus/fortran/DRY-007/), [constant dry identity](../../reference/species-physics/species-040-dry-constant-v1.json).
-- Tests: [GPU module](../../src/gpu/deposition.rs), [mass evolution](../../tests/integration/deposition_decay.rs); [verification](test-map.md#dry-deposition-settling).
-- Dependencies: surface/PBL + species -> dry deposition -> mass/output. [CPU resistance/bin utilities](../../src/physics/deposition.rs) accept settling velocity as an input; this main checkout has no standalone GPU settling-velocity calculation. #35 owns that calculation and its oracle; do not treat a supplied velocity or constant dry fixture as its proof.
+- GPU: [dry probability/mass update](../../src/gpu/deposition.rs) / [kernel](../../src/shaders/dry_deposition.wgsl); [standalone settling velocity](../../src/gpu/settling.rs) / [kernel](../../src/shaders/settling_velocity.wgsl).
+- Authority: [deposition science](../science/deposition.md), [settling science and domain](../science/settling.md), [limitations](../science/known-limitations.md), [GPU contract](../GPU_CONTRACT.md).
+- Fixtures: [DRY-007](../../fixtures/corpus/cases/DRY-007.json), [Fortran inputs](../../fixtures/corpus/fortran/DRY-007/), [constant dry identity](../../reference/species-physics/species-040-dry-constant-v1.json); settling [canonical vectors](../../fixtures/settling/canonical-vectors-v1.json), [pinned oracle](../../fixtures/settling/oracle-v1.json), [raw output](../../fixtures/settling/oracle-output-v1.txt) and [direct driver](../../oracle/settling_oracle.f90).
+- Tests: [GPU deposition module](../../src/gpu/deposition.rs), [mass evolution](../../tests/integration/deposition_decay.rs), [settling device/oracle](../../tests/settling_gpu.rs); [verification](test-map.md#dry-deposition-settling).
+- Dependencies: surface/PBL + species -> dry deposition -> mass/output. [CPU resistance/bin utilities](../../src/physics/deposition.rs) accept settling velocity as an input. #35 owns the standalone GPU spherical settling calculation and its pinned oracle; timeloop composition belongs to #37. A supplied velocity or constant dry fixture does not prove settling physics.
 
 ## Decay-mass-ledger
 

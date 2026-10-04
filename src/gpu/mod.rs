@@ -26,6 +26,7 @@ pub mod pbl;
 pub mod pbl_reflection;
 pub mod preflight;
 pub mod rng;
+pub mod settling;
 pub mod temporal;
 pub mod vertical;
 pub mod wet_deposition;
@@ -150,6 +151,19 @@ pub use preflight::{
     GpuSmokeTestEvidence, GPU_PREFLIGHT_SCHEMA_ID, GPU_PREFLIGHT_SCHEMA_VERSION,
 };
 pub use rng::{sample_philox_uniform4_gpu, GpuPhiloxError, PhiloxUniformBlock};
+pub use settling::{
+    build_settling_gpu_row, compute_settling_velocities_gpu, create_settling_output_buffer,
+    create_settling_query_buffers, create_settling_uniform_buffer,
+    default_comparison_policy as default_settling_comparison_policy,
+    dispatch_settling_velocities_and_wait, download_settling_velocities,
+    encode_settling_velocities, settling_inputs_sha256, settling_shader_sha256, GpuSettlingError,
+    SettlingCarrier, SettlingGpuReport, SettlingGpuRow, SettlingQuery, SettlingQueryBuffers,
+    SettlingReportSchema, SettlingReportUnits, SettlingUniforms, SettlingVelocityKernel,
+    SettlingVelocityOutput, SETTLING_GPU_ABSOLUTE_TOLERANCE, SETTLING_GPU_CANDIDATE_DESCRIPTION,
+    SETTLING_GPU_IMPLEMENTATION_ID, SETTLING_GPU_RELATIVE_TOLERANCE, SETTLING_GPU_REPORT_SCHEMA_ID,
+    SETTLING_GPU_REPORT_SCHEMA_VERSION, SETTLING_ORACLE_IMPLEMENTATION_ID,
+    SETTLING_ORACLE_REVISION,
+};
 pub use temporal::{
     build_temporal_gpu_report, create_temporal_bracket_buffers,
     create_temporal_output_buffer, create_temporal_uniform_buffer, default_comparison_policy,

@@ -27,7 +27,7 @@ use bytemuck::{Pod, Zeroable};
 use thiserror::Error;
 use wgpu::util::DeviceExt;
 
-use crate::particles::{ParticleStore, MAX_SPECIES};
+use crate::particles::{Particle, ParticleStore, MAX_SPECIES};
 
 use super::{
     download_buffer_typed, render_shader_with_workgroup_size, runtime_workgroup_size,
@@ -390,7 +390,15 @@ pub fn dispatch_wet_deposition_probability_gpu_with_kernel(
     Ok(())
 }
 
-/// Encode wet deposition dispatch into a caller-provided command encoder.
+/// Encode wet deposition for the current particle prefix into the caller's encoder.
+///
+/// Capacity-sized IO remains resident; each resource must cover every accessed
+/// slot. Encoding does not submit, synchronize, resize, or read back resources.
+///
+/// # Errors
+///
+/// Returns an error for IO or storage shorter than the accessed prefix, an
+/// unrepresentable dispatch size, or a nonfinite timestep.
 pub fn encode_wet_deposition_probability_gpu_with_kernel(
     ctx: &GpuContext,
     particles: &ParticleBuffers,
@@ -403,13 +411,7 @@ pub fn encode_wet_deposition_probability_gpu_with_kernel(
     if particle_count == 0 {
         return Ok(());
     }
-    if io.particle_count != particle_count {
-        return Err(GpuWetDepositionError::LengthMismatch {
-            field: "wet_deposition_io_buffers",
-            expected: particle_count,
-            actual: io.particle_count,
-        });
-    }
+    validate_wet_deposition_prefix(particles, io)?;
     if !params.dt_seconds.is_finite() {
         return Err(GpuWetDepositionError::InvalidTimeStep {
             dt_seconds: params.dt_seconds,
@@ -469,6 +471,59 @@ pub fn encode_wet_deposition_probability_gpu_with_kernel(
             raw_params.particle_count,
             kernel.workgroup_size_x,
         );
+    }
+    Ok(())
+}
+
+fn validate_wet_deposition_prefix(
+    particles: &ParticleBuffers,
+    io: &WetDepositionIoBuffers,
+) -> Result<(), GpuWetDepositionError> {
+    let particle_count = particles.particle_count();
+    if io.particle_count < particle_count {
+        return Err(GpuWetDepositionError::LengthMismatch {
+            field: "wet_deposition_io_buffers",
+            expected: particle_count,
+            actual: io.particle_count,
+        });
+    }
+    // Public buffer handles can be replaced independently of their slot metadata.
+    // Validate actual storage before binding so WGSL robust bounds handling
+    // cannot silently discard accesses to undersized resources.
+    for (buffer, slot_size, field) in [
+        (
+            &particles.particle_buffer,
+            size_of::<Particle>(),
+            "particles",
+        ),
+        (
+            &io.scavenging_coefficient_s_inv,
+            size_of::<[f32; MAX_SPECIES]>(),
+            "scavenging_coefficient_s_inv",
+        ),
+        (
+            &io.precipitating_fraction,
+            size_of::<f32>(),
+            "precipitating_fraction",
+        ),
+        (
+            &io.wet_deposition_probability,
+            size_of::<[f32; MAX_SPECIES]>(),
+            "wet_deposition_probability",
+        ),
+    ] {
+        let required_bytes = particle_count
+            .checked_mul(slot_size)
+            .and_then(|bytes| u64::try_from(bytes).ok())
+            .ok_or(GpuWetDepositionError::SizeOverflow { field })?;
+        if buffer.size() < required_bytes {
+            return Err(GpuWetDepositionError::LengthMismatch {
+                field,
+                expected: particle_count,
+                actual: usize::try_from(buffer.size() / slot_size as u64)
+                    .map_err(|_| GpuWetDepositionError::SizeOverflow { field })?,
+            });
+        }
     }
     Ok(())
 }
@@ -664,6 +719,211 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_wet_deposition_capacity_io_preserves_active_prefix_and_tail() {
+        use sha2::{Digest, Sha256};
+
+        let ctx = pollster::block_on(GpuContext::new()).expect("prefix regression requires WGSL");
+        let kernel = WetDepositionDispatchKernel::new(&ctx);
+        let params = WetDepositionStepParams { dt_seconds: 1.0 };
+        for active_count in [1, 3, 8] {
+            let particles: Vec<_> = (0..8)
+                .map(|slot| {
+                    let mut particle = particle_at(0.5, 0.5, 1.0, (slot + 1) as f32);
+                    particle.release_point = slot;
+                    particle.mass = [1.0, 2.0, 3.0, 4.0].map(|mass| mass * (slot + 1) as f32);
+                    if slot as usize >= active_count {
+                        particle.deactivate();
+                    }
+                    particle
+                })
+                .collect();
+            let coefficients: Vec<_> = (0..8)
+                .map(|slot| [0.0, 0.1, 0.3, 0.5].map(|lambda| lambda + slot as f32 * 0.02))
+                .collect();
+            let fractions: Vec<_> = (0..8).map(|slot| 0.2 + slot as f32 * 0.1).collect();
+            let mut prefix = ParticleBuffers::from_particles(&ctx, &particles);
+            prefix.set_dispatch_count(active_count);
+            let control = ParticleBuffers::from_particles(&ctx, &particles);
+            let prefix_io = WetDepositionIoBuffers::from_inputs(&ctx, &coefficients, &fractions)
+                .expect("prefix IO");
+            let control_io = WetDepositionIoBuffers::from_inputs(&ctx, &coefficients, &fractions)
+                .expect("control IO");
+            let sentinel = vec![[0.75; MAX_SPECIES]; 8];
+            ctx.queue.write_buffer(
+                &prefix_io.wet_deposition_probability,
+                0,
+                bytemuck::cast_slice(&sentinel),
+            );
+            let mut encoder = ctx
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            for (buffers, io) in [(&prefix, &prefix_io), (&control, &control_io)] {
+                encode_wet_deposition_probability_gpu_with_kernel(
+                    &ctx,
+                    buffers,
+                    io,
+                    params,
+                    &kernel,
+                    &mut encoder,
+                )
+                .expect("encode");
+            }
+            ctx.queue.submit(Some(encoder.finish()));
+            let updated = pollster::block_on(prefix.download_particles(&ctx)).expect("prefix");
+            let expected = pollster::block_on(control.download_particles(&ctx)).expect("control");
+            let probability = pollster::block_on(prefix_io.download_probabilities(&ctx))
+                .expect("prefix probabilities");
+            let control_probability = pollster::block_on(control_io.download_probabilities(&ctx))
+                .expect("control probabilities");
+            assert_eq!(prefix.capacity(), 8);
+            assert_eq!(prefix_io.particle_count(), 8);
+            for slot in 0..8 {
+                assert_eq!(updated[slot].release_point, particles[slot].release_point);
+                assert_eq!(
+                    bytemuck::bytes_of(&updated[slot]),
+                    bytemuck::bytes_of(&expected[slot])
+                );
+                if slot < active_count {
+                    assert_eq!(probability[slot], control_probability[slot]);
+                    for lane in 0..MAX_SPECIES {
+                        let analytical_probability = fractions[slot]
+                            * (1.0 - (-coefficients[slot][lane] * params.dt_seconds).exp());
+                        assert_relative_eq!(
+                            probability[slot][lane],
+                            analytical_probability,
+                            epsilon = 1.0e-6,
+                            max_relative = 1.0e-6
+                        );
+                        assert_relative_eq!(
+                            updated[slot].mass[lane],
+                            particles[slot].mass[lane] * (1.0 - analytical_probability),
+                            epsilon = 1.0e-6,
+                            max_relative = 1.0e-6
+                        );
+                    }
+                } else {
+                    assert_eq!(
+                        bytemuck::bytes_of(&updated[slot]),
+                        bytemuck::bytes_of(&particles[slot])
+                    );
+                    assert_eq!(
+                        probability[slot], sentinel[slot],
+                        "tail must not be encoded"
+                    );
+                    assert_eq!(control_probability[slot], [0.0; MAX_SPECIES]);
+                }
+            }
+            let mut input_hash = Sha256::new();
+            input_hash.update(bytemuck::cast_slice::<Particle, u8>(&particles));
+            input_hash.update(bytemuck::cast_slice::<[f32; MAX_SPECIES], u8>(
+                &coefficients,
+            ));
+            input_hash.update(bytemuck::cast_slice::<f32, u8>(&fractions));
+            input_hash.update(bytemuck::bytes_of(&WetDepositionDispatchParamsRaw {
+                particle_count: active_count as u32,
+                dt_seconds: params.dt_seconds,
+                _pad0: 0.0,
+                _pad1: 0.0,
+            }));
+            eprintln!("WET-PREFIX-138: adapter={:?} capacity=8 active={active_count} input_sha256={:x} particles={particles:?} coefficients={coefficients:?} fractions={fractions:?} masses={:?} probabilities={probability:?} control_probabilities={control_probability:?}", ctx.adapter_info(), input_hash.finalize(), updated.iter().map(|p| p.mass).collect::<Vec<_>>());
+        }
+    }
+
+    #[test]
+    fn test_wet_deposition_invalid_prefix_resources_fail_before_submission() {
+        let ctx = pollster::block_on(GpuContext::new()).expect("bounds regression requires WGSL");
+        let kernel = WetDepositionDispatchKernel::new(&ctx);
+        let mut particles =
+            ParticleBuffers::from_particles(&ctx, &[particle_at(0.5, 0.5, 1.0, 1.0); 8]);
+        particles.set_dispatch_count(3);
+        let params = WetDepositionStepParams { dt_seconds: 1.0 };
+        let mut encoder = ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let short_io =
+            WetDepositionIoBuffers::from_inputs(&ctx, &[[0.3; MAX_SPECIES]; 2], &[0.5; 2])
+                .expect("short IO");
+        assert!(matches!(
+            encode_wet_deposition_probability_gpu_with_kernel(
+                &ctx,
+                &particles,
+                &short_io,
+                params,
+                &kernel,
+                &mut encoder,
+            ),
+            Err(GpuWetDepositionError::LengthMismatch {
+                field: "wet_deposition_io_buffers",
+                expected: 3,
+                actual: 2,
+            })
+        ));
+        for field in [
+            "particles",
+            "scavenging_coefficient_s_inv",
+            "precipitating_fraction",
+            "wet_deposition_probability",
+        ] {
+            let mut buffers =
+                ParticleBuffers::from_particles(&ctx, &[particle_at(0.5, 0.5, 1.0, 1.0); 8]);
+            buffers.set_dispatch_count(3);
+            let mut io =
+                WetDepositionIoBuffers::from_inputs(&ctx, &[[0.3; MAX_SPECIES]; 8], &[0.5; 8])
+                    .expect("IO");
+            let slot_size = match field {
+                "particles" => size_of::<Particle>(),
+                "precipitating_fraction" => size_of::<f32>(),
+                _ => size_of::<[f32; MAX_SPECIES]>(),
+            };
+            // Less than three complete slots, despite full-capacity metadata.
+            let short = ctx.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("undersized wet resource"),
+                size: (3 * slot_size - 4) as u64,
+                usage: wgpu::BufferUsages::STORAGE,
+                mapped_at_creation: false,
+            });
+            match field {
+                "particles" => buffers.particle_buffer = short,
+                "scavenging_coefficient_s_inv" => io.scavenging_coefficient_s_inv = short,
+                "precipitating_fraction" => io.precipitating_fraction = short,
+                _ => io.wet_deposition_probability = short,
+            }
+            let error = encode_wet_deposition_probability_gpu_with_kernel(
+                &ctx,
+                &buffers,
+                &io,
+                params,
+                &kernel,
+                &mut encoder,
+            )
+            .expect_err("short actual storage");
+            assert!(matches!(error,
+                GpuWetDepositionError::LengthMismatch {
+                    field: actual_field, expected: 3, actual: 2,
+                } if actual_field == field
+            ));
+        }
+        let io = WetDepositionIoBuffers::from_inputs(&ctx, &[[0.3; MAX_SPECIES]; 8], &[0.5; 8])
+            .expect("IO");
+        for dt_seconds in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert!(matches!(
+                encode_wet_deposition_probability_gpu_with_kernel(
+                    &ctx,
+                    &particles,
+                    &io,
+                    WetDepositionStepParams { dt_seconds },
+                    &kernel,
+                    &mut encoder,
+                ),
+                Err(GpuWetDepositionError::InvalidTimeStep { .. })
+            ));
+        }
+        // No command buffer is submitted on any invalid path.
+        drop(encoder);
+        eprintln!("WET-BOUNDS-138: undersized IO/all four storage buffers and nonfinite timesteps rejected before submission; adapter={:?}", ctx.adapter_info());
     }
 
     #[test]

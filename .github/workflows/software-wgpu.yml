@@ -385,9 +385,11 @@ jobs:
           cargo test --test forward_timeloop --test backward_timeloop -- --nocapture > target/ci-gate/timeloop-production.log 2>&1
           grep -q "TIMELOOP-ORDER-126" target/ci-gate/timeloop-production.log
           grep -q "TIMELOOP-DEFERRED-126" target/ci-gate/timeloop-production.log
+          grep -q "TIMELOOP-ERROR-126" target/ci-gate/timeloop-production.log
           FLEXPART_GPU_VALIDATION=1 cargo test --test forward_timeloop -- --nocapture > target/ci-gate/timeloop-validation.log 2>&1
           grep -q "TIMELOOP-ORDER-126" target/ci-gate/timeloop-validation.log
           grep -q "TIMELOOP-DEFERRED-126" target/ci-gate/timeloop-validation.log
+          grep -q "TIMELOOP-ERROR-126" target/ci-gate/timeloop-validation.log
       - name: Run corpus deterministic subset (Issue #6, point 2)
         run: |
           set -euo pipefail

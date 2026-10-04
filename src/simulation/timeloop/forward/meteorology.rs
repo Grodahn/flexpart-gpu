@@ -116,6 +116,10 @@ impl ForwardTimeLoopDriver {
         Ok(())
     }
 
+    /// Stage the current bracket and PBL inputs before the previous-step wait.
+    ///
+    /// This preserves the existing GPU path and explicit diagnostic override;
+    /// it neither submits work nor waits or reads device state.
     pub(super) fn prepare_meteorology(
         &mut self,
         met: &MetTimeBracket<'_>,

@@ -15,6 +15,16 @@ use flexpart_gpu::simulation::{
 use flexpart_gpu::wind::{uniform_wind_field, SurfaceFields, WindFieldGrid};
 use ndarray::Array1;
 
+// WARP can crash when several forward tests create devices concurrently.
+static GPU_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn lock_gpu_tests() -> std::sync::MutexGuard<'static, ()> {
+    // Preserve the original failure if another test panics while holding the lock.
+    GPU_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 fn synthetic_wind_grid(nx: usize, ny: usize, nz: usize) -> WindFieldGrid {
     WindFieldGrid::new(
         nx,
@@ -52,6 +62,7 @@ fn synthetic_surface_fields(nx: usize, ny: usize) -> SurfaceFields {
 
 #[test]
 fn test_forward_timeloop_synthetic_uniform_wind_is_deterministic() {
+    let _gpu_test_guard = lock_gpu_tests();
     let config = ForwardTimeLoopConfig {
         start_timestamp: "20240101000000".to_string(),
         end_timestamp: "20240101000002".to_string(),
@@ -175,6 +186,7 @@ fn test_forward_timeloop_synthetic_uniform_wind_is_deterministic() {
 
 #[test]
 fn test_forward_timeloop_optional_spatial_sort_reorders_particle_slots() {
+    let _gpu_test_guard = lock_gpu_tests();
     let config = ForwardTimeLoopConfig {
         start_timestamp: "20240101000000".to_string(),
         end_timestamp: "20240101000001".to_string(),
@@ -296,6 +308,11 @@ fn test_forward_timeloop_operator_call_order_is_preserved() {
         "encode_compaction_with_reorder(",
         "self.gpu_context.queue.submit(",
     ] {
+        assert_eq!(
+            source.matches(operation).count(),
+            1,
+            "operator {operation} must occur exactly once in its preserved branch"
+        );
         offset += source[offset..]
             .find(operation)
             .unwrap_or_else(|| panic!("missing/out-of-order {operation}"))
@@ -332,6 +349,7 @@ fn test_forward_timeloop_operator_call_order_is_preserved() {
 
 #[test]
 fn test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advance() {
+    let _gpu_test_guard = lock_gpu_tests();
     use flexpart_gpu::simulation::ParticleForcingField;
 
     let releases = vec![ReleaseConfig {
@@ -431,6 +449,7 @@ fn test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advan
 
 #[test]
 fn test_forward_timeloop_deferred_readback_preserves_gpu_output_and_cached_host_mass() {
+    let _gpu_test_guard = lock_gpu_tests();
     use flexpart_gpu::gpu::{ConcentrationGridShape, ConcentrationGriddingParams};
     let config = ForwardTimeLoopConfig {
         start_timestamp: "20240101000000".to_string(),
@@ -505,4 +524,131 @@ fn test_forward_timeloop_deferred_readback_preserves_gpu_output_and_cached_host_
     );
     pollster::block_on(driver.finalize()).expect("idempotent finalize");
     eprintln!("TIMELOOP-DEFERRED-126: WGSL output observes three decay steps; host cache remains unchanged");
+}
+
+#[test]
+fn test_forward_timeloop_preparation_errors_preserve_release_and_retry_state() {
+    use flexpart_gpu::io::TemporalInterpolationError;
+    use flexpart_gpu::simulation::ParticleForcingField;
+
+    let _gpu_test_guard = lock_gpu_tests();
+    let config = ForwardTimeLoopConfig {
+        start_timestamp: "20240101000000".to_string(),
+        end_timestamp: "20240101000000".to_string(),
+        time_bounds_behavior: TimeBoundsBehavior::Strict,
+        ..ForwardTimeLoopConfig::default()
+    };
+    let releases = vec![ReleaseConfig {
+        name: "error_retry".to_string(),
+        start_time: config.start_timestamp.clone(),
+        end_time: config.end_timestamp.clone(),
+        lon: 10.0,
+        lat: 5.0,
+        z_min: 1.0,
+        z_max: 1.0,
+        mass_kg: 1.0,
+        particle_count: 1,
+        species_masses_kg: None,
+        raw: BTreeMap::new(),
+    }];
+    let grid = GridDomain {
+        xlon0: 0.0,
+        ylat0: 0.0,
+        dx: 1.0,
+        dy: 1.0,
+        nx: 64,
+        ny: 64,
+    };
+    let mut driver = pollster::block_on(ForwardTimeLoopDriver::new(config, &releases, grid, 8))
+        .expect("error/retry regression requires a WGSL adapter");
+    let start = driver.current_time_seconds();
+    let wind = uniform_wind_field(&synthetic_wind_grid(64, 64, 16), 0.0, 0.0, 0.0);
+    let surface = synthetic_surface_fields(64, 64);
+    let mut met = MetTimeBracket {
+        wind_t0: &wind,
+        wind_t1: &wind,
+        surface_t0: &surface,
+        surface_t1: &surface,
+        time_t0_seconds: start,
+        time_t1_seconds: start,
+    };
+    let forcing = ForwardStepForcing {
+        decay_constant_s_inv: vec![0.1],
+        ..ForwardStepForcing::default()
+    };
+    assert!(matches!(
+        pollster::block_on(driver.run_timestep(&met, &forcing)),
+        Err(TimeLoopError::Temporal(
+            TemporalInterpolationError::InvalidTimeBracket { .. }
+        ))
+    ));
+    // Release precedes meteorology validation in the original driver; errors do not roll it back.
+    assert_eq!(driver.current_time_seconds(), start);
+    assert_eq!(driver.particle_store().active_count(), 1);
+    assert_eq!(
+        driver
+            .particle_store()
+            .get(0)
+            .expect("released particle")
+            .mass[0],
+        1.0
+    );
+
+    met.time_t1_seconds = start + 1;
+    let invalid_species = ForwardStepForcing {
+        wet_scavenging_coefficient_s_inv: Vec::new(),
+        ..forcing.clone()
+    };
+    assert!(matches!(
+        pollster::block_on(driver.run_timestep(&met, &invalid_species)),
+        Err(TimeLoopError::ForcingLengthMismatch {
+            field: "wet_scavenging_coefficient_s_inv",
+            expected: 1,
+            actual: 0
+        })
+    ));
+    let invalid_slots = ForwardStepForcing {
+        dry_deposition_velocity_m_s: vec![ParticleForcingField::PerParticle(vec![0.8; 7])],
+        ..forcing.clone()
+    };
+    assert!(matches!(
+        pollster::block_on(driver.run_timestep(&met, &invalid_slots)),
+        Err(TimeLoopError::ForcingLengthMismatch {
+            field: "dry_deposition_velocity_m_s",
+            expected: 8,
+            actual: 7
+        })
+    ));
+    assert_eq!(driver.current_time_seconds(), start);
+    assert_eq!(driver.particle_store().active_count(), 1);
+    assert_eq!(
+        driver
+            .particle_store()
+            .get(0)
+            .expect("released particle")
+            .mass[0],
+        1.0
+    );
+
+    let report = pollster::block_on(driver.run_timestep(&met, &forcing)).expect("retry GPU step");
+    assert_eq!(report.step_index, 0);
+    assert_eq!(report.simulation_time_seconds, start);
+    assert_eq!(report.timestamp, "20240101000000");
+    assert_eq!(report.released_count, 0);
+    assert!(report.released_slots.is_empty());
+    assert_eq!(report.active_particle_count, 1);
+    assert!(
+        (driver
+            .particle_store()
+            .get(0)
+            .expect("released particle")
+            .mass[0]
+            - (-0.1_f32).exp())
+        .abs()
+            < 1.0e-5
+    );
+    assert_eq!(driver.current_time_seconds(), start + 1);
+    assert!(!driver.has_remaining_steps());
+    pollster::block_on(driver.finalize()).expect("finalize");
+    eprintln!("TIMELOOP-ERROR-126: bracket/species/slot errors preserve clock and release state; one WGSL retry executed");
 }

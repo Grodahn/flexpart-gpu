@@ -82,7 +82,7 @@ ownership stays on the driver, with no second runtime or compatibility adapter.
 Representative task: inspect/change the forward physics sequencing under its
 own future contract. Before: the entire monolith, 2572 lines,
 102,324 bytes with LF newlines. After: facade, driver resource/lifecycle owner,
-timestep coordinator, and operator owner, 763 lines, 32,548 bytes
+timestep coordinator, and operator owner, 772 lines, 33,074 bytes
 (about 68% less source). Common GPU/scientific contracts and focused tests remain
 required and are excluded from both counts. Forcing/meteorology/cache internals,
 backward attribution and timestamp validation need not be loaded for this task;
@@ -99,8 +99,9 @@ The pre-move and post-move forward/backward targets passed. Added regressions
 cover the actual encoded operator call sequence, preparation/wait/readback/report
 boundaries, transport before the dry-deposition height check, existing combined
 mass evolution, inclusive end time and deferred host/output behavior. Required
-device regressions fail on missing adapters. Fused and separated forward paths
-passed, as did focused physics integration, all 690 Cargo tests and Clippy.
+device regressions fail on missing adapters. Initial implementation validation
+passed for fused and separated forward paths,
+focused physics integration, all 690 Cargo tests and Clippy.
 Navigation audit and its 26 regression tests passed. A retained lexical audit
 checked 64 unchanged routine bodies, three unchanged extracted phases, and
 reconstruction of the timestep body (ignoring comments/import ordering,
@@ -119,3 +120,19 @@ resource-length mismatch (active dispatch 1 versus capacity 8). Reproduction
 against the exact original driver at `17fb779` failed identically. This path
 was stopped and [follow-up #135](https://github.com/Grodahn/flexpart-gpu/issues/135)
 was created; #126 preserves the original failure. No semantic repair is included.
+
+## Review hardening
+
+The order regression also requires exactly one occurrence of each preserved
+operator/submit call, so an extra dispatch cannot hide in an otherwise matching
+subsequence. Preparation/retry coverage checks the existing bracket, species
+shape and per-slot forcing errors: release happens before preparation failure,
+time/index do not advance, and a successful retry processes the existing
+release once. Both software-CI variants require the new error/retry device marker.
+
+Forward GPU tests share a test-only mutex so concurrently scheduled cases do
+not reproduce the observed Windows WARP access violation. Poison recovery keeps
+a failed case from masking the remaining tests. This affects test scheduling;
+the simulation's GPU submission/readback behavior and production routines are
+unchanged. The private phase handoffs now document their synchronization and
+error-state guarantees where agents read them.

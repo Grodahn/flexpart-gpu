@@ -19,6 +19,10 @@ pub(super) struct PreparedForcing {
 }
 
 impl ForwardTimeLoopDriver {
+    /// Validate and stage capacity-sized species forcing before the previous-step wait.
+    ///
+    /// Uniform caches retain the original upload-elision semantics. Failures
+    /// propagate without advancing time or submitting physics operators.
     pub(super) fn prepare_forcing(
         &mut self,
         forcing: &ForwardStepForcing,

@@ -18,6 +18,11 @@ use crate::simulation::timeloop::forcing::ForwardStepForcing;
 use std::time::{Duration, Instant};
 
 impl ForwardTimeLoopDriver {
+    /// Submit the dependent GPU operators in their preserved order with one encoder.
+    ///
+    /// Prepared inputs refer to the current PBL write slot. This boundary does
+    /// not poll or read back; the coordinator commits pending state and counters
+    /// only after successful submission.
     pub(super) fn submit_operators(
         &self,
         met: &PreparedMeteorology,

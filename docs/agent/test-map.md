@@ -42,6 +42,8 @@ Choose the subdomain; do not run every row for one field edit.
 - Operator structure: `cargo test --test forward_timeloop test_forward_timeloop_operator_call_order_is_preserved -- --exact`.
 - Required driver device/order regression: `cargo test --test forward_timeloop test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advance -- --exact --nocapture`.
 - Deferred host/output boundary: `cargo test --test forward_timeloop test_forward_timeloop_deferred_readback_preserves_gpu_output_and_cached_host_mass -- --exact --nocapture`.
+- Fail-closed preparation/retry: `cargo test --test forward_timeloop test_forward_timeloop_preparation_errors_preserve_release_and_retry_state -- --exact --nocapture`.
+- Forward GPU cases serialize device creation within the test binary to avoid the observed concurrent WARP crash.
 - Run the full forward/backward targets; repeat forward with `FLEXPART_GPU_VALIDATION=1` for separated operators. The new device regressions fail on missing adapters. [Software CI](../../.github/workflows/software-wgpu.yml) runs both forward variants and backward.
 - Required evidence: actual driver GPU execution, forcing/release identity and owning case outputs. These tests are deterministic integration checks, not pinned scientific parity.
 - Broader: `cargo test --test integration physics_validation`, then the issue-owned corpus/oracle gate.

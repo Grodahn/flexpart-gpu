@@ -29,6 +29,10 @@ impl ForwardTimeLoopDriver {
     ///
     /// PBL buffers use a ping-pong double buffer so that CPU uploads for
     /// step N+1 never race with GPU reads from step N.
+    ///
+    /// Preparation errors preserve already-applied release/preparation state;
+    /// they do not roll back a release. The clock and step index advance only
+    /// after a successful report, as in the original driver.
     pub async fn run_timestep(
         &mut self,
         met: &MetTimeBracket<'_>,

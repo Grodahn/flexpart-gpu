@@ -164,8 +164,16 @@ fn run_horizontal_check(case: &FixtureCase) {
         let query_tokens = tokens(&input[cursor + index]);
         let xt = parse_f64(&query_tokens[0], "xt");
         let yt = parse_f64(&query_tokens[1], "yt");
-        assert!(xt >= 0.0, "{} query {index}: xt below canonical domain", case.id);
-        assert!(yt >= 0.0, "{} query {index}: yt below canonical domain", case.id);
+        assert!(
+            xt >= 0.0,
+            "{} query {index}: xt below canonical domain",
+            case.id
+        );
+        assert!(
+            yt >= 0.0,
+            "{} query {index}: yt below canonical domain",
+            case.id
+        );
         if periodic {
             assert!(
                 xt < nx as f64,
@@ -531,10 +539,12 @@ fn contract_fixture_metadata_is_frozen() {
         .semantics
         .get("production_coordinate_initialization_path")
         .is_none());
-    assert!(geographic.semantics.get("production_sampling_path").is_none());
+    assert!(geographic
+        .semantics
+        .get("production_sampling_path")
+        .is_none());
     assert_eq!(
-        geographic.semantics["production_direct_call_edges"]
-            ["release_coordinate_initialization"],
+        geographic.semantics["production_direct_call_edges"]["release_coordinate_initialization"],
         serde_json::json!([[
             "FLEXPART::read_options_and_initialise_flexpart",
             "point_mod::coordtrafo"
@@ -547,10 +557,7 @@ fn contract_fixture_metadata_is_frozen() {
     for edge in [
         serde_json::json!(["advance_mod::advance", "interpol_mod::init_interpol"]),
         serde_json::json!(["advance_mod::advance", "advance_mod::adv_above_pbl"]),
-        serde_json::json!([
-            "advance_mod::adv_above_pbl",
-            "interpol_mod::interpol_wind"
-        ]),
+        serde_json::json!(["advance_mod::adv_above_pbl", "interpol_mod::interpol_wind"]),
         serde_json::json!([
             "interpol_mod::interpol_wind",
             "interpol_mod::find_grid_indices"
@@ -572,7 +579,10 @@ fn contract_fixture_metadata_is_frozen() {
             "interpol_mod::temporal_interpolation"
         ]),
     ] {
-        assert!(wind_edges.contains(&edge), "missing direct production edge {edge}");
+        assert!(
+            wind_edges.contains(&edge),
+            "missing direct production edge {edge}"
+        );
     }
     assert_eq!(
         geographic.semantics["generic_interface_resolution"]
@@ -653,10 +663,7 @@ fn contract_fixture_metadata_is_frozen() {
             "interpol_mod::init_interpol",
             "interpol_mod::find_time_vars"
         ]),
-        serde_json::json!([
-            "advance_mod::adv_above_pbl",
-            "interpol_mod::interpol_wind"
-        ]),
+        serde_json::json!(["advance_mod::adv_above_pbl", "interpol_mod::interpol_wind"]),
         serde_json::json!([
             "interpol_mod::interpol_wind",
             "interpol_mod::find_time_vars"
@@ -670,7 +677,10 @@ fn contract_fixture_metadata_is_frozen() {
             "interpol_mod::interpol_wind_short"
         ]),
     ] {
-        assert!(temporal_edges.contains(&edge), "missing temporal direct edge {edge}");
+        assert!(
+            temporal_edges.contains(&edge),
+            "missing temporal direct edge {edge}"
+        );
     }
     assert_eq!(
         temporal.semantics["time"]["range_policy_owner"],
@@ -708,10 +718,7 @@ fn contract_fixture_metadata_is_frozen() {
     );
     assert_eq!(
         rain.semantics["ingest_output_fields"],
-        serde_json::json!([
-            "windfields_mod::lsprec",
-            "windfields_mod::convprec"
-        ])
+        serde_json::json!(["windfields_mod::lsprec", "windfields_mod::convprec"])
     );
     assert_eq!(
         rain.semantics["production_sampling_direct_call_edges"],
@@ -719,15 +726,23 @@ fn contract_fixture_metadata_is_frozen() {
             ["timemanager_mod::timemanager", "wetdepo_mod::wetdepo"],
             ["wetdepo_mod::wetdepo", "wetdepo_mod::get_wetscav"],
             ["wetdepo_mod::get_wetscav", "interpol_mod::find_ngrid"],
-            ["wetdepo_mod::get_wetscav", "interpol_mod::find_grid_indices"],
-            ["wetdepo_mod::get_wetscav", "interpol_mod::find_grid_distances"],
-            ["wetdepo_mod::get_wetscav", "interpol_mod::find_z_level_meters"],
+            [
+                "wetdepo_mod::get_wetscav",
+                "interpol_mod::find_grid_indices"
+            ],
+            [
+                "wetdepo_mod::get_wetscav",
+                "interpol_mod::find_grid_distances"
+            ],
+            [
+                "wetdepo_mod::get_wetscav",
+                "interpol_mod::find_z_level_meters"
+            ],
             ["wetdepo_mod::get_wetscav", "interpol_mod::interpol_rain"]
         ])
     );
     assert_eq!(
-        real["semantics"]["ordering"]["vertical"],
-        "increasing",
+        real["semantics"]["ordering"]["vertical"], "increasing",
         "real sample must freeze canonical vertical ordering"
     );
     assert_eq!(
@@ -930,7 +945,13 @@ fn goldens_satisfy_flexpart_closed_forms() {
         }
     }
     // Every frozen sampling mode must be covered by at least one case.
-    for mode in ["horizontal", "horizontal_geographic", "vertical", "temporal", "rain"] {
+    for mode in [
+        "horizontal",
+        "horizontal_geographic",
+        "vertical",
+        "temporal",
+        "rain",
+    ] {
         assert!(
             contract.cases.iter().any(|case| case.mode == mode),
             "contract must contain at least one {mode} case"

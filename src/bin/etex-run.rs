@@ -513,7 +513,8 @@ fn main() {
 
             if driver.current_time_seconds() >= next_output_time {
                 assert_eq!(
-                    window_samples, samples_per_output + 1,
+                    window_samples,
+                    samples_per_output + 1,
                     "incomplete concentration averaging window"
                 );
                 let t_h = (driver.current_time_seconds() - sim_start_epoch) as f64 / 3600.0;

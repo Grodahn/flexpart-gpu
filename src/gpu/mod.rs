@@ -4,8 +4,8 @@
 /// and compute shader dispatch. All GPU operations go through `GpuContext`.
 use thiserror::Error;
 
-pub mod adapter;
 pub mod accumulation;
+pub mod adapter;
 pub mod advection;
 pub mod buffers;
 pub mod cbl;
@@ -41,13 +41,12 @@ pub use accumulation::{
 };
 pub use advection::{
     advect_particles_dual_wind_gpu, advect_particles_gpu, advect_particles_gpu_with_sampling,
-    dispatch_advection_gpu_with_sampling_and_kernel,
-    encode_advection_dual_wind_gpu_with_kernel, encode_advection_gpu_with_kernel,
-    resolve_dual_wind_sampling_path, resolve_wind_sampling_path,
-    AdvectionBufferDispatchKernel, AdvectionDispatchKernel,
-    AdvectionDualWindBufferDispatchKernel, AdvectionDualWindDispatchKernel,
-    AdvectionDualWindTextureDispatchKernel, AdvectionTextureDispatchKernel,
-    DualWindAdvectionParams, GpuAdvectionError, WindSamplingOptions, WindSamplingPath,
+    dispatch_advection_gpu_with_sampling_and_kernel, encode_advection_dual_wind_gpu_with_kernel,
+    encode_advection_gpu_with_kernel, resolve_dual_wind_sampling_path, resolve_wind_sampling_path,
+    AdvectionBufferDispatchKernel, AdvectionDispatchKernel, AdvectionDualWindBufferDispatchKernel,
+    AdvectionDualWindDispatchKernel, AdvectionDualWindTextureDispatchKernel,
+    AdvectionTextureDispatchKernel, DualWindAdvectionParams, GpuAdvectionError,
+    WindSamplingOptions, WindSamplingPath,
 };
 pub use buffers::{
     download_buffer_bytes, download_buffer_typed, DualWindBuffers, GpuBufferError,
@@ -58,8 +57,8 @@ pub use cbl::{
     CblSamplingOutput, GpuCblError, GpuCblWorkflowError,
 };
 pub use compaction::{
-    compact_active_particles, encode_compaction, encode_compaction_with_reorder,
-    CompactionBuffers, CompactionPipelines, CompactionResult, GpuCompactionError,
+    compact_active_particles, encode_compaction, encode_compaction_with_reorder, CompactionBuffers,
+    CompactionPipelines, CompactionResult, GpuCompactionError,
 };
 pub use convection::{
     apply_convective_mixing_step_workflow, dispatch_convective_mixing_gpu, GpuConvectionError,
@@ -131,16 +130,14 @@ pub use adapter::{
     SOFTWARE_ADAPTER_ENV_ALIAS,
 };
 pub use particle_step::{
-    dispatch_particle_step_gpu, encode_particle_step_gpu,
-    encode_particle_step_gpu_persistent, supports_mega_kernel,
-    GpuParticleStepError, PackedDepositionBuffer, PackedPblBuffer,
-    ParticleStepDispatchKernel, ParticleStepInput, ParticleStepParams,
-    ParticleStepResources,
+    dispatch_particle_step_gpu, encode_particle_step_gpu, encode_particle_step_gpu_persistent,
+    supports_mega_kernel, GpuParticleStepError, PackedDepositionBuffer, PackedPblBuffer,
+    ParticleStepDispatchKernel, ParticleStepInput, ParticleStepParams, ParticleStepResources,
 };
 pub use pbl::{
     dispatch_pbl_diagnostics_gpu, dispatch_pbl_diagnostics_gpu_with_kernel,
-    encode_pbl_diagnostics_gpu_with_kernel, GpuPblDiagnosticsError,
-    PblDiagnosticsDispatchKernel, SurfaceFieldBuffer,
+    encode_pbl_diagnostics_gpu_with_kernel, GpuPblDiagnosticsError, PblDiagnosticsDispatchKernel,
+    SurfaceFieldBuffer,
 };
 pub use pbl_reflection::{
     encode_pbl_reflection_gpu_with_kernel, GpuPblReflectionError, PblReflectionDispatchKernel,
@@ -165,12 +162,11 @@ pub use settling::{
     SETTLING_ORACLE_REVISION,
 };
 pub use temporal::{
-    build_temporal_gpu_report, create_temporal_bracket_buffers,
-    create_temporal_output_buffer, create_temporal_uniform_buffer, default_comparison_policy,
-    dispatch_temporal_blend_and_wait, download_temporal_output, encode_temporal_blend,
-    sample_field_gpu, GpuTemporalError, TemporalBlendOutput, TemporalBracketBuffers,
-    TemporalBlendUniforms, TemporalGpuReport, TemporalGpuRow, TemporalGpuSample,
-    TemporalInterpolationKernel,
+    build_temporal_gpu_report, create_temporal_bracket_buffers, create_temporal_output_buffer,
+    create_temporal_uniform_buffer, default_comparison_policy, dispatch_temporal_blend_and_wait,
+    download_temporal_output, encode_temporal_blend, sample_field_gpu, GpuTemporalError,
+    TemporalBlendOutput, TemporalBlendUniforms, TemporalBracketBuffers, TemporalGpuReport,
+    TemporalGpuRow, TemporalGpuSample, TemporalInterpolationKernel,
     TEMPORAL_GPU_CANDIDATE_DESCRIPTION, TEMPORAL_GPU_IMPLEMENTATION_ID,
     TEMPORAL_GPU_REPORT_SCHEMA_ID, TEMPORAL_GPU_REPORT_SCHEMA_VERSION,
     TEMPORAL_ORACLE_EXECUTABLE_SHA256, TEMPORAL_ORACLE_IMPLEMENTATION_ID,
@@ -183,22 +179,21 @@ pub use vertical::{
     dispatch_vertical_sample_with_kernel, download_vertical_samples,
     encode_vertical_remap_w_with_kernel, encode_vertical_sample_with_kernel,
     encode_vertical_w_two_stage_with_kernels, physical_center_w_column_from_runtime,
-    physical_model_column_from_runtime, physical_w_columns_from_runtime,
-    resolve_query_heights_agl, sample_vertical_grid_gpu, sample_vertical_w_gpu_two_stage,
-    vertical_geometry_identity, vertical_inputs_sha256, vertical_model_comparison_policy,
-    vertical_remap_shader_sha256, vertical_sample_shader_sha256,
-    vertical_w_bundle_shader_sha256, vertical_w_comparison_policy, vertical_w_inputs_sha256,
-    GpuVerticalError, VerticalGridBuffers, VerticalGpuReport, VerticalGpuRow,
-    VerticalModelOracleCase, VerticalQueryBuffers, VerticalSampleKernel, VerticalSampleOutput,
-    VerticalWInterfaceInputs, VerticalWRemapKernel, VerticalWSourceLanes,
+    physical_model_column_from_runtime, physical_w_columns_from_runtime, resolve_query_heights_agl,
+    sample_vertical_grid_gpu, sample_vertical_w_gpu_two_stage, vertical_geometry_identity,
+    vertical_inputs_sha256, vertical_model_comparison_policy, vertical_remap_shader_sha256,
+    vertical_sample_shader_sha256, vertical_w_bundle_shader_sha256, vertical_w_comparison_policy,
+    vertical_w_inputs_sha256, GpuVerticalError, VerticalGpuReport, VerticalGpuRow,
+    VerticalGridBuffers, VerticalModelOracleCase, VerticalQueryBuffers, VerticalSampleKernel,
+    VerticalSampleOutput, VerticalWInterfaceInputs, VerticalWRemapKernel, VerticalWSourceLanes,
     VERTICAL_GPU_ABSOLUTE_TOLERANCE, VERTICAL_GPU_CANDIDATE_DESCRIPTION,
     VERTICAL_GPU_IMPLEMENTATION_ID, VERTICAL_GPU_RELATIVE_TOLERANCE_MODEL,
     VERTICAL_GPU_RELATIVE_TOLERANCE_W, VERTICAL_GPU_REPORT_SCHEMA_ID,
     VERTICAL_GPU_REPORT_SCHEMA_VERSION, VERTICAL_MODEL_ORACLE_IMPLEMENTATION_ID,
     VERTICAL_MODEL_ORACLE_OUTPUT_SHA256_MODEL_LEVELS,
     VERTICAL_MODEL_ORACLE_OUTPUT_SHA256_REAL_COLUMN, VERTICAL_ORACLE_EXECUTABLE_SHA256,
-    VERTICAL_ORACLE_REVISION, VERTICAL_W_ORACLE_BINARY_SHA256,
-    VERTICAL_W_ORACLE_IMPLEMENTATION_ID, VERTICAL_W_ORACLE_OUTPUT_SHA256,
+    VERTICAL_ORACLE_REVISION, VERTICAL_W_ORACLE_BINARY_SHA256, VERTICAL_W_ORACLE_IMPLEMENTATION_ID,
+    VERTICAL_W_ORACLE_OUTPUT_SHA256,
 };
 pub use wet_deposition::{
     apply_wet_deposition_step_gpu, apply_wet_deposition_step_workflow,

@@ -31,7 +31,9 @@ use flexpart_gpu::physics::{
 use flexpart_gpu::simulation::{
     ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket, TimeLoopError,
 };
-use flexpart_gpu::wind::{linear_shear_wind_field, uniform_wind_field, SurfaceFields, WindFieldGrid};
+use flexpart_gpu::wind::{
+    linear_shear_wind_field, uniform_wind_field, SurfaceFields, WindFieldGrid,
+};
 use ndarray::Array1;
 
 // ---------------------------------------------------------------------------
@@ -378,8 +380,12 @@ fn cpu_gpu_hanna_params_consistency() {
     let particle_buffers = ParticleBuffers::from_particles(&ctx, &particles);
     let pbl_buffers =
         PblBuffers::from_state(&ctx, pbl_state).expect("PBL buffer creation should succeed");
-    let gpu_hanna = pollster::block_on(compute_hanna_params_gpu(&ctx, &particle_buffers, &pbl_buffers))
-        .expect("GPU Hanna should succeed");
+    let gpu_hanna = pollster::block_on(compute_hanna_params_gpu(
+        &ctx,
+        &particle_buffers,
+        &pbl_buffers,
+    ))
+    .expect("GPU Hanna should succeed");
 
     let mut max_sigu_diff = 0.0_f32;
     let mut max_sigv_diff = 0.0_f32;

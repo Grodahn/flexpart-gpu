@@ -458,7 +458,11 @@ pub fn encode_pbl_diagnostics_gpu_with_kernel(
         });
         cpass.set_pipeline(&kernel.pipeline);
         cpass.set_bind_group(0, &bind_group, &[]);
-        super::dispatch_1d(&mut cpass, dispatch_params.cell_count, kernel.workgroup_size_x);
+        super::dispatch_1d(
+            &mut cpass,
+            dispatch_params.cell_count,
+            kernel.workgroup_size_x,
+        );
     }
     Ok(())
 }
@@ -573,8 +577,8 @@ mod tests {
         dispatch_pbl_diagnostics_gpu(&ctx, &surface_buf, &pbl_output, &options)
             .expect("GPU PBL dispatch succeeds");
 
-        let gpu_pbl = pollster::block_on(pbl_output.download_state(&ctx))
-            .expect("PBL readback succeeds");
+        let gpu_pbl =
+            pollster::block_on(pbl_output.download_state(&ctx)).expect("PBL readback succeeds");
 
         let (nx, ny) = (3_usize, 2_usize);
         for i in 0..nx {
@@ -644,10 +648,7 @@ mod tests {
             .upload(&ctx, &surface_2x2)
             .expect_err("shape mismatch must be rejected");
 
-        assert!(matches!(
-            err,
-            GpuPblDiagnosticsError::ShapeMismatch { .. }
-        ));
+        assert!(matches!(err, GpuPblDiagnosticsError::ShapeMismatch { .. }));
     }
 
     #[test]
@@ -662,8 +663,8 @@ mod tests {
         let pbl_wrong_shape = PblState::new(2, 2);
 
         let surface_buf = SurfaceFieldBuffer::from_surface_fields(&ctx, &surface);
-        let pbl_buf = PblBuffers::from_state(&ctx, &pbl_wrong_shape)
-            .expect("PBL buffer creation succeeds");
+        let pbl_buf =
+            PblBuffers::from_state(&ctx, &pbl_wrong_shape).expect("PBL buffer creation succeeds");
 
         let err = dispatch_pbl_diagnostics_gpu(
             &ctx,
@@ -673,9 +674,6 @@ mod tests {
         )
         .expect_err("shape mismatch must be rejected");
 
-        assert!(matches!(
-            err,
-            GpuPblDiagnosticsError::ShapeMismatch { .. }
-        ));
+        assert!(matches!(err, GpuPblDiagnosticsError::ShapeMismatch { .. }));
     }
 }

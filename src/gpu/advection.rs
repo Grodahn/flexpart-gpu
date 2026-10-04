@@ -21,11 +21,11 @@ use wgpu::util::DeviceExt;
 use crate::particles::Particle;
 use crate::physics::VelocityToGridScale;
 
+use super::buffers::DualWindBuffers;
 use super::{
     render_shader_with_workgroup_size, runtime_workgroup_size, GpuContext, ParticleBuffers,
     WindBuffers, WorkgroupKernel,
 };
-use super::buffers::DualWindBuffers;
 
 const SHADER_SOURCE_BUFFER: &str = include_str!("../shaders/advection.wgsl");
 const SHADER_SOURCE_TEXTURE: &str = include_str!("../shaders/advection_texture.wgsl");
@@ -540,8 +540,7 @@ pub fn resolve_dual_wind_sampling_path(
     if options.force_buffer_path {
         return WindSamplingPath::BufferStorage;
     }
-    let texture_ready =
-        ctx.supports_wind_texture_sampling() && dual_wind.has_sampled_textures();
+    let texture_ready = ctx.supports_wind_texture_sampling() && dual_wind.has_sampled_textures();
     if texture_ready {
         WindSamplingPath::SampledTexture3d
     } else {
@@ -924,7 +923,11 @@ pub fn encode_advection_gpu_with_kernel(
             });
             cpass.set_pipeline(&buffer_kernel.pipeline);
             cpass.set_bind_group(0, &bind_group, &[]);
-            super::dispatch_1d(&mut cpass, params.particle_count, buffer_kernel.workgroup_size_x);
+            super::dispatch_1d(
+                &mut cpass,
+                params.particle_count,
+                buffer_kernel.workgroup_size_x,
+            );
         }
         AdvectionDispatchKernel::Texture(texture_kernel) => {
             let sampled = wind
@@ -966,7 +969,11 @@ pub fn encode_advection_gpu_with_kernel(
             });
             cpass.set_pipeline(&texture_kernel.pipeline);
             cpass.set_bind_group(0, &bind_group, &[]);
-            super::dispatch_1d(&mut cpass, params.particle_count, texture_kernel.workgroup_size_x);
+            super::dispatch_1d(
+                &mut cpass,
+                params.particle_count,
+                texture_kernel.workgroup_size_x,
+            );
         }
     }
     Ok(())

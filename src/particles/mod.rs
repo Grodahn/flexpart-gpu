@@ -600,8 +600,7 @@ impl ParticleStore {
     pub fn reset_after_compaction(&mut self, active_count: usize) {
         self.active_count = active_count;
         self.free_slots.clear();
-        self.free_slots
-            .extend((active_count..self.capacity).rev());
+        self.free_slots.extend((active_count..self.capacity).rev());
     }
 
     /// Compute per-slot Morton keys for current particle positions.

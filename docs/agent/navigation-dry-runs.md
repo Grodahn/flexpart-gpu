@@ -9,6 +9,7 @@ No task below needs a repository-wide inventory.
 | --- | --- | --- | --- | --- |
 | Meteorology: reject an invalid instantaneous time bracket | [meteorology](repo-map.md#meteorology), temporal contract linked there | GPU temporal host + WGSL pair, shared time-bracket validator and temporal GPU tests from that row | canonical timestamp metadata and interpolation fixture provenance | [meteorology time row](test-map.md#meteorology); exact interior/invalid-bracket tests |
 | Physics: correct wet mass-removal probability | [wet deposition](repo-map.md#wet-deposition), deposition/GPU contracts linked there | wet GPU host + WGSL pair and deposition mass-evolution test | supplied species/precipitation forcing identity, simulation encoder call site | [wet verification](test-map.md#wet-deposition); analytical evolution, device diagnostic, WET-008 paired check |
+| Simulation: inspect forward operator sequencing | [simulation](repo-map.md#simulation), [preserved ordering](timeloop-decomposition.md) | stable facade, forward state owner, timestep coordinator and GPU operator owner linked in the simulation row | forcing or meteorology preparation only when crossing their handoff | [simulation checks](test-map.md#simulation); required device/order and deferred-output regressions |
 | Validation: fail on a missing consumed manifest input | [validation/provenance](repo-map.md#validation-provenance), provenance contract | corpus manifest writer, shared provenance owner and their regression tests from that row | case schema and existing input audit when they supply that input | [validation verification](test-map.md#validation-provenance); manifest regression, existing consumer run |
 
 For the first task, unrelated provider decoding, convection and output files stay
@@ -22,3 +23,5 @@ references, rendered heading anchors and command targets, including named exact-
 selectors. These examples also provide a review checklist when navigation facts
 change: resolve the row, select only the listed files, and verify the command
 without reconstructing the repository's directory tree.
+
+The [#126 context comparison](timeloop-decomposition.md#final-responsibility-layout-and-context-comparison) records the before/after source working set for the simulation dry run.

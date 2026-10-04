@@ -379,6 +379,15 @@ jobs:
               assert path.exists(), reference
               assert list(path.glob("*.json")) if path.is_dir() else path.stat().st_size > 0
           PY
+      - name: Preserve simulation timestep order and output boundaries (#126)
+        run: |
+          set -euo pipefail
+          cargo test --test forward_timeloop --test backward_timeloop -- --nocapture > target/ci-gate/timeloop-production.log 2>&1
+          grep -q "TIMELOOP-ORDER-126" target/ci-gate/timeloop-production.log
+          grep -q "TIMELOOP-DEFERRED-126" target/ci-gate/timeloop-production.log
+          FLEXPART_GPU_VALIDATION=1 cargo test --test forward_timeloop -- --nocapture > target/ci-gate/timeloop-validation.log 2>&1
+          grep -q "TIMELOOP-ORDER-126" target/ci-gate/timeloop-validation.log
+          grep -q "TIMELOOP-DEFERRED-126" target/ci-gate/timeloop-validation.log
       - name: Run corpus deterministic subset (Issue #6, point 2)
         run: |
           set -euo pipefail
@@ -421,6 +430,8 @@ jobs:
             target/ci-gate/vertical-gpu.log
             target/ci-gate/vertical-gpu/*.json
             target/ci-gate/corpus-subset.log
+            target/ci-gate/timeloop-production.log
+            target/ci-gate/timeloop-validation.log
             target/temporal-gpu-evidence.json
             target/settling-gpu-evidence.json
             target/ci-gate/settling-gpu.log

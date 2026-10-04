@@ -278,8 +278,10 @@ fn test_forward_timeloop_optional_spatial_sort_reorders_particle_slots() {
 #[test]
 fn test_forward_timeloop_operator_call_order_is_preserved() {
     // Source order covers commuting mass operators that final mass alone cannot distinguish.
-    let source = include_str!("../src/simulation/timeloop.rs");
-    let start = source.find("label: Some(\"forward_timeloop_step_encoder\")").expect("forward encoder");
+    let source = include_str!("../src/simulation/timeloop/forward/operators.rs");
+    let start = source
+        .find("label: Some(\"forward_timeloop_step_encoder\")")
+        .expect("forward encoder");
     let source = &source[start..];
     let mut offset = 0;
     for operation in [
@@ -294,7 +296,37 @@ fn test_forward_timeloop_operator_call_order_is_preserved() {
         "encode_compaction_with_reorder(",
         "self.gpu_context.queue.submit(",
     ] {
-        offset += source[offset..].find(operation).unwrap_or_else(|| panic!("missing/out-of-order {operation}")) + operation.len();
+        offset += source[offset..]
+            .find(operation)
+            .unwrap_or_else(|| panic!("missing/out-of-order {operation}"))
+            + operation.len();
+    }
+    let coordinator = include_str!("../src/simulation/timeloop/forward/timestep.rs");
+    let mut offset = 0;
+    for boundary in [
+        "self.apply_spatial_sort_if_enabled()",
+        "self.release_manager.inject_and_upload_for_time(",
+        "self.prepare_meteorology(",
+        "self.prepare_forcing(",
+        "self.gpu_context.device.poll(wgpu::Maintain::Wait)",
+        "self.submit_operators(",
+        "self.gpu_submission_pending = true",
+        "self.pbl_write_index = 1 - self.pbl_write_index",
+        "self.philox_counter = next_philox_counter",
+        "let dry_probability =",
+        ".download_probabilities(",
+        "let wet_probability =",
+        ".download_probabilities(",
+        ".download_active_count(",
+        "self.sync_store_from_gpu().await?",
+        "let report = ForwardStepReport",
+        "self.step_index += 1",
+        ".saturating_add(",
+    ] {
+        offset += coordinator[offset..]
+            .find(boundary)
+            .unwrap_or_else(|| panic!("missing/out-of-order timestep boundary {boundary}"))
+            + boundary.len();
     }
 }
 
@@ -315,7 +347,14 @@ fn test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advan
         species_masses_kg: None,
         raw: BTreeMap::new(),
     }];
-    let grid = GridDomain { xlon0: 0.0, ylat0: 0.0, dx: 1.0, dy: 1.0, nx: 64, ny: 64 };
+    let grid = GridDomain {
+        xlon0: 0.0,
+        ylat0: 0.0,
+        dx: 1.0,
+        dy: 1.0,
+        nx: 64,
+        ny: 64,
+    };
     let config = ForwardTimeLoopConfig {
         start_timestamp: "20240101000000".to_string(),
         end_timestamp: "20240101000001".to_string(),
@@ -341,8 +380,12 @@ fn test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advan
     let mut expected_mass = 1.0_f32;
     for (index, wind) in [&still, &upward].into_iter().enumerate() {
         let met = MetTimeBracket {
-            wind_t0: wind, wind_t1: wind, surface_t0: &surface, surface_t1: &surface,
-            time_t0_seconds: start + index as i64, time_t1_seconds: start + index as i64 + 1,
+            wind_t0: wind,
+            wind_t1: wind,
+            surface_t0: &surface,
+            surface_t1: &surface,
+            time_t0_seconds: start + index as i64,
+            time_t1_seconds: start + index as i64 + 1,
         };
         let report = pollster::block_on(driver.run_timestep(&met, &forcing)).expect("GPU step");
         assert_eq!(report.step_index, index);
@@ -350,7 +393,11 @@ fn test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advan
         assert_eq!(report.timestamp, format!("2024010100000{index}"));
         assert_eq!(report.released_count, usize::from(index == 0));
         assert_eq!(driver.current_time_seconds(), start + index as i64 + 1);
-        let dry_probability = if index == 0 { 1.0 - (-0.2_f32).exp() } else { 0.0 };
+        let dry_probability = if index == 0 {
+            1.0 - (-0.2_f32).exp()
+        } else {
+            0.0
+        };
         let wet_probability = 0.5 * (1.0 - (-0.3_f32).exp());
         assert!((report.dry_deposition_probability[0][0] - dry_probability).abs() < 1.0e-5);
         assert!((report.wet_deposition_probability[0][0] - wet_probability).abs() < 1.0e-5);
@@ -358,16 +405,104 @@ fn test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advan
         let particle = driver.particle_store().get(0).expect("released particle");
         assert!((particle.mass[0] - expected_mass).abs() < 1.0e-5);
         if index == 1 {
-            assert!(particle.pos_z > 4.0, "transport must precede the dry-deposition height check");
+            assert!(
+                particle.pos_z > 4.0,
+                "transport must precede the dry-deposition height check"
+            );
         }
     }
     assert!(!driver.has_remaining_steps());
     let met = MetTimeBracket {
-        wind_t0: &upward, wind_t1: &upward, surface_t0: &surface, surface_t1: &surface,
-        time_t0_seconds: start, time_t1_seconds: start + 3,
+        wind_t0: &upward,
+        wind_t1: &upward,
+        surface_t0: &surface,
+        surface_t1: &surface,
+        time_t0_seconds: start,
+        time_t1_seconds: start + 3,
     };
-    assert!(matches!(pollster::block_on(driver.run_timestep(&met, &forcing)), Err(TimeLoopError::SimulationComplete)));
+    assert!(matches!(
+        pollster::block_on(driver.run_timestep(&met, &forcing)),
+        Err(TimeLoopError::SimulationComplete)
+    ));
     assert_eq!(driver.current_time_seconds(), start + 2);
     pollster::block_on(driver.finalize()).expect("finalize");
     eprintln!("TIMELOOP-ORDER-126: WGSL transport/deposition/decay executed; inclusive end and report/advance verified");
+}
+
+#[test]
+fn test_forward_timeloop_deferred_readback_preserves_gpu_output_and_cached_host_mass() {
+    use flexpart_gpu::gpu::{ConcentrationGridShape, ConcentrationGriddingParams};
+    let config = ForwardTimeLoopConfig {
+        start_timestamp: "20240101000000".to_string(),
+        end_timestamp: "20240101000002".to_string(),
+        sync_particle_store_each_step: false,
+        collect_deposition_probabilities_each_step: false,
+        ..ForwardTimeLoopConfig::default()
+    };
+    let releases = vec![ReleaseConfig {
+        name: "deferred".to_string(),
+        start_time: "20240101000000".to_string(),
+        end_time: "20240101000000".to_string(),
+        lon: 10.0,
+        lat: 5.0,
+        z_min: 1.0,
+        z_max: 1.0,
+        mass_kg: 1.0,
+        particle_count: 1,
+        species_masses_kg: None,
+        raw: BTreeMap::new(),
+    }];
+    let grid = GridDomain {
+        xlon0: 0.0,
+        ylat0: 0.0,
+        dx: 1.0,
+        dy: 1.0,
+        nx: 64,
+        ny: 64,
+    };
+    let mut driver = pollster::block_on(ForwardTimeLoopDriver::new(config, &releases, grid, 8))
+        .expect("deferred output regression requires a WGSL adapter");
+    let start = driver.current_time_seconds();
+    let wind = uniform_wind_field(&synthetic_wind_grid(64, 64, 16), 1.0, 0.0, 0.0);
+    let surface = synthetic_surface_fields(64, 64);
+    let met = MetTimeBracket {
+        wind_t0: &wind,
+        wind_t1: &wind,
+        surface_t0: &surface,
+        surface_t1: &surface,
+        time_t0_seconds: start,
+        time_t1_seconds: start + 2,
+    };
+    let forcing = ForwardStepForcing {
+        decay_constant_s_inv: vec![0.1],
+        ..ForwardStepForcing::default()
+    };
+    let reports =
+        pollster::block_on(driver.run_to_end(&met, &forcing)).expect("deferred forward run");
+    assert_eq!(reports.len(), 3);
+    assert!(reports.iter().all(
+        |r| r.dry_deposition_probability.is_empty() && r.wet_deposition_probability.is_empty()
+    ));
+    // Finalize drains the device, but never refreshes the intentionally cached host mass.
+    assert_eq!(
+        driver.particle_store().get(0).expect("host particle").mass[0],
+        1.0
+    );
+    let output = pollster::block_on(driver.accumulate_concentration_grid(
+        ConcentrationGridShape {
+            nx: 64,
+            ny: 64,
+            nz: 16,
+        },
+        ConcentrationGriddingParams::default(),
+    ))
+    .expect("explicit GPU output boundary");
+    assert_eq!(output.particle_count_per_cell.iter().sum::<u32>(), 1);
+    assert!((output.concentration_mass_kg.iter().sum::<f32>() - (-0.3_f32).exp()).abs() < 2.0e-6);
+    assert_eq!(
+        driver.particle_store().get(0).expect("host particle").mass[0],
+        1.0
+    );
+    pollster::block_on(driver.finalize()).expect("idempotent finalize");
+    eprintln!("TIMELOOP-DEFERRED-126: WGSL output observes three decay steps; host cache remains unchanged");
 }

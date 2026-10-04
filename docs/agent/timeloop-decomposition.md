@@ -3,8 +3,7 @@
 ## Pre-move inventory
 
 Recorded against `17fb779` before code movement. The original
-`src/simulation/timeloop.rs` contains 2,549 lines (99,312 non-newline
-characters): configuration/validation, forcing shapes and caches, reports,
+`src/simulation/timeloop.rs` contains 2,572 lines (102,324 bytes with LF newlines): configuration/validation, forcing shapes and caches, reports,
 environment switches/profiling, errors, forward resource ownership and lifecycle,
 meteorology prefetch/upload, forward timestep sequencing, GPU operator encoding,
 particle synchronization/sorting/compaction bookkeeping, gridding, backward
@@ -68,3 +67,55 @@ structural claim. GPU execution must be observed, not inferred from skip-capable
 legacy tests. Final checks are formatting, Clippy, all Cargo tests, navigation
 checks and the existing technical/software-WGSL CI gates. This work defines no
 scientific tolerance, kernel, oracle or new parity claim.
+
+## Final responsibility layout and context comparison
+
+The stable `simulation::timeloop` facade retains the existing public API. Its
+private modules are `config`, `error`, `forcing`, `reports`, `time`, `options`,
+`meteorology` (bracket type), `backward`, and `forward`. Forward owns the original
+run/resource state and lifecycle; its private `timestep`, `meteorology`,
+`forcing`, `operators`, `particles`, and `output` modules implement cohesive
+orchestration responsibilities. Prepared meteorology/forcing records pass only
+existing decisions and timing values to the ordered submission stage. Resource
+ownership stays on the driver, with no second runtime or compatibility adapter.
+
+Representative task: inspect/change the forward physics sequencing under its
+own future contract. Before: the entire monolith, 2572 lines,
+102,324 bytes with LF newlines. After: facade, driver resource/lifecycle owner,
+timestep coordinator, and operator owner, 763 lines, 32,548 bytes
+(about 68% less source). Common GPU/scientific contracts and focused tests remain
+required and are excluded from both counts. Forcing/meteorology/cache internals,
+backward attribution and timestamp validation need not be loaded for this task;
+follow their named handoffs if the task crosses them. This is a measured source
+selection reduction, not a token, latency or scientific-performance claim.
+
+No scientific deviations are introduced. No mass-ledger or output scheduling
+consumer is moved. Original pending-work, cached host-state, error propagation,
+operator arguments and branch conditions remain intact.
+
+## Validation and separate findings
+
+The pre-move and post-move forward/backward targets passed. Added regressions
+cover the actual encoded operator call sequence, preparation/wait/readback/report
+boundaries, transport before the dry-deposition height check, existing combined
+mass evolution, inclusive end time and deferred host/output behavior. Required
+device regressions fail on missing adapters. Fused and separated forward paths
+passed, as did focused physics integration, all 690 Cargo tests and Clippy.
+Navigation audit and its 26 regression tests passed. A retained lexical audit
+checked 64 unchanged routine bodies, three unchanged extracted phases, and
+reconstruction of the timestep body (ignoring comments/import ordering,
+whitespace and formatter-added trailing commas).
+
+Full `cargo fmt --all -- --check` fails on 27 unchanged baseline files;
+format checks on all changed Rust surfaces pass. Those unrelated files were
+not reformatted. The local compact paired `ADV-ANA-001` check ran the candidate
+successfully but remains BLOCKED because the pinned oracle checkout is absent;
+it is not paired validation. Existing remote technical and software-WGSL gates
+remain required. The software gate now runs both forward variants and backward,
+requires the new device regression markers and retains their logs.
+
+An additional optional-compaction probe exposed an existing dry-deposition
+resource-length mismatch (active dispatch 1 versus capacity 8). Reproduction
+against the exact original driver at `17fb779` failed identically. This path
+was stopped and [follow-up #135](https://github.com/Grodahn/flexpart-gpu/issues/135)
+was created; #126 preserves the original failure. No semantic repair is included.

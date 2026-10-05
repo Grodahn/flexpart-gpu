@@ -65,7 +65,7 @@ Start at the [stable facade](../../src/meteorology/vertical.rs) and select its
 - First preservation checks: `cargo test --lib config::`, then `cargo test --test config_contract`.
 - Select the owner for narrower inspection: `cargo test --lib config::command::tests`, `cargo test --lib config::release::tests`, `cargo test --lib config::output::tests`, `cargo test --lib config::species::tests`, or `cargo test --lib config::simulation::tests`.
 - Public boundary evidence: the pre-decomposition transcript checks compact/pretty serialized bytes, defaults, aliases/precedence, timestamps, sentinels/conversions, process predicates, rejected inputs/error text, validation order and Serde round trips. File-loading tests check required-path failures and sorted species ownership. These are configuration preservation checks, not scientific parity evidence.
-- Representative OUTGRID task: `cargo test --lib config::output::tests::validation_failures_reported -- --exact`; [source context comparison](config-decomposition.md#final-layout-and-representative-context).
+- Representative OUTGRID task: `cargo test --lib config::output::tests::test_output_grid_inferred_spacing_and_zero_dimensions_are_preserved -- --exact`; [source context comparison](config-decomposition.md#final-layout-and-representative-context).
 - Broader: formatting, Clippy, full Cargo tests, [navigation checks](#navigation-only-changes), and existing [software WGSL](../../.github/workflows/software-wgpu.yml) / [technical gate](../../.github/workflows/validation-gate.yml). The technical gate also runs the public config transcript. No new numerical/oracle contract is introduced by decomposition.
 
 ## Simulation

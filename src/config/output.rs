@@ -135,6 +135,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_output_grid_inferred_spacing_and_zero_dimensions_are_preserved() {
+        let input = "LON_MIN=5,LON_MAX=15,LAT_MIN=40,LAT_MAX=50,NX=100,NY=50,NZ=1,DZ=100";
+        let source = Path::new("OUTGRID");
+        let grid = OutputGridConfig::parse(input, source).expect("inferred grid spacing");
+        assert_eq!(grid.dx.to_bits(), 0.1_f64.to_bits());
+        assert_eq!(grid.dy.to_bits(), 0.2_f64.to_bits());
+
+        for dimension in ["NX=100", "NY=50", "NZ=1"] {
+            let key = dimension.split_once('=').expect("dimension assignment").0;
+            let invalid = input.replace(dimension, &format!("{key}=0"));
+            let error = OutputGridConfig::parse(&invalid, source)
+                .expect_err("zero output dimension must fail");
+            assert!(
+                matches!(error, ConfigError::Validation { message }
+                    if message == "OUTGRID dimensions nx, ny, nz must all be > 0"),
+                "{key} must retain its dimension validation failure"
+            );
+        }
+    }
+
+    #[test]
     fn validation_failures_reported() {
         let bad_command = CommandConfig {
             start_time: "20240102120000".to_string(),

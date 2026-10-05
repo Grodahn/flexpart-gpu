@@ -108,7 +108,7 @@ No callers need changed imports or compatibility wrappers.
 | `mod.rs` | Stable facade | 1,016 / 29 |
 | `command.rs` | COMMAND run timing | 4,127 / 124 |
 | `release.rs` | RELEASES geometry/inventory | 11,104 / 311 |
-| `output.rs` | OUTGRID bounds/dimensions/spacing | 5,644 / 163 |
+| `output.rs` | OUTGRID bounds/dimensions/spacing | 6,691 / 184 |
 | `species.rs` | SPECIES aliases, unit/sentinel conversions, validation, process predicates | 35,307 / 894 |
 | `simulation.rs` | Aggregate loading, cross-domain validation/order | 19,998 / 543 |
 | `parsing.rs` | Shared grammar, scalar conversion, timestamps and version policy | 11,760 / 393 |
@@ -125,8 +125,8 @@ helpers without widening the public API; shared temporary-file support is test-o
 
 Representative task: inspect inferred OUTGRID horizontal spacing and zero-dimension
 rejection. Before: the entire config module, 2,361 lines / 85,734 LF UTF-8 bytes.
-After: stable facade + OUTGRID owner with colocated tests, 192 lines / 6,660 bytes.
-That is 91.9% fewer lines and 92.2% fewer source bytes. Both measurements include
+After: stable facade + OUTGRID owner with colocated tests, 213 lines / 7,707 bytes.
+That is 91.0% fewer lines and 91.0% fewer source bytes. Both measurements include
 tests and use LF consistently; the original Windows checkout has 88,095 bytes
 with CRLF. Shared parsing/error files are named adjacent handoffs only when the
 task changes grammar/conversion/failure representation. This is a source-context
@@ -154,3 +154,8 @@ for the executable regression and broader gates.
 No scientific calculation, configuration schema, default, validation branch,
 alias or runtime caller changes. There are no deviations to record in the
 scientific changelog and no newly resolved configuration semantics or follow-ups.
+
+A dedicated colocated OUTGRID regression checks bit-equivalent inferred dx/dy
+and rejection of zero nx/ny/nz. The navigation selector targets that regression.
+The original negative-spacing regression remains intact. There are now 27 config
+tests; production code and the frozen public-facade transcript are unchanged.

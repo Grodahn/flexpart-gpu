@@ -527,3 +527,26 @@ struct OracleReference {
     version: String,
     pinned_commit: String,
 }
+
+/// Digests captured on the pre-refactor implementation at revision 186be537.
+#[test]
+fn canonical_serialized_bytes_are_preserved() {
+    for (source, expected_compact, expected_pretty) in [
+        (
+            include_str!("../fixtures/meteorology/synthetic-v1.json"),
+            "d3584487f6c2b955dac1d0eb58b39524249083444da6cfd2107c222330d6a536",
+            "1533e7c9c8bb992e5aa48b89e689801594748382ce0e76164eac294228af1a30",
+        ),
+        (
+            include_str!("../fixtures/meteorology/era5-etex-native-v1.json"),
+            "2449300fac3b81ba27c25ba535add96949f24a8d00c0eb4d5ee2ed15bb55e44c",
+            "5f4b1cbe7021530cf0556fd029f69cf7f2d60ac3c5c0f0a0144991528d4f1c3e",
+        ),
+    ] {
+        let snapshot: Snapshot = serde_json::from_str(source).expect("canonical fixture");
+        let compact = serde_json::to_vec(&snapshot).expect("compact snapshot");
+        let pretty = serde_json::to_vec_pretty(&snapshot).expect("pretty snapshot");
+        assert_eq!(format!("{:x}", Sha256::digest(&compact)), expected_compact);
+        assert_eq!(format!("{:x}", Sha256::digest(&pretty)), expected_pretty);
+    }
+}

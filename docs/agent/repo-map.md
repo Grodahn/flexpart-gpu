@@ -33,6 +33,17 @@ path moves. Markdown links are the machine-readable path surface, audited by
 - Tests: [schema](../../tests/meteorology_contract.rs), [horizontal](../../tests/horizontal_gpu.rs), [vertical](../../tests/vertical_gpu.rs), [time](../../tests/temporal_gpu.rs), [accumulation](../../tests/accumulation_gpu.rs); [verification](test-map.md#meteorology).
 - Dependencies: providers -> canonical snapshot/geometry -> GPU sampling -> [canonical GPU composition](../../src/gpu/meteorology.rs) -> [simulation](#simulation). #76 owns canonical composition and #77 consumer migration; current [wind interface](../../src/wind/mod.rs) remains in the time loop. These kernel surfaces alone do not establish production adoption.
 
+## GPU vertical
+
+- Stable #88 GPU API: [vertical facade](../../src/gpu/vertical.rs). Existing `gpu` re-exports retain this boundary.
+- Select only the relevant execution owner: [persistent buffers/uploads](../../src/gpu/vertical/resources.rs), [runtime columns/AGL preparation](../../src/gpu/vertical/preparation.rs), [pipeline/layout construction](../../src/gpu/vertical/pipeline.rs), [caller-owned encoding/bind groups](../../src/gpu/vertical/encode.rs), [standalone dispatch and explicit D2H](../../src/gpu/vertical/dispatch.rs), [scoped GPU errors](../../src/gpu/vertical/error.rs).
+- WGSL: [model/center-W sample](../../src/shaders/vertical_sample.wgsl), [interface-W remap](../../src/shaders/vertical_remap_w.wgsl). Interface W encodes remap before sample with device-resident shared values.
+- Evidence surfaces: [candidate/oracle identities and input/shader hashes](../../src/gpu/vertical/provenance.rs), [paired rows/reports and fail-closed validation](../../src/gpu/vertical/evidence.rs); generated per-scenario reports remain `target/ci-gate/vertical-gpu/*.json`.
+- Authority: [GPU contract](../GPU_CONTRACT.md), [spatial contract](../interpolation-contract.md), [pre-move inventory/boundaries/context comparison](gpu-vertical-decomposition.md). #128 changes structure only; #88 owns scientific/device evidence.
+- Fixtures: [model-level oracle](../../fixtures/interpolation/contract-v1.json), [per-case provenance](../../fixtures/interpolation/contract-v1.provenance.json), [W production oracle](../../fixtures/interpolation/w-production-oracle-v1.json).
+- Tests: [focused vertical/device/oracle tests](../../tests/vertical_gpu.rs), [host-only checks](../../src/gpu/vertical/tests.rs); [verification](test-map.md#gpu-vertical).
+- Named handoffs: [canonical runtime geometry](../../src/meteorology/vertical.rs) and [CPU diagnostics](../../src/meteorology/vertical_sampling.rs) for input semantics; [GPU composition consumer](../../src/gpu/meteorology.rs) only for caller-owned sequencing. #76/#77 adoption and #117 cleanup stay separate.
+
 ## Vertical geometry
 
 - Stable canonical #30 boundary: [vertical facade](../../src/meteorology/vertical.rs); [opaque state, runtime views and validity](../../src/meteorology/vertical/runtime.rs). All callers retain this facade; no second geometry model exists.

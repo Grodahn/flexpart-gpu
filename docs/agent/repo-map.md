@@ -43,12 +43,21 @@ path moves. Markdown links are the machine-readable path surface, audited by
 - Tests: responsibility regressions in [vertical tests](../../src/meteorology/vertical/tests/), shared [synthetic builders](../../src/meteorology/vertical/test_support.rs) only when needed; [facade identity](../../tests/vertical_geometry_contract.rs), [runtime integration](../../tests/integration/vertical_runtime.rs); [focused verification](test-map.md#vertical-geometry).
 - Dependencies: Snapshot -> canonical geometry -> [vertical sampling](../../src/meteorology/vertical_sampling.rs) / [GPU vertical execution](../../src/gpu/vertical.rs). #127 decomposes host geometry only; #128/#88 execution, provider decoding, sampling science and #117 cleanup remain separate.
 
+## Configuration
+
+- Stable caller facade: [configuration exports](../../src/config/mod.rs).
+- Domain owners (types, file aliases/defaults, validation and colocated tests): [COMMAND run timing](../../src/config/command.rs), [RELEASES geometry/inventory](../../src/config/release.rs), [OUTGRID bounds/spacing](../../src/config/output.rs), [SPECIES units/sentinels/process activation](../../src/config/species.rs), [aggregate loading/validation order](../../src/config/simulation.rs).
+- Shared handoffs: [file grammar, scalar/timestamp parsing and version policy](../../src/config/parsing.rs), [typed errors](../../src/config/error.rs); [temporary test files](../../src/config/test_support.rs) are test-only.
+- Authority: [pre-move field/default/alias inventory and context comparison](config-decomposition.md), [species compatibility](../species-config.md). #129 preserves the existing schema and behavior; it adds no settings or scientific semantics.
+- Tests: [public facade, frozen serialization/default/parser behavior](../../tests/config_contract.rs), [pre-move transcript](../../tests/fixtures/config-behavior-v1.json); [verification](test-map.md#configuration).
+- Dependencies: file inputs -> config -> [release scheduling](../../src/release/mod.rs), [species mapping](../../src/physics/species.rs), [validation loading](../../src/validation/mod.rs). GPU/runtime and meteorology provider configuration belong to their existing owners; unknown COMMAND keys remain raw assignments.
+
 ## Simulation
 
 - Stable production entry: [simulation-driver facade](../../src/simulation/timeloop.rs); [forward state/lifecycle](../../src/simulation/timeloop/forward.rs), [timestep phases/advance](../../src/simulation/timeloop/forward/timestep.rs), [ordered GPU operators/submission](../../src/simulation/timeloop/forward/operators.rs), [backward attribution](../../src/simulation/timeloop/backward.rs).
 - Preparation: [bracket handoff](../../src/simulation/timeloop/meteorology.rs), [prefetch/bracket/PBL inputs](../../src/simulation/timeloop/forward/meteorology.rs), [forcing shapes/cache](../../src/simulation/timeloop/forcing.rs), [forcing validation/uploads](../../src/simulation/timeloop/forward/forcing.rs).
 - Host boundaries: [particle sync/sort](../../src/simulation/timeloop/forward/particles.rs), [explicit gridding](../../src/simulation/timeloop/forward/output.rs), [reports](../../src/simulation/timeloop/reports.rs), [errors](../../src/simulation/timeloop/error.rs); [configuration/validation](../../src/simulation/timeloop/config.rs), [time/bracket bounds](../../src/simulation/timeloop/time.rs), [runtime options](../../src/simulation/timeloop/options.rs).
-- Inputs: [release scheduling](../../src/release/mod.rs), [configuration](../../src/config/mod.rs), [particle state](../../src/particles/mod.rs).
+- Inputs: [release scheduling](../../src/release/mod.rs), [stable config facade](../../src/config/mod.rs) / [configuration domains](#configuration), [particle state](../../src/particles/mod.rs).
 - GPU: stage encoders in the rows below; [compaction](../../src/gpu/compaction.rs) / [kernel](../../src/shaders/compaction.wgsl).
 - Authority: [GPU contract](../GPU_CONTRACT.md), [pipeline](../GPU_PIPELINE.md), [simulation flow](../science/simulation-flow.md), [pre-move inventory and preserved ordering](timeloop-decomposition.md).
 - Fixtures: [canonical corpus cases](../../fixtures/corpus/cases/), [candidate physics identity](../../reference/candidate-physics/candidate-forward-timeloop-v1.json).

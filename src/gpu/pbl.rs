@@ -14,7 +14,7 @@ use bytemuck::{Pod, Zeroable};
 use thiserror::Error;
 use wgpu::util::DeviceExt;
 
-use crate::io::pbl_params::PblComputationOptions;
+use crate::pbl::PblComputationOptions;
 use crate::wind::SurfaceFields;
 
 use super::{
@@ -477,9 +477,7 @@ mod tests {
 
     use super::*;
     use crate::gpu::GpuError;
-    use crate::io::pbl_params::{
-        compute_pbl_parameters_from_met, PblComputationOptions, PblMetInputGrids,
-    };
+    use crate::io::pbl_params::{compute_pbl_parameters_from_met, PblMetInputGrids};
     use crate::pbl::PblState;
     use crate::wind::SurfaceFields;
 

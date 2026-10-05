@@ -99,6 +99,8 @@ Start at the [stable facade](../../src/meteorology/vertical.rs) and select its
 
 ## PBL-turbulence
 
+- Shared options identity/default/profile contract: `cargo test --test pbl_options_contract`; [public-path regressions](../../tests/pbl_options_contract.rs) freeze all eight default bits, exercise CPU/driver consumers and require real WGSL results through all three aliases. Set `FLEXPART_GPU_SOFTWARE=1` for required software execution; absence is a failure.
+- CPU preparation remains separate: `cargo test --lib io::pbl_params::tests`. Candidate mapping: `cargo test --lib validation::candidate_physics::tests`. GPU diagnostics: `cargo test --lib gpu::pbl::tests -- --test-threads=1`; pair with the required-adapter options regression and [software workflow](../../.github/workflows/software-wgpu.yml). Forward/backward preservation uses the [simulation entry](#simulation).
 - Fast equation diagnostics: `cargo test --lib physics::hanna::tests` (CPU analytical level).
 - Production integration: `cargo test --test integration physics_validation`; focused paired stable case: `python scripts/agent_validation.py --check comparison --case PBL-STABLE-004`.
 - Evidence: issue-owned stable/neutral/unstable Hanna and ensemble metrics, seeds, device provenance and pinned oracle when required; one trajectory or CPU/GPU agreement is insufficient.

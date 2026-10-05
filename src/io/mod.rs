@@ -19,6 +19,8 @@ pub mod pbl_params;
 pub mod temporal;
 pub mod vertical_transform;
 
+/// Compatibility path for the shared PBL diagnostic options.
+pub use crate::pbl::PblComputationOptions;
 pub use grib2::{
     build_era5_mvp_from_records, load_era5_mvp_from_grib2, Era5GribGridMetadata, Era5GribRecord,
     Era5MvpSnapshot, Era5MvpSnapshotMetadata, Grib2ReaderError,
@@ -38,8 +40,7 @@ pub use pbl_params::{
     estimate_friction_velocity_m_s, gradient_richardson_number, inverse_obukhov_length_per_m,
     obukhov_length_from_surface_flux_m, BulkRichardsonInput, ComputedPblFields,
     FrictionVelocityInput, GradientRichardsonInput, ObukhovInput, PblBulkProfilePoint,
-    PblCellInput, PblCellOutput, PblComputationOptions, PblMetInputGrids, PblParameterError,
-    PblProfileInputs,
+    PblCellInput, PblCellOutput, PblMetInputGrids, PblParameterError, PblProfileInputs,
 };
 pub use temporal::{
     interpolate_surface_fields_linear, interpolate_wind_field_linear, TemporalInterpolationError,

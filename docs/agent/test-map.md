@@ -29,7 +29,7 @@ Choose the subdomain; do not run every row for one field edit.
 | --- | --- | --- |
 | Canonical metadata | `cargo test --lib meteorology::field::tests` and `cargo test --lib meteorology::snapshot::tests`, then `cargo test --test meteorology_contract` | Host schema and compact/pretty serialized-byte regression only; [contract](../meteorology-contract.md). |
 | Horizontal | `cargo test --test horizontal_gpu test_gpu_interior_matches_oracle -- --exact` | Stable full `cargo test --test horizontal_gpu`; fresh horizontal report tied to revision and interpolation pin. |
-| Vertical / W | `cargo test --test vertical_gpu` | Use `FLEXPART_GPU_REQUIRE_VERTICAL=1` for required execution; per-scenario reports checked by software CI. [Spatial contract](../interpolation-contract.md). |
+| Vertical / W | `cargo test --test vertical_gpu` | Use `FLEXPART_GPU_REQUIRE_VERTICAL=1` for required execution; per-scenario reports checked by software CI. [Private owners and focused evidence](#gpu-vertical), [spatial contract](../interpolation-contract.md). |
 | Instantaneous time | `cargo test --test temporal_gpu test_gpu_linear_interior_interpolation -- --exact` | `cargo test --test temporal_gpu test_gpu_vs_oracle_parity -- --exact`; temporal report and paired row evidence. |
 | Accumulated intervals | `cargo test --test accumulation_contract` | `cargo test --test accumulation_gpu`; interval/cell evidence and pinned numpf contract. |
 
@@ -59,6 +59,16 @@ Start at the [stable facade](../../src/meteorology/vertical.rs) and select its
 - Runtime/release handoff: `cargo test --test integration vertical_runtime`; model-level and #80 interface-W oracle regressions: `cargo test --test integration vertical_sampling`; frozen #80 verdict/provenance: `cargo test --test w_production_oracle`.
 - GPU consumer check: `cargo test --test vertical_gpu` with `FLEXPART_GPU_REQUIRE_VERTICAL=1` and actual device evidence. This does not change or complete #128/#88.
 - Final: normal Rust checks and navigation audit; [technical CI](../../.github/workflows/validation-gate.yml) runs `scripts/ci-gate.sh --particles 1000 --require-flex-extract-oracle`, including fresh pinned #30 synthetic/real columns, calc_etadot and #80 evidence reproduction; [software CI](../../.github/workflows/software-wgpu.yml) requires actual WGSL execution. Existing fixtures/tolerances/verdicts remain authoritative, including #80 `not_equivalent`; these checks do not create a new parity claim.
+
+## GPU vertical
+
+- First/focused check: set `FLEXPART_GPU_REQUIRE_VERTICAL=1` and run `cargo test --test vertical_gpu -- --nocapture --test-threads=1`. Set `FLEXPART_GPU_SOFTWARE=1` for required software WGSL execution; missing adapters fail closed.
+- Model-level oracle: `cargo test --test vertical_gpu gpu_model_matches_71_vertical_model_levels -- --exact`; real column: `cargo test --test vertical_gpu gpu_model_matches_71_real_era5_column -- --exact`.
+- W production oracle: `cargo test --test vertical_gpu gpu_w_two_stage_matches_80_pristine_oracle -- --exact`; caller-owned composition: `cargo test --test vertical_gpu gpu_encode_composes_two_stages_without_intermediate_submit -- --exact`.
+- Actual shader arithmetic: `cargo test --test vertical_gpu gpu_wgsl_arithmetic_determines_output -- --exact`; model execution evidence: `cargo test --test vertical_gpu gpu_model_evidence_proves_device_execution -- --exact`.
+- Evidence: [identity/hash owner](../../src/gpu/vertical/provenance.rs), [paired report validator](../../src/gpu/vertical/evidence.rs), the three per-scenario reports under `target/ci-gate/vertical-gpu/`, and [software CI report checks](../../.github/workflows/software-wgpu.yml). Preserve oracle pins, five bindings, shader bytes, f32 policy and report meaning.
+- Shared-resource consumer: `cargo test --test meteorology_composition -- --test-threads=1`; it must retain caller-owned submission and zero intermediate readbacks. Host-only checks: `cargo test --lib gpu::vertical::tests`.
+- Broader: final Rust checks, [software WGSL](../../.github/workflows/software-wgpu.yml), [technical oracle gate](../../.github/workflows/validation-gate.yml), [navigation checks](../../scripts/check_agent_navigation.py). [Inventory/context](gpu-vertical-decomposition.md). These preserve #88 evidence and do not add a scientific claim.
 
 ## Simulation
 

@@ -1248,9 +1248,9 @@ fn test_meteorology_encode_surface_has_no_host_completion() {
             "pub fn dispatch_temporal_blend_and_wait(",
         ),
         (
-            include_str!("../src/gpu/vertical.rs"),
+            include_str!("../src/gpu/vertical/encode.rs"),
             "pub fn encode_vertical_sample_with_kernel(",
-            "pub fn dispatch_vertical_sample_with_kernel(",
+            "pub fn encode_vertical_w_two_stage_with_kernels(",
         ),
         (
             include_str!("../src/gpu/accumulation.rs"),

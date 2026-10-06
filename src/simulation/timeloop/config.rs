@@ -1,8 +1,9 @@
 //! Run configuration and its existing fail-closed validation.
 
 use crate::coords::GridDomain;
-use crate::io::{PblComputationOptions, TimeBoundsBehavior};
+use crate::io::TimeBoundsBehavior;
 use crate::particles::ParticleSpatialSortOptions;
+use crate::pbl::PblComputationOptions;
 use crate::physics::{PhiloxCounter, PhiloxKey, VelocityToGridScale};
 use crate::simulation::timeloop::error::TimeLoopError;
 use crate::simulation::timeloop::time::{parse_timestamp_seconds, timestep_seconds_f32};

@@ -7,7 +7,8 @@ use super::case::{
     CandidatePhysicsProfileRef, CANDIDATE_PHYSICS_PROFILE_ID, CANDIDATE_PHYSICS_PROFILE_PATH,
     CANDIDATE_PHYSICS_PROFILE_VERSION,
 };
-use crate::io::{PblComputationOptions, TimeBoundsBehavior};
+use crate::io::TimeBoundsBehavior;
+use crate::pbl::PblComputationOptions;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use thiserror::Error;

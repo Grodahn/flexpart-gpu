@@ -4,6 +4,12 @@
 //! Contains turbulence parameters needed for the Hanna (1982) scheme,
 //! which drives stochastic velocity fluctuations in the Langevin equation.
 
+mod options;
+
+/// Shared options for PBL diagnostics, independent of the preparation path.
+pub use options::PblComputationOptions;
+pub(crate) use options::{DEFAULT_ROUGHNESS_LENGTH_M, DEFAULT_WIND_REFERENCE_HEIGHT_M};
+
 use bytemuck::{Pod, Zeroable};
 use ndarray::Array2;
 

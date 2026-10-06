@@ -385,6 +385,12 @@ jobs:
               assert path.exists(), reference
               assert list(path.glob("*.json")) if path.is_dir() else path.stat().st_size > 0
           PY
+      - name: Preserve shared PBL options and GPU diagnostics (#147)
+        run: |
+          set -euo pipefail
+          cargo test --test pbl_options_contract -- --nocapture > target/ci-gate/pbl-options.log 2>&1
+          grep -q "PBL-OPTIONS-147: .*software_adapter=true public_paths=3 device_results=identical" target/ci-gate/pbl-options.log
+          cargo test --lib gpu::pbl::tests -- --test-threads=1 --nocapture > target/ci-gate/pbl-diagnostics.log 2>&1
       - name: Preserve simulation timestep order and output boundaries (#126)
         run: |
           set -euo pipefail
@@ -483,6 +489,8 @@ jobs:
           path: |
             target/ci-gate/gpu-preflight.json
             target/ci-gate/gpu-preflight.log
+            target/ci-gate/pbl-options.log
+            target/ci-gate/pbl-diagnostics.log
             target/ci-gate/sw-wgpu-advection.log
             target/ci-gate/accumulation-gpu.log
             target/ci-gate/accumulation-gpu/*.json

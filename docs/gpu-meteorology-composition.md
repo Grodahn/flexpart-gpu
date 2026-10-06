@@ -110,12 +110,12 @@ The following paths require their own contracts and remain explicit rejections:
 
 #112â€“#115 and #77 own adoption; no production consumer is migrated here.
 
-## Readiness for #112–#115
+## Readiness for #112â€“#115
 
 The field/output handoff is sufficient to begin canonical-field binding and
 fixed-query migration slices through
 `CanonicalGpuField -> PreparedMeteorologySample -> EncodedMeteorologySample`
-without #72–#75 CPU interpolation. It is not sufficient for a complete migration
+without #72â€“#75 CPU interpolation. It is not sufficient for a complete migration
 of resident particle-driven sampling: that query-input surface is absent and
 requires the focused decision in [#152](https://github.com/Grodahn/flexpart-gpu/issues/152).
 The [canonical field matrix](meteorology-contract.md) and `FIELD_SPECS` remain
@@ -151,8 +151,11 @@ W, a later bracket in a three-member series,
 leading/delta/reset accumulated products, interval totals,
 interval means and static scalar/class fields. All producers and minimal downstream
 device-copy consumers share one caller submission. Only final consumer outputs are
-read back. A source audit rejects host-completion calls throughout composition and
-its called stage encode bodies. Negative tests cover metadata, dimensions, coverage,
+read back. Every vertical fixture compares the handoff's geometry identities,
+complete #30 provenance and resolved AGL heights exactly with expectations from
+the original fixture runtime. These expectations are retained in the hashed input
+artifact and checked again by the software-WGSL CI audit. A source audit rejects
+host-completion calls throughout composition and its called stage encode bodies. Negative tests cover metadata, dimensions, coverage,
 geometry, representation and independent-context/resource incompatibility.
 
 `target/ci-gate/meteorology-composition/report.json` records candidate revision,

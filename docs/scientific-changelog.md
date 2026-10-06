@@ -43,10 +43,15 @@ shaders, physics kernels, or advection logic must add an entry here.
 **Validation**: Extend the same-encoder composition matrix with northward wind,
 temperature and specific humidity from existing canonical fixtures. Assert their
 field identities, canonical units/signs, exact source/stage records and geometry
-provenance under existing #87–#90 policies. Document available #112–#115 slices,
-query/ownership boundaries, the unchanged #118–#120 blockers and the missing
+provenance under existing #87â€“#90 policies. Document available #112â€“#115 slices,
+query/ownership boundaries, the unchanged #118â€“#120 blockers and the missing
 resident-particle query surface tracked by #152. No Fortran
 semantic deviation, new shader, production migration or oracle is introduced.
+
+Review repair: Compare every vertical handoff against the fixture runtime's exact
+geometry identities, full #30 provenance and resolved AGL heights, and retain
+these expectations in the hashed inputs for independent CI auditing. This closes
+a metadata-preservation proof gap; scientific algorithms remain unchanged.
 
 ### 2026-10-03 - Compose canonical device-resident meteorology stages (#76)
 **Impact**: none (existing #87-#90 science; no new shader or consumer migration)

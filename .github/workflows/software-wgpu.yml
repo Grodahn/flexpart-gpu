@@ -384,6 +384,10 @@ jobs:
                   assert error <= policy["absolute_tolerance"] or error <= policy["relative_tolerance"] * max(abs(actual), abs(expected))
               assert row["metadata"]["source_snapshot_sha256"]
               assert len(row["metadata"]["geometry_identity"]) == len(row["metadata"]["geometry_provenance"])
+              expected_geometries = inputs["expected_geometries"]
+              assert metadata["geometry_identity"] == [g["identity"] for g in expected_geometries]
+              assert metadata["geometry_provenance"] == [g["provenance"] for g in expected_geometries]
+              assert metadata["resolved_heights_agl_m"] == [g["height_agl_m"] for g in expected_geometries]
               geometries = metadata["geometry_provenance"]
               assert len(geometries) == (2 if any(s["stage"] == "vertical" for s in stages) else 0)
               assert [g["source_snapshot_sha256"] for g in geometries] == (metadata["source_snapshot_sha256"] if geometries else [])

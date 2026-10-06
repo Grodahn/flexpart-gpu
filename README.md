@@ -22,16 +22,30 @@ by the official FLEXPART development team.
 
 ## Project status
 
-This repository is experimental and under active development.
+This repository is experimental and under active development. It already contains
+a substantial GPU execution path, reproducible FLEXPART 11.1 oracle infrastructure,
+versioned validation/provenance contracts, real-data ETEX tooling, and replicated
+GPU/Fortran benchmark campaigns.
 
-Substantial model, meteorology, GPU, validation, and benchmarking infrastructure
-already exists, but `flexpart-gpu` must **not** currently be treated as a
-scientifically interchangeable replacement for FLEXPART 11.1.
+It must **not** currently be treated as a scientifically interchangeable
+replacement for FLEXPART 11.1.
+
+| Area | Current state |
+|------|---------------|
+| Reference & validation foundations | Pinned FLEXPART 11.1 oracle, stochastic identity strategy, versioned case contract, input-equivalence gate, and run provenance are established. |
+| Portable GPU foundation | Shared `wgpu`/WGSL execution contract and GPU meteorology interpolation are established; production-consumer migration is ongoing. |
+| Transport physics | GPU transport, turbulence, deposition, decay, compaction, and gridding paths exist; process-specific FLEXPART parity and production closure remain in progress. |
+| Operational inputs & outputs | ETEX and canonical meteorology infrastructure exist; operational decoding, release/source-term closure, and final scientific output contracts remain active work. |
+| Scientific release validation | Final ETEX-I and radionuclide validation are not yet complete. |
+| Production-scale performance | Replicated 1M/10M benchmarks exist; the canonical Europe-scale workload, VRAM-budgeted cohort execution, and final hardware envelope are still ahead. |
 
 Scientific or behavioral parity is considered established only where the relevant
 production path has passed an explicitly defined comparison against the pinned
 FLEXPART 11.1 reference environment. Isolated kernel agreement, successful
 execution, or good benchmark performance is not sufficient evidence by itself.
+
+See [ROADMAP.md](ROADMAP.md) for the current path to scientific and operational
+production readiness.
 
 ## Goals
 
@@ -51,6 +65,22 @@ The project is organized around six main goals:
 
 Performance matters, but correctness and reproducibility take precedence over
 speedups.
+
+## Why this project
+
+FLEXPART is a mature and widely used scientific model. This project explores
+whether its forward Lagrangian dispersion workflow can be reimplemented as an
+open, portable GPU application while retaining an explicit scientific validation
+chain back to FLEXPART 11.1.
+
+The intended benefit is twofold:
+
+- **scientific computing:** make large particle populations and repeated
+  atmospheric-dispersion workloads practical on commodity and accelerator GPUs
+  across vendors;
+- **open engineering research:** document how agent-assisted development can be
+  used for a validation-heavy scientific codebase without relaxing provenance,
+  review, testing, or reproducibility requirements.
 
 ## Validation model
 
@@ -127,6 +157,37 @@ At a high level:
 
 The detailed source tree and execution flow are documented in
 [docs/architecture.md](docs/architecture.md).
+
+## Roadmap
+
+Development is organized as explicit, reviewable contracts rather than one broad
+"port FLEXPART" task. The current high-level sequence is:
+
+1. finish canonical GPU meteorology integration and remove transitional paths;
+2. close release/source-term, particle-identity, mass-ledger, and scientific
+   output contracts;
+3. complete process-level FLEXPART 11.1 parity for transport and deposition;
+4. run pre-registered ETEX-I and radionuclide release validation;
+5. characterize the real production workload and scale beyond single-GPU VRAM
+   with deterministic particle cohorts.
+
+The detailed milestone map and issue references live in
+[ROADMAP.md](ROADMAP.md).
+
+## Contributing
+
+Contributions are welcome from atmospheric-science, scientific-computing,
+Rust/`wgpu`, GPU/HPC, validation, reproducibility, and technical-writing
+backgrounds.
+
+The repository is deliberately issue-driven: a contribution should have a
+bounded contract, explicit proof obligations, and a reproducible validation path
+before implementation begins. AI-assisted contributions are welcome, but they
+are held to the same review and scientific-evidence requirements as any other
+change.
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md), then read [AGENTS.md](AGENTS.md)
+for the detailed issue, review, validation, and fail-closed rules.
 
 ## Documentation
 

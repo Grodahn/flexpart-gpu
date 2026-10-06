@@ -480,12 +480,45 @@ fn test_meteorology_field_specific_composition_device_handoff() {
     for value in &mut m1.fields.last_mut().unwrap().values {
         *value += 10.0;
     }
+    // Component identity and direction must survive the same scalar stage path.
+    for snapshot in [&mut m0, &mut m1] {
+        let mut northward = snapshot
+            .fields
+            .iter()
+            .find(|field| field.id == FieldId::WindU)
+            .unwrap()
+            .clone();
+        northward.id = FieldId::WindV;
+        northward.sign = SignConvention::PositiveNorthward;
+        northward
+            .values
+            .iter_mut()
+            .for_each(|value| *value = -*value);
+        snapshot.fields.push(northward);
+    }
     let g0 = reconstruct_vertical_geometry(&m0).unwrap();
     let g1 = reconstruct_vertical_geometry(&m1).unwrap();
     let r0 = g0.runtime_view().unwrap();
     let r1 = g1.runtime_view().unwrap();
     let model = CanonicalGpuField::upload(&ctx, FieldId::WindU, &[&m0, &m1], &[Some(r0), Some(r1)])
         .unwrap();
+    let northward =
+        CanonicalGpuField::upload(&ctx, FieldId::WindV, &[&m0, &m1], &[Some(r0), Some(r1)])
+            .unwrap();
+    let temperature = CanonicalGpuField::upload(
+        &ctx,
+        FieldId::Temperature,
+        &[&m0, &m1],
+        &[Some(r0), Some(r1)],
+    )
+    .unwrap();
+    let humidity = CanonicalGpuField::upload(
+        &ctx,
+        FieldId::SpecificHumidity,
+        &[&m0, &m1],
+        &[Some(r0), Some(r1)],
+    )
+    .unwrap();
     let height =
         (r0.level(0, 0, 2).unwrap().height_agl_m + r0.level(0, 0, 1).unwrap().height_agl_m) * 0.5;
     let agl = Some(MeteorologyHeight {
@@ -724,6 +757,38 @@ fn test_meteorology_field_specific_composition_device_handoff() {
             source: &model,
             request: request(1.25, 0.5, instant(1800), agl),
             expected: vec![236.5],
+            stages: vec![H, H, H, V, H, H, H, V, T],
+            policy: vertical_model_comparison_policy().unwrap(),
+            source_snapshots: vec![&m0, &m1],
+            source_indices: vec![0, 1],
+        },
+        // The existing synthetic #30 thermodynamic column and #71 spatial
+        // fixture exercise downstream identities; no second stage oracle is added.
+        Case {
+            id: "model-northward-wind",
+            source: &northward,
+            request: request(1.25, 0.5, instant(1800), agl),
+            expected: vec![-236.5],
+            stages: vec![H, H, H, V, H, H, H, V, T],
+            policy: vertical_model_comparison_policy().unwrap(),
+            source_snapshots: vec![&m0, &m1],
+            source_indices: vec![0, 1],
+        },
+        Case {
+            id: "model-temperature",
+            source: &temperature,
+            request: request(1.25, 0.5, instant(1800), agl),
+            expected: vec![285.0],
+            stages: vec![H, H, H, V, H, H, H, V, T],
+            policy: vertical_model_comparison_policy().unwrap(),
+            source_snapshots: vec![&m0, &m1],
+            source_indices: vec![0, 1],
+        },
+        Case {
+            id: "model-specific-humidity",
+            source: &humidity,
+            request: request(1.25, 0.5, instant(1800), agl),
+            expected: vec![0.0075],
             stages: vec![H, H, H, V, H, H, H, V, T],
             policy: vertical_model_comparison_policy().unwrap(),
             source_snapshots: vec![&m0, &m1],

@@ -4,6 +4,20 @@
 [GPU_CONTRACT.md](GPU_CONTRACT.md). It adds no shader, interpolation equation,
 provider decoder, physics consumer migration or tolerance policy.
 
+## Reused encode and resource inventory
+
+| Stage owner | Existing resource/preparation surfaces | Existing encode surface |
+| --- | --- | --- |
+| #87 horizontal | `HorizontalFieldBuffers`, query/output/uniform constructors | `encode_horizontal_samples` |
+| #88 vertical | `physical_model_column_from_runtime`, `physical_center_w_column_from_runtime`, `physical_w_columns_from_runtime`, grid/shared-grid/query/output constructors | `encode_vertical_sample_with_kernel`, `encode_vertical_remap_w_with_kernel` |
+| #89 instantaneous time | `resolve_temporal_bracket`, `TemporalBracketBuffers`, blend uniform/output constructors | `encode_temporal_blend` |
+| #90 accumulated products | `validate_interval_sequence`, `build_transform_inputs`, `AccumulatedTransformInputs`, `AccumulatedIntervalBuffers` | `encode_accumulated_intervals_gpu_with_kernel` |
+
+The facade owns source selection and wiring. Stage owners retain their algorithms,
+validation, resource layouts and scientific evidence. Private destinations adapt
+those existing layouts through encoder-local copies; downstream consumers bind
+only the final `EncodedMeteorologySample`.
+
 ## Public handoff and ownership
 
 1. Initialize `MeteorologyCompositionKernels::new(&ctx)` once, outside encoding.
@@ -96,6 +110,34 @@ The following paths require their own contracts and remain explicit rejections:
 
 #112â€“#115 and #77 own adoption; no production consumer is migrated here.
 
+## Readiness for #112–#115
+
+The field/output handoff is sufficient to begin canonical-field binding and
+fixed-query migration slices through
+`CanonicalGpuField -> PreparedMeteorologySample -> EncodedMeteorologySample`
+without #72–#75 CPU interpolation. It is not sufficient for a complete migration
+of resident particle-driven sampling: that query-input surface is absent and
+requires the focused decision in [#152](https://github.com/Grodahn/flexpart-gpu/issues/152).
+The [canonical field matrix](meteorology-contract.md) and `FIELD_SPECS` remain
+the authority for field definitions and consumer requirements.
+
+| Migration | Available handoff | Explicit limits / remaining ownership |
+| --- | --- | --- |
+| [#112 wind/advection](https://github.com/Grodahn/flexpart-gpu/issues/112) | U/V as separate center-field scalar lanes, normalized center W, and #80-proven single-column interface W; m/s directions and #30 provenance retained | Fractional nonuniform geometry needs #118. Multi-column interface W retains #88's unsupported slope-correction boundary. Resident particle and predictor/corrector queries require #152 before full adoption; layout/binding migration belongs to #112. |
+| [#113 PBL/turbulence](https://github.com/Grodahn/flexpart-gpu/issues/113) | Existing instantaneous thermodynamic/wind fields and surface diagnostics, plus explicitly selected interval-mean fluxes | Instantaneous sensible-heat/stress fluxes need #120; fractional nonuniform model geometry needs #118. Fixed grid-query slices can begin; resident particle queries need #152. Derived diagnostics must be supplied by their existing owners; #76 does not derive absent fields. |
+| [#114 deposition](https://github.com/Grodahn/flexpart-gpu/issues/114) | Canonical temperature/humidity/cloud-water fields when supplied, surface diagnostics, static 13-class land use, interval totals, and distinct #90 amounts/SI rates/mm-h rates | Final precipitation time sampling needs #119; instantaneous solar-radiation eligibility needs #120. Resident particle queries need #152. Missing cloud bounds or other unrepresented consumer inputs remain blockers, never defaults. |
+| [#115 convection](https://github.com/Grodahn/flexpart-gpu/issues/115) | Existing instantaneous temperature, humidity, pressure and surface thermodynamic fields when supplied | Inventory the actual consumer first. The current simplified host convection chain is not a canonical production path. CAPE, cloud bounds and convection calculations are not supplied or inferred by #76. #118 applies to nonuniform fractional model queries. |
+
+The API currently prepares explicit host-provided grid/time/height queries, one
+sample per plan. It exposes scalar or class lanes rather than consumer-specific
+packed structures. Consumer migration owns binding/layout adapters and must keep
+GPU-capable producers and consumers resident under the GPU contract. This evidence
+does not prove particle-buffer-driven query preparation or a bulk particle sampling
+API. #152 defines that missing input boundary before kernel implementation; a
+particle download solely to obtain queries is forbidden. If adoption needs another
+scientific capability beyond the existing encode surfaces, apply the migration
+stop rule and record a focused prerequisite.
+
 ## Verification and evidence
 
 ```text
@@ -104,7 +146,8 @@ cargo test --test meteorology_composition -- --test-threads=1
 
 This target requires actual adapter execution and fails if no adapter exists.
 The device test covers surface endpoints/interior, model AGL/ASL and inherited
-bounds, center/interface W, a later bracket in a three-member series,
+bounds, U/V direction identity, temperature/specific-humidity units, center/interface
+W, a later bracket in a three-member series,
 leading/delta/reset accumulated products, interval totals,
 interval means and static scalar/class fields. All producers and minimal downstream
 device-copy consumers share one caller submission. Only final consumer outputs are

@@ -112,6 +112,7 @@ pub use horizontal::{
 pub use interpolation::{
     interpolate_wind_trilinear_gpu, GpuWindInterpolationError, WindInterpolationQuery,
 };
+pub(crate) use langevin::encode_update_particles_turbulence_langevin_gpu_with_hanna_output_and_kernel;
 pub use langevin::{
     encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel,
     update_particles_turbulence_langevin_gpu,

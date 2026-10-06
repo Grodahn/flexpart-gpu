@@ -8,7 +8,7 @@ use crate::gpu::{
     encode_decay_gpu_with_kernel, encode_dry_deposition_probability_gpu_with_kernel,
     encode_hanna_params_gpu_with_kernel, encode_langevin_fused_gpu,
     encode_pbl_diagnostics_gpu_with_kernel,
-    encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel,
+    encode_update_particles_turbulence_langevin_gpu_with_hanna_output_and_kernel,
     encode_wet_deposition_probability_gpu_with_kernel, DecayStepParams, DryDepositionStepParams,
     WetDepositionStepParams,
 };
@@ -131,11 +131,10 @@ impl ForwardTimeLoopDriver {
                         .expect("hanna kernel allocated in validation mode"),
                     &mut encoder,
                 )?;
-                encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel(
+                encode_update_particles_turbulence_langevin_gpu_with_hanna_output_and_kernel(
                     &self.gpu_context,
                     &self.particle_buffers,
-                    &hanna_output.buffer,
-                    hanna_output.particle_count(),
+                    hanna_output,
                     langevin_step,
                     self.config.philox_key,
                     self.philox_counter,

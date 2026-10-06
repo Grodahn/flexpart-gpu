@@ -20,8 +20,8 @@ use crate::pbl::HannaParams;
 use crate::physics::{philox_counter_add, LangevinStep, PhiloxCounter, PhiloxKey};
 
 use super::{
-    render_shader_with_workgroup_size, runtime_workgroup_size, GpuContext, ParticleBuffers,
-    WorkgroupKernel,
+    render_shader_with_workgroup_size, runtime_workgroup_size, GpuContext, HannaParamsOutputBuffer,
+    ParticleBuffers, WorkgroupKernel,
 };
 
 const SHADER_TEMPLATE: &str = include_str!("../shaders/langevin.wgsl");
@@ -246,6 +246,34 @@ pub fn update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel(
     ctx.queue.submit(Some(encoder.finish()));
     let _ = ctx.device.poll(wgpu::Maintain::Wait);
     Ok(next_counter)
+}
+
+/// Encode split Langevin turbulence directly from the resident Hanna producer output.
+///
+/// The stage extracts the logical range and raw storage together, then delegates
+/// validation, prefix dispatch and Philox advancement to the existing raw encoder.
+/// Resources remain borrowed and submission stays with the caller.
+pub(crate) fn encode_update_particles_turbulence_langevin_gpu_with_hanna_output_and_kernel(
+    ctx: &GpuContext,
+    particles: &ParticleBuffers,
+    hanna_output: &HannaParamsOutputBuffer,
+    step: LangevinStep,
+    key: PhiloxKey,
+    base_counter: PhiloxCounter,
+    kernel: &LangevinDispatchKernel,
+    encoder: &mut wgpu::CommandEncoder,
+) -> Result<PhiloxCounter, GpuLangevinError> {
+    encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel(
+        ctx,
+        particles,
+        &hanna_output.buffer,
+        hanna_output.particle_count(),
+        step,
+        key,
+        base_counter,
+        kernel,
+        encoder,
+    )
 }
 
 /// Encode Langevin dispatch into a caller-provided command encoder.

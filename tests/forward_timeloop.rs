@@ -301,7 +301,7 @@ fn test_forward_timeloop_operator_call_order_is_preserved() {
         "encode_advection_dual_wind_gpu_with_kernel(",
         "encode_langevin_fused_gpu(",
         "encode_hanna_params_gpu_with_kernel(",
-        "encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel(",
+        "encode_update_particles_turbulence_langevin_gpu_with_hanna_output_and_kernel(",
         "encode_dry_deposition_probability_gpu_with_kernel(",
         "encode_wet_deposition_probability_gpu_with_kernel(",
         "encode_decay_gpu_with_kernel(",
@@ -317,6 +317,33 @@ fn test_forward_timeloop_operator_call_order_is_preserved() {
             .find(operation)
             .unwrap_or_else(|| panic!("missing/out-of-order {operation}"))
             + operation.len();
+    }
+    for caller in [
+        source,
+        include_str!("../src/simulation/timeloop/backward.rs"),
+    ] {
+        assert_eq!(
+            caller
+                .matches(
+                    "encode_update_particles_turbulence_langevin_gpu_with_hanna_output_and_kernel("
+                )
+                .count(),
+            1
+        );
+        assert!(!caller.contains(
+            "encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel("
+        ));
+        for raw_handoff in [
+            "hanna_output.buffer",
+            "hanna_output.particle_count()",
+            "hanna_params_output.buffer",
+            "hanna_params_output.particle_count()",
+        ] {
+            assert!(
+                !caller.contains(raw_handoff),
+                "caller reconstructs {raw_handoff}"
+            );
+        }
     }
     let coordinator = include_str!("../src/simulation/timeloop/forward/timestep.rs");
     let mut offset = 0;

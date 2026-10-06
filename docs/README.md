@@ -2,6 +2,11 @@
 
 Complete documentation for the `flexpart-gpu` project.
 
+Project-level entry points:
+
+- [../ROADMAP.md](../ROADMAP.md) — production-readiness roadmap and current milestone status
+- [../CONTRIBUTING.md](../CONTRIBUTING.md) — contribution workflow and review expectations
+
 ## Getting Started
 
 | Document | Description |

@@ -1,9 +1,21 @@
 # FLEXPART-GPU
 
-`flexpart-gpu` is a standalone Rust/WebGPU reimplementation of FLEXPART.
-The current development focus is to close the scientific and behavioral gap to
-FLEXPART 11.1 through reproducible, oracle-backed validation while retaining a
-GPU-oriented execution architecture.
+`flexpart-gpu` is an open-source Rust/`wgpu` reimplementation of FLEXPART,
+aiming to make scientifically validated Lagrangian atmospheric dispersion
+available through a portable, GPU-first architecture across modern graphics and
+compute backends.
+
+The project currently targets behavioral and scientific compatibility with
+FLEXPART 11.1 through reproducible, oracle-backed validation. Its longer-term
+goal is to provide the scientific and open-source community with a transparent,
+high-throughput GPU implementation that is not tied to a single GPU vendor.
+
+Alongside the scientific goal, the repository also serves as a practical case
+study in agent-assisted scientific software engineering: complex implementation
+work is decomposed into explicit issue contracts, independently reviewed, and
+accepted only through reproducible tests, provenance, and scientific validation.
+AI-assisted development is treated as an engineering accelerator, not as a
+substitute for scientific evidence.
 
 The project is independent and unofficial. It is not affiliated with or endorsed
 by the official FLEXPART development team.
@@ -23,16 +35,19 @@ execution, or good benchmark performance is not sufficient evidence by itself.
 
 ## Goals
 
-The project is organized around five main goals:
+The project is organized around six main goals:
 
 - reproduce FLEXPART 11.1 behavior with explicitly defined scientific contracts;
 - keep FLEXPART 11.1 available as a pinned, reproducible reference oracle;
 - execute the candidate model as a standalone Rust application with GPU compute
   implemented through `wgpu` and WGSL;
+- remain portable across GPU vendors and supported `wgpu` backends instead of
+  coupling the scientific implementation to one proprietary compute stack;
 - make validation auditable through versioned inputs, provenance, raw outputs,
   metrics, thresholds, and fail-closed CI gates;
-- preserve the option for high-throughput operational workloads once scientific
-  correctness has been demonstrated.
+- explore whether agent-assisted development can accelerate complex open
+  scientific software without weakening reviewability, reproducibility, or
+  scientific standards.
 
 Performance matters, but correctness and reproducibility take precedence over
 speedups.

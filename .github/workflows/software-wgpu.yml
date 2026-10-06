@@ -283,6 +283,7 @@ jobs:
               "interval-reset-si-rate", "interval-total", "interval-mean-flux",
               "static-class", "static-scalar",
               "surface-later-bracket", "center-w",
+              "model-northward-wind", "model-temperature", "model-specific-humidity",
           }
           assert len(report["rows"]) == len(expected_cases)
           assert {row["case_id"] for row in report["rows"]} == expected_cases
@@ -331,6 +332,13 @@ jobs:
               assert row["handoff_sha256"] == hashlib.sha256(handoff).hexdigest()
               assert json.loads(handoff) == metadata
               assert inputs["request"] == metadata["request"]
+              downstream_fields = {
+                  "model-northward-wind": ("wind_v", "meter_per_second", "positive_northward"),
+                  "model-temperature": ("temperature", "kelvin", "signed_scalar"),
+                  "model-specific-humidity": ("specific_humidity", "kilogram_per_kilogram", "non_negative"),
+              }
+              if case in downstream_fields:
+                  assert (metadata["field_id"], metadata["unit"], metadata["sign"]) == downstream_fields[case]
               snapshots = []
               hashes = []
               for index, snapshot in enumerate(inputs["snapshots"]):
@@ -376,6 +384,10 @@ jobs:
                   assert error <= policy["absolute_tolerance"] or error <= policy["relative_tolerance"] * max(abs(actual), abs(expected))
               assert row["metadata"]["source_snapshot_sha256"]
               assert len(row["metadata"]["geometry_identity"]) == len(row["metadata"]["geometry_provenance"])
+              expected_geometries = inputs["expected_geometries"]
+              assert metadata["geometry_identity"] == [g["identity"] for g in expected_geometries]
+              assert metadata["geometry_provenance"] == [g["provenance"] for g in expected_geometries]
+              assert metadata["resolved_heights_agl_m"] == [g["height_agl_m"] for g in expected_geometries]
               geometries = metadata["geometry_provenance"]
               assert len(geometries) == (2 if any(s["stage"] == "vertical" for s in stages) else 0)
               assert [g["source_snapshot_sha256"] for g in geometries] == (metadata["source_snapshot_sha256"] if geometries else [])

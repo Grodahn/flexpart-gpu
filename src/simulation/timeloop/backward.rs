@@ -6,7 +6,7 @@ use crate::gpu::{
     encode_advection_dual_wind_gpu_with_kernel, encode_decay_gpu_with_kernel,
     encode_dry_deposition_probability_gpu_with_kernel, encode_hanna_params_gpu_with_kernel,
     encode_pbl_diagnostics_gpu_with_kernel,
-    encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel,
+    encode_update_particles_turbulence_langevin_gpu_with_hanna_output_and_kernel,
     encode_wet_deposition_probability_gpu_with_kernel, AdvectionDualWindDispatchKernel,
     DecayDispatchKernel, DecayStepParams, DryDepositionDispatchKernel, DryDepositionIoBuffers,
     DryDepositionStepParams, DualWindBuffers, GpuContext, HannaDispatchKernel,
@@ -368,11 +368,10 @@ impl BackwardTimeLoopDriver {
             )?;
 
             let next_pc =
-                encode_update_particles_turbulence_langevin_gpu_with_hanna_buffer_and_kernel(
+                encode_update_particles_turbulence_langevin_gpu_with_hanna_output_and_kernel(
                     &self.gpu_context,
                     &self.particle_buffers,
-                    &self.hanna_params_output.buffer,
-                    self.hanna_params_output.particle_count(),
+                    &self.hanna_params_output,
                     langevin_step,
                     self.config.philox_key,
                     self.philox_counter,

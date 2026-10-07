@@ -896,23 +896,6 @@ mod tests {
 
     #[test]
     fn test_resident_nonfinite_source_corner_fails_on_device_without_mutation() {
-        // WARP crashes compiling this fixture after earlier library GPU tests.
-        // A fresh process preserves required execution without sharing their driver state.
-        const CHILD_MARKER: &str = "FLEXPART_GPU_RESIDENT_CORNER_CHILD";
-        if cfg!(target_os = "windows") && std::env::var_os(CHILD_MARKER).is_none() {
-            let output = std::process::Command::new(std::env::current_exe().unwrap())
-                .args(["--exact", "gpu::meteorology::resident::tests::test_resident_nonfinite_source_corner_fails_on_device_without_mutation", "--nocapture"])
-                .env(CHILD_MARKER, "1")
-                .output().unwrap();
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            assert!(
-                output.status.success() && stdout.contains("1 passed; 0 failed"),
-                "isolated required corner execution failed: {}\n{stdout}\n{stderr}",
-                output.status
-            );
-            return;
-        }
         assert_eq!(std::mem::size_of::<ResidentQueryLane>(), 32);
         let ctx =
             pollster::block_on(GpuContext::new()).expect("resident corner gate requires WGSL");

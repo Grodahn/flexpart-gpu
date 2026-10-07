@@ -55,24 +55,29 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
         || (jy == params.ny - 1u && q.fraction_y != 0.0)) { fail(lane, 6u); return; }
     let ixp = select(min(ix + 1u, params.nx - 1u), (ix + 1u) % params.nx, params.periodic == 1u);
     let jyp = min(jy + 1u, params.ny - 1u);
-    let corners = array<u32, 4>(ix + params.nx * jy, ixp + params.nx * jy, ix + params.nx * jyp, ixp + params.nx * jyp);
+    let base_column = ix + params.nx * jy;
     let dx = q.fraction_x;
     let dy = q.fraction_y;
-    // Nonzero-weight eligibility uses factors, avoiding underflow of tiny f32 products.
-    let active_corners = array<bool, 4>(true, dx != 0.0, dy != 0.0, dx != 0.0 && dy != 0.0);
     let cells = params.nx * params.ny;
     for (var level = 0u; level < params.levels; level += 1u) {
         for (var corner = 0u; corner < 4u; corner += 1u) {
-            if (!finite(source_values[level * cells + corners[corner]])) { fail(lane, 8u); return; }
-            if (params.model == 1u && active_corners[corner]
-                && source_heights[corners[corner] * params.levels + level] != source_heights[corners[0] * params.levels + level]) { fail(lane, 7u); return; }
+            // Scalar selection avoids Vulkan compiler failures with dynamically indexed
+            // function-local arrays while preserving the canonical corner order.
+            let east = (corner & 1u) != 0u;
+            let north = (corner & 2u) != 0u;
+            let column = select(ix, ixp, east) + params.nx * select(jy, jyp, north);
+            // Factor eligibility avoids underflow of tiny f32 weight products.
+            let eligible = (!east || dx != 0.0) && (!north || dy != 0.0);
+            if (!finite(source_values[level * cells + column])) { fail(lane, 8u); return; }
+            if (params.model == 1u && eligible
+                && source_heights[column * params.levels + level] != source_heights[base_column * params.levels + level]) { fail(lane, 7u); return; }
         }
     }
     horizontal[lane] = HorizontalQuery(0.0, 0.0, ix, jy, dx, dy, 0.0, 0.0);
     query_heights[lane] = q.height_agl_m;
     if (params.model == 1u) {
         for (var level = 0u; level < params.levels; level += 1u) {
-            lane_heights[lane * params.levels + level] = source_heights[corners[0] * params.levels + level];
+            lane_heights[lane * params.levels + level] = source_heights[base_column * params.levels + level];
         }
     }
     if (atomicLoad(&status[lane + 1u]) == 1u) { atomicStore(&status[lane + 1u], 2u); }

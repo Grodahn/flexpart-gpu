@@ -5,7 +5,7 @@
 // (`find_z_level_meters`, METRE mode), `:406-430` (`find_vert_vars_lin`,
 // `log_interpol=.false.`) and `:539-547` (`vert_interpol`).
 //
-// Host (Rust) owns all #30/#73 validation and geometry preparation:
+// Host (Rust) owns source #30/#73 validation and geometry preparation:
 // monotonicity, finiteness, ordering normalization to physical bottom-to-top,
 // storage layout, terrain/ASL-to-AGL resolution, provenance and fail-closed
 // rejection. Supported numerical sampling executes here in WGSL f32:
@@ -32,13 +32,17 @@
 // - binding(2): query heights AGL, array<f32> [query_count], read-only
 // - binding(3): sampled outputs, array<f32> [query_count], read-write
 //   (GPU-resident for #76; host readback only at explicit validation/output boundaries)
-// - binding(4): uniform params (grid_count, query_count, pad, pad)
+// - binding(4): uniform params (grid_count, query_count, height_lane_stride, value_level_stride)
+// #171 batched addressing uses height_lane_stride=levels and value_level_stride=lanes:
+// heights[lane*levels+level], values[level*lanes+lane]. Legacy strides are zero.
+// The resident adapter validates dynamic query/stencil state and emits safe geometry
+// on failure before this unchanged sampling equation executes.
 
 struct VerticalSampleParams {
     grid_count: u32,
     query_count: u32,
-    _pad0: u32,
-    _pad1: u32,
+    height_lane_stride: u32,
+    value_level_stride: u32,
 };
 
 @group(0) @binding(0)
@@ -66,11 +70,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     let grid_count = params.grid_count;
     // Host validates grid_count >= 2 and strictly increasing finite geometry;
     // the shader preserves the exact FLEXPART clamping and weight order.
-    let lowest_height = grid_heights[0];
-    let lowest_value = grid_values[0];
+    let height_base = idx * params.height_lane_stride;
+    let value_base = select(idx, 0u, params.value_level_stride == 0u);
+    let value_stride = max(params.value_level_stride, 1u);
+    let lowest_height = grid_heights[height_base];
+    let lowest_value = grid_values[value_base];
     let last_index = grid_count - 1u;
-    let highest_height = grid_heights[last_index];
-    let highest_value = grid_values[last_index];
+    let highest_height = grid_heights[height_base + last_index];
+    let highest_value = grid_values[value_base + last_index * value_stride];
     if (h <= lowest_height) {
         sampled_outputs[idx] = lowest_value;
         return;
@@ -82,14 +89,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     var upper = 1u;
     // FLEXPART first-height-strictly-above-zt search. Heights are host-validated
     // finite and strictly increasing, so this terminates strictly inside.
-    while (upper < grid_count && grid_heights[upper] <= h) {
+    while (upper < grid_count && grid_heights[height_base + upper] <= h) {
         upper += 1u;
     }
     let lower = upper - 1u;
-    let lower_height = grid_heights[lower];
-    let upper_height = grid_heights[upper];
-    let lower_value = grid_values[lower];
-    let upper_value = grid_values[upper];
+    let lower_height = grid_heights[height_base + lower];
+    let upper_height = grid_heights[height_base + upper];
+    let lower_value = grid_values[value_base + lower * value_stride];
+    let upper_value = grid_values[value_base + upper * value_stride];
     let denominator = upper_height - lower_height;
     let weight_upper = (h - lower_height) / denominator;
     let weight_lower = (upper_height - h) / denominator;

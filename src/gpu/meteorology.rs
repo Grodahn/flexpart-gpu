@@ -15,6 +15,7 @@
 //! [`PreparedMeteorologySample::encode`] never submits, waits, polls, or reads back.
 
 use serde::{Deserialize, Serialize};
+pub mod resident;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
@@ -67,6 +68,9 @@ use crate::meteorology::{
 /// One error boundary for canonical validation, unsupported composition and GPU stages.
 #[derive(Debug, Error)]
 pub enum MeteorologyCompositionError {
+    /// Resident query pipeline creation raised a scoped device error.
+    #[error("resident query device error: {0}")]
+    ResidentDevice(String),
     /// Canonical schema, dimensions, metadata or values are invalid.
     #[error(transparent)]
     Contract(#[from] ContractError),
@@ -310,6 +314,7 @@ impl<'ctx> MeteorologyCompositionKernels<'ctx> {
 }
 
 struct RuntimeColumns<'ctx> {
+    resident_heights: wgpu::Buffer,
     view: VerticalRuntimeView<'ctx>,
     heights: Vec<Vec<f32>>,
     terrain: Vec<f32>,
@@ -319,6 +324,7 @@ struct RuntimeColumns<'ctx> {
 }
 
 struct SourceMember<'ctx> {
+    resident_values: wgpu::Buffer,
     snapshot: Snapshot,
     snapshot_sha256: String,
     field: Field,
@@ -653,6 +659,11 @@ fn upload_member<'ctx>(
             }
         }
         columns = Some(RuntimeColumns {
+            resident_heights: resident::upload_values(
+                ctx,
+                &heights.iter().flatten().copied().collect::<Vec<_>>(),
+                "source runtime AGL columns",
+            )?,
             view: runtime,
             heights,
             terrain,
@@ -678,6 +689,11 @@ fn upload_member<'ctx>(
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(SourceMember {
+        resident_values: resident::upload_values(
+            ctx,
+            &plane_values.iter().flatten().copied().collect::<Vec<_>>(),
+            "source physical field planes",
+        )?,
         snapshot: snapshot.clone(),
         snapshot_sha256: hash,
         field: field.clone(),

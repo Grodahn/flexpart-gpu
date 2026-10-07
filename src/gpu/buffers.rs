@@ -379,6 +379,9 @@ impl TryFrom<&PblState> for PblHostData {
 /// (upload/download) always operates on the full
 /// [`capacity`](Self::capacity).
 pub struct ParticleBuffers {
+    owner_context: std::sync::Arc<()>,
+    owner_device: wgpu::Device,
+    owned_particle_buffer: wgpu::Buffer,
     pub particle_buffer: wgpu::Buffer,
     buffer_capacity: usize,
     dispatch_count: usize,
@@ -397,6 +400,9 @@ impl ParticleBuffers {
         let particle_buffer =
             create_storage_buffer_from_pod(&ctx.device, "particles_storage", particles);
         Self {
+            owner_context: std::sync::Arc::clone(&ctx.identity),
+            owned_particle_buffer: particle_buffer.clone(),
+            owner_device: ctx.device.clone(),
             particle_buffer,
             buffer_capacity: particles.len(),
             dispatch_count: particles.len(),
@@ -413,6 +419,14 @@ impl ParticleBuffers {
     #[must_use]
     pub fn capacity(&self) -> usize {
         self.buffer_capacity
+    }
+
+    /// Prove the actual resource still belongs to the exact producer device.
+    /// The public buffer handle may have been replaced by a caller.
+    pub(crate) fn belongs_to(&self, ctx: &GpuContext) -> bool {
+        std::sync::Arc::ptr_eq(&self.owner_context, &ctx.identity)
+            && self.owner_device == ctx.device
+            && self.owned_particle_buffer == self.particle_buffer
     }
 
     /// Narrow the dispatch count after compaction packs active particles

@@ -16,8 +16,8 @@ use wgpu::util::DeviceExt;
 struct VerticalSampleParamsRaw {
     grid_count: u32,
     query_count: u32,
-    _pad0: u32,
-    _pad1: u32,
+    height_lane_stride: u32,
+    value_level_stride: u32,
 }
 
 #[repr(C)]
@@ -27,6 +27,54 @@ struct VerticalRemapParamsRaw {
     _pad0: u32,
     _pad1: u32,
     _pad2: u32,
+}
+
+/// Encode the existing #88 equations with explicit batched addressing only.
+pub(crate) fn encode_vertical_batch(
+    ctx: &GpuContext,
+    batch: &super::resources::VerticalBatchBuffers,
+    kernel: &VerticalSampleKernel,
+    encoder: &mut wgpu::CommandEncoder,
+) {
+    let params = ctx
+        .device
+        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("batched vertical strides"),
+            contents: bytemuck::bytes_of(&VerticalSampleParamsRaw {
+                grid_count: batch.levels,
+                query_count: batch.lanes,
+                height_lane_stride: batch.levels,
+                value_level_stride: batch.lanes,
+            }),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+    let buffers = [
+        &batch.heights,
+        &batch.values,
+        &batch.queries,
+        &batch.output,
+        &params,
+    ];
+    let entries: Vec<_> = buffers
+        .iter()
+        .enumerate()
+        .map(|(binding, buffer)| wgpu::BindGroupEntry {
+            binding: u32::try_from(binding).expect("five bindings fit u32"),
+            resource: buffer.as_entire_binding(),
+        })
+        .collect();
+    let bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("batched vertical sample"),
+        layout: &kernel.bind_group_layout,
+        entries: &entries,
+    });
+    let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+        label: Some("batched vertical sample"),
+        timestamp_writes: None,
+    });
+    pass.set_pipeline(&kernel.pipeline);
+    pass.set_bind_group(0, &bg, &[]);
+    crate::gpu::dispatch_1d(&mut pass, batch.lanes, kernel.workgroup_size_x);
 }
 
 /// Encode ordinary METRE-mode sampling into a caller-owned encoder.
@@ -73,8 +121,8 @@ pub fn encode_vertical_sample_with_kernel(
     let raw = VerticalSampleParamsRaw {
         grid_count: grid_count_u32,
         query_count: query_count_u32,
-        _pad0: 0,
-        _pad1: 0,
+        height_lane_stride: 0,
+        value_level_stride: 0,
     };
     let params_buffer = ctx
         .device

@@ -243,6 +243,53 @@ jobs:
               assert evidence["oracle"]["output_sha256"] == oracle["output_sha256"]
               assert evidence["comparison"]["verdict"] == "passed"
           PY
+      - name: Prove resident particle meteorology queries and fatal-batch gating
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-gate
+          cargo test --test meteorology_resident -- --nocapture --test-threads=1 2>&1 | tee target/ci-gate/meteorology-resident.log
+          cargo test --lib gpu::meteorology::resident::tests -- --nocapture --test-threads=1 2>&1 | tee target/ci-gate/meteorology-resident-corner.log
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          report = json.loads(Path('target/ci-gate/meteorology-resident/report.json').read_text())
+          assert report['schema'] == {'id': 'flexpart-gpu.meteorology-resident', 'version': 1}
+          assert report['passed'] is True
+          assert report['revision'] == subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert report['adapter']['adapter_class'] == 'software_wgsl'
+          paths = ['particle_query', 'resident_status_reset', 'resident_query_adapter', 'horizontal_interpolation',
+                   'vertical_sample', 'temporal_interpolation', 'resident_sample_status', 'resident_fixture_consumer']
+          shaders = '\n'.join(Path(f'src/shaders/{p}.wgsl').read_text() for p in paths)
+          assert report['shader_bundle_sha256'] == hashlib.sha256(shaders.encode()).hexdigest()
+          cases = {c['id']: c for c in report['cases']}
+          required = {'surface-active-1', 'surface-active-3', 'surface-active-4', 'inactive-nonfinite-lane',
+                      'negative-signed-cell-memory-safe', 'reuse-after-fatal-status-reset',
+                      'nonfinite-fraction', 'nonfinite-height', 'invalid-fraction', 'outside-cell',
+                      'nonperiodic-east-overshoot', 'north-overshoot', 'nonperiodic-exact-east-north',
+                      'split-cell-fraction-survives-endpoint-rounding', 'fatal-across-workgroups',
+                      'reuse-with-empty-active-prefix', 'model-distinct-compatible-profiles-lower-interior-upper',
+                      'within-stencil-differing-geometry-owned-by-118',
+                      'pinned-periodic-edge-0', 'pinned-periodic-edge-1', 'pinned-periodic-edge-2'}
+          assert set(cases) == required
+          assert report['static_grid_context_time_rejection'] is True
+          for c in cases.values():
+              assert c['passed'] is True
+              assert c['submission_count'] == 1 and c['intermediate_d2h_count'] == 0
+              assert c['host_prepare_sample'] is False
+              assert c['metadata']['component_count'] == c['metadata']['lane_stride'] == 1
+              assert len(c['status']['lanes']) == c['metadata']['capacity']
+              assert len(c['query_inputs']) == c['metadata']['capacity']
+              assert len(c['input_sha256']) == 64
+              assert c['order'] == ['device_status_reset', 'particle_producer', 'resident_adapter', 'canonical_sampling',
+                                    'device_result_status', 'status_guarded_fixture_consumer']
+          assert cases['negative-signed-cell-memory-safe']['status']['lanes'][1] == 3
+          assert cases['within-stencil-differing-geometry-owned-by-118']['status']['lanes'][1] == 7
+          assert cases['fatal-across-workgroups']['status']['fatal'] is True
+          assert cases['reuse-after-fatal-status-reset']['status'] == {'fatal': False, 'lanes': [2, 2, 2, 2]}
+          PY
       - name: Prove field-specific canonical meteorology composition
         run: |
           set -euo pipefail
@@ -526,4 +573,7 @@ jobs:
             target/ci-gate/settling-gpu.log
             target/ci-gate/meteorology-composition.log
             target/ci-gate/meteorology-composition/*.json
+            target/ci-gate/meteorology-resident.log
+            target/ci-gate/meteorology-resident-corner.log
+            target/ci-gate/meteorology-resident/*.json
           retention-days: 30

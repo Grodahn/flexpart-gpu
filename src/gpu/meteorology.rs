@@ -346,14 +346,16 @@ struct AccumulatedSource {
 /// Host copies retain validation/provenance only. No CPU interpolation or interval
 /// arithmetic produces the sampled output. Resources are private so metadata cannot
 /// be recombined with another field's buffers. Recreate this owner when sources change.
+/// The existing context token guards device association without borrowing a driver;
+/// the lifetime parameter retains the immutable source runtime geometry instead.
 pub struct CanonicalGpuField<'ctx> {
-    context: &'ctx GpuContext,
+    owner_context: std::sync::Arc<()>,
     field_id: FieldId,
     members: Vec<SourceMember<'ctx>>,
     accumulation: Option<AccumulatedSource>,
 }
 
-fn snapshot_hash(snapshot: &Snapshot) -> Result<String, serde_json::Error> {
+pub(crate) fn snapshot_hash(snapshot: &Snapshot) -> Result<String, serde_json::Error> {
     Ok(format!(
         "{:x}",
         Sha256::digest(serde_json::to_vec(snapshot)?)
@@ -361,6 +363,11 @@ fn snapshot_hash(snapshot: &Snapshot) -> Result<String, serde_json::Error> {
 }
 
 impl<'ctx> CanonicalGpuField<'ctx> {
+    /// Use the existing runtime token so source owners can outlive a driver borrow.
+    pub(crate) fn belongs_to(&self, ctx: &GpuContext) -> bool {
+        std::sync::Arc::ptr_eq(&self.owner_context, &ctx.identity)
+    }
+
     /// Validate canonical sources and #30 identity, then explicitly upload stage resources.
     ///
     /// `runtimes` is one optional #30 view per snapshot. Model fields require it;
@@ -371,7 +378,7 @@ impl<'ctx> CanonicalGpuField<'ctx> {
     /// Fails closed on schema/metadata/shape errors, missing fields/runtime, changing
     /// grids/staggering/coordinates, incompatible runtime identity or unsupported paths.
     pub fn upload(
-        ctx: &'ctx GpuContext,
+        ctx: &GpuContext,
         field_id: FieldId,
         snapshots: &[&Snapshot],
         runtimes: &[Option<VerticalRuntimeView<'ctx>>],
@@ -442,7 +449,7 @@ impl<'ctx> CanonicalGpuField<'ctx> {
             None
         };
         Ok(Self {
-            context: ctx,
+            owner_context: std::sync::Arc::clone(&ctx.identity),
             field_id,
             members,
             accumulation,
@@ -463,7 +470,7 @@ impl<'ctx> CanonicalGpuField<'ctx> {
         ctx: &GpuContext,
         request: MeteorologySampleRequest,
     ) -> Result<PreparedMeteorologySample<'_, 'ctx>, MeteorologyCompositionError> {
-        if !std::ptr::eq(self.context, ctx) {
+        if !self.belongs_to(ctx) {
             return Err(MeteorologyCompositionError::Incompatible(
                 "source belongs to another GPU device",
             ));
@@ -705,7 +712,7 @@ fn upload_member<'ctx>(
     })
 }
 
-fn validate_runtime_binding(
+pub(crate) fn validate_runtime_binding(
     snapshot: &Snapshot,
     field: &Field,
     runtime: VerticalRuntimeView<'_>,
@@ -1073,7 +1080,7 @@ impl PreparedMeteorologySample<'_, '_> {
         kernels: &MeteorologyCompositionKernels<'_>,
         encoder: &mut wgpu::CommandEncoder,
     ) -> Result<EncodedMeteorologySample<'a>, MeteorologyCompositionError> {
-        if !std::ptr::eq(self.source.context, ctx) || !std::ptr::eq(kernels.context, ctx) {
+        if !self.source.belongs_to(ctx) || !std::ptr::eq(kernels.context, ctx) {
             return Err(MeteorologyCompositionError::Incompatible(
                 "source/plan/kernels belong to another GPU device",
             ));

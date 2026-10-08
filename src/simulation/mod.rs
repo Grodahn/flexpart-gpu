@@ -7,7 +7,10 @@ pub mod timeloop;
 
 pub use timeloop::{
     BackwardReceptorConfig, BackwardSourceCollection, BackwardSourceRegionConfig,
-    BackwardStepReport, BackwardTimeLoopConfig, BackwardTimeLoopDriver, ForwardSpatialSortConfig,
+    BackwardStepReport, BackwardTimeLoopConfig, BackwardTimeLoopDriver,
+    CanonicalMeteorologyBracket, CanonicalMeteorologyIdentity, CanonicalMeteorologyResources,
+    CanonicalMeteorologySlot, CanonicalMeteorologyStepTimes, ForwardSpatialSortConfig,
     ForwardStepForcing, ForwardStepReport, ForwardTimeLoopConfig, ForwardTimeLoopDriver,
-    MetTimeBracket, ParticleForcingField, StepTimingReport, TimeDirection, TimeLoopError,
+    MetTimeBracket, ParticleForcingField, PreparedCanonicalMeteorology, StepTimingReport,
+    TimeDirection, TimeLoopError, CANONICAL_WIND_FIELDS,
 };

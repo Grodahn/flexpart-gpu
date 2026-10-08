@@ -84,3 +84,8 @@ The [software workflow](../.github/workflows/software-wgpu.yml) requires both.
 migrations remain #112–#115; within-stencil differing profiles remain #118;
 precipitation time and surface-flux eligibility remain #119/#120. ASL conversion,
 interface-W extension and #117 cleanup are outside this change.
+
+[#173 driver preparation](canonical-timeloop-meteorology.md) supplies validated
+source pairs and U/V/normalized center-W owners at both actual driver boundaries.
+It resolves current/predicted times and retains bracket resources for #112;
+production advection still uses the existing legacy operator until that migration.

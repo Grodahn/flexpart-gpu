@@ -450,6 +450,50 @@ jobs:
           cargo test --test pbl_options_contract -- --nocapture > target/ci-gate/pbl-options.log 2>&1
           grep -q "PBL-OPTIONS-147: .*software_adapter=true public_paths=3 device_results=identical" target/ci-gate/pbl-options.log
           cargo test --lib gpu::pbl::tests -- --test-threads=1 --nocapture > target/ci-gate/pbl-diagnostics.log 2>&1
+      - name: Prove canonical driver input and resident resource readiness (#173)
+        run: |
+          set -euo pipefail
+          cargo test --test canonical_timeloop_meteorology -- --nocapture --test-threads=1 > target/ci-gate/canonical-timeloop-meteorology.log 2>&1
+          grep -q 'CANONICAL-MET-173' target/ci-gate/canonical-timeloop-meteorology.log
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import math
+          import subprocess
+          from pathlib import Path
+
+          r = json.loads(Path('target/ci-gate/canonical-timeloop-meteorology/report.json').read_text())
+          assert r['schema'] == {'id': 'flexpart-gpu.canonical-timeloop-meteorology', 'version': 1}
+          assert r['revision'] == subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert r['passed'] and r['calculation_path'] == 'wgsl_device'
+          assert len(r['adapters']) == 2
+          assert all(a['adapter_class'] == 'software_wgsl' for a in r['adapters'])
+          assert r['inputs'] == json.loads(r['input_json'])
+          assert r['input_sha256'] == hashlib.sha256(r['input_json'].encode()).hexdigest()
+          names = ['particle_query', 'resident_status_reset', 'resident_query_adapter', 'horizontal_interpolation',
+                   'vertical_sample', 'temporal_interpolation', 'resident_sample_status', 'resident_fixture_consumer']
+          shaders = '\n'.join(Path(f'src/shaders/{n}.wgsl').read_text() for n in names)
+          assert r['shader_bundle_sha256'] == hashlib.sha256(shaders.encode()).hexdigest()
+          for key in ['same_bracket_reused', 'source_change_rebuilt', 'motion_lineage_change_rebuilt',
+                      'retained_owner_executed_after_transition', 'failed_preflight_preserved_slot', 'reused_across_mutable_driver_steps']:
+              assert r[key]
+          directions = {'forward', 'backward', 'retained-forward', 'changed-source', 'next-forward', 'next-backward'}
+          assert len(r['rows']) == 36
+          assert {row['direction'] for row in r['rows']} == directions
+          for direction in directions:
+              rows = [row for row in r['rows'] if row['direction'] == direction]
+              assert {(row['metadata']['field_id'], row['selection']) for row in rows} == {
+                  (field, selection) for field in ['wind_u', 'wind_v', 'vertical_velocity'] for selection in ['current', 'predicted']}
+          for row in r['rows']:
+              assert row['passed'] and row['comparison']['verdict'] == 'passed'
+              assert row['status'] == {'fatal': False, 'lanes': [2]}
+              assert row['submission_count'] == 1 and row['intermediate_d2h_count'] == 0
+              assert math.isfinite(row['output'][0]) and math.isfinite(row['expected'])
+              assert row['metadata']['unit'] == 'meter_per_second'
+              assert row['metadata']['vertical_staggering'] == 'level_center'
+              assert row['metadata']['horizontal_grid'] == r['inputs']['snapshots'][0]['horizontal_grid']
+              assert len(row['metadata']['geometry_identity']) == 2
+          PY
       - name: Preserve simulation timestep order and output boundaries (#126)
         run: |
           set -euo pipefail
@@ -576,4 +620,6 @@ jobs:
             target/ci-gate/meteorology-resident.log
             target/ci-gate/meteorology-resident-corner.log
             target/ci-gate/meteorology-resident/*.json
+            target/ci-gate/canonical-timeloop-meteorology.log
+            target/ci-gate/canonical-timeloop-meteorology/*.json
           retention-days: 30

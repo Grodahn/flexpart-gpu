@@ -28,7 +28,10 @@ use crate::simulation::timeloop::error::TimeLoopError;
 use crate::simulation::timeloop::forcing::{
     cast_species_lanes, materialize_species_forcing_into, ForwardStepForcing,
 };
-use crate::simulation::timeloop::meteorology::MetTimeBracket;
+use crate::simulation::timeloop::meteorology::{
+    CanonicalMeteorologyBracket, CanonicalMeteorologySlot, MetTimeBracket,
+    PreparedCanonicalMeteorology,
+};
 use crate::simulation::timeloop::options::is_gpu_pbl_enabled;
 use crate::simulation::timeloop::reports::BackwardStepReport;
 use crate::simulation::timeloop::time::{
@@ -101,6 +104,29 @@ pub struct BackwardTimeLoopDriver {
 }
 
 impl BackwardTimeLoopDriver {
+    /// Prepare validated canonical U/V/center-W for the current backward step and -dt.
+    ///
+    /// This is the explicit canonical preparation boundary for #112. It neither
+    /// advances particles nor calls the legacy advection operator. Keep `slot`
+    /// across steps and retain returned resource owners through their last consumer.
+    /// # Errors
+    /// Rejects completed simulations, invalid coverage, device mixing and upload errors.
+    pub fn prepare_canonical_meteorology<'step, 'source>(
+        &'step self,
+        bracket: CanonicalMeteorologyBracket<'source>,
+        slot: &mut CanonicalMeteorologySlot<'source>,
+    ) -> Result<PreparedCanonicalMeteorology<'step, 'source>, TimeLoopError> {
+        if !self.has_remaining_steps() {
+            return Err(TimeLoopError::SimulationComplete);
+        }
+        Ok(slot.prepare(
+            &self.gpu_context,
+            bracket,
+            self.current_time_seconds,
+            -self.config.timestep_seconds,
+        )?)
+    }
+
     /// Create a new backward timeloop driver with empty particle store.
     ///
     /// All GPU buffers and dispatch kernels are pre-allocated here based on

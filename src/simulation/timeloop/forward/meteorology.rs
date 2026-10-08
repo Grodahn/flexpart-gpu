@@ -7,7 +7,10 @@ use crate::io::{
     Era5MvpSnapshot, Grib2ReaderError, GribPrefetchHandle, PblMetInputGrids,
 };
 use crate::simulation::timeloop::error::TimeLoopError;
-use crate::simulation::timeloop::meteorology::MetTimeBracket;
+use crate::simulation::timeloop::meteorology::{
+    CanonicalMeteorologyBracket, CanonicalMeteorologySlot, MetTimeBracket,
+    PreparedCanonicalMeteorology,
+};
 use crate::simulation::timeloop::options::is_gpu_pbl_enabled;
 use crate::simulation::timeloop::time::interpolation_alpha;
 use crate::wind::WindField3D;
@@ -26,6 +29,29 @@ pub(super) struct PreparedMeteorology {
 }
 
 impl ForwardTimeLoopDriver {
+    /// Prepare validated canonical U/V/center-W for the current forward step and +dt.
+    ///
+    /// This is the explicit canonical preparation boundary for #112. It neither
+    /// advances particles nor calls the legacy advection operator. Keep `slot`
+    /// across steps and retain returned resource owners through their last consumer.
+    /// # Errors
+    /// Rejects completed simulations, invalid coverage, device mixing and upload errors.
+    pub fn prepare_canonical_meteorology<'step, 'source>(
+        &'step self,
+        bracket: CanonicalMeteorologyBracket<'source>,
+        slot: &mut CanonicalMeteorologySlot<'source>,
+    ) -> Result<PreparedCanonicalMeteorology<'step, 'source>, TimeLoopError> {
+        if !self.has_remaining_steps() {
+            return Err(TimeLoopError::SimulationComplete);
+        }
+        Ok(slot.prepare(
+            &self.gpu_context,
+            bracket,
+            self.current_time_seconds,
+            self.config.timestep_seconds,
+        )?)
+    }
+
     /// Start prefetching the next meteorological file in a background thread.
     ///
     /// Call this when the next met file path is known (e.g. based on simulation

@@ -15,6 +15,30 @@ provenance; authoritative oracle comparisons need the issue's pinned raw/decoded
 outputs and hashes. Follow [GPU evidence rules](../GPU_CONTRACT.md).
 This map does not create new tolerances or upgrade validation levels.
 
+## Compact domain runner
+
+Use `python scripts/agent_tests.py --list` to inspect exact commands and evidence
+requirements before selecting a profile. The finite registry in
+[the runner](../../scripts/agent_tests.py) is covered by
+[orchestration tests](../../scripts/test_agent_tests.py).
+
+| Domain | `focused` | `domain` adds / replaces |
+| --- | --- | --- |
+| `meteorology-resident` | Full required resident-query integration target | Adds `gpu::meteorology::resident::tests` library corners |
+| `transport-advection` | Exact software advection displacement test | Adds delegated `ADV-ANA-001` paired comparison |
+| `simulation` | Software preflight and exact required order regression | Preflight, full forward, full forward with `FLEXPART_GPU_VALIDATION=1`, then full backward (blocked pending execution marker) |
+| `validation-provenance` | Existing compact wrapper Python tests | Adds input-audit, corpus-manifest, shared-provenance Python tests, `validation::case::` library tests and `validation_case_contract` target |
+
+Examples: `python scripts/agent_tests.py --domain meteorology-resident --level focused`
+and `python scripts/agent_tests.py --domain validation-provenance --level domain`.
+All Cargo test stages use `--nocapture --test-threads=1` to retain evidence and
+serialize device creation. The runner requests `FLEXPART_GPU_SOFTWARE=1` and
+records the candidate revision; configure the available software backend as in
+[software CI](../../.github/workflows/software-wgpu.yml). Simulation preflight
+records adapter identity; required forward markers prove driver execution.
+Domain profiles are bounded diagnostics, not all scientific gates for a domain.
+Keep the final checks and owner-specific pinned-oracle gates described below.
+
 ## GPU runtime
 
 - Fast host falsification: `cargo test --lib gpu::evidence::tests`.

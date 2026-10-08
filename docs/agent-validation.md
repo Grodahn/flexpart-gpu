@@ -196,3 +196,56 @@ Before Docker and the pinned checkout were prepared, the same command returned
 therefore never become a successful paired validation. Repository unit tests
 also exercise cache invalidation, focused command selection, bounded
 diagnostics, and the existing focused audit/report selectors.
+
+## Compact domain test orchestration
+
+Issue #174 adds `python scripts/agent_tests.py --domain DOMAIN --level focused|domain`.
+Use `--list` for the exact finite selection and the
+[profile table](agent/test-map.md#compact-domain-runner) for ownership. Supported
+v1 domains are `meteorology-resident`, `transport-advection`, `simulation`, and
+`validation-provenance`. There is no generic full profile. Existing final
+formatting, Clippy, Cargo, production, pinned-oracle and CI gates still apply.
+
+Each invocation creates `target/agent-tests/<domain>/<unique-run-id>/` with a
+versioned `summary.json`, exact commands/environment, complete combined binary
+stdout/stderr stage logs, subprocess exit codes, elapsed seconds, output bytes,
+test counts where available, and retained device reports. Success emits one
+JSON line; failure includes at most eight assertion lines and the existing
+30-line/500-character bounded tail. `terminal_bytes` measures this JSON line.
+`state` is `PASS`, `FAIL`, `BLOCKED` or `ERROR`; stages additionally distinguish
+`SKIPPED` and `NOT_RUN`. Unknown test counts are null per stage (preflight and
+paired scripts are not libtest suites); aggregate counts sum known tests only.
+A subprocess nonzero exit is returned unchanged, including Unix signals.
+Wrapper evidence failures return 1 while retaining the subprocess's actual 0.
+An absent executable returns 127 with a null subprocess status.
+
+Missing adapters, zero tests, skipped selections, stale resident reports and
+missing/malformed mandatory evidence never pass. Resident evidence is checked
+against existing #171 identities and execution fields; advection requires the
+existing adapter/displacement markers and successful exact test. Paired checks
+delegate to `agent_validation.py`, retain its pinned identity and diagnostic
+scientific verdict, and consume its existing reports. This adds no comparison
+algorithm, tolerance, fixture, or oracle build path.
+
+Normal Cargo/Docker caches remain intact. The resident producer has a fixed
+report path: runner invocations use an exclusive `target/agent-tests/resident.lock`,
+reject unchanged evidence, and copy the fresh report into their run directory.
+Do not run the legacy resident command concurrently in the same checkout.
+After a killed runner, inspect the lock and remove it only after confirming no
+resident invocation remains. Other test-owned artifacts keep their existing
+locations; paired manifests/reports live inside the unique run, while raw
+corpus outputs retain the existing shared lifecycle. The runner similarly locks paired profiles with `target/agent-tests/paired.lock`.
+Avoid concurrent legacy paired corpus invocations in one checkout as required
+by that existing lifecycle.
+`PASS` means selected checks executed, never scientific parity or hardware GPU
+performance. Software-device wall times measure orchestration only.
+
+The simulation domain profile runs both full forward variants and backward,
+but currently returns `BLOCKED` for backward: that legacy test can return early
+on `NoAdapter` without a device execution marker. A separate owner-provided
+backward execution-evidence prerequisite is needed; #174 does not rewrite the
+test. Simulation focused uses the required forward order marker and preflight.
+Likewise, the existing manifest tests skip when a pinned FLEXPART checkout is
+absent at the repository sibling `../flexpart`. This makes the
+validation-provenance domain profile nonzero with an explicit `SKIPPED` stage.
+Provide that existing prerequisite; do not treat a skipped profile as validation. These limitations leave mandatory CI gates unchanged.

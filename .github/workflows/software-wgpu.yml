@@ -19,6 +19,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - name: Audit CI test coverage and fail-closed checks
+        run: |
+          python3 scripts/check_ci_test_coverage.py
+          python3 scripts/test_check_ci_test_coverage.py
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
       - name: Install Lavapipe
@@ -32,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p target/ci-gate
-          cargo run --bin gpu-preflight -- --software --json-output target/ci-gate/gpu-preflight.json 2>&1 | tee target/ci-gate/gpu-preflight.log
+          cargo run --bin gpu-preflight -- --software --json-output target/ci-gate/gpu-preflight.json > target/ci-gate/gpu-preflight.log 2>&1
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -54,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p target/ci-gate
-          cargo test --test integration software_advection::test_sw_wgpu_advection_001_constant_wind_displacement -- --exact --nocapture 2>&1 | tee target/ci-gate/sw-wgpu-advection.log
+          cargo test --test integration software_advection::test_sw_wgpu_advection_001_constant_wind_displacement -- --exact --nocapture > target/ci-gate/sw-wgpu-advection.log 2>&1
           # Fail closed: a missing adapter, a skipped test, or a missing
           # result must fail the job (never silently pass).
           grep -q "SW-WGPU-ADVECTION-001" target/ci-gate/sw-wgpu-advection.log
@@ -69,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p target/ci-gate
-          cargo test --test accumulation_gpu -- --nocapture 2>&1 | tee target/ci-gate/accumulation-gpu.log
+          cargo test --test accumulation_gpu -- --nocapture > target/ci-gate/accumulation-gpu.log 2>&1
           test "$(find target/ci-gate/accumulation-gpu -maxdepth 1 -name 'large_scale_precipitation-cell-*.json' | wc -l)" -eq 12
           test "$(find target/ci-gate/accumulation-gpu -maxdepth 1 -name 'convective_precipitation-cell-*.json' | wc -l)" -eq 12
           for evidence in target/ci-gate/accumulation-gpu/*.json; do
@@ -81,7 +85,7 @@ jobs:
       - name: Prove temporal interpolation against the pinned FLEXPART oracle
         run: |
           set -euo pipefail
-          cargo test --test temporal_gpu test_gpu_vs_oracle_parity -- --exact --nocapture 2>&1 | tee target/ci-gate/temporal-gpu.log
+          cargo test --test temporal_gpu test_gpu_vs_oracle_parity -- --exact --nocapture > target/ci-gate/temporal-gpu.log 2>&1
           test -f target/temporal-gpu-evidence.json
           python3 - <<'PY'
           import json
@@ -112,7 +116,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p target/ci-gate
-          cargo test --test vertical_gpu -- --nocapture --test-threads=1 2>&1 | tee target/ci-gate/vertical-gpu.log
+          cargo test --test vertical_gpu -- --nocapture --test-threads=1 > target/ci-gate/vertical-gpu.log 2>&1
           python3 - <<'PY'
           import hashlib
           import json
@@ -168,7 +172,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -f target/horizontal-gpu-evidence.json
-          cargo test --test horizontal_gpu -- --nocapture 2>&1 | tee target/ci-gate/horizontal-gpu.log
+          cargo test --test horizontal_gpu -- --nocapture > target/ci-gate/horizontal-gpu.log 2>&1
           python3 - <<'PY'
           import json
           import os
@@ -205,7 +209,7 @@ jobs:
           rm -f target/settling-gpu-evidence.json
           python3 scripts/generate_settling_oracle.py --audit
           python3 -m unittest discover -s scripts -p test_generate_settling_oracle.py
-          cargo test --test settling_gpu -- --nocapture 2>&1 | tee target/ci-gate/settling-gpu.log
+          cargo test --test settling_gpu -- --nocapture > target/ci-gate/settling-gpu.log 2>&1
           python3 - <<'PY'
           import hashlib
           import json
@@ -247,8 +251,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p target/ci-gate
-          cargo test --test meteorology_resident -- --nocapture --test-threads=1 2>&1 | tee target/ci-gate/meteorology-resident.log
-          cargo test --lib gpu::meteorology::resident::tests -- --nocapture --test-threads=1 2>&1 | tee target/ci-gate/meteorology-resident-corner.log
+          cargo test --test meteorology_resident -- --nocapture --test-threads=1 > target/ci-gate/meteorology-resident.log 2>&1
+          cargo test --lib gpu::meteorology::resident::tests -- --nocapture --test-threads=1 > target/ci-gate/meteorology-resident-corner.log 2>&1
           python3 - <<'PY'
           import hashlib
           import json
@@ -293,7 +297,7 @@ jobs:
       - name: Prove field-specific canonical meteorology composition
         run: |
           set -euo pipefail
-          cargo test --test meteorology_composition -- --test-threads=1 2>&1 | tee target/ci-gate/meteorology-composition.log
+          cargo test --test meteorology_composition -- --test-threads=1 > target/ci-gate/meteorology-composition.log 2>&1
           python3 - <<'PY'
           import hashlib
           import json
@@ -542,27 +546,17 @@ jobs:
       - name: Preserve simulation timestep order and output boundaries (#126)
         run: |
           set -euo pipefail
-          cargo test --test forward_timeloop --test backward_timeloop -- --nocapture > target/ci-gate/timeloop-production.log 2>&1
-          grep -q "TIMELOOP-ORDER-126" target/ci-gate/timeloop-production.log
-          grep -q "TIMELOOP-DEFERRED-126" target/ci-gate/timeloop-production.log
-          grep -q "TIMELOOP-ERROR-126" target/ci-gate/timeloop-production.log
-          FLEXPART_GPU_VALIDATION=1 cargo test --test forward_timeloop -- --nocapture > target/ci-gate/timeloop-validation.log 2>&1
-          grep -q "TIMELOOP-ORDER-126" target/ci-gate/timeloop-validation.log
-          grep -q "TIMELOOP-DEFERRED-126" target/ci-gate/timeloop-validation.log
-          grep -q "TIMELOOP-ERROR-126" target/ci-gate/timeloop-validation.log
+          # Complete default regressions, including backward, exactly once.
+          FLEXPART_GPU_COMPACTION=0 FLEXPART_GPU_VALIDATION=0 RUST_LOG=flexpart_gpu=info cargo test --test forward_timeloop --test backward_timeloop -- --nocapture > target/ci-gate/timeloop-production.log 2>&1
+          python3 scripts/check_ci_test_coverage.py --log target/ci-gate/timeloop-production.log --compaction 0 --validation 0 --backward
+          FLEXPART_GPU_COMPACTION=0 FLEXPART_GPU_VALIDATION=1 RUST_LOG=flexpart_gpu=info cargo test --test forward_timeloop -- --nocapture > target/ci-gate/timeloop-validation.log 2>&1
+          python3 scripts/check_ci_test_coverage.py --log target/ci-gate/timeloop-validation.log --compaction 0 --validation 1
       - name: Prove dry-deposition capacity/prefix handoff (#135)
         run: |
           set -euo pipefail
           cargo test --lib gpu::deposition::tests -- --test-threads=1 --nocapture > target/ci-gate/dry-prefix.log 2>&1
           grep -q "DRY-PREFIX-135" target/ci-gate/dry-prefix.log
           grep -q "DRY-BOUNDS-135" target/ci-gate/dry-prefix.log
-          for compaction in 0 1; do
-            log="target/ci-gate/dry-forward-${compaction}.log"
-            FLEXPART_GPU_COMPACTION="$compaction" FLEXPART_GPU_VALIDATION=0 RUST_LOG=flexpart_gpu=info cargo test --test forward_timeloop test_forward_timeloop_dry_deposition_multiple_active_and_full_capacity -- --exact --nocapture > "$log" 2>&1
-            grep -q "DRY-FORWARD-135: capacity=8 active=1" "$log"
-            grep -q "DRY-FORWARD-135: capacity=8 active=3" "$log"
-            grep -q "DRY-FORWARD-135: capacity=8 active=8" "$log"
-          done
       - name: Prove wet-deposition capacity/prefix handoff (#138)
         run: |
           set -euo pipefail
@@ -571,16 +565,6 @@ jobs:
             grep -q "WET-PREFIX-138: .*capacity=8 active=$active" target/ci-gate/wet-prefix.log
           done
           grep -q "WET-BOUNDS-138" target/ci-gate/wet-prefix.log
-          for compaction in 0 1; do
-            log="target/ci-gate/wet-forward-${compaction}.log"
-            FLEXPART_GPU_COMPACTION="$compaction" FLEXPART_GPU_VALIDATION=0 RUST_LOG=flexpart_gpu=info cargo test --test forward_timeloop test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advance -- --exact --nocapture > "$log" 2>&1
-            grep -q "TIMELOOP-ORDER-126" "$log"
-            FLEXPART_GPU_COMPACTION="$compaction" FLEXPART_GPU_VALIDATION=0 RUST_LOG=flexpart_gpu=info cargo test --test forward_timeloop test_forward_timeloop_mixed_deposition_multiple_active_and_full_capacity -- --exact --nocapture >> "$log" 2>&1
-            for active in 1 3 8; do
-              grep -q "WET-FORWARD-138: capacity=8 active=$active" "$log"
-            done
-            grep -q "using software WGSL adapter" "$log"
-          done
       - name: Prove separated Hanna-Langevin capacity/prefix handoff (#139)
         run: |
           set -euo pipefail
@@ -592,17 +576,13 @@ jobs:
             done
           done
           grep -q "HANNA-BOUNDS-139" target/ci-gate/hanna-prefix.log
-          for compaction in 0 1; do
-            for validation in 0 1; do
-              log="target/ci-gate/hanna-forward-${compaction}-${validation}.log"
-              FLEXPART_GPU_COMPACTION="$compaction" FLEXPART_GPU_VALIDATION="$validation" RUST_LOG=flexpart_gpu=info cargo test --test forward_timeloop -- --nocapture > "$log" 2>&1
-              for active in 1 3 8; do
-                grep -q "DRY-FORWARD-135: capacity=8 active=$active" "$log"
-                grep -q "WET-FORWARD-138: capacity=8 active=$active" "$log"
-              done
-              grep -q "TIMELOOP-ORDER-126" "$log"
-              grep -q "using software WGSL adapter" "$log"
-            done
+          # Compaction OFF evidence is already in the two complete runs above.
+          # ON retains every device-dependent test. Only the source-text order
+          # assertion is configuration independent and already covered twice.
+          for validation in 0 1; do
+            log="target/ci-gate/hanna-forward-1-${validation}.log"
+            FLEXPART_GPU_COMPACTION=1 FLEXPART_GPU_VALIDATION="$validation" RUST_LOG=flexpart_gpu=info cargo test --test forward_timeloop -- --nocapture --skip test_forward_timeloop_operator_call_order_is_preserved > "$log" 2>&1
+            python3 scripts/check_ci_test_coverage.py --log "$log" --compaction 1 --validation "$validation"
           done
       - name: Run corpus deterministic subset (Issue #6, point 2)
         run: |
@@ -619,8 +599,9 @@ jobs:
           cargo test --test integration corpus_ -- --nocapture > target/ci-gate/corpus-subset.log 2>&1
           cargo_status=$?
           set -e
-          cat target/ci-gate/corpus-subset.log
-          test "$cargo_status" -eq 0
+          if [ "$cargo_status" -ne 0 ]; then
+            exit "$cargo_status"
+          fi
           grep -q "test result: ok" target/ci-gate/corpus-subset.log
           grep -qE "[1-9][0-9]* passed; 0 failed" target/ci-gate/corpus-subset.log
           # No skipped corpus test may hide behind a passing suite: every
@@ -648,9 +629,7 @@ jobs:
             target/ci-gate/vertical-gpu.log
             target/ci-gate/vertical-gpu/*.json
             target/ci-gate/dry-prefix.log
-            target/ci-gate/dry-forward-*.log
             target/ci-gate/wet-prefix.log
-            target/ci-gate/wet-forward-*.log
             target/ci-gate/hanna-prefix.log
             target/ci-gate/langevin.log
             target/ci-gate/hanna-forward-*.log

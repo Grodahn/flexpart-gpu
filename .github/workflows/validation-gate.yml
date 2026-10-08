@@ -44,7 +44,11 @@ jobs:
 
       - name: Run full Rust library test suite
         working-directory: flexpart-gpu
-        run: cargo test --lib
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-gate
+          cargo test --lib > target/ci-gate/rust-lib.log 2>&1
+          python3 scripts/check_ci_test_coverage.py --library-log target/ci-gate/rust-lib.log
 
       - name: Preserve validation case serialized contract
         working-directory: flexpart-gpu
@@ -58,11 +62,9 @@ jobs:
         run: |
           set -euo pipefail
           cd flexpart-gpu
-          cargo test --lib meteorology::field::tests
-          cargo test --lib meteorology::snapshot::tests
-          cargo test --lib meteorology::vertical::
+          # Host library assertions ran in the complete suite above.
+          # Integration reports and the fresh ci-gate producers remain required.
           cargo test --test vertical_geometry_contract
-          cargo test --lib meteorology::vertical_sampling::tests
           cargo test --test integration vertical_runtime
           cargo test --test integration vertical_sampling
           test -s target/ci-gate/vertical-sampling/vertical-model-level-regression.json

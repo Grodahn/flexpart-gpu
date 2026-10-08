@@ -182,6 +182,7 @@ fn test_forward_timeloop_synthetic_uniform_wind_is_deterministic() {
         particle.pos_z
     );
     assert!((particle.mass[0] - 1.0).abs() < 1.0e-6);
+    eprintln!("TIMELOOP-FORWARD-175: WGSL deterministic transport executed");
 }
 
 #[test]
@@ -285,6 +286,7 @@ fn test_forward_timeloop_optional_spatial_sort_reorders_particle_slots() {
         "spatial sort should place low-x particle first"
     );
     assert_eq!(slot1.release_point, 0);
+    eprintln!("TIMELOOP-SORT-175: WGSL spatial sort executed");
 }
 
 #[test]

@@ -1,0 +1,880 @@
+{
+  "revision": "56b7577a38a5ce62387315ed8f5dc01e00b96679",
+  "headers": {
+    ".github/workflows/software-wgpu.yml": "name: Software WGSL smoke\n\non:\n  pull_request:\n  push:\n    branches: [main]\n\njobs:\n  software-wgpu:\n    runs-on: ubuntu-22.04\n    env:\n      FLEXPART_GPU_SOFTWARE: \"1\"\n      FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}\n      WGPU_BACKEND: vulkan\n      LIBGL_ALWAYS_SOFTWARE: \"1\"\n",
+    ".github/workflows/validation-gate.yml": "name: Technical validation gate\n\n# Small deterministic technical gate (RISK-03.3G-01, Issue #6 point 4).\n# Technical gate only: TECHNICAL_PASS does not establish scientific parity\n# and does not close Issue #6. The full ETEX mini run never executes here;\n# it stays local/manual (see extended-validation.yml and docs/ci-gates.md).\n\non:\n  pull_request:\n  push:\n    branches: [main]\n  workflow_dispatch:\n\njobs:\n  technical-gate:\n    runs-on: ubuntu-22.04\n    timeout-minutes: 60\n    env:\n      FLEXPART_GPU_SOFTWARE: \"1\"\n      WGPU_BACKEND: vulkan\n      LIBGL_ALWAYS_SOFTWARE: \"1\"\n"
+  },
+  "invocations": [
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Run required software WGSL advection smoke test",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "integration",
+        "software_advection::test_sw_wgpu_advection_001_constant_wind_displacement",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove accumulated-field GPU oracle parity",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "accumulation_gpu",
+        "--",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove temporal interpolation against the pinned FLEXPART oracle",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "temporal_gpu",
+        "test_gpu_vs_oracle_parity",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove canonical vertical GPU sampling against the pinned oracles",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "vertical_gpu",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1",
+        "FLEXPART_GPU_REQUIRE_VERTICAL": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove horizontal interpolation against the pinned FLEXPART oracle",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "horizontal_gpu",
+        "--",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove settling against the pinned FLEXPART routines",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "settling_gpu",
+        "--",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1",
+        "FLEXPART_GPU_REQUIRE_SETTLING": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove resident particle meteorology queries and fatal-batch gating",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "meteorology_resident",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove resident particle meteorology queries and fatal-batch gating",
+      "argv": [
+        "cargo",
+        "test",
+        "--lib",
+        "gpu::meteorology::resident::tests",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove field-specific canonical meteorology composition",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "meteorology_composition",
+        "--",
+        "--test-threads=1"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Preserve shared PBL options and GPU diagnostics (#147)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "pbl_options_contract",
+        "--",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Preserve shared PBL options and GPU diagnostics (#147)",
+      "argv": [
+        "cargo",
+        "test",
+        "--lib",
+        "gpu::pbl::tests",
+        "--",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove canonical driver input and resident resource readiness (#173)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "canonical_timeloop_meteorology",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Preserve simulation timestep order and output boundaries (#126)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "forward_timeloop",
+        "--test",
+        "backward_timeloop",
+        "--",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Preserve simulation timestep order and output boundaries (#126)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "forward_timeloop",
+        "--",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1",
+        "FLEXPART_GPU_VALIDATION": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove dry-deposition capacity/prefix handoff (#135)",
+      "argv": [
+        "cargo",
+        "test",
+        "--lib",
+        "gpu::deposition::tests",
+        "--",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove dry-deposition capacity/prefix handoff (#135)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "forward_timeloop",
+        "test_forward_timeloop_dry_deposition_multiple_active_and_full_capacity",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1",
+        "FLEXPART_GPU_COMPACTION": "0",
+        "FLEXPART_GPU_VALIDATION": "0",
+        "RUST_LOG": "flexpart_gpu=info"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove dry-deposition capacity/prefix handoff (#135)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "forward_timeloop",
+        "test_forward_timeloop_dry_deposition_multiple_active_and_full_capacity",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1",
+        "FLEXPART_GPU_COMPACTION": "1",
+        "FLEXPART_GPU_VALIDATION": "0",
+        "RUST_LOG": "flexpart_gpu=info"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove wet-deposition capacity/prefix handoff (#138)",
+      "argv": [
+        "cargo",
+        "test",
+        "--lib",
+        "gpu::wet_deposition::tests",
+        "--",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove wet-deposition capacity/prefix handoff (#138)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "forward_timeloop",
+        "test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advance",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1",
+        "FLEXPART_GPU_COMPACTION": "0",
+        "FLEXPART_GPU_VALIDATION": "0",
+        "RUST_LOG": "flexpart_gpu=info"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove wet-deposition capacity/prefix handoff (#138)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "forward_timeloop",
+        "test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advance",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1",
+        "FLEXPART_GPU_COMPACTION": "1",
+        "FLEXPART_GPU_VALIDATION": "0",
+        "RUST_LOG": "flexpart_gpu=info"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove wet-deposition capacity/prefix handoff (#138)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "forward_timeloop",
+        "test_forward_timeloop_mixed_deposition_multiple_active_and_full_capacity",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1",
+        "FLEXPART_GPU_COMPACTION": "0",
+        "FLEXPART_GPU_VALIDATION": "0",
+        "RUST_LOG": "flexpart_gpu=info"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove wet-deposition capacity/prefix handoff (#138)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "forward_timeloop",
+        "test_forward_timeloop_mixed_deposition_multiple_active_and_full_capacity",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1",
+        "FLEXPART_GPU_COMPACTION": "1",
+        "FLEXPART_GPU_VALIDATION": "0",
+        "RUST_LOG": "flexpart_gpu=info"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove separated Hanna-Langevin capacity/prefix handoff (#139)",
+      "argv": [
+        "cargo",
+        "test",
+        "--lib",
+        "gpu::hanna::tests",
+        "--",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove separated Hanna-Langevin capacity/prefix handoff (#139)",
+      "argv": [
+        "cargo",
+        "test",
+        "--lib",
+        "gpu::langevin::tests",
+        "--",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove separated Hanna-Langevin capacity/prefix handoff (#139)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "forward_timeloop",
+        "--",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1",
+        "FLEXPART_GPU_COMPACTION": "0",
+        "FLEXPART_GPU_VALIDATION": "0",
+        "RUST_LOG": "flexpart_gpu=info"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove separated Hanna-Langevin capacity/prefix handoff (#139)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "forward_timeloop",
+        "--",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1",
+        "FLEXPART_GPU_COMPACTION": "0",
+        "FLEXPART_GPU_VALIDATION": "1",
+        "RUST_LOG": "flexpart_gpu=info"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove separated Hanna-Langevin capacity/prefix handoff (#139)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "forward_timeloop",
+        "--",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1",
+        "FLEXPART_GPU_COMPACTION": "1",
+        "FLEXPART_GPU_VALIDATION": "0",
+        "RUST_LOG": "flexpart_gpu=info"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove separated Hanna-Langevin capacity/prefix handoff (#139)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "forward_timeloop",
+        "--",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1",
+        "FLEXPART_GPU_COMPACTION": "1",
+        "FLEXPART_GPU_VALIDATION": "1",
+        "RUST_LOG": "flexpart_gpu=info"
+      }
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Run corpus deterministic subset (Issue #6, point 2)",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "integration",
+        "corpus_",
+        "--",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/validation-gate.yml",
+      "step": "Run full Rust library test suite",
+      "argv": [
+        "cargo",
+        "test",
+        "--lib"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/validation-gate.yml",
+      "step": "Preserve validation case serialized contract",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "validation_case_contract"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/validation-gate.yml",
+      "step": "Preserve configuration facade and parser behavior",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "config_contract"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/validation-gate.yml",
+      "step": "Run canonical meteorology contract tests",
+      "argv": [
+        "cargo",
+        "test",
+        "--lib",
+        "meteorology::field::tests"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/validation-gate.yml",
+      "step": "Run canonical meteorology contract tests",
+      "argv": [
+        "cargo",
+        "test",
+        "--lib",
+        "meteorology::snapshot::tests"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/validation-gate.yml",
+      "step": "Run canonical meteorology contract tests",
+      "argv": [
+        "cargo",
+        "test",
+        "--lib",
+        "meteorology::vertical::"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/validation-gate.yml",
+      "step": "Run canonical meteorology contract tests",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "vertical_geometry_contract"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/validation-gate.yml",
+      "step": "Run canonical meteorology contract tests",
+      "argv": [
+        "cargo",
+        "test",
+        "--lib",
+        "meteorology::vertical_sampling::tests"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/validation-gate.yml",
+      "step": "Run canonical meteorology contract tests",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "integration",
+        "vertical_runtime"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/validation-gate.yml",
+      "step": "Run canonical meteorology contract tests",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "integration",
+        "vertical_sampling"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    },
+    {
+      "workflow": ".github/workflows/validation-gate.yml",
+      "step": "Run canonical meteorology contract tests",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "meteorology_contract"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      }
+    }
+  ],
+  "protected_steps": {
+    ".github/workflows/software-wgpu.yml": {
+      "Install Rust toolchain": "6f346a629cf8cf33ce92fb2a30495552699f8dcae4eb6cdfc3e089ab57f6ddac",
+      "Check Rust formatting": "45b432f2fd005a30f8e91314cc00a5d9358dc5685281a1d9f67ec09d604aa52a",
+      "Install Lavapipe": "138f7a14dff76a203e1a425658f7e3615f4bec1ce4c9939e68d4cafc5ab5050e",
+      "Prove H2D, WGSL arithmetic, D2H, and adapter provenance": "e5e815d596741707e8dbc2842657102a99737c2b740dc9f2ba635f719622ee2c",
+      "Run required software WGSL advection smoke test": "d5d1ac707154aca8d539e1698a376f405e1a3b951a7f9d1852b61259ef67a027",
+      "Prove accumulated-field GPU oracle parity": "32b12fb9252c8cb598080d3860a09505bf46df4ffbbb085eac2d922842ef1298",
+      "Prove temporal interpolation against the pinned FLEXPART oracle": "4044d6ddf68857de98a54a06dfb9c256853b4376165d8d5dffc0ff5cef8ae067",
+      "Prove canonical vertical GPU sampling against the pinned oracles": "0b0bc6c7970f6e3e6bfc6f74b2fc4580bda7c7f4fc746fa8812c3ea6df778ebb",
+      "Prove horizontal interpolation against the pinned FLEXPART oracle": "421ea1b5717640ab67f3fc1d78f878c1ef00c31257a1bdbfdd0b241e447c2cbb",
+      "Prove settling against the pinned FLEXPART routines": "76c7f2ca760d7677ab29ca8d2eb2e71dcbcafcebc152afa27bba600b095b43e4",
+      "Prove resident particle meteorology queries and fatal-batch gating": "c5fe2929f1403fb2996e9228d9d76ee303cb86f793df482937dbb57427d2a555",
+      "Prove field-specific canonical meteorology composition": "5fda03364929ed4068459f7d08c27b8159c0c09a8778f69ef2f8743eb9bf806b",
+      "Preserve shared PBL options and GPU diagnostics (#147)": "1bf820f1b1d1f639299fafe0b929932c55bc182cd17b35f4fa480381d00326fa",
+      "Prove canonical driver input and resident resource readiness (#173)": "b54b9e2b3829027a960ba65917654d0df23122d15e121e4ba1ae5163784c5c64"
+    },
+    ".github/workflows/validation-gate.yml": {
+      "Checkout candidate": "c51e9930ad5699fa9e8ca45f62804a5be76d466f9a3621420029c6cb5468445d",
+      "Install Rust toolchain": "6f346a629cf8cf33ce92fb2a30495552699f8dcae4eb6cdfc3e089ab57f6ddac",
+      "Check Rust formatting": "6ae626209e9f9c5f59dbaf41331b345aaa1fb6304041e9e6c15cad8ddf2e3f01",
+      "Install Lavapipe (software Vulkan)": "04882ab7e1c691af93a6729906395762a4b4cd14a96b0c5ecaf5df93fd905f24",
+      "Preserve validation case serialized contract": "bc852bfd59dbdc6e0ce7d55a3e0fac1b1ba90f6bdd05d48b2af82c0e8c3d661a",
+      "Preserve configuration facade and parser behavior": "e0b2aa33bd4baf0385a6a25a656d5243f5b13fc6339d597fd4f8cdd6d26ed6f7",
+      "Clone pinned FLEXPART 11.1 oracle": "1e07ca8c26c815bf9bd489a4eb7a468673fc22aa026b808d08573fd102e135d8",
+      "Clone pinned flex_extract 7.1.2 oracle": "ede9affb6f99dedf14a96d364498da72e2db3bb9e09659d286bdf4fdeb195438",
+      "Run small deterministic technical gate": "0108581b4c45db2b1f745083bd83c4c989f82c81b2709c369a431cebfa4e60a9"
+    }
+  },
+  "required_checks": [
+    "python3 scripts/check_ci_test_coverage.py --log target/ci-gate/timeloop-production.log --compaction 0 --validation 0 --backward",
+    "python3 scripts/check_ci_test_coverage.py --log target/ci-gate/timeloop-validation.log --compaction 0 --validation 1",
+    "python3 scripts/check_ci_test_coverage.py --log \"$log\" --compaction 1 --validation \"$validation\"",
+    "python3 scripts/check_ci_test_coverage.py --library-log target/ci-gate/rust-lib.log",
+    "grep -q \"DRY-PREFIX-135\"",
+    "grep -q \"DRY-BOUNDS-135\"",
+    "grep -q \"WET-BOUNDS-138\"",
+    "grep -q \"WET-PREFIX-138: .*capacity=8 active=$active\"",
+    "grep -q \"HANNA-PREFIX-139: .*capacity=8 active=$active substeps=$substeps\"",
+    "grep -q \"HANNA-BOUNDS-139\""
+  ],
+  "gate_source_sha256": "8ac75656f8114431bd9e649df07944bb638fdcfbfdd6fa5116a4bcc65137f655",
+  "artifact_paths": {
+    ".github/workflows/software-wgpu.yml": [
+      "target/ci-gate/gpu-preflight.json",
+      "target/ci-gate/gpu-preflight.log",
+      "target/ci-gate/pbl-options.log",
+      "target/ci-gate/pbl-diagnostics.log",
+      "target/ci-gate/sw-wgpu-advection.log",
+      "target/ci-gate/accumulation-gpu.log",
+      "target/ci-gate/accumulation-gpu/*.json",
+      "target/ci-gate/horizontal-gpu.log",
+      "target/horizontal-gpu-evidence.json",
+      "target/ci-gate/temporal-gpu.log",
+      "target/ci-gate/vertical-gpu.log",
+      "target/ci-gate/vertical-gpu/*.json",
+      "target/ci-gate/dry-prefix.log",
+      "target/ci-gate/dry-forward-*.log",
+      "target/ci-gate/wet-prefix.log",
+      "target/ci-gate/wet-forward-*.log",
+      "target/ci-gate/hanna-prefix.log",
+      "target/ci-gate/langevin.log",
+      "target/ci-gate/hanna-forward-*.log",
+      "target/ci-gate/corpus-subset.log",
+      "target/ci-gate/timeloop-production.log",
+      "target/ci-gate/timeloop-validation.log",
+      "target/temporal-gpu-evidence.json",
+      "target/settling-gpu-evidence.json",
+      "target/ci-gate/settling-gpu.log",
+      "target/ci-gate/meteorology-composition.log",
+      "target/ci-gate/meteorology-composition/*.json",
+      "target/ci-gate/meteorology-resident.log",
+      "target/ci-gate/meteorology-resident-corner.log",
+      "target/ci-gate/meteorology-resident/*.json",
+      "target/ci-gate/canonical-timeloop-meteorology.log",
+      "target/ci-gate/canonical-timeloop-meteorology/*.json"
+    ],
+    ".github/workflows/validation-gate.yml": [
+      "path: flexpart-gpu/target/ci-gate/"
+    ]
+  },
+  "replaced_log_globs": [
+    "target/ci-gate/dry-forward-*.log",
+    "target/ci-gate/wet-forward-*.log"
+  ],
+  "gate_invocations": [
+    [
+      "cargo",
+      "test",
+      "--test",
+      "interpolation_contract"
+    ],
+    [
+      "cargo",
+      "test",
+      "--test",
+      "w_production_oracle"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "meteorology::vertical_sampling::tests"
+    ],
+    [
+      "cargo",
+      "test",
+      "--test",
+      "integration",
+      "vertical_sampling"
+    ],
+    [
+      "cargo",
+      "test",
+      "--test",
+      "integration",
+      "software_advection::test_sw_wgpu_advection_001_constant_wind_displacement",
+      "--",
+      "--exact",
+      "--nocapture"
+    ]
+  ]
+}

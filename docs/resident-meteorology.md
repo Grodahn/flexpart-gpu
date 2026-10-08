@@ -48,6 +48,11 @@ Height resources are `[column * levels + level]`. Each lane compares only its
 non-zero-weight stencil against its lower corner using #76's exact compatible
 height rule. Independent lanes can select different compatible profiles.
 
+Packed resident field/height resources must fit the device's storage-binding and
+index limits. When an aggregate exceeds those limits, the existing per-plane
+#76 upload and host-query facade retain their capability. Resident preparation
+returns an explicit unsupported error; it never falls back to host queries.
+
 The adapter writes #87's existing 32-byte query geometry. Only #87 performs the
 bilinear field weighted sum. #88 uses heights `[lane * levels + level]` and
 horizontally sampled values `[level * capacity + lane]`; two explicit strides

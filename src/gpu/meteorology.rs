@@ -314,7 +314,7 @@ impl<'ctx> MeteorologyCompositionKernels<'ctx> {
 }
 
 struct RuntimeColumns<'ctx> {
-    resident_heights: wgpu::Buffer,
+    resident_heights: Option<wgpu::Buffer>,
     view: VerticalRuntimeView<'ctx>,
     heights: Vec<Vec<f32>>,
     terrain: Vec<f32>,
@@ -324,7 +324,7 @@ struct RuntimeColumns<'ctx> {
 }
 
 struct SourceMember<'ctx> {
-    resident_values: wgpu::Buffer,
+    resident_values: Option<wgpu::Buffer>,
     snapshot: Snapshot,
     snapshot_sha256: String,
     field: Field,
@@ -659,9 +659,9 @@ fn upload_member<'ctx>(
             }
         }
         columns = Some(RuntimeColumns {
-            resident_heights: resident::upload_values(
+            resident_heights: resident::upload_source_columns(
                 ctx,
-                &heights.iter().flatten().copied().collect::<Vec<_>>(),
+                &heights,
                 "source runtime AGL columns",
             )?,
             view: runtime,
@@ -689,9 +689,9 @@ fn upload_member<'ctx>(
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(SourceMember {
-        resident_values: resident::upload_values(
+        resident_values: resident::upload_source_columns(
             ctx,
-            &plane_values.iter().flatten().copied().collect::<Vec<_>>(),
+            &plane_values,
             "source physical field planes",
         )?,
         snapshot: snapshot.clone(),

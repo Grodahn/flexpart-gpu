@@ -110,20 +110,30 @@ fn storage(
     }))
 }
 
-pub(super) fn upload_values(
+// Packed resident buffers must not narrow the existing per-plane #76 capability.
+// Unsupported aggregate sizes remain an explicit resident preparation error.
+pub(super) fn upload_source_columns(
     ctx: &GpuContext,
-    values: &[f32],
+    columns: &[Vec<f32>],
     label: &str,
-) -> Result<wgpu::Buffer, MeteorologyCompositionError> {
-    // Interface W has no horizontal planes; it is explicitly unsupported here.
-    let values = if values.is_empty() { &[0.0] } else { values };
-    if values.len() > u32::MAX as usize {
-        return Err(incompatible("resident source index range"));
+) -> Result<Option<wgpu::Buffer>, MeteorologyCompositionError> {
+    let words = columns
+        .iter()
+        .try_fold(0_usize, |count, column| count.checked_add(column.len()))
+        .ok_or_else(|| incompatible("resident source size overflow"))?;
+    let bytes = (words as u64).checked_mul(4);
+    let limits = ctx.device.limits();
+    let limit = limits
+        .max_buffer_size
+        .min(u64::from(limits.max_storage_buffer_binding_size));
+    if words == 0 || words > u32::MAX as usize || bytes.is_none_or(|bytes| bytes > limit) {
+        return Ok(None);
     }
-    let buffer = storage(ctx, values.len() as u64, label)?;
+    let buffer = storage(ctx, words as u64, label)?;
+    let values: Vec<_> = columns.iter().flatten().copied().collect();
     ctx.queue
-        .write_buffer(&buffer, 0, bytemuck::cast_slice(values));
-    Ok(buffer)
+        .write_buffer(&buffer, 0, bytemuck::cast_slice(&values));
+    Ok(Some(buffer))
 }
 
 impl<'ctx> ResidentQueryBatch<'ctx> {
@@ -473,6 +483,24 @@ struct ResidentSpatial {
     params: wgpu::Buffer,
 }
 
+impl super::SourceMember<'_> {
+    fn resident_buffers(
+        &self,
+    ) -> Result<(&wgpu::Buffer, &wgpu::Buffer), MeteorologyCompositionError> {
+        let unsupported = || {
+            MeteorologyCompositionError::Unsupported(
+                "resident source aggregate exceeds device storage or index limits",
+            )
+        };
+        let values = self.resident_values.as_ref().ok_or_else(unsupported)?;
+        let heights = match &self.runtime {
+            Some(runtime) => runtime.resident_heights.as_ref().ok_or_else(unsupported)?,
+            None => values,
+        };
+        Ok((values, heights))
+    }
+}
+
 /// Prepared source/query borrow: intermediate values stay resident through the last consumer.
 pub struct PreparedResidentSample<'a, 'ctx, 'query> {
     source: &'a CanonicalGpuField<'ctx>,
@@ -498,17 +526,14 @@ impl ResidentSpatial {
         encoder: &mut wgpu::CommandEncoder,
     ) -> Result<(), MeteorologyCompositionError> {
         let bytes = u64::from(batch.capacity) * 4;
-        let heights = member
-            .runtime
-            .as_ref()
-            .map_or(&member.resident_values, |r| &r.resident_heights);
+        let (values, heights) = member.resident_buffers()?;
         resident.adapter.encode(
             ctx,
             &[
                 &batch.lanes,
                 &self.horizontal[0].queries.buffer,
                 heights,
-                &member.resident_values,
+                values,
                 &self.vertical.heights,
                 &self.vertical.queries,
                 &batch.status,
@@ -567,6 +592,7 @@ impl ResidentSpatial {
         batch: &ResidentQueryBatch<'_>,
         member: &super::SourceMember<'_>,
     ) -> Result<Self, MeteorologyCompositionError> {
+        member.resident_buffers()?;
         let count = batch.capacity as usize;
         let levels =
             u32::try_from(member.planes.len()).map_err(|_| incompatible("resident level count"))?;
@@ -895,6 +921,121 @@ mod tests {
     use crate::particles::{Particle, ParticleInit};
 
     #[test]
+    fn test_resident_aggregate_limit_preserves_per_plane_canonical_sampling() {
+        // A 64-byte binding fits each 48-byte field plane, but not the 144-byte
+        // packed source. A small real device limit avoids a huge allocation fixture.
+        let options = crate::gpu::GpuAdapterOptions::from_env();
+        let instance = wgpu::Instance::default();
+        let adapter =
+            pollster::block_on(instance.request_adapter(&options.to_request_adapter_options()))
+                .expect("resident source-limit gate requires WGSL");
+        let limits = wgpu::Limits {
+            max_storage_buffer_binding_size: 64,
+            ..wgpu::Limits::default()
+        };
+        let (device, queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("resident aggregate-limit fixture"),
+                required_features: wgpu::Features::empty(),
+                required_limits: limits,
+                memory_hints: wgpu::MemoryHints::Performance,
+            },
+            None,
+        ))
+        .unwrap();
+        let ctx = GpuContext {
+            identity: std::sync::Arc::new(()),
+            device,
+            queue,
+            adapter_info: adapter.get_info(),
+            fallback_requested: options.force_software_fallback,
+        };
+        assert_eq!(ctx.device.limits().max_storage_buffer_binding_size, 64);
+        let mut s0: Snapshot = serde_json::from_str(include_str!(
+            "../../../fixtures/vertical/synthetic-column-v1.json"
+        ))
+        .unwrap();
+        s0.horizontal_grid.nx = 4;
+        s0.horizontal_grid.ny = 3;
+        for field in &mut s0.fields {
+            field.shape[0] = 4;
+            field.shape[1] = 3;
+            field.values = field
+                .values
+                .iter()
+                .flat_map(|value| vec![*value; 12])
+                .collect();
+        }
+        let mut s1 = s0.clone();
+        for field in &mut s1.fields {
+            field.time.valid_time_epoch_seconds += 3600;
+        }
+        let r0 = crate::meteorology::vertical::reconstruct_vertical_geometry(&s0).unwrap();
+        let r1 = crate::meteorology::vertical::reconstruct_vertical_geometry(&s1).unwrap();
+        let v0 = r0.runtime_view().unwrap();
+        let v1 = r1.runtime_view().unwrap();
+        let source = CanonicalGpuField::upload(
+            &ctx,
+            FieldId::Temperature,
+            &[&s0, &s1],
+            &[Some(v0), Some(v1)],
+        )
+        .unwrap();
+        assert!(source.members.iter().all(|member| {
+            member.resident_values.is_none()
+                && member.runtime.as_ref().unwrap().resident_heights.is_none()
+        }));
+        let time = MeteorologyTimeSelection::Instantaneous(RequestedSampleTime::new(
+            Calendar::Gregorian,
+            s0.fields[0].time.valid_time_epoch_seconds,
+        ));
+        let mut batch = ResidentQueryBatch::new(&ctx, &s0.horizontal_grid, 1, 1).unwrap();
+        assert!(matches!(
+            source.prepare_resident(&ctx, &mut batch, time),
+            Err(MeteorologyCompositionError::Unsupported(
+                "resident source aggregate exceeds device storage or index limits"
+            ))
+        ));
+
+        let kernels = MeteorologyCompositionKernels::new(&ctx).unwrap();
+        let mut plan = source
+            .prepare_sample(
+                &ctx,
+                super::super::MeteorologySampleRequest {
+                    xt: 0.0,
+                    yt: 0.0,
+                    height: Some(super::super::MeteorologyHeight {
+                        meters: 0.0,
+                        reference: crate::meteorology::VerticalReference::AboveGroundLevel,
+                    }),
+                    time,
+                },
+            )
+            .unwrap();
+        let mut encoder = ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let sample = plan.encode(&ctx, &kernels, &mut encoder).unwrap();
+        ctx.queue.submit(Some(encoder.finish()));
+        let result = pollster::block_on(crate::gpu::download_buffer_typed::<f32>(
+            &ctx,
+            sample.values,
+            1,
+            "final per-plane compatibility result",
+        ))
+        .unwrap();
+        let (_, values) = crate::gpu::vertical::physical_model_column_from_runtime(
+            v0,
+            FieldId::Temperature,
+            &source.members[0].field.values,
+            0,
+            0,
+        )
+        .unwrap();
+        assert_eq!(result, [values[0]]);
+    }
+
+    #[test]
     fn test_resident_nonfinite_source_corner_fails_on_device_without_mutation() {
         assert_eq!(std::mem::size_of::<ResidentQueryLane>(), 32);
         let ctx =
@@ -914,7 +1055,7 @@ mod tests {
                 .unwrap();
         // Fault injection changes only device validation data after static source validation.
         ctx.queue.write_buffer(
-            &source.members[0].resident_values,
+            source.members[0].resident_values.as_ref().unwrap(),
             0,
             &f32::NAN.to_le_bytes(),
         );

@@ -75,7 +75,7 @@ fn snapshot(seconds: i64, offset: f32) -> Snapshot {
     snapshot
 }
 
-fn runtime(snapshot: &Snapshot, source_id: &str) -> VerticalTransformResult {
+fn native_motion(snapshot: &Snapshot, source_id: &str) -> NativeVerticalMotion {
     let values = snapshot
         .fields
         .iter()
@@ -83,20 +83,21 @@ fn runtime(snapshot: &Snapshot, source_id: &str) -> VerticalTransformResult {
         .unwrap()
         .values
         .clone();
-    reconstruct_vertical_geometry_with_motion(
-        snapshot,
-        &NativeVerticalMotion {
-            kind: NativeVerticalMotionKind::GeometricVelocity,
-            unit: NativeVerticalMotionUnit::MeterPerSecond,
-            sign: NativeVerticalMotionSign::PositiveUpward,
-            vertical_staggering: VerticalStaggering::LevelCenter,
-            values,
-            provenance: NativeVerticalMotionProvenance {
-                source_id: source_id.into(),
-            },
+    NativeVerticalMotion {
+        kind: NativeVerticalMotionKind::GeometricVelocity,
+        unit: NativeVerticalMotionUnit::MeterPerSecond,
+        sign: NativeVerticalMotionSign::PositiveUpward,
+        vertical_staggering: VerticalStaggering::LevelCenter,
+        values,
+        provenance: NativeVerticalMotionProvenance {
+            source_id: source_id.into(),
         },
-    )
-    .unwrap()
+    }
+}
+
+fn runtime(snapshot: &Snapshot, source_id: &str) -> VerticalTransformResult {
+    reconstruct_vertical_geometry_with_motion(snapshot, &native_motion(snapshot, source_id))
+        .unwrap()
 }
 
 fn bracket<'a>(
@@ -283,6 +284,7 @@ fn test_canonical_bracket_rejects_time_grid_runtime_and_motion_mismatches() {
 fn prove_resident(
     prepared: &PreparedCanonicalMeteorology<'_, '_>,
     direction: &str,
+    source_bracket: &str,
     snapshots: [&Snapshot; 2],
 ) -> Vec<Value> {
     let ctx = prepared.context();
@@ -386,12 +388,37 @@ fn prove_resident(
             )
             .unwrap();
             assert_eq!(comparison.verdict, NumericalVerdict::Passed);
-            rows.push(json!({"direction":direction, "selection":selection, "metadata":metadata, "stages":stages,
+            rows.push(json!({"direction":direction, "source_bracket":source_bracket, "selection":selection, "metadata":metadata, "stages":stages,
                 "status":status, "output":output, "expected":expected, "comparison":comparison,
                 "submission_count":1, "intermediate_d2h_count":0, "passed":true}));
         }
     }
     rows
+}
+
+fn source_bracket_evidence(
+    prepared: &PreparedCanonicalMeteorology<'_, '_>,
+    snapshots: [&Snapshot; 2],
+    runtimes: [&VerticalTransformResult; 2],
+) -> Value {
+    // Preserve the exact encoding hashed by #30, including transitioned sources.
+    let snapshot_json = snapshots.map(|snapshot| serde_json::to_string(snapshot).unwrap());
+    let identity = prepared.resources().bracket().identity();
+    for (encoded, hash) in snapshot_json.iter().zip(&identity.source_snapshot_sha256) {
+        assert_eq!(format!("{:x}", Sha256::digest(encoded.as_bytes())), *hash);
+    }
+    let native_motion_json = std::array::from_fn::<_, 2, _>(|index| {
+        let motion = &identity.motion_provenance[index];
+        let encoded =
+            serde_json::to_string(&native_motion(snapshots[index], &motion.source_id)).unwrap();
+        assert_eq!(
+            format!("{:x}", Sha256::digest(encoded.as_bytes())),
+            motion.source_native_motion_sha256
+        );
+        encoded
+    });
+    json!({"snapshot_json":snapshot_json, "native_motion_json":native_motion_json,
+        "runtimes":runtimes, "identity":identity})
 }
 
 #[test]
@@ -472,8 +499,13 @@ fn test_canonical_forward_backward_preparation_reuse_transition_and_resident_exe
             MeteorologyCompositionError::Incompatible(_)
         ))
     ));
-    let mut rows = prove_resident(&first, "forward", [&lower, &upper]);
-    rows.extend(prove_resident(&reverse, "backward", [&lower, &upper]));
+    let mut rows = prove_resident(&first, "forward", "original", [&lower, &upper]);
+    rows.extend(prove_resident(
+        &reverse,
+        "backward",
+        "original",
+        [&lower, &upper],
+    ));
     let changed = snapshot(START_SECONDS, 2.0);
     let changed_runtime = runtime(&changed, "canonical-synthetic");
     let transition = forward
@@ -493,10 +525,16 @@ fn test_canonical_forward_backward_preparation_reuse_transition_and_resident_exe
             .source_snapshot_sha256
     );
     // The old owner still executes after replacement, as required for forward overlap.
-    rows.extend(prove_resident(&first, "retained-forward", [&lower, &upper]));
+    rows.extend(prove_resident(
+        &first,
+        "retained-forward",
+        "original",
+        [&lower, &upper],
+    ));
     rows.extend(prove_resident(
         &transition,
         "changed-source",
+        "changed",
         [&changed, &upper],
     ));
     let lineage_runtime = runtime(&changed, "different-native-source");
@@ -551,6 +589,11 @@ fn test_canonical_forward_backward_preparation_reuse_transition_and_resident_exe
     let backward_times = reverse.times;
     let reverse_retained = Arc::clone(reverse.resources());
     let lineage_retained = Arc::clone(lineage.resources());
+    let source_brackets = json!({
+        "original":source_bracket_evidence(&first, [&lower, &upper], [&r0, &r1]),
+        "changed":source_bracket_evidence(&transition, [&changed, &upper], [&changed_runtime, &r1]),
+        "lineage":source_bracket_evidence(&lineage, [&changed, &upper], [&lineage_runtime, &r1]),
+    });
     drop(first);
     drop(second);
     drop(reverse);
@@ -606,11 +649,13 @@ fn test_canonical_forward_backward_preparation_reuse_transition_and_resident_exe
     rows.extend(prove_resident(
         &next_forward,
         "next-forward",
+        "lineage",
         [&changed, &upper],
     ));
     rows.extend(prove_resident(
         &next_backward,
         "next-backward",
+        "original",
         [&lower, &upper],
     ));
     let revision = std::process::Command::new("git")
@@ -636,6 +681,7 @@ fn test_canonical_forward_backward_preparation_reuse_transition_and_resident_exe
         "revision":String::from_utf8(revision.stdout).unwrap().trim(),
         "adapters":adapters,
         "inputs":normalized_inputs, "input_json":input_json, "input_sha256":format!("{:x}",Sha256::digest(input_json.as_bytes())),
+        "source_brackets":source_brackets,
         "shader_bundle_sha256":format!("{:x}",Sha256::digest(shader_bundle.as_bytes())),
         "identity":identity, "times":{"forward":forward_times,"backward":backward_times},
         "rows":rows,"same_bracket_reused":true,"source_change_rebuilt":true,"motion_lineage_change_rebuilt":true,

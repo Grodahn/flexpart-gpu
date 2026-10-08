@@ -58,6 +58,11 @@ adapter, executes #171 with the same driver-prepared owners for all components
 and both time selections, checks the inherited #88 comparison policy and exact
 field/grid/source/geometry metadata, and retains
 `target/ci-gate/canonical-timeloop-meteorology/report.json`.
+The report retains exact hashed canonical and native-motion input encodings plus
+derived runtimes for the original, changed-source and changed-lineage brackets.
+Every GPU row names its source bracket. CI audits each row against that bracket's
+input hashes, field metadata and geometry, and recomputes the constant-field
+expectation using the existing comparison policy.
 It covers host-negative preflight, context rejection, source/motion transitions,
 old-owner execution after replacement, transactional failure and reuse after
 actual mutable driver steps. Those clock-advance steps explicitly invoke the

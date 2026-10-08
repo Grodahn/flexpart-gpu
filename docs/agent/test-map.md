@@ -38,6 +38,12 @@ Choose the subdomain; do not run every row for one field edit.
 - Host geometry has its own [focused verification entry](#vertical-geometry); [direct oracle driver](../../scripts/vertical/direct_oracle_driver.f90) and [production W driver](../../scripts/interpolation/w_production_oracle.sh) are owned by the linked geometry/spatial contracts.
 - Broader gates: [software WGSL workflow](../../.github/workflows/software-wgpu.yml) for device fixtures; [technical gate](../../.github/workflows/validation-gate.yml) for pinned geometry/flex_extract oracles. Kernel evidence does not prove #76/#77 production adoption.
 
+## Resident meteorology
+
+- Focused required device proof: `cargo test --test meteorology_resident -- --nocapture --test-threads=1`; [test](../../tests/meteorology_resident.rs). Missing adapters fail.
+- Evidence: `target/ci-gate/meteorology-resident/report.json` records source/grid/#30 identities, split inputs, capacities/prefixes, stages, status, adapter and one-submission/no-intermediate-D2H proof. Tests gate fixture writes on-device and compare fatal-state bytes.
+- Scientific gates remain the existing horizontal/vertical/temporal rows above, using their pinned oracles and unchanged tolerances. [Software CI](../../.github/workflows/software-wgpu.yml) requires this chain and those existing gates. This is #171 composition evidence, not #112–#115 migration or a new parity claim.
+
 ## Vertical geometry
 
 Start at the [stable facade](../../src/meteorology/vertical.rs) and select its

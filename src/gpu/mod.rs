@@ -245,6 +245,8 @@ pub fn dispatch_1d(cpass: &mut wgpu::ComputePass<'_>, total_items: u32, workgrou
 
 /// Central GPU context holding the wgpu device, queue, and adapter info.
 pub struct GpuContext {
+    /// Unique runtime token; backend handle equality can collide across instances.
+    pub(crate) identity: std::sync::Arc<()>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     adapter_info: wgpu::AdapterInfo,
@@ -337,6 +339,7 @@ impl GpuContext {
             .await?;
 
         Ok(Self {
+            identity: std::sync::Arc::new(()),
             device,
             queue,
             adapter_info,

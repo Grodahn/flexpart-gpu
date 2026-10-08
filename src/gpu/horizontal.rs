@@ -526,6 +526,29 @@ pub struct HorizontalQueryBuffers {
 }
 
 impl HorizontalQueryBuffers {
+    /// Allocate #87 geometry for an on-device producer, tied to its exact source plane.
+    /// The resident adapter must overwrite every lane before sampling.
+    pub(crate) fn resident(
+        ctx: &GpuContext,
+        fields: &HorizontalFieldBuffers,
+        count: usize,
+    ) -> Result<Self, GpuHorizontalError> {
+        let size = (count as u64)
+            .checked_mul(size_of::<HorizontalSampleQuery>() as u64)
+            .ok_or(GpuHorizontalError::EmptyQueries)?;
+        validate_storage_size(ctx, size, "resident horizontal queries")?;
+        Ok(Self {
+            grid: fields.grid.clone(),
+            field_sha256: fields.field_sha256.clone(),
+            query_count: count,
+            buffer: ctx.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("resident horizontal queries"),
+                size,
+                usage: storage_usage(),
+                mapped_at_creation: false,
+            }),
+        })
+    }
     /// Number of queries in this resource.
     #[must_use]
     pub const fn query_count(&self) -> usize {

@@ -78,6 +78,8 @@ mod pipeline;
 mod preparation;
 mod provenance;
 mod resources;
+pub(crate) use encode::encode_vertical_batch;
+pub(crate) use resources::VerticalBatchBuffers;
 
 pub use dispatch::{
     dispatch_vertical_remap_w_with_kernel, dispatch_vertical_sample_with_kernel,

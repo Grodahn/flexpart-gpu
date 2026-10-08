@@ -87,6 +87,53 @@ fn storage_usage() -> wgpu::BufferUsages {
     wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC
 }
 
+/// #171 batched layout: heights[lane * levels + level], values[level * lanes + lane].
+/// Query heights and outputs each have one f32 per lane. All are device-produced.
+pub(crate) struct VerticalBatchBuffers {
+    pub(crate) heights: wgpu::Buffer,
+    pub(crate) values: wgpu::Buffer,
+    pub(crate) queries: wgpu::Buffer,
+    pub(crate) output: wgpu::Buffer,
+    pub(crate) levels: u32,
+    pub(crate) lanes: u32,
+}
+
+impl VerticalBatchBuffers {
+    pub(crate) fn new(ctx: &GpuContext, levels: u32, lanes: u32) -> Result<Self, GpuVerticalError> {
+        if levels < 2 || lanes == 0 {
+            return Err(GpuVerticalError::EmptyQueries);
+        }
+        let column_bytes = u64::from(levels) * u64::from(lanes) * 4;
+        let limits = ctx.device.limits();
+        if column_bytes
+            > limits
+                .max_buffer_size
+                .min(u64::from(limits.max_storage_buffer_binding_size))
+            || u64::from(levels) * u64::from(lanes) > u64::from(u32::MAX)
+        {
+            return Err(GpuVerticalError::SizeOverflow {
+                field: "batched columns",
+            });
+        }
+        let buffer = |label, size| {
+            ctx.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size,
+                usage: storage_usage(),
+                mapped_at_creation: false,
+            })
+        };
+        Ok(Self {
+            heights: buffer("batched AGL heights", column_bytes),
+            values: buffer("batched horizontal values", column_bytes),
+            queries: buffer("batched resident heights", u64::from(lanes) * 4),
+            output: buffer("batched vertical samples", u64::from(lanes) * 4),
+            levels,
+            lanes,
+        })
+    }
+}
+
 fn height_geometry_sha256(heights: impl IntoIterator<Item = f32>) -> String {
     let mut hash = Sha256::new();
     for height in heights {

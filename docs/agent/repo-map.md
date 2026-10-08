@@ -35,6 +35,8 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## GPU vertical
 
+- Resident-query composition: [typed query/status and sampled batches](../../src/gpu/meteorology/resident.rs), [particle producer](../../src/shaders/particle_query.wgsl), [horizontal adapter](../../src/shaders/resident_query_adapter.wgsl), [ABI and ownership](../resident-meteorology.md). #171 keeps #87/#88/#89 authoritative; #112–#115 own production adoption. [Focused verification](test-map.md#resident-meteorology).
+
 - Stable #88 GPU API: [vertical facade](../../src/gpu/vertical.rs). Existing `gpu` re-exports retain this boundary.
 - Select only the relevant execution owner: [persistent buffers/uploads](../../src/gpu/vertical/resources.rs), [runtime columns/AGL preparation](../../src/gpu/vertical/preparation.rs), [pipeline/layout construction](../../src/gpu/vertical/pipeline.rs), [caller-owned encoding/bind groups](../../src/gpu/vertical/encode.rs), [standalone dispatch and explicit D2H](../../src/gpu/vertical/dispatch.rs), [scoped GPU errors](../../src/gpu/vertical/error.rs).
 - WGSL: [model/center-W sample](../../src/shaders/vertical_sample.wgsl), [interface-W remap](../../src/shaders/vertical_remap_w.wgsl). Interface W encodes remap before sample with device-resident shared values.

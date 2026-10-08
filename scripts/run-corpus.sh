@@ -166,89 +166,19 @@ require_pinned_fortran() {
   log_info "Fortran oracle pinned at ${pinned} (clean)"
 }
 
-# Build the image before compiling the pinned oracle. The explicit return on
-# image-build failure is required because callers disable errexit while they
-# capture the complete transcript.
-oracle_build_pinned() {
-  local force_clean="$1"
-  local -a build_command=(
-    docker compose -f "${FORTRAN_COMPOSE_FILE}" build
-  )
-  if [ "${force_clean}" = "1" ]; then
-    build_command+=(--no-cache)
-  fi
-  build_command+=(flexpart-fortran)
-
-  "${build_command[@]}" || return
-  docker compose -f "${FORTRAN_COMPOSE_FILE}" run --rm flexpart-fortran bash -c "
-    set -euo pipefail
-    cd /workspace/flexpart/src
-    make -f makefile_gfortran clean >/dev/null 2>&1 || true
-    FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4
-    test -x FLEXPART
-    rm -f gitversion.txt
-  "
-}
-
-write_oracle_cache_status() {
-  local status="$1"
-  local image_id="$2"
-  "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/oracle_build_cache.py" status \
-    --project-root "${PROJECT_ROOT}" --oracle-checkout "${FLEXPART_DIR}" \
-    --metadata "${ORACLE_CACHE_METADATA}" --image-id "${image_id}" \
-    --build-log "${ORACLE_BUILD_LOG}" --status "${status}" \
-    --status-output "${ORACLE_CACHE_STATUS_FILE}" >/dev/null
-}
-
-# Reuse the existing Docker/Fortran build only when every relevant immutable
-# input, the retained image, and the retained executable still match.  A miss
-# runs the historical pinned build path and records its exact identity.
+# Share #92's validated build preparation with the technical gate. Scientific
+# case execution below always runs again, independently of this disposition.
 oracle_prepare_cached() {
   require_pinned_fortran
-  mkdir -p "${ORACLE_CACHE_DIR}" "$(dirname "${ORACLE_CACHE_STATUS_FILE}")"
-  rm -f "${ORACLE_CACHE_STATUS_FILE}"
-  if ! command -v docker >/dev/null 2>&1; then
-    log_error "Docker is required for the oracle build but was not found"
-    return 1
-  fi
-  local executable="${FLEXPART_DIR}/src/FLEXPART"
-  local image_id=""
-  local cache_key
-  cache_key="$("${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/oracle_build_cache.py" key \
-    --project-root "${PROJECT_ROOT}" --oracle-checkout "${FLEXPART_DIR}" | \
-    "${HOST_PYTHON}" -c 'import json,sys; print(json.load(sys.stdin)["cache_key"])')"
-  image_id="$(docker image inspect flexpart-fortran:latest --format '{{.Id}}' 2>/dev/null || true)"
-  if [ "${ORACLE_REBUILD}" != "1" ] && [ -n "${image_id}" ] && \
-     "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/oracle_build_cache.py" validate \
-       --project-root "${PROJECT_ROOT}" --oracle-checkout "${FLEXPART_DIR}" \
-       --metadata "${ORACLE_CACHE_METADATA}" --image-id "${image_id}" \
-       --executable "${executable}" >/dev/null 2>&1; then
-    write_oracle_cache_status "REUSED" "${image_id}"
-    log_info "Oracle build cache: REUSED (${cache_key})"
-    return
-  fi
-
-  log_info "Oracle build cache: REBUILD (${cache_key}); full log: ${ORACLE_BUILD_LOG}"
-  set +e
-  if [ "${ORACLE_VERBOSE}" = "1" ]; then
-    oracle_build_pinned "${ORACLE_REBUILD}" 2>&1 | tee "${ORACLE_BUILD_LOG}"
-  else
-    oracle_build_pinned "${ORACLE_REBUILD}" > "${ORACLE_BUILD_LOG}" 2>&1
-  fi
-  local build_status=$?
-  set -e
-  restore_oracle_checkout
-  if [ "${build_status}" -ne 0 ] || [ ! -f "${executable}" ]; then
-    log_error "Oracle build failed; tail of ${ORACLE_BUILD_LOG}:"
+  local -a clean_args=()
+  if [ "${ORACLE_REBUILD}" = "1" ]; then clean_args+=(--clean); fi
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/oracle_build_cache.py" prepare \
+    --project-root "${PROJECT_ROOT}" --oracle-checkout "${FLEXPART_DIR}" \
+    --status-output "${ORACLE_CACHE_STATUS_FILE}" "${clean_args[@]}"; then
     tail -40 "${ORACLE_BUILD_LOG}" >&2 || true
     return 1
   fi
-  image_id="$(docker image inspect flexpart-fortran:latest --format '{{.Id}}')"
-  "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/oracle_build_cache.py" record \
-    --project-root "${PROJECT_ROOT}" --oracle-checkout "${FLEXPART_DIR}" \
-    --metadata "${ORACLE_CACHE_METADATA}" --image-id "${image_id}" \
-    --executable "${executable}" >/dev/null
-  write_oracle_cache_status "REBUILT" "${image_id}"
+  if [ "${ORACLE_VERBOSE}" = "1" ]; then cat "${ORACLE_BUILD_LOG}"; fi
 }
 
 # Issue #49: the v11.1 makefile stamps its git version into tracked

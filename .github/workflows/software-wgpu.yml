@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   software-wgpu:
@@ -19,6 +20,34 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - name: Identify runner image for Cargo cache
+        id: cache-environment
+        run: echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - name: Restore trusted Cargo compilation cache
+        id: cargo-cache
+        # Pull requests may read scoped trusted caches, but never publish them.
+        # GitHub also prevents protected branches from reading feature/PR caches.
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: ". -> target"
+          key: ubuntu-22.04-${{ runner.arch }}-default-features-${{ steps.cache-environment.outputs.image }}-${{ hashFiles('**/build.rs', '**/.cargo/config*') }}
+          env-vars: "RUST CARGO CC CXX CFLAGS CXXFLAGS LDFLAGS"
+          cache-targets: "false"
+          # Only compiler artifacts enter the archive; reports/oracle outputs
+          # are excluded even if the action cleanup cannot remove a file.
+          cache-directories: |
+            target/debug/deps
+            target/debug/build
+            target/debug/.fingerprint
+            target/release/deps
+            target/release/build
+            target/release/.fingerprint
+            target/cargo-cache-integrity
+          cache-workspace-crates: "false"
+          cache-bin: "false"
+          save-if: ${{ github.event_name != 'pull_request' }}
+      - name: Verify restored Cargo compilation bytes
+        run: python3 scripts/cargo_cache_integrity.py verify
       - name: Audit CI test coverage and fail-closed checks
         run: |
           python3 scripts/check_ci_test_coverage.py
@@ -625,6 +654,8 @@ jobs:
             cp target/ci-gate/resident-advection-production/interior-deferred-boundary.json "target/ci-gate/resident-advection-production/$mode-interior-deferred-boundary.json"
             cp target/ci-gate/resident-advection-production/report.json "target/ci-gate/resident-advection-production/$mode-report.json"
           done
+      - name: Record dependency cache checksums
+        run: python3 scripts/cargo_cache_integrity.py record
       - name: Upload smoke logs
         if: always()
         uses: actions/upload-artifact@v4

@@ -151,6 +151,7 @@ fn test_backward_timeloop_receptor_release_and_source_collection() {
         .source_collections
         .get("source_a")
         .expect("source_a collection should exist");
+    eprintln!("TIMELOOP-BACKWARD-175: WGSL receptor release/source collection executed");
 }
 
 #[test]

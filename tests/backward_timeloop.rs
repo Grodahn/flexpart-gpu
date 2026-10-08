@@ -94,6 +94,7 @@ fn test_backward_timeloop_receptor_release_and_source_collection() {
     let surface_t0 = synthetic_surface_fields(64, 64);
     let surface_t1 = synthetic_surface_fields(64, 64);
     let met = MetTimeBracket {
+        canonical: None,
         wind_t0: &wind_t0,
         wind_t1: &wind_t1,
         surface_t0: &surface_t0,
@@ -103,8 +104,8 @@ fn test_backward_timeloop_receptor_release_and_source_collection() {
     };
 
     let forcing = ForwardStepForcing::default();
-    let reports =
-        pollster::block_on(driver.run_to_end(&met, &forcing)).expect("backward run should succeed");
+    let reports = pollster::block_on(driver.run_legacy_diagnostic_to_end(&met, &forcing))
+        .expect("backward run should succeed");
 
     assert_eq!(reports.len(), 3);
     assert_eq!(reports[0].released_count, 1);

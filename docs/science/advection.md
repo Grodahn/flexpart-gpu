@@ -58,11 +58,20 @@ separately by the Langevin equation.
 
 | File | Role |
 |------|------|
-| `src/shaders/advection_texture_dual_wind.wgsl` | Production — 3D texture-sampled dual-wind advection |
-| `src/shaders/advection_dual_wind.wgsl` | Buffer-based dual-wind advection (fallback / validation) |
-| `src/shaders/advection.wgsl` | Legacy single-wind advection |
-| `src/physics/advection.rs` | CPU reference |
-| `src/gpu/advection.rs` | Advection dispatch and buffer setup (both paths) |
+| `src/gpu/advection_resident.rs` | Canonical forward/backward production orchestration using #171 and #87/#88/#89 |
+| `src/shaders/advection_predictor_query.wgsl` | Private resident predictor queries; scientific particles are read-only |
+| `src/shaders/advection_corrector.wgsl` | Corrected private timestep state |
+| `src/shaders/advection_step_guard.wgsl`, `advection_step_commit.wgsl` | Whole-step eligibility and guarded publication |
+| `src/shaders/advection*_dual_wind.wgsl`, `advection.wgsl` | Explicit standalone/legacy diagnostics only |
+| `src/physics/advection.rs`, `src/gpu/advection.rs` | Retained CPU/GPU diagnostics |
+
+See [production inventory and evidence](../resident-advection.md). The pinned
+`advance_mod.f90:664-779` correction samples the advanced signed time. The
+canonical path uses the existing #89 selection independently for both stages;
+legacy diagnostics retain their old one-alpha behavior. Existing repository
+horizontal clamping and vertical/turbulence coupling are preserved for supported
+geometry; they are not a claim of all FLEXPART boundary/stochastic behavior.
+Changing canonical top heights are fail-closed pending #180.
 
 ## References
 

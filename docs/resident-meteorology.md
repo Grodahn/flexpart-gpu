@@ -88,4 +88,5 @@ interface-W extension and #117 cleanup are outside this change.
 [#173 driver preparation](canonical-timeloop-meteorology.md) supplies validated
 source pairs and U/V/normalized center-W owners at both actual driver boundaries.
 It resolves current/predicted times and retains bracket resources for #112;
-production advection still uses the existing legacy operator until that migration.
+[production advection](resident-advection.md) now consumes those owners through
+both real timestep operators, retaining separate explicit legacy diagnostics.

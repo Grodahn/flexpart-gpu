@@ -468,6 +468,7 @@ fn cpu_gpu_full_pipeline_timeloop() {
     let surface_t1 = make_surface_fields();
 
     let met = MetTimeBracket {
+        canonical: None,
         wind_t0: &wind_t0,
         wind_t1: &wind_t1,
         surface_t0: &surface_t0,
@@ -488,8 +489,8 @@ fn cpu_gpu_full_pipeline_timeloop() {
         rho_grad_over_rho: 0.0,
     };
 
-    let reports =
-        pollster::block_on(driver.run_to_end(&met, &forcing)).expect("time loop should succeed");
+    let reports = pollster::block_on(driver.run_legacy_diagnostic_to_end(&met, &forcing))
+        .expect("time loop should succeed");
 
     eprintln!("full pipeline: {} timesteps completed", reports.len());
     assert!(!reports.is_empty(), "should have at least one step");
@@ -588,6 +589,7 @@ fn gpu_pipeline_is_deterministic_across_runs() {
         let surface_t1 = make_surface_fields();
 
         let met = MetTimeBracket {
+            canonical: None,
             wind_t0: &wind_t0,
             wind_t1: &wind_t1,
             surface_t0: &surface_t0,
@@ -597,7 +599,8 @@ fn gpu_pipeline_is_deterministic_across_runs() {
         };
 
         let forcing = ForwardStepForcing::default();
-        pollster::block_on(driver.run_to_end(&met, &forcing)).expect("run should succeed");
+        pollster::block_on(driver.run_legacy_diagnostic_to_end(&met, &forcing))
+            .expect("run should succeed");
 
         let store = driver.particle_store();
         let mut result = Vec::new();

@@ -270,6 +270,7 @@ fn neutral_driver(
     ))?;
     let start_secs = 1_704_067_200_i64;
     let met = MetTimeBracket {
+        canonical: None,
         wind_t0: wind,
         wind_t1: wind,
         surface_t0: surface,
@@ -292,7 +293,7 @@ fn corpus_production_neutral_smoke_conserves_mass_and_confines_pbl() {
         Err(error) => panic!("{CORPUS_ID}: neutral smoke driver init failed: {error}"),
     };
     let forcing = ForwardStepForcing::default();
-    pollster::block_on(driver.run_to_end(&met, &forcing)).expect("run completes");
+    pollster::block_on(driver.run_legacy_diagnostic_to_end(&met, &forcing)).expect("run completes");
     let particles = driver.particle_store().as_slice();
     let active: Vec<_> = particles.iter().filter(|p| p.is_active()).collect();
     assert_eq!(active.len(), NEUTRAL_PARTICLES, "all particles stay active");
@@ -334,7 +335,8 @@ fn corpus_repeatability_is_bit_identical() {
     let run_once = || -> Vec<(f64, f64, f32, f32)> {
         let (mut driver, met) = neutral_driver(key).expect("driver init");
         let forcing = ForwardStepForcing::default();
-        pollster::block_on(driver.run_to_end(&met, &forcing)).expect("run completes");
+        pollster::block_on(driver.run_legacy_diagnostic_to_end(&met, &forcing))
+            .expect("run completes");
         driver
             .particle_store()
             .as_slice()

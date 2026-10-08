@@ -363,6 +363,28 @@ pub(crate) fn snapshot_hash(snapshot: &Snapshot) -> Result<String, serde_json::E
 }
 
 impl<'ctx> CanonicalGpuField<'ctx> {
+    /// Existing advection boundary: zero AGL through the highest physical model center.
+    /// Changing boundary heights across columns/times needs an explicit transport policy.
+    pub(crate) fn resident_advection_top_m(&self) -> Result<f32, MeteorologyCompositionError> {
+        let mut top = None;
+        for member in &self.members {
+            let runtime = member
+                .runtime
+                .as_ref()
+                .ok_or(MeteorologyCompositionError::Missing("advection geometry"))?;
+            for heights in &runtime.heights {
+                let value = *heights
+                    .last()
+                    .ok_or(MeteorologyCompositionError::Missing("advection top height"))?;
+                if top.is_some_and(|previous| previous != value) {
+                    return Err(MeteorologyCompositionError::Unsupported("advection requires an invariant physical top boundary; varying top geometry needs a transport boundary decision"));
+                }
+                top = Some(value);
+            }
+        }
+        top.ok_or(MeteorologyCompositionError::Missing("advection top height"))
+    }
+
     /// Use the existing runtime token so source owners can outlive a driver borrow.
     pub(crate) fn belongs_to(&self, ctx: &GpuContext) -> bool {
         std::sync::Arc::ptr_eq(&self.owner_context, &ctx.identity)
@@ -1263,3 +1285,7 @@ impl SpatialResources {
         Ok((stages, device_copies))
     }
 }
+
+#[cfg(test)]
+#[path = "meteorology/advection_production_tests.rs"]
+mod advection_production_tests;

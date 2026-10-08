@@ -899,6 +899,7 @@ fn run_driver_case(
         return Err(format!("case {case_id}: candidate met bracket requires end > start, got {start_secs}..{end_secs}"));
     }
     let met = MetTimeBracket {
+        canonical: None,
         wind_t0: &wind,
         wind_t1: &wind,
         surface_t0: &surface,
@@ -927,7 +928,7 @@ fn run_driver_case(
                 .collect();
             let pre_active = pre_masses.len();
             let report = driver
-                .run_timestep(&met, &forcing)
+                .run_legacy_diagnostic_timestep(&met, &forcing)
                 .await
                 .map_err(|e| format!("run_timestep: {e}"))?;
             let post_active = driver

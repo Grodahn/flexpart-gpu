@@ -81,7 +81,8 @@ path moves. Markdown links are the machine-readable path surface, audited by
 ## Transport-advection
 
 - Production: [forward operator sequence](../../src/simulation/timeloop/forward/operators.rs), [coordinate/velocity units](../../src/coords/mod.rs).
-- GPU: [advection dispatch](../../src/gpu/advection.rs), [particle step/reflection](../../src/gpu/particle_step.rs); [buffer](../../src/shaders/advection.wgsl), [dual bracket](../../src/shaders/advection_dual_wind.wgsl), [texture](../../src/shaders/advection_texture.wgsl), [dual texture](../../src/shaders/advection_texture_dual_wind.wgsl), [particle step](../../src/shaders/particle_step.wgsl).
+- Canonical production: [resident Petterssen](../../src/gpu/advection_resident.rs); [migration inventory](../resident-advection.md).
+- GPU diagnostics: [advection dispatch](../../src/gpu/advection.rs), [particle step/reflection](../../src/gpu/particle_step.rs); [buffer](../../src/shaders/advection.wgsl), [dual bracket](../../src/shaders/advection_dual_wind.wgsl), [texture](../../src/shaders/advection_texture.wgsl), [dual texture](../../src/shaders/advection_texture_dual_wind.wgsl), [particle step](../../src/shaders/particle_step.wgsl).
 - Authority: [advection science](../science/advection.md), [GPU contract](../GPU_CONTRACT.md); [CPU diagnostic](../../src/physics/advection.rs) is not the production GPU proof.
 - Fixtures: [ADV-ANA-001](../../fixtures/corpus/cases/ADV-ANA-001.json), [Fortran inputs](../../fixtures/corpus/fortran/ADV-ANA-001/).
 - Tests: [software device displacement](../../tests/integration/software_advection.rs), [forward driver](../../tests/forward_timeloop.rs); [verification](test-map.md#transport-advection).

@@ -111,6 +111,7 @@ fn test_forward_timeloop_synthetic_uniform_wind_is_deterministic() {
     let surface_t0 = synthetic_surface_fields(64, 64);
     let surface_t1 = synthetic_surface_fields(64, 64);
     let met = MetTimeBracket {
+        canonical: None,
         wind_t0: &wind_t0,
         wind_t1: &wind_t1,
         surface_t0: &surface_t0,
@@ -120,8 +121,8 @@ fn test_forward_timeloop_synthetic_uniform_wind_is_deterministic() {
     };
 
     let forcing = ForwardStepForcing::default();
-    let reports =
-        pollster::block_on(driver.run_to_end(&met, &forcing)).expect("timeloop run should succeed");
+    let reports = pollster::block_on(driver.run_legacy_diagnostic_to_end(&met, &forcing))
+        .expect("timeloop run should succeed");
 
     assert_eq!(reports.len(), 3);
     assert_eq!(reports[0].released_count, 1);
@@ -265,6 +266,7 @@ fn test_forward_timeloop_optional_spatial_sort_reorders_particle_slots() {
     let surface_t0 = synthetic_surface_fields(64, 64);
     let surface_t1 = synthetic_surface_fields(64, 64);
     let met = MetTimeBracket {
+        canonical: None,
         wind_t0: &wind_t0,
         wind_t1: &wind_t1,
         surface_t0: &surface_t0,
@@ -274,8 +276,8 @@ fn test_forward_timeloop_optional_spatial_sort_reorders_particle_slots() {
     };
 
     let forcing = ForwardStepForcing::default();
-    let reports =
-        pollster::block_on(driver.run_to_end(&met, &forcing)).expect("timeloop run should succeed");
+    let reports = pollster::block_on(driver.run_legacy_diagnostic_to_end(&met, &forcing))
+        .expect("timeloop run should succeed");
     assert_eq!(reports.len(), 2);
 
     let slot0 = driver.particle_store().get(0).expect("slot 0 exists");
@@ -448,6 +450,7 @@ fn check_transport_deposition_prefix(particle_count: usize, wet_coefficient_s_in
     let mut expected_mass = 1.0_f32 / particle_count as f32;
     for (index, wind) in [&still, &upward].into_iter().enumerate() {
         let met = MetTimeBracket {
+            canonical: None,
             wind_t0: wind,
             wind_t1: wind,
             surface_t0: &surface,
@@ -455,7 +458,8 @@ fn check_transport_deposition_prefix(particle_count: usize, wet_coefficient_s_in
             time_t0_seconds: start + index as i64,
             time_t1_seconds: start + index as i64 + 1,
         };
-        let report = pollster::block_on(driver.run_timestep(&met, &forcing)).expect("GPU step");
+        let report = pollster::block_on(driver.run_legacy_diagnostic_timestep(&met, &forcing))
+            .expect("GPU step");
         assert_eq!(report.step_index, index);
         assert_eq!(report.simulation_time_seconds, start + index as i64);
         assert_eq!(report.timestamp, format!("2024010100000{index}"));
@@ -500,6 +504,7 @@ fn check_transport_deposition_prefix(particle_count: usize, wet_coefficient_s_in
     }
     assert!(!driver.has_remaining_steps());
     let met = MetTimeBracket {
+        canonical: None,
         wind_t0: &upward,
         wind_t1: &upward,
         surface_t0: &surface,
@@ -508,7 +513,7 @@ fn check_transport_deposition_prefix(particle_count: usize, wet_coefficient_s_in
         time_t1_seconds: start + 3,
     };
     assert!(matches!(
-        pollster::block_on(driver.run_timestep(&met, &forcing)),
+        pollster::block_on(driver.run_legacy_diagnostic_timestep(&met, &forcing)),
         Err(TimeLoopError::SimulationComplete)
     ));
     assert_eq!(driver.current_time_seconds(), start + 2);
@@ -554,6 +559,7 @@ fn test_forward_timeloop_deferred_readback_preserves_gpu_output_and_cached_host_
     let wind = uniform_wind_field(&synthetic_wind_grid(64, 64, 16), 1.0, 0.0, 0.0);
     let surface = synthetic_surface_fields(64, 64);
     let met = MetTimeBracket {
+        canonical: None,
         wind_t0: &wind,
         wind_t1: &wind,
         surface_t0: &surface,
@@ -565,8 +571,8 @@ fn test_forward_timeloop_deferred_readback_preserves_gpu_output_and_cached_host_
         decay_constant_s_inv: vec![0.1],
         ..ForwardStepForcing::default()
     };
-    let reports =
-        pollster::block_on(driver.run_to_end(&met, &forcing)).expect("deferred forward run");
+    let reports = pollster::block_on(driver.run_legacy_diagnostic_to_end(&met, &forcing))
+        .expect("deferred forward run");
     assert_eq!(reports.len(), 3);
     assert!(reports.iter().all(
         |r| r.dry_deposition_probability.is_empty() && r.wet_deposition_probability.is_empty()
@@ -634,6 +640,7 @@ fn test_forward_timeloop_preparation_errors_preserve_release_and_retry_state() {
     let wind = uniform_wind_field(&synthetic_wind_grid(64, 64, 16), 0.0, 0.0, 0.0);
     let surface = synthetic_surface_fields(64, 64);
     let mut met = MetTimeBracket {
+        canonical: None,
         wind_t0: &wind,
         wind_t1: &wind,
         surface_t0: &surface,
@@ -646,7 +653,7 @@ fn test_forward_timeloop_preparation_errors_preserve_release_and_retry_state() {
         ..ForwardStepForcing::default()
     };
     assert!(matches!(
-        pollster::block_on(driver.run_timestep(&met, &forcing)),
+        pollster::block_on(driver.run_legacy_diagnostic_timestep(&met, &forcing)),
         Err(TimeLoopError::Temporal(
             TemporalInterpolationError::InvalidTimeBracket { .. }
         ))
@@ -669,7 +676,7 @@ fn test_forward_timeloop_preparation_errors_preserve_release_and_retry_state() {
         ..forcing.clone()
     };
     assert!(matches!(
-        pollster::block_on(driver.run_timestep(&met, &invalid_species)),
+        pollster::block_on(driver.run_legacy_diagnostic_timestep(&met, &invalid_species)),
         Err(TimeLoopError::ForcingLengthMismatch {
             field: "wet_scavenging_coefficient_s_inv",
             expected: 1,
@@ -681,7 +688,7 @@ fn test_forward_timeloop_preparation_errors_preserve_release_and_retry_state() {
         ..forcing.clone()
     };
     assert!(matches!(
-        pollster::block_on(driver.run_timestep(&met, &invalid_slots)),
+        pollster::block_on(driver.run_legacy_diagnostic_timestep(&met, &invalid_slots)),
         Err(TimeLoopError::ForcingLengthMismatch {
             field: "dry_deposition_velocity_m_s",
             expected: 8,
@@ -699,7 +706,8 @@ fn test_forward_timeloop_preparation_errors_preserve_release_and_retry_state() {
         1.0
     );
 
-    let report = pollster::block_on(driver.run_timestep(&met, &forcing)).expect("retry GPU step");
+    let report = pollster::block_on(driver.run_legacy_diagnostic_timestep(&met, &forcing))
+        .expect("retry GPU step");
     assert_eq!(report.step_index, 0);
     assert_eq!(report.simulation_time_seconds, start);
     assert_eq!(report.timestamp, "20240101000000");

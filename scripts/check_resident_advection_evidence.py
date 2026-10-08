@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Audit required #112 production-driver coverage and content-bound evidence."""
+import hashlib
+import itertools
+import json
+from pathlib import Path
+import subprocess
+
+
+def audit(root=Path("target/ci-gate/resident-advection-production")):
+    report = json.loads((root / "report.json").read_text(encoding="utf-8"))
+    assert report["schema"] == "flexpart-gpu.resident-advection-production.v1"
+    assert report["status"] == "passed"
+    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    assert report["candidate_revision"] == revision
+    assert report["scientific_verdict"] == "NO_FULL_FLEXPART_PARITY_CLAIM"
+    shaders = {"advection_predictor_query", "advection_corrector", "advection_step_guard", "advection_step_commit",
+               "particle_query", "resident_status_reset", "resident_query_adapter", "horizontal_interpolation",
+               "vertical_sample", "temporal_interpolation", "resident_sample_status"}
+    assert set(report["shader_sha256"]) == shaders
+    for shader, digest in report["shader_sha256"].items():
+        assert hashlib.sha256(Path(f"src/shaders/{shader}.wgsl").read_bytes()).hexdigest() == digest
+    expected = set(itertools.product((False, True), (False, True), (1, 3, 130), (None, (0, 0), (1, 1), (2, 1))))
+    observed = set()
+    for row in report["rows"]:
+        failure = tuple(row["failure"]) if row["failure"] is not None else None
+        identity = (row["backward"], row["varying"], row["active_count"], failure)
+        assert identity not in observed
+        observed.add(identity)
+        assert row["capacity"] == 130 and row["owning_submissions"] == 1 and row["query_roundtrip"] is False
+        assert row["adapter"]["adapter_class"] in ("hardware_gpu", "software_wgsl")
+        assert row["adapter"]["name"] and row["adapter"]["backend"]
+        input_bytes = (root / row["input_file"]).read_bytes()
+        assert hashlib.sha256(input_bytes).hexdigest() == row["input_sha256"]
+        inputs = json.loads(input_bytes)
+        assert [hashlib.sha256(s.encode()).hexdigest() for s in inputs["snapshot_json"]] == row["source_snapshot_sha256"]
+        assert len(inputs["runtimes"]) == len(inputs["native_motion_json"]) == 2
+        assert len(row["status"]) == 6 * 131 + 1
+        assert len(row["sampled_values"]) == 6 * 130 and len(row["queries"]) == 2 * 130
+        assert [m["field_id"] for m in row["metadata"]] == ["wind_u", "wind_v", "vertical_velocity"] * 2
+        assert all(m["active_count"] == row["active_count"] and m["geometry_identity"] and m["geometry_provenance"] for m in row["metadata"])
+        if failure is None:
+            assert all(row["status"][i * 131] == 0 for i in range(6)) and row["status"][-1] == 0
+            assert row["metadata"][0]["time"] != row["metadata"][3]["time"]
+            for lane in range(row["active_count"]):
+                current, predicted = row["queries"][lane], row["queries"][130 + lane]
+                assert current["cell_x"] != predicted["cell_x"] or current["fraction_x"] != predicted["fraction_x"]
+        else:
+            component, stage = failure
+            assert row["status"][(stage * 3 + component) * 131] != 0 and row["atomic_preservation"] is True
+    assert observed == expected
+    print("RESIDENT-ADVECTION-112 evidence audit passed: 48 required real-driver cases")
+
+
+if __name__ == "__main__":
+    audit()

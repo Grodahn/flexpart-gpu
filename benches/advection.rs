@@ -1087,6 +1087,7 @@ fn bench_forward_timeloop_e2e(c: &mut Criterion, runtime: BenchRuntimeConfig) {
         let surface_t0 = deterministic_surface_fields(0.0);
         let surface_t1 = deterministic_surface_fields(0.2);
         let met = MetTimeBracket {
+            canonical: None,
             wind_t0: &wind_t0,
             wind_t1: &wind_t1,
             surface_t0: &surface_t0,
@@ -1112,16 +1113,18 @@ fn bench_forward_timeloop_e2e(c: &mut Criterion, runtime: BenchRuntimeConfig) {
         };
 
         // Prime one step so steady-state timing excludes first-step release spike.
-        let _warmup_report = pollster::block_on(driver.run_timestep(&met, &forcing))
-            .expect("timeloop warmup step should succeed");
+        let _warmup_report =
+            pollster::block_on(driver.run_legacy_diagnostic_timestep(&met, &forcing))
+                .expect("timeloop warmup step should succeed");
 
         group.throughput(Throughput::Elements(
             u64::try_from(effective_particles).unwrap_or(u64::MAX),
         ));
         group.bench_function(BenchmarkId::new("forward_step", scenario_label), |b| {
             b.iter(|| {
-                let report = pollster::block_on(driver.run_timestep(&met, &forcing))
-                    .expect("timeloop step should succeed");
+                let report =
+                    pollster::block_on(driver.run_legacy_diagnostic_timestep(&met, &forcing))
+                        .expect("timeloop step should succeed");
                 std::hint::black_box(report);
             });
         });

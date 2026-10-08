@@ -18,6 +18,9 @@ impl ForwardTimeLoopDriver {
         shape: ConcentrationGridShape,
         params: ConcentrationGriddingParams,
     ) -> Result<ConcentrationGridOutput, TimeLoopError> {
+        if let Some(step) = &self.pending_advection {
+            step.require_success(&self.gpu_context).await?;
+        }
         accumulate_concentration_grid_gpu(&self.gpu_context, &self.particle_buffers, shape, params)
             .await
             .map_err(Into::into)

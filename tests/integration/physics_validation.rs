@@ -180,6 +180,7 @@ fn physics_validation_advection_turbulence_pbl() {
 
     let start_secs = 1_704_067_200_i64;
     let met = MetTimeBracket {
+        canonical: None,
         wind_t0: &wind_t0,
         wind_t1: &wind_t1,
         surface_t0: &surface_t0,
@@ -189,8 +190,8 @@ fn physics_validation_advection_turbulence_pbl() {
     };
 
     let forcing = ForwardStepForcing::default();
-    let reports =
-        pollster::block_on(driver.run_to_end(&met, &forcing)).expect("simulation should complete");
+    let reports = pollster::block_on(driver.run_legacy_diagnostic_to_end(&met, &forcing))
+        .expect("simulation should complete");
 
     assert_eq!(
         reports.len(),

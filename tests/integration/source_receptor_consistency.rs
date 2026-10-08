@@ -255,6 +255,7 @@ impl SourceReceptorConsistencyHarness {
         surface_t1: &'a SurfaceFields,
     ) -> MetTimeBracket<'a> {
         MetTimeBracket {
+            canonical: None,
             wind_t0,
             wind_t1,
             surface_t0,
@@ -279,7 +280,8 @@ impl SourceReceptorConsistencyHarness {
             self.release_grid.clone(),
             PARTICLE_CAPACITY,
         ))?;
-        let forward_reports = pollster::block_on(forward_driver.run_to_end(&met, &forcing))?;
+        let forward_reports =
+            pollster::block_on(forward_driver.run_legacy_diagnostic_to_end(&met, &forcing))?;
         assert_eq!(
             forward_reports.len(),
             3,
@@ -297,7 +299,8 @@ impl SourceReceptorConsistencyHarness {
             self.release_grid.clone(),
             PARTICLE_CAPACITY,
         ))?;
-        let backward_reports = pollster::block_on(backward_driver.run_to_end(&met, &forcing))?;
+        let backward_reports =
+            pollster::block_on(backward_driver.run_legacy_diagnostic_to_end(&met, &forcing))?;
         assert_eq!(
             backward_reports.len(),
             3,

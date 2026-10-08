@@ -113,7 +113,7 @@ The following paths require their own contracts and remain explicit rejections:
 #112–#115 and #77 own adoption; no production consumer is migrated here.
 [#173](canonical-timeloop-meteorology.md) adds canonical source preparation at both
 driver boundaries, including retained U/V/normalized center-W owners and distinct
-current/predicted time selections, without migrating advection.
+current/predicted time selections, without itself migrating advection; [#112 transport](resident-advection.md) consumes it.
 
 ## Readiness for #112–#115
 

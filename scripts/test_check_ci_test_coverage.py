@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import check_ci_test_coverage as coverage
 
@@ -69,6 +71,57 @@ class CoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'CPU replacement'):
             coverage.audit(texts)
 
+    def test_removed_baseline_driver_declaration_fails(self):
+        current = {target: coverage.driver_tests(target) for target in ('forward_timeloop', 'backward_timeloop')}
+        current['forward_timeloop'].remove('test_forward_timeloop_dry_deposition_multiple_active_and_full_capacity')
+        with patch.object(coverage, 'driver_tests', side_effect=lambda target: current[target]):
+            with self.assertRaisesRegex(ValueError, 'baseline driver test removed'):
+                coverage.audit()
+
+    def test_inline_adapter_override_fails(self):
+        for key, value in [('FLEXPART_GPU_SOFTWARE', '0'), ('WGPU_BACKEND', 'dx12'),
+                           ('LIBGL_ALWAYS_SOFTWARE', '0'), ('FLEXPART_GPU_CANDIDATE_REVISION', 'wrong')]:
+            texts = self.workflows()
+            p = coverage.WORKFLOWS[0]
+            texts[p] = texts[p].replace('FLEXPART_GPU_COMPACTION=1 FLEXPART_GPU_VALIDATION=',
+                                       f'{key}={value} FLEXPART_GPU_COMPACTION=1 FLEXPART_GPU_VALIDATION=')
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'adapter/provenance'):
+                coverage.audit(texts)
+
+    def test_commented_required_audit_fails(self):
+        texts = self.workflows()
+        p = coverage.WORKFLOWS[1]
+        texts[p] = texts[p].replace('          python3 scripts/check_ci_test_coverage.py --library-log',
+                                   '          # python3 scripts/check_ci_test_coverage.py --library-log')
+        with self.assertRaisesRegex(ValueError, 'required check'):
+            coverage.audit(texts)
+
+    def test_log_path_in_command_does_not_replace_upload(self):
+        texts = self.workflows()
+        p = coverage.WORKFLOWS[0]
+        texts[p] = texts[p].replace('            target/ci-gate/hanna-prefix.log\n', '')
+        with self.assertRaisesRegex(ValueError, 'missing retained artifact'):
+            coverage.audit(texts)
+
+    def test_artifact_upload_must_run_on_failure(self):
+        texts = self.workflows()
+        p = coverage.WORKFLOWS[0]
+        texts[p] = texts[p].replace('        if: always()', '        if: success()')
+        with self.assertRaisesRegex(ValueError, 'upload must run on failure'):
+            coverage.audit(texts)
+
+    def library_fixture(self):
+        baseline = json.loads(coverage.BASELINE.read_text(encoding='utf-8'))
+        names = sorted({name for subset in baseline['library_tests'].values() for name in subset})
+        return '\n'.join([*(f'test {name} ... ok' for name in names),
+                          f'test result: ok. {len(names)} passed; 0 failed; 0 ignored'])
+
+    def test_partial_library_subset_fails(self):
+        output = self.library_fixture()
+        name = json.loads(coverage.BASELINE.read_text(encoding='utf-8'))['library_tests'][coverage.LIB_FILTERS[0]][0]
+        with self.assertRaisesRegex(ValueError, 'library subset incomplete'):
+            coverage.check_library_log(output.replace(f'test {name} ... ok', ''))
+
     def fixture(self, compaction='0', backward=False):
         names = coverage.driver_tests('forward_timeloop')
         if compaction == '1':
@@ -104,8 +157,7 @@ class CoverageTests(unittest.TestCase):
                 coverage.check_driver_log(fixture+'\n'+suffix, '0', '0', True)
 
     def test_library_subset_and_zero_test_fail_closed(self):
-        output = '\n'.join(f'test {prefix}::case ... ok' for prefix in coverage.LIB_FILTERS)
-        output += '\ntest result: ok. 4 passed; 0 failed; 0 ignored'
+        output = self.library_fixture()
         coverage.check_library_log(output)
         for prefix in coverage.LIB_FILTERS:
             with self.subTest(prefix=prefix), self.assertRaises(ValueError):

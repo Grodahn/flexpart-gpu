@@ -876,5 +876,98 @@
       "--exact",
       "--nocapture"
     ]
-  ]
+  ],
+  "driver_tests": {
+    "forward_timeloop": [
+      "test_forward_timeloop_deferred_readback_preserves_gpu_output_and_cached_host_mass",
+      "test_forward_timeloop_dry_deposition_multiple_active_and_full_capacity",
+      "test_forward_timeloop_mixed_deposition_multiple_active_and_full_capacity",
+      "test_forward_timeloop_operator_call_order_is_preserved",
+      "test_forward_timeloop_optional_spatial_sort_reorders_particle_slots",
+      "test_forward_timeloop_preparation_errors_preserve_release_and_retry_state",
+      "test_forward_timeloop_synthetic_uniform_wind_is_deterministic",
+      "test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advance"
+    ],
+    "backward_timeloop": [
+      "test_backward_config_requires_receptor",
+      "test_backward_timeloop_receptor_release_and_source_collection"
+    ]
+  },
+  "library_tests": {
+    "meteorology::field::tests": [
+      "meteorology::field::tests::advection_requirement_is_wind_only",
+      "meteorology::field::tests::documentation_detailed_matrix_covers_every_canonical_field",
+      "meteorology::field::tests::documentation_field_spec_matrix_matches_contract",
+      "meteorology::field::tests::field_specs_are_unique_and_define_all_p0_requirements",
+      "meteorology::field::tests::pbl_turbulence_requirement_is_machine_readable"
+    ],
+    "meteorology::snapshot::tests": [
+      "meteorology::snapshot::tests::accumulation_reset_after_interval_start_fails_closed",
+      "meteorology::snapshot::tests::accumulation_reset_before_interval_start_fails_closed",
+      "meteorology::snapshot::tests::ambiguous_accumulation_fails_closed",
+      "meteorology::snapshot::tests::dynamic_field_rejects_static_time_semantics",
+      "meteorology::snapshot::tests::dynamic_fields_must_share_valid_time_and_calendar",
+      "meteorology::snapshot::tests::exactly_global_x_coverage_is_periodic",
+      "meteorology::snapshot::tests::flux_accumulation_must_be_normalized_before_canonical_boundary",
+      "meteorology::snapshot::tests::grid_extending_beyond_pole_fails_closed",
+      "meteorology::snapshot::tests::hybrid_coordinate_requires_actual_surface_pressure_field",
+      "meteorology::snapshot::tests::inconsistent_hybrid_metadata_fails_closed",
+      "meteorology::snapshot::tests::land_use_fractions_require_13_normalized_classes",
+      "meteorology::snapshot::tests::missing_field_fails_closed",
+      "meteorology::snapshot::tests::missing_hybrid_surface_pressure_dependency_fails_closed",
+      "meteorology::snapshot::tests::negative_hybrid_interface_pressure_fails_closed",
+      "meteorology::snapshot::tests::non_periodic_grid_crossing_longitude_seam_fails_closed",
+      "meteorology::snapshot::tests::non_precip_state_rejects_interval_total_semantics",
+      "meteorology::snapshot::tests::scalar_face_staggering_fails_closed",
+      "meteorology::snapshot::tests::scalar_interface_staggering_fails_closed",
+      "meteorology::snapshot::tests::serialization_roundtrip_preserves_contract",
+      "meteorology::snapshot::tests::shape_mismatch_fails_closed",
+      "meteorology::snapshot::tests::specific_humidity_above_one_fails_closed",
+      "meteorology::snapshot::tests::static_ancillary_requires_static_time_semantics",
+      "meteorology::snapshot::tests::synthetic_advection_snapshot_validates",
+      "meteorology::snapshot::tests::unit_mismatch_fails_closed",
+      "meteorology::snapshot::tests::unknown_calendar_fails_deserialization",
+      "meteorology::snapshot::tests::vertical_velocity_interface_staggering_is_supported",
+      "meteorology::snapshot::tests::wind_u_x_face_staggering_is_supported",
+      "meteorology::snapshot::tests::wind_u_y_face_staggering_fails_closed"
+    ],
+    "meteorology::vertical::": [
+      "meteorology::vertical::eta_dot::tests::eta_dot_output_composes_with_flexpart_geometry_consumers",
+      "meteorology::vertical::eta_dot::tests::eta_dot_rejects_non_canonical_semantics_fail_closed",
+      "meteorology::vertical::eta_dot::tests::eta_dot_rejects_non_finite_inputs_and_bad_coefficients_fail_closed",
+      "meteorology::vertical::eta_dot::tests::eta_dot_rejects_non_hybrid_coordinates_fail_closed",
+      "meteorology::vertical::eta_dot::tests::eta_dot_transform_matches_pinned_calc_etadot_formula_hand_check",
+      "meteorology::vertical::interfaces::tests::derived_asl_geometry_overflow_fails_closed",
+      "meteorology::vertical::model_levels::tests::exact_height_reconstruction_requires_flexpart_surface_thermodynamics",
+      "meteorology::vertical::model_levels::tests::flexpart_hypsometric_near_isothermal_branch_matches_analytic_solution",
+      "meteorology::vertical::model_levels::tests::height_reconstruction_is_independent_of_storage_direction",
+      "meteorology::vertical::motion::tests::ambiguous_native_vertical_motion_semantics_fail_closed",
+      "meteorology::vertical::motion::tests::center_staggered_omega_fails_closed_without_flexpart_oracle",
+      "meteorology::vertical::motion::tests::eta_dot_interface_staggering_fails_closed",
+      "meteorology::vertical::motion::tests::eta_dot_production_path_remains_fail_closed_after_validation",
+      "meteorology::vertical::motion::tests::geometric_vertical_motion_is_identity_with_explicit_upward_semantics",
+      "meteorology::vertical::motion::tests::native_vertical_motion_wrong_shape_fails_closed",
+      "meteorology::vertical::motion::tests::non_finite_native_vertical_motion_fails_closed",
+      "meteorology::vertical::pressure::tests::hybrid_pressure_uses_local_surface_pressure_and_declared_ordering",
+      "meteorology::vertical::pressure::tests::hybrid_surface_interface_must_match_actual_local_surface_pressure",
+      "meteorology::vertical::provenance::tests::provenance_hashes_change_when_transform_inputs_change",
+      "meteorology::vertical::provenance::tests::vertical_motion_provenance_records_source_and_output_staggering",
+      "meteorology::vertical::runtime::tests::runtime_view_rejects_internal_corrupt_derived_shape",
+      "meteorology::vertical::terrain::tests::agl_asl_conversion_is_column_local_and_handles_below_sea_level_terrain",
+      "meteorology::vertical::terrain::tests::asl_below_local_terrain_fails_closed",
+      "meteorology::vertical::terrain::tests::release_and_height_reference_arithmetic_overflow_fails_closed"
+    ],
+    "meteorology::vertical_sampling::tests": [
+      "meteorology::vertical_sampling::tests::ambiguous_reference_and_bad_shapes_fail_closed",
+      "meteorology::vertical_sampling::tests::asl_requests_resolve_through_local_terrain",
+      "meteorology::vertical_sampling::tests::center_linear_profile_reproduces_hand_computed_values",
+      "meteorology::vertical_sampling::tests::center_vertical_motion_is_sourced_from_runtime_transform",
+      "meteorology::vertical_sampling::tests::interface_vertical_motion_matches_frozen_issue_80_production_oracle",
+      "meteorology::vertical_sampling::tests::malformed_physical_column_fails_closed",
+      "meteorology::vertical_sampling::tests::model_level_primitive_matches_flexpart_oracle",
+      "meteorology::vertical_sampling::tests::real_era5_temperature_column_matches_flexpart_oracle",
+      "meteorology::vertical_sampling::tests::unsupported_geometric_interface_motion_fails_closed"
+    ]
+  },
+  "test_inventory_source": "Driver declarations at the baseline revision; canonical library test names from successful main technical run 37758267486."
 }

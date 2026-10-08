@@ -16,7 +16,9 @@ candidate/head/merge revision overrides are preserved verbatim.
 Run `python scripts/check_ci_test_coverage.py` for the before/after enumeration.
 It maps every baseline driver test/configuration to a remaining invocation, every
 other command to an unchanged command or the complete library suite, and protects
-all unchanged scientific/device/provenance shell assertions and the complete
+immutable baseline driver/canonical-library test identities, active evidence
+checks, artifact upload inputs (including upload on failure), and all unchanged
+scientific/device/provenance shell assertions and the complete
 `scripts/ci-gate.sh` with hashes. This is a finite coverage/log auditor, not a test
 runner. It does not execute Cargo, rebuild or compare oracles, or define a verdict.
 The existing #174 runner remains available for local focused diagnostics.
@@ -99,7 +101,7 @@ forward log files are replaced by the four authoritative driver transcripts.
 
 | Before | After | Proof / retained producer |
 | --- | --- | --- |
-| `cargo test --lib` | Once, unchanged complete selection; captured as `target/ci-gate/rust-lib.log` | Log audit requires positive counts and actual canonical subset tests |
+| `cargo test --lib` | Once, unchanged complete selection; captured as `target/ci-gate/rust-lib.log` | Log audit requires positive counts and every pinned baseline canonical subset test |
 | `cargo test --lib meteorology::field::tests` | Covered by complete lib | Host metadata assertions; no filesystem report producer |
 | `cargo test --lib meteorology::snapshot::tests` | Covered by complete lib | Host snapshot/provenance assertions; no filesystem report producer |
 | `cargo test --lib meteorology::vertical::` | Covered by complete lib | All relocated host geometry assertions; no filesystem report producer |
@@ -171,6 +173,17 @@ candidate/PR provenance remain unchanged.
 Local final verification: all four WARP driver cells passed (10/8/7/7 tests,
 including default backward). The complete `cargo test` run passed, including all **514 library
 tests**; its extracted library transcript passes the same canonical-subset audit.
-Formatting, Clippy, navigation, workflow YAML syntax, 11 coverage/shell negative
+Formatting, Clippy, navigation, workflow YAML syntax, 17 coverage/shell negative
 tests and 24 unchanged compact-runner regression tests passed. Authoritative
 Lavapipe and pinned-oracle confirmation belongs to the final PR checks.
+
+
+Review repairs freeze all ten baseline driver declarations and every canonical
+library test name from main technical run 37758267486. Removing one baseline
+dry-only driver test or one case within a library subset now fails the auditor.
+New driver declarations are also required in the current selections. Required
+checks must be active command lines, and retained paths must be real upload
+inputs with `if: always()`; comments and command-line log destinations cannot
+substitute for either. Inline driver adapter/provenance overrides are checked
+against the original environment. These repairs change no test selection,
+scientific validator, workflow command or measured invocation count.

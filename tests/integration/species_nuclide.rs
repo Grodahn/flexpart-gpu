@@ -393,6 +393,7 @@ fn timeloop_applies_per_species_wet_and_decay_with_explicit_pbl() {
     let wind = tl_uniform_wind(&grid);
     let surface = tl_surface_fields();
     let met = MetTimeBracket {
+        canonical: None,
         wind_t0: &wind,
         wind_t1: &wind,
         surface_t0: &surface,
@@ -411,7 +412,7 @@ fn timeloop_applies_per_species_wet_and_decay_with_explicit_pbl() {
         rho_grad_over_rho: 0.0,
     };
 
-    let reports = pollster::block_on(driver.run_to_end(&met, &forcing))
+    let reports = pollster::block_on(driver.run_legacy_diagnostic_to_end(&met, &forcing))
         .expect("per-species timeloop run should succeed");
     assert_eq!(reports.len(), TL_STEPS + 1);
 

@@ -160,7 +160,7 @@ impl ForwardTimeLoopDriver {
 
         // O-02: upload wind_t0 and wind_t1 once per met bracket.
         let t = profiling.then(Instant::now);
-        self.upload_dual_wind_if_bracket_changed(met)?;
+        // Canonical owners are explicitly prepared by #173 before the operator encoder.
         let wind_upload_dur = t.map_or(Duration::ZERO, |t| t.elapsed());
         let wind_interp_dur = Duration::ZERO;
 

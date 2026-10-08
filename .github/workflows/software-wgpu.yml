@@ -610,6 +610,21 @@ jobs:
             echo "Corpus subset skipped (no adapter); failing closed"
             exit 1
           fi
+      - name: Prove canonical forward and backward production advection
+        run: |
+          set -euo pipefail
+          for mode in production validation compaction; do
+            export FLEXPART_GPU_VALIDATION=0 FLEXPART_GPU_COMPACTION=0
+            if [ "$mode" = validation ]; then export FLEXPART_GPU_VALIDATION=1; fi
+            if [ "$mode" = compaction ]; then export FLEXPART_GPU_COMPACTION=1; fi
+            cargo test --lib gpu::meteorology::advection_production_tests -- --nocapture --test-threads=1 > "target/ci-gate/resident-advection-$mode.log" 2>&1
+            grep -q 'RESIDENT-ADVECTION-112' "target/ci-gate/resident-advection-$mode.log"
+            grep -q 'RESIDENT-ADVECTION-112-DEFERRED' "target/ci-gate/resident-advection-$mode.log"
+            python3 scripts/check_resident_advection_evidence.py
+            if [ "$mode" = production ]; then python3 scripts/test_check_resident_advection_evidence.py; fi
+            cp target/ci-gate/resident-advection-production/interior-deferred-boundary.json "target/ci-gate/resident-advection-production/$mode-interior-deferred-boundary.json"
+            cp target/ci-gate/resident-advection-production/report.json "target/ci-gate/resident-advection-production/$mode-report.json"
+          done
       - name: Upload smoke logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -646,4 +661,6 @@ jobs:
             target/ci-gate/meteorology-resident/*.json
             target/ci-gate/canonical-timeloop-meteorology.log
             target/ci-gate/canonical-timeloop-meteorology/*.json
+            target/ci-gate/resident-advection-*.log
+            target/ci-gate/resident-advection-production/*.json
           retention-days: 30

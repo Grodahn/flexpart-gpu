@@ -24,7 +24,7 @@ use wgpu::util::DeviceExt;
 /// Producer-independent v1 lane: signed cells are authoritative; height is metres AGL.
 /// Fractions remain separate, including when the cell cannot be represented in f32.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable, Serialize)]
 pub(crate) struct ResidentQueryLane {
     pub(crate) cell_x: i32,
     pub(crate) cell_y: i32,
@@ -293,14 +293,14 @@ impl<'ctx> ResidentQueryBatch<'ctx> {
     }
 }
 
-struct QueryPass {
+pub(crate) struct QueryPass {
     layout: wgpu::BindGroupLayout,
     pipeline: wgpu::ComputePipeline,
 }
 
 impl QueryPass {
     // This helper only builds the issue-owned query/status/fixture layouts.
-    fn new(ctx: &GpuContext, label: &str, shader: &str, read_only: &[bool]) -> Self {
+    pub(crate) fn new(ctx: &GpuContext, label: &str, shader: &str, read_only: &[bool]) -> Self {
         let mut entries: Vec<_> = read_only
             .iter()
             .enumerate()
@@ -338,7 +338,7 @@ impl QueryPass {
         Self { layout, pipeline }
     }
 
-    fn encode(
+    pub(crate) fn encode(
         &self,
         ctx: &GpuContext,
         buffers: &[&wgpu::Buffer],

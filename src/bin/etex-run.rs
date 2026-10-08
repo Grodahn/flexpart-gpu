@@ -470,6 +470,7 @@ fn main() {
         let t1 = &next_snapshot;
 
         let met = MetTimeBracket {
+            canonical: None,
             wind_t0: &t0.wind,
             wind_t1: &t1.wind,
             surface_t0: &t0.surface,

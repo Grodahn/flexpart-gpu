@@ -123,6 +123,10 @@ Start at the [stable facade](../../src/meteorology/vertical.rs) and select its
 
 ## Transport-advection
 
+- Canonical production adoption: `cargo test --lib gpu::meteorology::advection_production_tests`; repeat with validation and compaction environments, retaining [real-driver evidence](../resident-advection.md). Legacy diagnostic timeloop checks do not replace it. After the real-driver target, run
+  `python scripts/test_check_resident_advection_evidence.py` to reject incomplete status,
+  stale/missing evidence, nonfinite samples and loss of mixed-lane atomicity coverage.
+
 - Focused analytical device check: `cargo test --test integration software_advection::test_sw_wgpu_advection_001_constant_wind_displacement -- --exact`; explicitly select the software adapter as in [CI](../../.github/workflows/software-wgpu.yml).
 - Focused paired corpus: `python scripts/agent_validation.py --check comparison --case ADV-ANA-001`.
 - Evidence: analytical displacement/device marker; paired runner inputs, raw oracle/candidate outputs and manifest. Corpus scientific verdict remains diagnostic.

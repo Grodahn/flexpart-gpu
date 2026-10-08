@@ -5,8 +5,9 @@ Both `ForwardTimeLoopDriver::prepare_canonical_meteorology` and
 `CanonicalMeteorologyBracket` and caller-held `CanonicalMeteorologySlot`.
 These are real driver preparation entries using the driver's context, clock and
 configured signed timestep. They prepare inputs for #112; they do not execute
-canonical advection. Existing `run_timestep` and `MetTimeBracket` retain their
-legacy behavior until that consumer migration.
+canonical advection themselves. The #112 production timestep consumes the prepared
+owner through `MetTimeBracket::canonical`; missing owners fail closed. See
+[resident transport](resident-advection.md).
 
 Construct the bracket from two borrowed canonical `Snapshot`s and their exact
 `VerticalRuntimeView`s. The fixed pair requires both geometry slots. Construction
@@ -65,12 +66,12 @@ input hashes, field metadata and geometry, and recomputes the constant-field
 expectation using the existing comparison policy.
 It covers host-negative preflight, context rejection, source/motion transitions,
 old-owner execution after replacement, transactional failure and reuse after
-actual mutable driver steps. Those clock-advance steps explicitly invoke the
-existing legacy API; they do not claim canonical advection adoption.
+actual mutable driver steps. Those clock-advance steps now invoke the canonical production API with retained
+source owners. The dedicated #112 production tests own transport/atomicity evidence.
 The software WGSL workflow requires fresh revision-bound preparation evidence
 alongside the existing #171 and pinned #87/#88/#89 gates.
 
-#112 still owns advection migration; #32 owns operational provider decoding;
+#112 owns canonical advection migration; #32 owns operational provider decoding;
 #118 owns differing geometry within fractional stencils. Interface W and new
 vertical-motion semantics remain unsupported by this driver handoff. This proves
 production input/resource readiness only, not FLEXPART production advection parity

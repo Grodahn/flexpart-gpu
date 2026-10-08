@@ -7,6 +7,7 @@ use thiserror::Error;
 pub mod accumulation;
 pub mod adapter;
 pub mod advection;
+pub(crate) mod advection_resident;
 pub mod buffers;
 pub mod cbl;
 pub mod compaction;

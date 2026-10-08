@@ -2,6 +2,7 @@
 
 use crate::config::ReleaseConfig;
 use crate::coords::GridDomain;
+use crate::gpu::advection_resident::{ResidentAdvectionKernels, ResidentAdvectionStep};
 use crate::gpu::{
     AdvectionDispatchKernel, AdvectionDualWindDispatchKernel, CompactionBuffers,
     CompactionPipelines, DecayDispatchKernel, DryDepositionDispatchKernel, DryDepositionIoBuffers,
@@ -40,9 +41,15 @@ pub struct ForwardTimeLoopDriver {
     step_index: usize,
     philox_counter: PhiloxCounter,
     release_manager: ReleaseManager,
+    release_grid: GridDomain,
     particle_store: ParticleStore,
     gpu_context: GpuContext,
     particle_buffers: ParticleBuffers,
+    staged_particles: ParticleBuffers,
+    resident_advection_kernels: ResidentAdvectionKernels,
+    #[cfg(test)]
+    latest_advection: Option<ResidentAdvectionStep>,
+    pending_advection: Option<ResidentAdvectionStep>,
     /// Single-wind buffers (legacy path, kept for backward compatibility).
     wind_buffers: Option<WindBuffers>,
     advection_dispatch_kernel: Option<AdvectionDispatchKernel>,
@@ -138,10 +145,12 @@ impl ForwardTimeLoopDriver {
         let (start_time_seconds, end_time_seconds) = validate_config(&config)?;
         let initial_philox_counter = config.initial_philox_counter;
         let met_grid_shape = (release_grid.nx, release_grid.ny);
-        let release_manager = ReleaseManager::new(releases, release_grid)?;
+        let release_manager = ReleaseManager::new(releases, release_grid.clone())?;
         let particle_store = ParticleStore::with_capacity(particle_capacity);
         let gpu_context = GpuContext::new().await?;
         let particle_buffers = ParticleBuffers::from_store(&gpu_context, &particle_store);
+        let staged_particles = ParticleBuffers::from_store(&gpu_context, &particle_store);
+        let resident_advection_kernels = ResidentAdvectionKernels::new(&gpu_context)?;
 
         let validation_mode = is_validation_mode();
 
@@ -207,10 +216,16 @@ impl ForwardTimeLoopDriver {
             step_index: 0,
             philox_counter: initial_philox_counter,
             release_manager,
+            release_grid,
             particle_store,
             decay_dispatch_kernel: DecayDispatchKernel::new(&gpu_context),
             gpu_context,
             particle_buffers,
+            staged_particles,
+            resident_advection_kernels,
+            #[cfg(test)]
+            latest_advection: None,
+            pending_advection: None,
             wind_buffers: None,
             advection_dispatch_kernel: None,
             dual_wind_buffers: None,
@@ -242,6 +257,52 @@ impl ForwardTimeLoopDriver {
             compaction_pipelines,
             compaction_buffers,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_set_active_prefix(&mut self, count: usize) {
+        for particle in self.particle_store.as_mut_slice().iter_mut().skip(count) {
+            particle.time = -123;
+            particle.vel_u = 42.0;
+        }
+        self.particle_buffers
+            .upload_store(&self.gpu_context, &self.particle_store)
+            .expect("test inactive-tail upload");
+        self.particle_buffers.set_dispatch_count(count);
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_advection_state(
+        &self,
+    ) -> (
+        Vec<crate::particles::Particle>,
+        Vec<u32>,
+        Vec<crate::gpu::meteorology::resident::ResidentSampleMetadata>,
+        Vec<f32>,
+        Vec<crate::gpu::meteorology::resident::ResidentQueryLane>,
+    ) {
+        let step = self
+            .latest_advection
+            .as_ref()
+            .expect("production step encoded");
+        let status = crate::gpu::download_buffer_typed::<u32>(
+            &self.gpu_context,
+            &step.status,
+            6 * (self.particle_buffers.capacity() + 1) + 1,
+            "test final Petterssen status",
+        )
+        .await
+        .expect("status readback");
+        (
+            self.particle_buffers
+                .download_particles(&self.gpu_context)
+                .await
+                .expect("final particles"),
+            status,
+            step.metadata.clone(),
+            crate::gpu::download_buffer_typed::<f32>(&self.gpu_context, &step.values,6*self.particle_buffers.capacity(),"test final sampled values").await.unwrap(),
+            crate::gpu::download_buffer_typed::<crate::gpu::meteorology::resident::ResidentQueryLane>(&self.gpu_context,&step.queries,2*self.particle_buffers.capacity(),"test final queries").await.unwrap(),
+        )
     }
 
     /// Returns `true` while at least one timestep remains.
@@ -278,6 +339,21 @@ impl ForwardTimeLoopDriver {
     ///
     /// Calls [`finalize`](Self::finalize) after the last step to drain any
     /// pending GPU submission.
+    /// Explicit legacy diagnostic loop; never canonical production validation.
+    pub async fn run_legacy_diagnostic_to_end(
+        &mut self,
+        met: &MetTimeBracket<'_>,
+        forcing: &ForwardStepForcing,
+    ) -> Result<Vec<ForwardStepReport>, TimeLoopError> {
+        let mut reports = Vec::new();
+        while self.has_remaining_steps() {
+            reports.push(self.run_legacy_diagnostic_timestep(met, forcing).await?);
+        }
+        self.finalize().await?;
+        Ok(reports)
+    }
+
+    /// Integrate the canonical production path through the inclusive final step.
     pub async fn run_to_end(
         &mut self,
         met: &MetTimeBracket<'_>,
@@ -301,6 +377,10 @@ impl ForwardTimeLoopDriver {
             self.gpu_context.device.poll(wgpu::Maintain::Wait);
             self.gpu_submission_pending = false;
         }
+        if let Some(step) = &self.pending_advection {
+            step.require_success(&self.gpu_context).await?;
+        }
+        self.pending_advection = None;
         Ok(())
     }
 }

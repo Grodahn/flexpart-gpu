@@ -131,6 +131,7 @@ fn main() {
     let surface_t0 = deterministic_surface_fields(0.0);
     let surface_t1 = deterministic_surface_fields(0.2);
     let met = MetTimeBracket {
+        canonical: None,
         wind_t0: &wind_t0,
         wind_t1: &wind_t1,
         surface_t0: &surface_t0,
@@ -167,7 +168,8 @@ fn main() {
     // Warmup
     for i in 0..warmup_steps {
         let t = Instant::now();
-        pollster::block_on(driver.run_timestep(&met, &forcing)).expect("warmup step failed");
+        pollster::block_on(driver.run_legacy_diagnostic_timestep(&met, &forcing))
+            .expect("warmup step failed");
         eprintln!(
             "  warmup step {i}: {:.3} ms",
             t.elapsed().as_secs_f64() * 1e3
@@ -179,7 +181,8 @@ fn main() {
     let mut times_us = Vec::with_capacity(measure_steps);
     for _ in 0..measure_steps {
         let t = Instant::now();
-        pollster::block_on(driver.run_timestep(&met, &forcing)).expect("measure step failed");
+        pollster::block_on(driver.run_legacy_diagnostic_timestep(&met, &forcing))
+            .expect("measure step failed");
         times_us.push(t.elapsed().as_micros() as f64);
     }
 

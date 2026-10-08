@@ -22,6 +22,8 @@ pub const CANONICAL_WIND_FIELDS: [FieldId; 3] =
 
 /// Per-step meteorological bracket used for temporal interpolation (IO-04).
 pub struct MetTimeBracket<'a> {
+    /// Validated #173 U/V/normalized-W owners; required by production advection.
+    pub canonical: Option<&'a CanonicalMeteorologyResources<'a>>,
     /// 3-D met field at lower timestamp bound.
     pub wind_t0: &'a WindField3D,
     /// 3-D met field at upper timestamp bound.

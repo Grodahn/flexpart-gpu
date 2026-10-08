@@ -222,6 +222,7 @@ fn main() {
     let start_secs = 1_704_067_200_i64; // 2024-01-01 00:00:00 UTC
     let end_secs = start_secs + 6 * 3600;
     let met = MetTimeBracket {
+        canonical: None,
         wind_t0: &wind_t0,
         wind_t1: &wind_t1,
         surface_t0: &surface_t0,
@@ -262,7 +263,7 @@ fn main() {
     // The driver considers an end-time step runnable. Stop before it: each
     // step advances the state from current_time to current_time + dt.
     while driver.current_time_seconds() < end_secs {
-        let report = pollster::block_on(driver.run_timestep(&met, &forcing))
+        let report = pollster::block_on(driver.run_legacy_diagnostic_timestep(&met, &forcing))
             .expect("simulation timestep failed");
         if driver.current_time_seconds() >= end_secs - OUTPUT_AVERAGING_SECONDS {
             let snapshot =

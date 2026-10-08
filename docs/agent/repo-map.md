@@ -67,7 +67,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## Simulation
 
-- Canonical input preparation (#173): shared [typed bracket and source slot](../../src/simulation/timeloop/meteorology.rs), actual forward/backward `prepare_canonical_meteorology` entries in the preparation owners below, and [lifetime/#112 handoff](../canonical-timeloop-meteorology.md). This prepares existing #76/#171 owners; advection operators remain legacy until #112.
+- Canonical input preparation (#173): shared [typed bracket and source slot](../../src/simulation/timeloop/meteorology.rs), actual forward/backward `prepare_canonical_meteorology` entries in the preparation owners below, and [lifetime/#112 handoff](../canonical-timeloop-meteorology.md). This prepares existing #76/#171 owners consumed by the [canonical production advection operators](../resident-advection.md).
 - Stable production entry: [simulation-driver facade](../../src/simulation/timeloop.rs); [forward state/lifecycle](../../src/simulation/timeloop/forward.rs), [timestep phases/advance](../../src/simulation/timeloop/forward/timestep.rs), [ordered GPU operators/submission](../../src/simulation/timeloop/forward/operators.rs), [backward attribution](../../src/simulation/timeloop/backward.rs).
 - Preparation: [bracket handoff](../../src/simulation/timeloop/meteorology.rs), [prefetch/bracket/PBL inputs](../../src/simulation/timeloop/forward/meteorology.rs), [forcing shapes/cache](../../src/simulation/timeloop/forcing.rs), [forcing validation/uploads](../../src/simulation/timeloop/forward/forcing.rs).
 - Host boundaries: [particle sync/sort](../../src/simulation/timeloop/forward/particles.rs), [explicit gridding](../../src/simulation/timeloop/forward/output.rs), [reports](../../src/simulation/timeloop/reports.rs), [errors](../../src/simulation/timeloop/error.rs); [configuration/validation](../../src/simulation/timeloop/config.rs), [time/bracket bounds](../../src/simulation/timeloop/time.rs), [runtime options](../../src/simulation/timeloop/options.rs).
@@ -81,7 +81,8 @@ path moves. Markdown links are the machine-readable path surface, audited by
 ## Transport-advection
 
 - Production: [forward operator sequence](../../src/simulation/timeloop/forward/operators.rs), [coordinate/velocity units](../../src/coords/mod.rs).
-- GPU: [advection dispatch](../../src/gpu/advection.rs), [particle step/reflection](../../src/gpu/particle_step.rs); [buffer](../../src/shaders/advection.wgsl), [dual bracket](../../src/shaders/advection_dual_wind.wgsl), [texture](../../src/shaders/advection_texture.wgsl), [dual texture](../../src/shaders/advection_texture_dual_wind.wgsl), [particle step](../../src/shaders/particle_step.wgsl).
+- Canonical production: [resident Petterssen](../../src/gpu/advection_resident.rs); [migration inventory](../resident-advection.md).
+- GPU diagnostics: [advection dispatch](../../src/gpu/advection.rs), [particle step/reflection](../../src/gpu/particle_step.rs); [buffer](../../src/shaders/advection.wgsl), [dual bracket](../../src/shaders/advection_dual_wind.wgsl), [texture](../../src/shaders/advection_texture.wgsl), [dual texture](../../src/shaders/advection_texture_dual_wind.wgsl), [particle step](../../src/shaders/particle_step.wgsl).
 - Authority: [advection science](../science/advection.md), [GPU contract](../GPU_CONTRACT.md); [CPU diagnostic](../../src/physics/advection.rs) is not the production GPU proof.
 - Fixtures: [ADV-ANA-001](../../fixtures/corpus/cases/ADV-ANA-001.json), [Fortran inputs](../../fixtures/corpus/fortran/ADV-ANA-001/).
 - Tests: [software device displacement](../../tests/integration/software_advection.rs), [forward driver](../../tests/forward_timeloop.rs); [verification](test-map.md#transport-advection).

@@ -14,6 +14,21 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ---
 
+### 2026-10-08 — Adopt canonical resident Petterssen transport in both production drivers
+**Impact**: physics / numerics (consumer migration; no new interpolation equations)
+**Files**: `src/gpu/advection_resident.rs`, four `advection_*` consumer shaders,
+forward/backward timestep operators.
+**Validation**: Required-adapter analytical production-driver checks retain both
+stage queries/times, U/V/W status, inactive tails and cross-workgroup fatal atomicity.
+Existing #87/#88/#89 pinned sampling gates retain authority and tolerances.
+Advanced-time sampling follows `advance_mod.f90:664-779`; existing legacy diagnostics
+retain their one-alpha behavior and cannot validate this migration. Repository
+clamping and horizontal-turbulence coupling remain as before; full Fortran
+reflection, nested/global-domain and stochastic parity are not claimed.
+Changing physical model tops reject pending #180; real provider inputs need #32.
+See `docs/resident-advection.md` for the exact inventory and evidence level.
+
+
 ## Entries
 
 ### 2026-10-04 — Bound separated Hanna and Langevin accesses by the dispatch prefix (#139)

@@ -603,6 +603,7 @@ impl EtexValidationHarness {
             .map_err(|message| EtexValidationError::InvalidFixture { message })?;
         let upper_time = end_seconds.max(start_seconds.saturating_add(1));
         let met = MetTimeBracket {
+            canonical: None,
             wind_t0: &wind_t0,
             wind_t1: &wind_t1,
             surface_t0: &surface_t0,
@@ -627,7 +628,7 @@ impl EtexValidationHarness {
             rho_grad_over_rho: forcing.rho_grad_over_rho,
         };
 
-        let reports = pollster::block_on(driver.run_to_end(&met, &step_forcing))?;
+        let reports = pollster::block_on(driver.run_legacy_diagnostic_to_end(&met, &step_forcing))?;
         let concentration_output = pollster::block_on(driver.accumulate_concentration_grid(
             ConcentrationGridShape {
                 nx: conc_nx,

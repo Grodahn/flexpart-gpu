@@ -600,8 +600,7 @@ fn test_canonical_forward_backward_preparation_reuse_transition_and_resident_exe
     drop(transition);
     drop(lineage);
     drop(after_failure);
-    // Explicitly advance the still-legacy drivers. This is not canonical advection:
-    // it proves caller-held canonical owners survive actual mutable driver steps.
+    // Advance both canonical production drivers using the retained #173 owners.
     let legacy_grid = WindFieldGrid::new(
         2,
         2,
@@ -621,7 +620,8 @@ fn test_canonical_forward_backward_preparation_reuse_transition_and_resident_exe
     surface.dewpoint_2m_k.fill(285.0);
     surface.mixing_height_m.fill(1_000.0);
     surface.tropopause_height_m.fill(10_000.0);
-    let legacy = MetTimeBracket {
+    let mut legacy = MetTimeBracket {
+        canonical: None,
         wind_t0: &wind,
         wind_t1: &wind,
         surface_t0: &surface,
@@ -630,7 +630,9 @@ fn test_canonical_forward_backward_preparation_reuse_transition_and_resident_exe
         time_t1_seconds: START_SECONDS + 4,
     };
     let forcing = ForwardStepForcing::default();
+    legacy.canonical = Some(&lineage_retained);
     pollster::block_on(forward.run_timestep(&legacy, &forcing)).unwrap();
+    legacy.canonical = Some(&reverse_retained);
     pollster::block_on(backward.run_timestep(&legacy, &forcing)).unwrap();
     let next_forward = forward
         .prepare_canonical_meteorology(

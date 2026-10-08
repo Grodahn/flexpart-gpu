@@ -2,10 +2,10 @@
 
 use crate::config::ReleaseConfig;
 use crate::coords::GridDomain;
+use crate::gpu::advection_resident::{ResidentAdvectionKernels, ResidentAdvectionStep};
 use crate::gpu::{
-    encode_advection_dual_wind_gpu_with_kernel, encode_decay_gpu_with_kernel,
-    encode_dry_deposition_probability_gpu_with_kernel, encode_hanna_params_gpu_with_kernel,
-    encode_pbl_diagnostics_gpu_with_kernel,
+    encode_decay_gpu_with_kernel, encode_dry_deposition_probability_gpu_with_kernel,
+    encode_hanna_params_gpu_with_kernel, encode_pbl_diagnostics_gpu_with_kernel,
     encode_update_particles_turbulence_langevin_gpu_with_hanna_output_and_kernel,
     encode_wet_deposition_probability_gpu_with_kernel, AdvectionDualWindDispatchKernel,
     DecayDispatchKernel, DecayStepParams, DryDepositionDispatchKernel, DryDepositionIoBuffers,
@@ -66,6 +66,10 @@ pub struct BackwardTimeLoopDriver {
     particle_store: ParticleStore,
     gpu_context: GpuContext,
     particle_buffers: ParticleBuffers,
+    staged_particles: ParticleBuffers,
+    resident_advection_kernels: ResidentAdvectionKernels,
+    #[cfg(test)]
+    latest_advection: Option<ResidentAdvectionStep>,
     /// Dual-time wind buffers (O-02): t0 and t1 uploaded once per met bracket.
     /// `None` until the first bracket upload (3-D grid shape unknown before).
     dual_wind_buffers: Option<DualWindBuffers>,
@@ -104,6 +108,52 @@ pub struct BackwardTimeLoopDriver {
 }
 
 impl BackwardTimeLoopDriver {
+    #[cfg(test)]
+    pub(crate) fn test_set_active_prefix(&mut self, count: usize) {
+        for particle in self.particle_store.as_mut_slice().iter_mut().skip(count) {
+            particle.time = -123;
+            particle.vel_u = 42.0;
+        }
+        self.particle_buffers
+            .upload_store(&self.gpu_context, &self.particle_store)
+            .expect("test inactive-tail upload");
+        self.particle_buffers.set_dispatch_count(count);
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_advection_state(
+        &self,
+    ) -> (
+        Vec<crate::particles::Particle>,
+        Vec<u32>,
+        Vec<crate::gpu::meteorology::resident::ResidentSampleMetadata>,
+        Vec<f32>,
+        Vec<crate::gpu::meteorology::resident::ResidentQueryLane>,
+    ) {
+        let step = self
+            .latest_advection
+            .as_ref()
+            .expect("production step encoded");
+        let status = crate::gpu::download_buffer_typed::<u32>(
+            &self.gpu_context,
+            &step.status,
+            6 * (self.particle_buffers.capacity() + 1) + 1,
+            "test final Petterssen status",
+        )
+        .await
+        .expect("status readback");
+        (
+            self.particle_buffers
+                .download_particles(&self.gpu_context)
+                .await
+                .expect("final particles"),
+            status,
+            step.metadata.clone(),
+            crate::gpu::download_buffer_typed::<f32>(&self.gpu_context, &step.values,6*self.particle_buffers.capacity(),"test final sampled values").await.unwrap(),
+            crate::gpu::download_buffer_typed::<crate::gpu::meteorology::resident::ResidentQueryLane>(&self.gpu_context,&step.queries,2*self.particle_buffers.capacity(),"test final queries").await.unwrap(),
+        )
+    }
+
     /// Prepare validated canonical U/V/center-W for the current backward step and -dt.
     ///
     /// This is the explicit canonical preparation boundary for #112. It neither
@@ -147,6 +197,8 @@ impl BackwardTimeLoopDriver {
         let particle_store = ParticleStore::with_capacity(particle_capacity);
         let gpu_context = GpuContext::new().await?;
         let particle_buffers = ParticleBuffers::from_store(&gpu_context, &particle_store);
+        let staged_particles = ParticleBuffers::from_store(&gpu_context, &particle_store);
+        let resident_advection_kernels = ResidentAdvectionKernels::new(&gpu_context)?;
 
         let dual_wind_sampling_path = if gpu_context.supports_wind_texture_sampling() {
             WindSamplingPath::SampledTexture3d
@@ -186,6 +238,10 @@ impl BackwardTimeLoopDriver {
             particle_store,
             gpu_context,
             particle_buffers,
+            staged_particles,
+            resident_advection_kernels,
+            #[cfg(test)]
+            latest_advection: None,
             dual_wind_buffers: None,
             dual_wind_dispatch_kernel,
             current_met_t0_seconds: None,
@@ -245,10 +301,67 @@ impl BackwardTimeLoopDriver {
         met: &MetTimeBracket<'_>,
         forcing: &ForwardStepForcing,
     ) -> Result<BackwardStepReport, TimeLoopError> {
+        self.run_timestep_impl(met, forcing, false).await
+    }
+
+    /// Explicit legacy diagnostic only; never production or canonical-migration evidence.
+    /// Retained for the existing independently owned synthetic/oracle diagnostics (#117).
+    pub async fn run_legacy_diagnostic_timestep(
+        &mut self,
+        met: &MetTimeBracket<'_>,
+        forcing: &ForwardStepForcing,
+    ) -> Result<BackwardStepReport, TimeLoopError> {
+        self.run_timestep_impl(met, forcing, true).await
+    }
+
+    async fn run_timestep_impl(
+        &mut self,
+        met: &MetTimeBracket<'_>,
+        forcing: &ForwardStepForcing,
+        legacy_diagnostic: bool,
+    ) -> Result<BackwardStepReport, TimeLoopError> {
         if !self.has_remaining_steps() {
             return Err(TimeLoopError::SimulationComplete);
         }
 
+        if !legacy_diagnostic && met.canonical.is_none() {
+            return Err(crate::gpu::meteorology::MeteorologyCompositionError::Missing(
+                "production advection requires #173 canonical meteorology; legacy-only provider inputs need #32").into());
+        }
+        if legacy_diagnostic && met.canonical.is_some() {
+            return Err(
+                crate::gpu::meteorology::MeteorologyCompositionError::Incompatible(
+                    "canonical fields cannot enter the legacy diagnostic path",
+                )
+                .into(),
+            );
+        }
+        if let Some(canonical) = met.canonical {
+            let grid = canonical.bracket().horizontal_grid();
+            let release = &self.release_grid;
+            if grid.nx != release.nx
+                || grid.ny != release.ny
+                || grid.xlon0_deg != release.xlon0
+                || grid.ylat0_deg != release.ylat0
+                || grid.dx_deg != release.dx
+                || grid.dy_deg != release.dy
+            {
+                return Err(
+                    crate::gpu::meteorology::MeteorologyCompositionError::Incompatible(
+                        "canonical meteorology and particle coordinate grids differ",
+                    )
+                    .into(),
+                );
+            }
+        }
+        let times = met
+            .canonical
+            .map(|canonical| {
+                canonical
+                    .bracket()
+                    .resolve_step_times(self.current_time_seconds, -self.config.timestep_seconds)
+            })
+            .transpose()?;
         let timestamp = format_timestamp_seconds(self.current_time_seconds)?;
         let release_report = self.release_manager.inject_and_upload_for_time(
             &timestamp,
@@ -265,7 +378,9 @@ impl BackwardTimeLoopDriver {
         )?;
 
         // O-02: upload wind_t0/t1 once per met bracket.
-        self.upload_dual_wind_if_bracket_changed(met)?;
+        if legacy_diagnostic {
+            self.upload_dual_wind_if_bracket_changed(met)?;
+        }
 
         let interpolated_surface = interpolate_surface_fields_linear(
             met.surface_t0,
@@ -340,8 +455,22 @@ impl BackwardTimeLoopDriver {
             }
         }
 
+        self.staged_particles
+            .set_dispatch_count(self.particle_buffers.particle_count());
         // ── Encode all GPU dispatches in a single command encoder ──────
-        let next_philox_counter = {
+        let (next_philox_counter, advection) = {
+            let sampling_kernels = met
+                .canonical
+                .map(|_| {
+                    crate::gpu::meteorology::MeteorologyCompositionKernels::new(&self.gpu_context)
+                })
+                .transpose()?;
+            let resident_kernels = met
+                .canonical
+                .map(|_| {
+                    crate::gpu::meteorology::resident::ResidentQueryKernels::new(&self.gpu_context)
+                })
+                .transpose()?;
             let mut encoder =
                 self.gpu_context
                     .device
@@ -361,20 +490,48 @@ impl BackwardTimeLoopDriver {
             }
 
             // Advection: negative dt for backward time direction.
-            let dual_wind = self
-                .dual_wind_buffers
-                .as_ref()
-                .expect("dual wind buffers uploaded by upload_dual_wind_if_bracket_changed");
-            encode_advection_dual_wind_gpu_with_kernel(
-                &self.gpu_context,
-                &self.particle_buffers,
-                dual_wind,
-                interpolation_alpha,
-                TimeDirection::Backward.advection_dt_seconds(dt_seconds),
-                self.config.velocity_to_grid_scale,
-                &self.dual_wind_dispatch_kernel,
-                &mut encoder,
-            )?;
+            let advection = if let Some(canonical) = met.canonical {
+                let step = ResidentAdvectionStep::encode(
+                    &self.gpu_context,
+                    &self.particle_buffers,
+                    &self.staged_particles,
+                    canonical.fields(),
+                    canonical.bracket().horizontal_grid(),
+                    [
+                        times.expect("canonical times resolved").current,
+                        times.expect("canonical times resolved").predicted,
+                    ],
+                    TimeDirection::Backward.advection_dt_seconds(dt_seconds),
+                    self.config.velocity_to_grid_scale,
+                    &self.resident_advection_kernels,
+                    sampling_kernels
+                        .as_ref()
+                        .expect("canonical sampling kernels"),
+                    resident_kernels.as_ref().expect("canonical query kernels"),
+                    &mut encoder,
+                )?;
+
+                Some(step)
+            } else {
+                crate::gpu::encode_advection_dual_wind_gpu_with_kernel(
+                    &self.gpu_context,
+                    &self.particle_buffers,
+                    self.dual_wind_buffers
+                        .as_ref()
+                        .expect("explicit diagnostic upload"),
+                    interpolation_alpha,
+                    TimeDirection::Backward.advection_dt_seconds(dt_seconds),
+                    self.config.velocity_to_grid_scale,
+                    &self.dual_wind_dispatch_kernel,
+                    &mut encoder,
+                )?;
+                None
+            };
+            let physics_particles = if advection.is_some() {
+                &self.staged_particles
+            } else {
+                &self.particle_buffers
+            };
 
             // B-01 MVP: turbulence and deposition use positive dt magnitude.
             let langevin_step = LangevinStep {
@@ -386,7 +543,7 @@ impl BackwardTimeLoopDriver {
 
             encode_hanna_params_gpu_with_kernel(
                 &self.gpu_context,
-                &self.particle_buffers,
+                physics_particles,
                 &self.pbl_buffers,
                 &self.hanna_params_output,
                 &self.hanna_dispatch_kernel,
@@ -396,7 +553,7 @@ impl BackwardTimeLoopDriver {
             let next_pc =
                 encode_update_particles_turbulence_langevin_gpu_with_hanna_output_and_kernel(
                     &self.gpu_context,
-                    &self.particle_buffers,
+                    physics_particles,
                     &self.hanna_params_output,
                     langevin_step,
                     self.config.philox_key,
@@ -408,7 +565,7 @@ impl BackwardTimeLoopDriver {
             if !skip_dry_deposition {
                 encode_dry_deposition_probability_gpu_with_kernel(
                     &self.gpu_context,
-                    &self.particle_buffers,
+                    physics_particles,
                     &self.dry_deposition_io,
                     DryDepositionStepParams {
                         dt_seconds,
@@ -422,7 +579,7 @@ impl BackwardTimeLoopDriver {
             if !skip_wet_deposition {
                 encode_wet_deposition_probability_gpu_with_kernel(
                     &self.gpu_context,
-                    &self.particle_buffers,
+                    physics_particles,
                     &self.wet_deposition_io,
                     WetDepositionStepParams { dt_seconds },
                     &self.wet_deposition_dispatch_kernel,
@@ -434,7 +591,7 @@ impl BackwardTimeLoopDriver {
             if !skip_decay {
                 encode_decay_gpu_with_kernel(
                     &self.gpu_context,
-                    &self.particle_buffers,
+                    physics_particles,
                     DecayStepParams {
                         dt_seconds,
                         decay_constants_s_inv: forcing.decay_lanes(),
@@ -444,11 +601,27 @@ impl BackwardTimeLoopDriver {
                 )?;
             }
 
+            if let Some(step) = &advection {
+                step.encode_commit(
+                    &self.gpu_context,
+                    &self.staged_particles,
+                    &self.particle_buffers,
+                    &self.resident_advection_kernels,
+                    &mut encoder,
+                );
+            }
             self.gpu_context.queue.submit(Some(encoder.finish()));
-            next_pc
+            (next_pc, advection)
         };
 
+        #[cfg(test)]
+        {
+            self.latest_advection = advection.clone();
+        }
         self.gpu_context.device.poll(wgpu::Maintain::Wait);
+        if let Some(step) = &advection {
+            step.require_success(&self.gpu_context).await?;
+        }
         self.philox_counter = next_philox_counter;
 
         self.sync_store_from_gpu().await?;
@@ -478,6 +651,20 @@ impl BackwardTimeLoopDriver {
     }
 
     /// Run until `end_timestamp` using fixed forcing and one met bracket.
+    /// Explicit legacy diagnostic loop; never canonical production validation.
+    pub async fn run_legacy_diagnostic_to_end(
+        &mut self,
+        met: &MetTimeBracket<'_>,
+        forcing: &ForwardStepForcing,
+    ) -> Result<Vec<BackwardStepReport>, TimeLoopError> {
+        let mut reports = Vec::new();
+        while self.has_remaining_steps() {
+            reports.push(self.run_legacy_diagnostic_timestep(met, forcing).await?);
+        }
+        Ok(reports)
+    }
+
+    /// Integrate the canonical production path through the inclusive final step.
     pub async fn run_to_end(
         &mut self,
         met: &MetTimeBracket<'_>,

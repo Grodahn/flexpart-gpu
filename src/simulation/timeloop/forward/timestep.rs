@@ -38,9 +38,71 @@ impl ForwardTimeLoopDriver {
         met: &MetTimeBracket<'_>,
         forcing: &ForwardStepForcing,
     ) -> Result<ForwardStepReport, TimeLoopError> {
+        self.run_timestep_impl(met, forcing, false).await
+    }
+
+    /// Explicit legacy diagnostic only; never production or canonical-migration evidence.
+    /// Retained for the existing independently owned synthetic/oracle diagnostics (#117).
+    pub async fn run_legacy_diagnostic_timestep(
+        &mut self,
+        met: &MetTimeBracket<'_>,
+        forcing: &ForwardStepForcing,
+    ) -> Result<ForwardStepReport, TimeLoopError> {
+        self.run_timestep_impl(met, forcing, true).await
+    }
+
+    async fn run_timestep_impl(
+        &mut self,
+        met: &MetTimeBracket<'_>,
+        forcing: &ForwardStepForcing,
+        legacy_diagnostic: bool,
+    ) -> Result<ForwardStepReport, TimeLoopError> {
         if !self.has_remaining_steps() {
             return Err(TimeLoopError::SimulationComplete);
         }
+        if !legacy_diagnostic && met.canonical.is_none() {
+            return Err(crate::gpu::meteorology::MeteorologyCompositionError::Missing(
+                "production advection requires #173 canonical meteorology; legacy-only provider inputs need #32").into());
+        }
+        if legacy_diagnostic && met.canonical.is_some() {
+            return Err(
+                crate::gpu::meteorology::MeteorologyCompositionError::Incompatible(
+                    "canonical fields cannot enter the legacy diagnostic path",
+                )
+                .into(),
+            );
+        }
+        if let Some(canonical) = met.canonical {
+            let grid = canonical.bracket().horizontal_grid();
+            let release = &self.release_grid;
+            if grid.nx != release.nx
+                || grid.ny != release.ny
+                || grid.xlon0_deg != release.xlon0
+                || grid.ylat0_deg != release.ylat0
+                || grid.dx_deg != release.dx
+                || grid.dy_deg != release.dy
+            {
+                return Err(
+                    crate::gpu::meteorology::MeteorologyCompositionError::Incompatible(
+                        "canonical meteorology and particle coordinate grids differ",
+                    )
+                    .into(),
+                );
+            }
+        }
+        let times = met
+            .canonical
+            .map(|canonical| {
+                canonical
+                    .bracket()
+                    .resolve_step_times(self.current_time_seconds, self.config.timestep_seconds)
+            })
+            .transpose()?;
+        // A deferred fatal transaction must be rejected before another release or sort mutates particles.
+        if let Some(step) = &self.pending_advection {
+            step.require_success(&self.gpu_context).await?;
+        }
+        self.pending_advection = None;
         self.apply_spatial_sort_if_enabled()?;
 
         let profiling = is_profiling_enabled();
@@ -65,6 +127,9 @@ impl ForwardTimeLoopDriver {
                 .set_dispatch_count(self.particle_store.active_count());
         }
 
+        if legacy_diagnostic {
+            self.upload_dual_wind_if_bracket_changed(met)?;
+        }
         let prepared_met = self.prepare_meteorology(met, profiling)?;
         let PreparedMeteorology {
             interpolation_alpha,
@@ -96,11 +161,30 @@ impl ForwardTimeLoopDriver {
             Duration::ZERO
         };
 
+        if let Some(step) = &self.pending_advection {
+            step.require_success(&self.gpu_context).await?;
+        }
+        self.pending_advection = None;
+
+        self.staged_particles
+            .set_dispatch_count(self.particle_buffers.particle_count());
+
         // ── Phase 3: Encode + submit (non-blocking) ───────────────────
 
-        let (next_philox_counter, gpu_encode_dur) =
-            self.submit_operators(&prepared_met, &prepared_forcing, forcing, profiling)?;
+        let (next_philox_counter, gpu_encode_dur, advection) = self.submit_operators(
+            &prepared_met,
+            met.canonical,
+            times,
+            &prepared_forcing,
+            forcing,
+            profiling,
+        )?;
 
+        #[cfg(test)]
+        {
+            self.latest_advection = advection.clone();
+        }
+        self.pending_advection = advection;
         self.gpu_submission_pending = true;
         self.pbl_write_index = 1 - self.pbl_write_index;
 
@@ -118,8 +202,17 @@ impl ForwardTimeLoopDriver {
             Duration::ZERO
         };
 
+        if profiling
+            || self.use_compaction
+            || self.config.sync_particle_store_each_step
+            || self.config.collect_deposition_probabilities_each_step
+        {
+            if let Some(step) = &self.pending_advection {
+                step.require_success(&self.gpu_context).await?;
+            }
+            self.pending_advection = None;
+        }
         self.philox_counter = next_philox_counter;
-
         let dry_probability =
             if self.config.collect_deposition_probabilities_each_step && !skip_dry_deposition {
                 let result = self

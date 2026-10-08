@@ -40,7 +40,11 @@ pub use config::{
 pub use error::TimeLoopError;
 pub use forcing::{ForwardStepForcing, ParticleForcingField};
 pub use forward::ForwardTimeLoopDriver;
-pub use meteorology::MetTimeBracket;
+pub use meteorology::{
+    CanonicalMeteorologyBracket, CanonicalMeteorologyIdentity, CanonicalMeteorologyResources,
+    CanonicalMeteorologySlot, CanonicalMeteorologyStepTimes, MetTimeBracket,
+    PreparedCanonicalMeteorology, CANONICAL_WIND_FIELDS,
+};
 pub use reports::{BackwardStepReport, ForwardStepReport, StepTimingReport};
 
 #[cfg(test)]

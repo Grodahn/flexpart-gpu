@@ -13,6 +13,9 @@ use thiserror::Error;
 /// Errors produced by forward time-loop orchestration.
 #[derive(Debug, Error)]
 pub enum TimeLoopError {
+    /// Canonical meteorology preflight/preparation failed before physics submission.
+    #[error("canonical meteorology preparation failed: {0}")]
+    CanonicalMeteorology(#[from] crate::gpu::meteorology::MeteorologyCompositionError),
     #[error("invalid timestamp `{value}`: expected 14 digits YYYYMMDDHHMMSS")]
     InvalidTimestamp { value: String },
     #[error("timestamp out of representable range: seconds={seconds}")]

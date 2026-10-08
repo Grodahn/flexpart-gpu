@@ -634,6 +634,14 @@ impl ResidentSpatial {
 }
 
 impl<'ctx> CanonicalGpuField<'ctx> {
+    /// Reject unsupported packed source sizes before committing a driver bracket.
+    pub(crate) fn validate_resident_source(&self) -> Result<(), MeteorologyCompositionError> {
+        for member in &self.members {
+            member.resident_buffers()?;
+        }
+        Ok(())
+    }
+
     /// Prepare batch resources using only immutable source/control metadata.
     /// Dynamic query validation and per-lane column selection run on-device.
     /// # Errors
@@ -644,7 +652,7 @@ impl<'ctx> CanonicalGpuField<'ctx> {
         batch: &'a mut ResidentQueryBatch<'query>,
         time: MeteorologyTimeSelection,
     ) -> Result<PreparedResidentSample<'a, 'ctx, 'query>, MeteorologyCompositionError> {
-        if !std::ptr::eq(self.context, ctx)
+        if !self.belongs_to(ctx)
             || !std::ptr::eq(batch.context, ctx)
             || batch.grid != self.members[0].snapshot.horizontal_grid
         {
@@ -840,7 +848,7 @@ impl PreparedResidentSample<'_, '_, '_> {
             status: &self.batch.status,
             metadata: &self.metadata,
             stages: &self.stages,
-            context: self.source.context,
+            context: self.batch.context,
         })
     }
 

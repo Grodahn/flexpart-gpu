@@ -450,6 +450,95 @@ jobs:
           cargo test --test pbl_options_contract -- --nocapture > target/ci-gate/pbl-options.log 2>&1
           grep -q "PBL-OPTIONS-147: .*software_adapter=true public_paths=3 device_results=identical" target/ci-gate/pbl-options.log
           cargo test --lib gpu::pbl::tests -- --test-threads=1 --nocapture > target/ci-gate/pbl-diagnostics.log 2>&1
+      - name: Prove canonical driver input and resident resource readiness (#173)
+        run: |
+          set -euo pipefail
+          cargo test --test canonical_timeloop_meteorology -- --nocapture --test-threads=1 > target/ci-gate/canonical-timeloop-meteorology.log 2>&1
+          grep -q 'CANONICAL-MET-173' target/ci-gate/canonical-timeloop-meteorology.log
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import math
+          import subprocess
+          from pathlib import Path
+
+          r = json.loads(Path('target/ci-gate/canonical-timeloop-meteorology/report.json').read_text())
+          assert r['schema'] == {'id': 'flexpart-gpu.canonical-timeloop-meteorology', 'version': 1}
+          assert r['revision'] == subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert r['passed'] and r['calculation_path'] == 'wgsl_device'
+          assert len(r['adapters']) == 2
+          assert all(a['adapter_class'] == 'software_wgsl' for a in r['adapters'])
+          assert r['inputs'] == json.loads(r['input_json'])
+          assert r['input_sha256'] == hashlib.sha256(r['input_json'].encode()).hexdigest()
+          names = ['particle_query', 'resident_status_reset', 'resident_query_adapter', 'horizontal_interpolation',
+                   'vertical_sample', 'temporal_interpolation', 'resident_sample_status', 'resident_fixture_consumer']
+          shaders = '\n'.join(Path(f'src/shaders/{n}.wgsl').read_text() for n in names)
+          assert r['shader_bundle_sha256'] == hashlib.sha256(shaders.encode()).hexdigest()
+          for key in ['same_bracket_reused', 'source_change_rebuilt', 'motion_lineage_change_rebuilt',
+                      'retained_owner_executed_after_transition', 'failed_preflight_preserved_slot', 'reused_across_mutable_driver_steps']:
+              assert r[key]
+          brackets = r['source_brackets']
+          assert set(brackets) == {'original', 'changed', 'lineage'}
+          for bracket in brackets.values():
+              identity = bracket['identity']
+              assert identity['field_ids'] == ['wind_u', 'wind_v', 'vertical_velocity']
+              assert len(bracket['snapshot_json']) == len(bracket['native_motion_json']) == len(bracket['runtimes']) == 2
+              for index, (source, native, runtime) in enumerate(zip(bracket['snapshot_json'], bracket['native_motion_json'], bracket['runtimes'])):
+                  assert hashlib.sha256(source.encode()).hexdigest() == identity['source_snapshot_sha256'][index]
+                  assert runtime['provenance'] == identity['geometry_provenance'][index]
+                  assert runtime['provenance']['source_snapshot_sha256'] == identity['source_snapshot_sha256'][index]
+                  motion = runtime['vertical_velocity']
+                  assert motion['provenance'] == identity['motion_provenance'][index]
+                  assert hashlib.sha256(native.encode()).hexdigest() == motion['provenance']['source_native_motion_sha256']
+                  assert json.loads(native)['provenance']['source_id'] == motion['provenance']['source_id']
+                  w = next(f for f in json.loads(source)['fields'] if f['id'] == 'vertical_velocity')
+                  assert motion['values_ms'] == w['values'] == json.loads(native)['values']
+                  assert motion['vertical_staggering'] == w['vertical_staggering'] == 'level_center'
+          assert brackets['original']['identity'] == r['identity']
+          assert brackets['changed']['identity']['source_snapshot_sha256'] != brackets['original']['identity']['source_snapshot_sha256']
+          assert brackets['lineage']['snapshot_json'] == brackets['changed']['snapshot_json']
+          assert brackets['lineage']['identity']['motion_provenance'] != brackets['changed']['identity']['motion_provenance']
+          directions = {'forward', 'backward', 'retained-forward', 'changed-source', 'next-forward', 'next-backward'}
+          expected_brackets = {direction: 'original' for direction in directions}
+          expected_brackets.update({'changed-source': 'changed', 'next-forward': 'lineage'})
+          assert len(r['rows']) == 36
+          assert {row['direction'] for row in r['rows']} == directions
+          for direction in directions:
+              rows = [row for row in r['rows'] if row['direction'] == direction]
+              assert {(row['metadata']['field_id'], row['selection']) for row in rows} == {
+                  (field, selection) for field in ['wind_u', 'wind_v', 'vertical_velocity'] for selection in ['current', 'predicted']}
+          for row in r['rows']:
+              assert row['source_bracket'] == expected_brackets[row['direction']]
+              bracket = brackets[row['source_bracket']]
+              metadata = row['metadata']
+              sources = [json.loads(source) for source in bracket['snapshot_json']]
+              fields = [next(f for f in source['fields'] if f['id'] == metadata['field_id']) for source in sources]
+              for key in ['source_snapshot_sha256', 'geometry_identity', 'geometry_provenance']:
+                  assert metadata[key] == bracket['identity'][key]
+              assert metadata['source_times'] == [field['time'] for field in fields]
+              assert all(metadata['horizontal_grid'] == source['horizontal_grid'] for source in sources)
+              assert all(metadata[key] == field[key] for field in fields for key in ['unit', 'sign', 'horizontal_staggering', 'vertical_staggering'])
+              assert row['passed'] and row['comparison']['verdict'] == 'passed'
+              assert row['status'] == {'fatal': False, 'lanes': [2]}
+              assert row['submission_count'] == 1 and row['intermediate_d2h_count'] == 0
+              assert len(row['output']) == 1
+              assert math.isfinite(row['output'][0]) and math.isfinite(row['expected'])
+              assert set(metadata['time']) == {'instantaneous'}
+              request = metadata['time']['instantaneous']['epoch_seconds']
+              assert all(metadata['time']['instantaneous']['calendar'] == field['time']['calendar'] for field in fields)
+              lower, upper = [field['time']['valid_time_epoch_seconds'] for field in fields]
+              assert lower <= request <= upper
+              alpha = (request - lower) / (upper - lower)
+              expected = fields[0]['values'][0] * (1 - alpha) + fields[1]['values'][0] * alpha
+              assert row['expected'] == expected
+              policy = row['comparison']['policy']
+              assert policy == {'absolute_tolerance': 1e-6, 'relative_tolerance': 1e-4}
+              assert math.isclose(row['output'][0], expected, abs_tol=policy['absolute_tolerance'], rel_tol=policy['relative_tolerance'])
+              assert row['metadata']['unit'] == 'meter_per_second'
+              assert row['metadata']['vertical_staggering'] == 'level_center'
+              assert row['metadata']['horizontal_grid'] == r['inputs']['snapshots'][0]['horizontal_grid']
+              assert len(row['metadata']['geometry_identity']) == 2
+          PY
       - name: Preserve simulation timestep order and output boundaries (#126)
         run: |
           set -euo pipefail
@@ -576,4 +665,6 @@ jobs:
             target/ci-gate/meteorology-resident.log
             target/ci-gate/meteorology-resident-corner.log
             target/ci-gate/meteorology-resident/*.json
+            target/ci-gate/canonical-timeloop-meteorology.log
+            target/ci-gate/canonical-timeloop-meteorology/*.json
           retention-days: 30

@@ -86,6 +86,7 @@ Start at the [stable facade](../../src/meteorology/vertical.rs) and select its
 
 ## Simulation
 
+- Canonical driver preparation (#173): `cargo test --test canonical_timeloop_meteorology -- --nocapture --test-threads=1`; [integration target](../../tests/canonical_timeloop_meteorology.rs), [handoff/lifetimes](../canonical-timeloop-meteorology.md). Required real WGSL U/V/center-W readiness evidence is `target/ci-gate/canonical-timeloop-meteorology/report.json`; negative preflight, reuse, transitions and both signed time selections are covered. Keep the existing #171 and pinned stage gates; this is preparation, not migrated advection.
 - Focused production check: `cargo test --test forward_timeloop test_forward_timeloop_synthetic_uniform_wind_is_deterministic -- --exact`; backward changes: `cargo test --test backward_timeloop`.
 - Operator structure: `cargo test --test forward_timeloop test_forward_timeloop_operator_call_order_is_preserved -- --exact`.
 - Required driver device/order regression: `cargo test --test forward_timeloop test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advance -- --exact --nocapture`.

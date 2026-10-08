@@ -34,7 +34,7 @@ The pipeline is **not** a claim that pristine FLEXPART is one linear call stack.
 
 ## Current implemented production path
 
-As audited on 2026-09-28, the production time loop already demonstrates the repository's intended GPU composition style, but it still uses the pre-#76 meteorology interfaces in several places.
+The #91 audit established the time loop's GPU composition style. #112 now routes both default advection drivers through #173 canonical U/V/normalized-center-W owners and #171 resident queries. Other meteorology consumers retain their existing inputs under #113–#115; operational provider decoding remains #32.
 
 Current high-level flow:
 
@@ -49,14 +49,15 @@ flowchart TD
 
     subgraph GPU[GPU / wgpu + WGSL]
         PB[(Persistent particle buffers)]
-        WB[(Persistent wind bracket buffers / textures)]
+        WB[(Canonical U/V/center-W + runtime geometry)]
         PBLB[(PBL buffers)]
         PBL[PBL diagnostics]
-        ADV[Advection]
+        ADV[Resident Petterssen\nprivate timestep state]
         TURB[Fused Hanna + Langevin\nproduction path]
         DRY[Dry deposition]
         WET[Wet deposition]
         DECAY[Decay when enabled]
+        COMMIT[Guarded whole-step publication]
         GRID[Concentration gridding]
     end
 
@@ -69,7 +70,7 @@ flowchart TD
     ADV --> TURB
     PBLB --> TURB
     TURB --> DRY --> WET --> DECAY
-    DECAY --> PB
+    DECAY --> COMMIT --> PB
     PB --> GRID
     GRID -->|explicit output D2H| OUT[Host output writer]
     PB -. optional diagnostics / synchronization .->|explicit D2H| HOSTSYNC[Host particle state]
@@ -78,7 +79,8 @@ flowchart TD
 Important existing architectural facts:
 
 - `GpuContext` owns the common `wgpu::Device` and `wgpu::Queue`.
-- Persistent wind, particle and PBL resources already exist.
+- Persistent canonical wind, particle and PBL resources already exist.
+- Resident advection keeps current/predicted queries and values on-device; all downstream particle operators use private timestep state until guarded publication. See [the exact migration inventory](resident-advection.md).
 - Production GPU work is composed with `encode_*` functions into caller-owned command encoders where available.
 - Wind brackets are uploaded when the meteorological bracket changes rather than materializing a fresh host-side wind field for every particle step.
 - The production path already avoids mandatory particle readback every timestep when host synchronization is disabled.
@@ -97,7 +99,8 @@ This current path is evidence for the architecture; it is **not** the final cano
 | --- | --- | --- |
 | Runtime | `gpu::GpuContext` | One device/queue/adapter owner for the run |
 | Particle state | `gpu::ParticleBuffers` | Persistent device state; incremental release H2D; named diagnostic/output D2H |
-| Wind brackets | `gpu::DualWindBuffers` / `WindBuffers` | Uploaded on bracket/resource change and reused by advection |
+| Production wind brackets | `simulation::CanonicalMeteorologyResources` / `CanonicalMeteorologySlot` | Validated canonical fields/geometry uploaded on source change and reused by resident advection |
+| Legacy wind brackets | `gpu::DualWindBuffers` / `WindBuffers` | Explicit standalone/legacy diagnostics only; unavailable as a production fallback |
 | PBL state | `gpu::PblBuffers` and `SurfaceFieldBuffer` | Persistent/double-buffered resources used by composed turbulence stages |
 | Composed calculation | `simulation::timeloop` plus stage `encode_*` APIs | Multiple dependent stages share a caller-owned encoder and submission |
 | Standalone completion | stage `dispatch_*` helpers | May submit/wait; not used as a forced handoff between composed stages |
@@ -263,9 +266,9 @@ Processes that do not require meteorological sampling, such as a purely paramete
 
 | Concern | Current repository behavior | Target boundary |
 | --- | --- | --- |
-| Meteorology input | Existing time loop still uses legacy/current wind/surface structures in production paths | Provider-independent #29 Snapshot + #30 runtime geometry as source contract |
-| Temporal wind use | Dual wind brackets + GPU-side alpha already demonstrate device-side time sampling | Generalized #89 semantics through #76 for canonical instantaneous fields |
-| Horizontal/vertical sampling | Existing advection/interpolation shaders contain specialized sampling paths | Canonical #87/#88 semantics reused through #76 |
+| Meteorology input | Advection requires #173 canonical inputs; surface/other consumers remain legacy under their own tickets | Provider-independent #29 Snapshot + #30 runtime geometry as source contract |
+| Temporal wind use | Advection resolves separate current and signed advanced-time #89 selections | Generalized #89 semantics through #76 for canonical instantaneous fields |
+| Horizontal/vertical sampling | Production advection composes #87/#88 through #76/#171; specialized legacy samplers remain diagnostic | Canonical #87/#88 semantics reused through #76 |
 | Accumulated precipitation | Canonical CPU semantics exist from #75 | #90 GPU transformation, then #76 consumes explicit rates/amounts |
 | Physics consumers | Several kernels still own specialized field access/forcing paths | #77 migrates applicable consumers to canonical GPU meteorology access |
 | Particle state | Persistent GPU buffers already exist | Preserve device residency across production timesteps |

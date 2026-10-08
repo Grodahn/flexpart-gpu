@@ -640,6 +640,7 @@ jobs:
             grep -q 'RESIDENT-ADVECTION-112' "target/ci-gate/resident-advection-$mode.log"
             grep -q 'RESIDENT-ADVECTION-112-DEFERRED' "target/ci-gate/resident-advection-$mode.log"
             python3 scripts/check_resident_advection_evidence.py
+            if [ "$mode" = production ]; then python3 scripts/test_check_resident_advection_evidence.py; fi
             cp target/ci-gate/resident-advection-production/interior-deferred-boundary.json "target/ci-gate/resident-advection-production/$mode-interior-deferred-boundary.json"
             cp target/ci-gate/resident-advection-production/report.json "target/ci-gate/resident-advection-production/$mode-report.json"
           done

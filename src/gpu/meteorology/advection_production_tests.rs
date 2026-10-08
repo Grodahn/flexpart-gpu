@@ -190,7 +190,7 @@ fn test_production_forward_backward_resident_petterssen_atomicity() {
                     let mut slot = CanonicalMeteorologySlot::default();
                     let (particles, status, metadata, values, queries, initial, adapter, failed) =
                         if backward {
-                            let config = BackwardTimeLoopConfig {
+                            let mut config = BackwardTimeLoopConfig {
                                 start_timestamp: "20240101000001".into(),
                                 end_timestamp: "20240101000000".into(),
                                 timestep_seconds: 1,
@@ -204,6 +204,15 @@ fn test_production_forward_backward_resident_petterssen_atomicity() {
                                 }],
                                 ..BackwardTimeLoopConfig::default()
                             };
+                            if failure.is_some() && count > 1 {
+                                let mut unaffected = config.receptors[0].clone();
+                                unaffected.lon = 7.3125;
+                                unaffected.particle_count = (count - 1) as u64;
+                                unaffected.mass_kg = (count - 1) as f64 / count as f64;
+                                config.receptors[0].particle_count = 1;
+                                config.receptors[0].mass_kg = 1.0 / count as f64;
+                                config.receptors.push(unaffected);
+                            }
                             let mut driver =
                                 pollster::block_on(BackwardTimeLoopDriver::new(config, grid, 130))
                                     .expect("required backward WGSL adapter");
@@ -266,7 +275,7 @@ fn test_production_forward_backward_resident_petterssen_atomicity() {
                                 timestep_seconds: 1,
                                 ..ForwardTimeLoopConfig::default()
                             };
-                            let releases = [ReleaseConfig {
+                            let mut releases = vec![ReleaseConfig {
                                 name: "probe".into(),
                                 start_time: "20240101000000".into(),
                                 end_time: "20240101000000".into(),
@@ -279,6 +288,15 @@ fn test_production_forward_backward_resident_petterssen_atomicity() {
                                 species_masses_kg: None,
                                 raw: BTreeMap::new(),
                             }];
+                            if failure.is_some() && count > 1 {
+                                let mut unaffected = releases[0].clone();
+                                unaffected.lon = 7.3125;
+                                unaffected.particle_count = (count - 1) as u64;
+                                unaffected.mass_kg = (count - 1) as f64 / count as f64;
+                                releases[0].particle_count = 1;
+                                releases[0].mass_kg = 1.0 / count as f64;
+                                releases.push(unaffected);
+                            }
                             let mut driver = pollster::block_on(ForwardTimeLoopDriver::new(
                                 config, &releases, grid, 130,
                             ))
@@ -350,6 +368,11 @@ fn test_production_forward_backward_resident_petterssen_atomicity() {
                         let (component, stage) = failure.unwrap();
                         let region = (stage * 3 + component) * 131;
                         assert_ne!(status[region], 0, "required failing sample status");
+                        assert!(matches!(status[region + 1], 3..=9));
+                        if count > 1 {
+                            assert!(status[region + 2..region + 1 + count].iter().all(|s| *s == 2),
+                                "one failed lane must prevent updates to every valid lane across workgroups");
+                        }
                     } else {
                         let expected = if varying {
                             if backward {
@@ -395,7 +418,7 @@ fn test_production_forward_backward_resident_petterssen_atomicity() {
                         }
                     }
                     rows.push(json!({"backward":backward,"varying":varying,"active_count":count,"capacity":130,
-                "failure":failure,"status":status,"metadata":metadata,"sampled_values":values,"queries":queries,"adapter":adapter,"atomic_preservation":failure.is_some(),
+                "failure":failure,"mixed_lane_failure":failure.is_some() && count > 1,"status":status,"metadata":metadata,"sampled_values":values,"queries":queries,"adapter":adapter,"atomic_preservation":failure.is_some(),
                 "source_snapshot_sha256":[snapshot_hash(&s0).unwrap(),snapshot_hash(&s1).unwrap()],
                 "query_roundtrip":false,"owning_submissions":1,"input_file":input_file,"input_sha256":input_hash}));
                 }

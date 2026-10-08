@@ -5,9 +5,11 @@ from launch to output. It maps FLEXPART concepts to the actual Rust/WGSL
 modules and shows what runs on CPU vs GPU.
 
 Two execution paths exist (see [architecture.md](../architecture.md) for
-rationale): the **fused Hanna+Langevin** path (production default, 4 GPU
-dispatches) and the **separated** path (scientific validation, enabled with
-`FLEXPART_GPU_VALIDATION=1`, 5 GPU dispatches).
+rationale): the **fused Hanna+Langevin** path (production default) and the **separated**
+path (diagnostic validation, enabled with `FLEXPART_GPU_VALIDATION=1`). Both use
+the same canonical resident Petterssen sequence described in
+[the production inventory](../resident-advection.md). Backward retains its
+existing separated turbulence operators and signed negative advection timestep.
 
 ## High-Level Pipeline — Production (Fused Hanna+Langevin)
 
@@ -30,9 +32,9 @@ dispatches) and the **separated** path (scientific validation, enabled with
 │  │    Inject new particles at scheduled source times            │   │
 │  └──────────────────────────────┬───────────────────────────────┘   │
 │  ┌──────────────────────────────▼───────────────────────────────┐   │
-│  │ 2. WIND BRACKETS      CPU→GPU  (once per met bracket change) │   │
-│  │    Upload wind_t0 and wind_t1 to GPU. Compute interpolation  │   │
-│  │    factor α = (t − t0)/(t1 − t0). GPU interpolates inline.  │   │
+│  │ 2. CANONICAL WIND     CPU→GPU  (once per source change)      │   │
+│  │    Prepare #173 U/V/center-W + exact #30 runtime geometry    │   │
+│  │    Resolve separate current/predicted #89 time selections   │   │
 │  └──────────────────────────────┬───────────────────────────────┘   │
 │  ┌──────────────────────────────▼───────────────────────────────┐   │
 │  │ 3. SURFACE FIELDS     CPU→GPU                                │   │
@@ -43,8 +45,8 @@ dispatches) and the **separated** path (scientific validation, enabled with
 │  │    Compute u*, w*, L, h per grid cell on GPU                 │   │
 │  └──────────────────────────────┬───────────────────────────────┘   │
 │  ┌──────────────────────────────▼───────────────────────────────┐   │
-│  │ 5. GPU PHYSICS (4 dispatches, single command encoder)        │   │
-│  │    5a. Advection (3D texture dual-wind)                      │   │
+│  │ 5. GPU PHYSICS (ordered passes, single command encoder)     │   │
+│  │    5a. Resident Petterssen into private timestep state       │   │
 │  │    5b. Fused Hanna+Langevin (turbulence + PBL reflection)    │   │
 │  │    5c. Dry deposition                                        │   │
 │  │    5d. Wet deposition                                        │   │
@@ -68,15 +70,15 @@ dispatches) and the **separated** path (scientific validation, enabled with
 
 ## High-Level Pipeline — Validation (Separated Dispatches)
 
-When `FLEXPART_GPU_VALIDATION=1` is set, step 5 above is replaced by five
-separate dispatches (identical physics, separate shaders for easier debugging
+When `FLEXPART_GPU_VALIDATION=1` is set, step 5 above uses the following
+separate stages (same scoped equations, separate shaders for easier debugging
 and comparison against Fortran):
 
 ```
 │  ┌──────────────────────────────────────────────────────────────┐   │
 │  │               GPU COMMAND ENCODER  (single submit)           │   │
 │  │                                                              │   │
-│  │  5a. ADVECTION       GPU   shaders/advection_dual_wind.wgsl │   │
+│  │  5a. ADVECTION       GPU   canonical resident Petterssen     │   │
 │  │  5b. HANNA PARAMS    GPU   shaders/hanna_params.wgsl        │   │
 │  │  5c. LANGEVIN        GPU   shaders/langevin.wgsl            │   │
 │  │  5d. DRY DEPOSITION  GPU   shaders/dry_deposition.wgsl      │   │
@@ -98,24 +100,20 @@ initialised (position, mass, species) and uploaded to the GPU particle buffer.
 
 **Fortran equivalent:** `releaseparticles` in `timemanager.f90`.
 
-### 2. Wind Bracket Upload (`simulation/timeloop.rs`)
+### 2. Canonical Wind Preparation (`simulation/timeloop/meteorology.rs`)
 
-Wind fields (`WindField3D`) are managed as time brackets (t0, t1). When the
-simulation time crosses a bracket boundary, new wind data is read (optionally
-via async prefetch from `io/grib2_async.rs`) and uploaded to the GPU as two
-persistent buffers (`wind_t0`, `wind_t1`). An interpolation factor α is
-computed each step and passed as a uniform:
+Both production drivers require a validated `CanonicalMeteorologyBracket` and
+matching #30 runtime geometry. `prepare_canonical_meteorology` and the retained
+`CanonicalMeteorologySlot` prepare persistent scalar U, V and normalized
+model-center W GPU owners. No canonical metadata is inferred from legacy wind
+fields. Operational legacy-only inputs fail closed pending #32.
 
-```
-α = (t − t0) / (t1 − t0)
-```
-
-The GPU performs the temporal interpolation inline during advection:
-`wind(t) = (1 − α) · wind_t0 + α · wind_t1`. This avoids re-uploading an
-interpolated wind field every timestep.
-
-**Fortran equivalent:** `getfields` → `readwind` + temporal interpolation in
-`timemanager.f90`.
+Current and signed advanced times are resolved independently through #89.
+A step outside source coverage rejects, including when a legacy surface-field
+bounds policy permits clamping. The GPU samples each time through #87/#88/#89;
+no sampled particle query or velocity is returned to the host between stages.
+The previous dual-wind/one-alpha path is retained only by explicitly named
+legacy diagnostic APIs.
 
 ### 3. PBL Diagnostics — GPU (`shaders/pbl_diagnostics.wgsl`)
 
@@ -144,25 +142,30 @@ used in CPU-only tests.
 Each particle is advected by the mean wind using the Petterssen
 predictor–corrector scheme:
 
-1. Sample wind at current position → (u₀, v₀, w₀)
+1. Canonical sample at current position and time → (u₀, v₀, w₀)
 2. Predict: x\_pred = x + dt · v₀
-3. Sample wind at predicted position → (u₁, v₁, w₁)
+3. Canonical sample at predicted position and signed advanced time → (u₁, v₁, w₁)
 4. Correct: x\_final = x + dt · 0.5·(v₀ + v₁)
 
-Wind is trilinearly interpolated in (x, y, level) from the dual-bracket
-buffers (`wind_t0`, `wind_t1`) with temporal factor α. On GPUs that support
-3D textures, hardware-accelerated texture sampling replaces manual trilinear
-interpolation.
+Horizontal, vertical and temporal interpolation exclusively reuse #87/#88/#89
+through #76/#171. Predictor queries use the existing split signed-cell/fraction
+ABI and AGL metres without mutating scientific particles. Corrected state and
+all downstream particle physics remain private until whole-step guarded
+publication. A fatal U/V/W status in either stage preserves every scientific
+particle byte and prevents downstream eligibility.
 
-Velocities [m/s] are converted to grid displacement via `VelocityToGridScale`.
+Velocities [m/s] are converted to grid displacement via `VelocityToGridScale`;
+AGL height requires unit vertical scale. Existing turbulent U/V coupling and
+boundary clamps remain; changing physical model tops fail closed pending #180.
 
-**Shaders:**
-- `shaders/advection_texture_dual_wind.wgsl` (production, 3D texture path)
-- `shaders/advection_dual_wind.wgsl` (buffer fallback / validation path)
+**Consumer shaders:** `advection_predictor_query.wgsl`, `advection_corrector.wgsl`,
+`advection_step_guard.wgsl`, `advection_step_commit.wgsl`.
 
-**Dispatch:** `gpu/advection.rs`
+**Orchestration:** `gpu/advection_resident.rs`; the existing sampler kernels
+retain their own scientific contracts and pinned oracle evidence.
 
-**Fortran equivalent:** `advance.f90` (lines 817–923).
+**Fortran reference:** pinned `advance_mod.f90:664-779` (`petterssen_corr`).
+This scoped adoption does not establish full FLEXPART boundary/stochastic parity.
 
 ### 5. Hanna Turbulence Parameters + Langevin — GPU
 
@@ -245,31 +248,34 @@ and written to the output file.
 
 ### Production (fused Hanna+Langevin)
 
-Four compute dispatches plus PBL diagnostics, encoded into a single command
-encoder with sequential execution:
+Dependency-ordered resident advection and physics passes share one caller-owned
+encoder and submission. Downstream particle stages operate on private state:
 
 ```
 encoder = device.create_command_encoder()
 encoder.dispatch(pbl_diagnostics)        // per grid cell
-encoder.dispatch(advection)              // Petterssen predictor–corrector
+advection = ResidentAdvectionStep::encode(...) // six samples, predictor/corrector, eligibility
 encoder.dispatch(langevin_fused)         // inline Hanna + Langevin + PBL reflection
 encoder.dispatch(dry_deposition)         // mass survival
 encoder.dispatch(wet_deposition)         // mass survival
+advection.encode_commit(...)            // all required samples must pass
 queue.submit(encoder)
 ```
 
 ### Validation (separated dispatches)
 
-Five separate compute passes, encoded into a single command encoder:
+The same resident advection stages feed separated turbulence passes within one
+command encoder:
 
 ```
 encoder = device.create_command_encoder()
 encoder.dispatch(pbl_diagnostics)
-encoder.dispatch(advection)
+advection = ResidentAdvectionStep::encode(...)
 encoder.dispatch(hanna)
 encoder.dispatch(langevin)
 encoder.dispatch(dry_deposition)
 encoder.dispatch(wet_deposition)
+advection.encode_commit(...)
 queue.submit(encoder)
 ```
 
@@ -277,8 +283,8 @@ queue.submit(encoder)
 
 | Aspect | Fortran (`timemanager.f90`) | GPU (`simulation/timeloop.rs`) |
 |--------|---------------------------|-------------------------------|
-| Met I/O | `getfields` reads GRIB each step | Dual-bracket upload (once per met change) + async prefetch |
-| Wind interpolation | CPU, per-particle, per-step | GPU-side: `(1−α)·t0 + α·t1` inline during advection |
+| Met I/O | `getfields` reads GRIB each step | Canonical wind/geometry upload on source change; operational decoding pending #32 |
+| Wind interpolation | CPU, per-particle, per-step | GPU #87/#88/#89 at current and predicted positions/times |
 | PBL | `calcpar` (u\*, L, h) on CPU | `pbl_diagnostics.wgsl` on GPU (per grid cell) |
 | Convection | Emanuel scheme (`convmix`) | Not yet implemented |
 | Advection | `advance.f90` (per-particle loop) | GPU shader, all particles in parallel |
@@ -300,8 +306,8 @@ queue.submit(encoder)
 | **Fused H+L dispatch** | `src/gpu/langevin_fused.rs` | **CPU→GPU** |
 | GPU PBL diagnostics | `src/shaders/pbl_diagnostics.wgsl` | GPU |
 | GPU PBL dispatch | `src/gpu/pbl.rs` | CPU→GPU |
-| Advection kernel | `src/shaders/advection_texture_dual_wind.wgsl` | GPU |
-| Advection dispatch | `src/gpu/advection.rs` | CPU→GPU |
+| Advection consumers | `src/shaders/advection_predictor_query.wgsl`, `advection_corrector.wgsl`, `advection_step_guard.wgsl`, `advection_step_commit.wgsl` | GPU |
+| Advection orchestration | `src/gpu/advection_resident.rs` | CPU encode, GPU-resident intermediates |
 | Hanna kernel (validation) | `src/shaders/hanna_params.wgsl` | GPU |
 | Hanna dispatch (validation) | `src/gpu/hanna.rs` | CPU→GPU |
 | Langevin kernel (validation) | `src/shaders/langevin.wgsl` | GPU |
@@ -316,4 +322,4 @@ queue.submit(encoder)
 | Gridding dispatch | `src/gpu/gridding.rs` | CPU→GPU |
 | Particle buffer | `src/gpu/buffers.rs` | GPU memory |
 | Coordinate transforms | `src/coords/mod.rs` | CPU + GPU |
-| ETEX driver (example) | `src/bin/etex-run.rs` | CPU (main) |
+| ETEX real-file driver (blocked pending #32 canonical inputs) | `src/bin/etex-run.rs` | CPU (main) |

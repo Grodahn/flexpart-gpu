@@ -80,7 +80,8 @@ or pinned oracle definitions are changed. This is not full FLEXPART parity.
 requires actual WGSL execution through both real production drivers. It covers
 constant/spatially varying U, distinct positions/times, signed backward motion,
 active prefixes 1/3/130, predictor-only V/W and initial-U device-source poisoning,
-cross-workgroup atomic preservation, nontrivial inactive tails, interior-time
+cross-workgroup atomic preservation with one failing lane among otherwise valid
+lanes, nontrivial inactive tails, interior-time
 forward sampling, deferred failure rejection before a subsequent release/output,
 and fail-closed changing-top geometry. Deliberately
 contradictory legacy wind proves it is not sampled by the canonical branch.

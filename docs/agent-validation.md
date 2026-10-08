@@ -224,7 +224,10 @@ missing/malformed mandatory evidence never pass. Resident evidence is checked
 against existing #171 identities and execution fields; advection requires the
 existing adapter/displacement markers and successful exact test. Paired checks
 delegate to `agent_validation.py`, retain its pinned identity and diagnostic
-scientific verdict, and consume its existing reports. This adds no comparison
+scientific verdict, and consume its existing reports. The shared provenance
+validator checks manifest bindings and artifact hashes, including the consumed
+comparison report. Dirty-checkout attribution remains explicitly `PARTIAL`;
+missing mandatory identity or artifact evidence fails. This adds no comparison
 algorithm, tolerance, fixture, or oracle build path.
 
 Normal Cargo/Docker caches remain intact. The resident producer has a fixed
@@ -249,3 +252,9 @@ Likewise, the existing manifest tests skip when a pinned FLEXPART checkout is
 absent at the repository sibling `../flexpart`. This makes the
 validation-provenance domain profile nonzero with an explicit `SKIPPED` stage.
 Provide that existing prerequisite; do not treat a skipped profile as validation. These limitations leave mandatory CI gates unchanged.
+
+Forward selections explicitly set `FLEXPART_GPU_VALIDATION=0` for the normal
+path and `=1` for the separated path, so an inherited debugging setting cannot
+collapse both checks into one. Output-directory, stage-log, and summary-write
+failures emit compact `ERROR` JSON. When no summary can be persisted, `summary`
+is null; an already observed nonzero subprocess status is retained.

@@ -74,7 +74,9 @@ class RunnerTests(unittest.TestCase):
                     with self.subTest(domain=domain, level=level, stage=stage.name):
                         command = ["PYTHON" if part == sys.executable else part for part in stage.command]
                         self.assertEqual(command, expected[stage.name].split())
-                        self.assertEqual(stage.environment, (("FLEXPART_GPU_VALIDATION", "1"),) if stage.name == "forward-validation" else ())
+                        mode = "1" if stage.name == "forward-validation" else "0"
+                        expected_env = (("FLEXPART_GPU_VALIDATION", mode),) if stage.name in ("forward", "forward-validation", "order") else ()
+                        self.assertEqual(stage.environment, expected_env)
 
     def test_list_and_invalid_selection_do_not_run(self):
         with mock.patch.object(sys, "argv", ["agent_tests", "--list"]), mock.patch.object(runner.subprocess, "run") as run, contextlib.redirect_stdout(io.StringIO()) as output:
@@ -223,28 +225,131 @@ class RunnerTests(unittest.TestCase):
             source.write_text("{}")
             self.assertNotEqual(retained.read_bytes(), source.read_bytes())
 
+    def paired_fixture(self, dirty=False):
+        provenance = runner.provenance
+        paired = self.run / "paired"
+        paired.mkdir(exist_ok=True)
+        (self.run / "reference").mkdir(exist_ok=True)
+        pin, revision = "b" * 40, "a" * 40
+        (self.run / "reference/flexpart-11.1.json").write_text(json.dumps({"pinned_commit": pin}))
+        case_path = paired / "ADV-ANA-001.json"
+        case_path.write_text('{"schema_version":2,"case_id":"ADV-ANA-001"}')
+        seed = paired / "seed_000.json"
+        seed.write_text('{"seed_index":0}')
+        header = paired / "header"
+        header.write_bytes(b"oracle-output")
+        report_path = paired / "comparison-report.json"
+        report = {"status": "DIAGNOSTIC_NO_PARITY_VERDICT", "cases": {"ADV-ANA-001": {
+            "status": "implemented", "seeds": [{"seed_index": 0}],
+            "candidate_files": {str(seed): provenance.digest(seed)},
+            "oracle_files": {str(header): provenance.digest(header)},
+            "oracle_budget": {"status": "closed"}}}}
+        report_path.write_text(json.dumps(report))
+        case = provenance.case_manifest_identity(case_path)
+        build = provenance.candidate_build_identity(revision, "c" * 64)
+        common = {"case": case, "realization": {}, "candidate_revision": revision,
+            "candidate_build": build, "candidate_executable_sha256": "c" * 64,
+            "oracle_kind": provenance.ORACLE_PRISTINE, "oracle_revision": pin,
+            "oracle_executable_sha256": "d" * 64,
+            "oracle_profile": {"id": provenance.ORACLE_PROFILE_ID, "version": 1},
+            "inputs_sha256": {report_path.name: provenance.digest(report_path), case_path.name: provenance.digest(case_path)}}
+        executions = [
+            provenance.build_execution_record(role="candidate", runtime_adapter="fixture-adapter",
+                outputs_sha256={seed.name: provenance.digest(seed)}, **common),
+            provenance.build_execution_record(role="oracle", cpu_runtime="flexpart-11.1-single-thread",
+                outputs_sha256={header.name: provenance.digest(header)}, **common),
+        ]
+        manifest = provenance.create_run_manifest(cases=[case],
+            candidate={"revision": revision, "worktree_dirty": dirty, "executable_sha256": "c" * 64, "build": build},
+            oracle={"kind": provenance.ORACLE_PRISTINE, "pinned_commit": pin, "worktree_dirty": False,
+                "executable_sha256": "d" * 64, "execution_profile": common["oracle_profile"]},
+            runtime={"adapter": "fixture-adapter", "cpu_runtime": "flexpart-11.1-single-thread"},
+            executions=executions, base=str(paired))
+        manifest_path = paired / "run-manifest.json"
+        manifest_path.write_text(json.dumps(manifest))
+        summary = {"schema": "flexpart-gpu.agent-validation-summary.v1", "state": "PASS", "check": "comparison", "case_id": "ADV-ANA-001",
+            "candidate": {"revision": revision}, "oracle": {"pinned_commit": pin}, "scientific_verdict": report["status"],
+            "stages": [{"stage": name, "exit_code": 0} for name in ("candidate", "oracle", "input-audit", "comparison", "manifest")],
+            "summary": str(paired / "summary.json"), "evidence": [str(report_path), str(manifest_path)]}
+        (paired / "summary.json").write_text(json.dumps(summary))
+        return summary, report, manifest
+
     def test_paired_success_consumes_existing_verdict_and_identity(self):
         with mock.patch.object(runner, "REPO", self.run):
-            (self.run / "reference").mkdir()
-            (self.run / "reference/flexpart-11.1.json").write_text('{"pinned_commit":"pin"}')
+            summary, _report, _manifest = self.paired_fixture()
             paired = self.run / "paired"
-            paired.mkdir()
-            for name in ("comparison-report.json", "run-manifest.json"):
-                (paired / name).write_text('{"existing":"evidence"}')
-            summary = {"schema": "flexpart-gpu.agent-validation-summary.v1", "state": "PASS", "check": "comparison", "case_id": "ADV-ANA-001",
-                "candidate": {"revision": "a" * 40}, "oracle": {"pinned_commit": "pin"}, "scientific_verdict": "DIAGNOSTIC_NO_PARITY_VERDICT",
-                "stages": [{"stage": s, "exit_code": 0} for s in ("candidate", "oracle", "input-audit", "comparison", "manifest")],
-                "summary": str(paired / "summary.json"), "evidence": [str(paired / "comparison-report.json"), str(paired / "run-manifest.json")]}
-            (paired / "summary.json").write_text(json.dumps(summary))
             result = self.execute(kind="paired")
             self.assertEqual(result["state"], "PASS")
             self.assertEqual(result["scientific_verdict"], summary["scientific_verdict"])
+            self.assertEqual(result["stages"][0]["evidence"]["provenance_state"], "VERIFIED")
             for field, value in (("stages", []), ("evidence", []), ("oracle", {"pinned_commit": "wrong"}), ("scientific_verdict", "PARITY")):
                 (paired / "summary.json").write_text(json.dumps(dict(summary, **{field: value})))
                 self.assertEqual(self.execute(kind="paired")["state"], "ERROR")
             (paired / "summary.json").write_text("{")
-            result = self.execute(code=37, kind="paired")
-            self.assertEqual(result["exit_code"], 37)
+            self.assertEqual(self.execute(code=37, kind="paired")["exit_code"], 37)
+
+    def test_paired_rejects_nonempty_malformed_reports_and_manifests(self):
+        with mock.patch.object(runner, "REPO", self.run):
+            for filename in ("comparison-report.json", "run-manifest.json"):
+                self.paired_fixture()
+                (self.run / "paired" / filename).write_text('{"existing":"evidence"}')
+                with self.subTest(filename=filename):
+                    self.assertEqual(self.execute(kind="paired")["state"], "ERROR")
+            self.paired_fixture()
+            (self.run / "paired/header").write_bytes(b"substituted oracle output")
+            self.assertEqual(self.execute(kind="paired")["state"], "ERROR")
+            self.paired_fixture()
+            (self.run / "paired/seed_000.json").unlink()
+            self.assertEqual(self.execute(kind="paired")["state"], "ERROR")
+
+    def test_paired_keeps_dirty_checkout_attribution_explicitly_partial(self):
+        with mock.patch.object(runner, "REPO", self.run):
+            self.paired_fixture(dirty=True)
+            result = self.execute(kind="paired")
+            self.assertEqual(result["state"], "PASS")
+            self.assertEqual(result["stages"][0]["evidence"]["provenance_state"], "PARTIAL")
+
+    def test_forward_profiles_override_inherited_validation_mode(self):
+        stages = runner.selections()["simulation"]["domain"][1:3]
+        environments = []
+        text = "test result: ok. 1 passed; 0 failed; 0 ignored\n" + runner.ORDER_MARKER + "\nTIMELOOP-DEFERRED-126: WGSL output\nTIMELOOP-ERROR-126: retry"
+        def process(command, **kwargs):
+            environments.append(kwargs["env"]["FLEXPART_GPU_VALIDATION"])
+            kwargs["stdout"].write(text.encode())
+            return subprocess.CompletedProcess(command, 0)
+        with mock.patch.dict(runner.os.environ, {"FLEXPART_GPU_VALIDATION": "1"}), mock.patch.object(runner.subprocess, "run", side_effect=process):
+            result = runner.run_stages("simulation", "domain", stages, self.run, "revision")
+        self.assertEqual(result["state"], "PASS")
+        self.assertEqual(environments, ["0", "1"])
+
+    def test_unwritable_run_directory_emits_compact_error_without_launch(self):
+        with mock.patch.object(runner, "REPO", self.run), mock.patch.object(sys, "argv", ["agent_tests", "--domain", "simulation"]), mock.patch.object(Path, "mkdir", side_effect=PermissionError("denied")), mock.patch.object(runner.subprocess, "run") as process, contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(runner.main(), 1)
+            process.assert_not_called()
+        summary = json.loads(output.getvalue())
+        self.assertEqual(summary["state"], "ERROR")
+        self.assertIsNone(summary["summary"])
+        self.assertEqual(len(output.getvalue().splitlines()), 1)
+
+    def test_unwritable_stage_log_does_not_escape_error_summary(self):
+        with mock.patch.object(Path, "open", side_effect=PermissionError("log denied")):
+            summary = self.execute()
+        self.assertEqual(summary["state"], "ERROR")
+        self.assertEqual(summary["exit_code"], 1)
+        self.assertIsNone(summary["stages"][0]["exit_code"])
+        self.assertIsNone(summary["stages"][0]["output_bytes"])
+        self.assertEqual(summary["stages"][1]["state"], "NOT_RUN")
+
+    def test_unwritable_summary_preserves_nonzero_subprocess_status(self):
+        for code in (0, 37, -15):
+            summary = self.execute(code=code)
+            with mock.patch.object(Path, "write_text", side_effect=PermissionError("summary denied")), contextlib.redirect_stdout(io.StringIO()) as output:
+                runner.emit(summary)
+            emitted = json.loads(output.getvalue())
+            self.assertEqual(emitted["state"], "ERROR")
+            self.assertEqual(emitted["exit_code"], code or 1)
+            self.assertIsNone(emitted["summary"])
+            self.assertEqual(emitted["terminal_bytes"], len(output.getvalue().encode()))
 
     def test_paired_delegation_and_malformed_evidence(self):
         stage = runner.selections()["transport-advection"]["domain"][1]

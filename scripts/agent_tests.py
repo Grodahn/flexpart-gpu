@@ -16,6 +16,7 @@ import tempfile
 import time
 
 import agent_validation
+from provenance import run_provenance as provenance
 
 REPO = Path(__file__).resolve().parents[1]
 SCHEMA = "flexpart-gpu.agent-tests-summary.v1"
@@ -72,7 +73,8 @@ def selections():
     preflight = Stage("preflight", ("cargo", "run", "--bin", "gpu-preflight", "--",
         "--software", "--json-output", "{run}/preflight.json"), "preflight")
     order = cargo("order", "--test", "forward_timeloop",
-        "test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advance", "--exact", evidence="order")
+        "test_forward_timeloop_transport_precedes_deposition_and_reports_precede_advance", "--exact",
+        evidence="order", environment=(("FLEXPART_GPU_VALIDATION", "0"),))
     wrapper = python_test("wrapper", "scripts/test_agent_validation.py")
     paired = Stage("paired", (sys.executable, "scripts/agent_validation.py", "--check", "comparison",
         "--case", "ADV-ANA-001", "--output-dir", "{run}/paired"), "paired")
@@ -84,7 +86,8 @@ def selections():
         "transport-advection": {"focused": (advection,), "domain": (advection, paired)},
         "simulation": {
             "focused": (preflight, order),
-            "domain": (preflight, cargo("forward", "--test", "forward_timeloop", evidence="forward"),
+            "domain": (preflight, cargo("forward", "--test", "forward_timeloop", evidence="forward",
+                environment=(("FLEXPART_GPU_VALIDATION", "0"),)),
                 cargo("forward-validation", "--test", "forward_timeloop", evidence="forward",
                     environment=(("FLEXPART_GPU_VALIDATION", "1"),)),
                 cargo("backward", "--test", "backward_timeloop", evidence="legacy-backward")),
@@ -203,9 +206,31 @@ def validate_evidence(stage, output, run, revision):
         for path in summary["evidence"]:
             p = Path(path)
             require(p.exists() and (any(p.iterdir()) if p.is_dir() else p.stat().st_size > 0), f"empty paired evidence: {path}")
-        read_json(run / "paired/comparison-report.json")
-        read_json(run / "paired/run-manifest.json")
-        return {"scientific_verdict": summary["scientific_verdict"], "paths": [summary["summary"], *summary["evidence"]]}
+        report_path = run / "paired/comparison-report.json"
+        report = read_json(report_path)
+        require(report.get("status") == summary["scientific_verdict"], "paired report verdict")
+        require(set(report.get("cases", {})) == {"ADV-ANA-001"}, "paired report case coverage")
+        case = report["cases"]["ADV-ANA-001"]
+        require(case.get("status") == "implemented" and case.get("seeds"), "missing paired candidate results")
+        require(case.get("candidate_files") and case.get("oracle_files") and case.get("oracle_budget"), "missing paired output evidence")
+        manifest_path = run / "paired/run-manifest.json"
+        manifest = read_json(manifest_path)
+        roots = [run / "paired"]
+        roots.extend(Path(path) for path in summary["evidence"] if Path(path).is_dir())
+        roots.extend(REPO / path for path in (
+            "target/corpus/meteo/ADV-ANA-001", "fixtures/corpus/fortran/ADV-ANA-001",
+            "fixtures/corpus/cases", "fixtures/corpus", "reference"))
+        verified = provenance.verify_run_manifest(manifest_path, search_roots=roots)
+        require(manifest["candidate"]["revision"] == revision and manifest["oracle"]["pinned_commit"] == pin, "paired manifest revision identity")
+        require({c["case_id"] for c in manifest["cases"]} == {"ADV-ANA-001"}, "paired manifest case coverage")
+        require({e["role"] for e in manifest["executions"]} >= {"candidate", "oracle"}, "missing paired execution bindings")
+        # A dirty development checkout is an existing, explicitly partial identity.
+        require(all(gap.get("name") == "candidate.worktree_clean" for gap in verified["missing"]), "missing mandatory paired provenance")
+        consumed = provenance.verify_artifact_set(
+            manifest_path, [("comparison-report", report_path)], search_roots=roots)
+        require(consumed["state"] == provenance.ATTRIBUTION_VERIFIED, "comparison report absent from provenance")
+        return {"scientific_verdict": summary["scientific_verdict"],
+            "provenance_state": verified["state"], "paths": [summary["summary"], *summary["evidence"]]}
     return {"paths": []}
 
 
@@ -233,7 +258,7 @@ def file_stamp(path):
 
 def stage_result(stage, run, revision):
     """Describe even unstarted stages with the same versioned audit fields."""
-    command = [part.replace("{run}", str(run)) for part in stage.command]
+    command = [part.replace("{run}", str(run) if run is not None else "{run}") for part in stage.command]
     return {"stage": stage.name, "state": "NOT_RUN", "command": command,
         "environment": {"FLEXPART_GPU_SOFTWARE": "1", "FLEXPART_GPU_CANDIDATE_REVISION": revision, **dict(stage.environment)},
         "exit_code": None, "elapsed_seconds": 0, "output_bytes": 0,
@@ -250,7 +275,7 @@ def run_stages(domain, level, stages, run, revision):
     environment["FLEXPART_GPU_SOFTWARE"] = "1"
     environment["FLEXPART_GPU_CANDIDATE_REVISION"] = revision
     for stage in stages:
-        command = [part.replace("{run}", str(run)) for part in stage.command]
+        command = [part.replace("{run}", str(run) if run is not None else "{run}") for part in stage.command]
         result = stage_result(stage, run, revision)
         results.append(result)
         if final != "PASS":
@@ -259,9 +284,11 @@ def run_stages(domain, level, stages, run, revision):
         result["log"] = str(log)
         clock = time.monotonic()
         output = ""
+        launch_attempted = False
         try:
             previous = file_stamp(REPO / RESIDENT_REPORT) if stage.evidence == "resident" else None
             with log.open("wb") as stream:
+                launch_attempted = True
                 process = subprocess.run(command, cwd=REPO, env={**environment, **dict(stage.environment)}, stdout=stream, stderr=subprocess.STDOUT, check=False)
             code = process.returncode
             result["exit_code"] = code
@@ -292,18 +319,19 @@ def run_stages(domain, level, stages, run, revision):
                 result["evidence"] = validate_evidence(stage, output, run, revision)
         except OSError as error:
             not_started = result["exit_code"] is None
-            code = (127 if isinstance(error, FileNotFoundError) else 1) if not_started else (result["exit_code"] or 1)
-            state = "BLOCKED" if not_started and isinstance(error, FileNotFoundError) else "ERROR"
+            missing_executable = not_started and launch_attempted and isinstance(error, FileNotFoundError)
+            code = (127 if missing_executable else 1) if not_started else (result["exit_code"] or 1)
+            state = "BLOCKED" if missing_executable else "ERROR"
             diagnostic = str(error)
-            with log.open("ab") as stream:
-                stream.write((diagnostic + "\n").encode())
-            output = log.read_bytes().decode("utf-8", errors="replace")
         except EvidenceBlocked as error:
             code, state, diagnostic = result["exit_code"] or 1, "BLOCKED", str(error)
         except (ValueError, KeyError, TypeError, AttributeError, IndexError) as error:
             code, state, diagnostic = result["exit_code"] or 1, "ERROR", str(error)
         result["elapsed_seconds"] = round(time.monotonic() - clock, 3)
-        result["output_bytes"] = log.stat().st_size
+        try:
+            result["output_bytes"] = log.stat().st_size
+        except OSError:
+            result["output_bytes"] = None
         if result["state"] != "SKIPPED":
             result["state"] = state
         if state != "PASS":
@@ -317,20 +345,29 @@ def run_stages(domain, level, stages, run, revision):
         "exit_code": exit_code, "revision": revision, "scientific_verdict": next((r.get("evidence", {}).get("scientific_verdict") for r in results if r.get("evidence", {}).get("scientific_verdict")), "NOT_EVALUATED"),
         "elapsed_seconds": round(time.monotonic() - started, 3),
         "counts": {key: sum(r["counts"][key] or 0 for r in results) for key in ("executed", "failed", "skipped")},
-        "output_bytes": sum(r["output_bytes"] for r in results), "stages": results,
+        "output_bytes": sum(r["output_bytes"] or 0 for r in results), "stages": results,
         "summary": str(run / "summary.json")}
 
 
 def emit(summary):
-    """Persist the full summary and print exactly one measured JSON line."""
-    summary["terminal_bytes"] = 0
-    while True:
-        line = json.dumps(summary, separators=(",", ":"), ensure_ascii=True) + "\n"
-        size = len(line.encode("utf-8"))
-        if size == summary["terminal_bytes"]:
-            break
-        summary["terminal_bytes"] = size
-    Path(summary["summary"]).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    """Retain a summary when possible; persistence failure must still emit JSON."""
+    def compact_line():
+        summary["terminal_bytes"] = 0
+        while True:
+            line = json.dumps(summary, separators=(",", ":"), ensure_ascii=True) + "\n"
+            size = len(line.encode("utf-8"))
+            if size == summary["terminal_bytes"]:
+                return line
+            summary["terminal_bytes"] = size
+
+    line = compact_line()
+    if summary["summary"] is not None:
+        try:
+            Path(summary["summary"]).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        except OSError as error:
+            summary.update(state="ERROR", exit_code=summary["exit_code"] or 1,
+                summary=None, diagnostic_tail=agent_validation.bounded_tail(str(error)))
+            line = compact_line()
     if hasattr(sys.stdout, "buffer"):
         sys.stdout.buffer.write(line.encode("utf-8"))
         sys.stdout.buffer.flush()
@@ -350,22 +387,25 @@ def main():
     if not args.domain:
         parser.error("--domain is required unless --list is used")
     root = REPO / "target/agent-tests" / args.domain
-    root.mkdir(parents=True, exist_ok=True)
-    run = Path(tempfile.mkdtemp(prefix=time.strftime("%Y%m%dT%H%M%S-"), dir=root)).resolve()
+    run = None
     stages = selections()[args.domain][args.level]
     started = time.monotonic()
     revision = "unknown"
     try:
+        root.mkdir(parents=True, exist_ok=True)
+        run = Path(tempfile.mkdtemp(prefix=time.strftime("%Y%m%dT%H%M%S-"), dir=root)).resolve()
         revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO, text=True, stderr=subprocess.PIPE).strip()
         with evidence_lock(stages):
             summary = run_stages(args.domain, args.level, stages, run, revision)
     except (OSError, subprocess.SubprocessError) as error:
-        summary = {"schema": SCHEMA, "domain": args.domain, "profile": args.level, "state": "BLOCKED", "exit_code": 1,
+        summary = {"schema": SCHEMA, "domain": args.domain, "profile": args.level, "state": "BLOCKED" if isinstance(error, FileExistsError) else "ERROR",
+            "exit_code": getattr(error, "returncode", 1),
             "diagnostic_tail": agent_validation.bounded_tail(str(error)), "failed_stage": "setup",
             "revision": revision, "elapsed_seconds": round(time.monotonic() - started, 3),
             "counts": {"executed": 0, "failed": 0, "skipped": 0}, "output_bytes": 0,
             "scientific_verdict": "NOT_EVALUATED",
-            "stages": [stage_result(s, run, revision) for s in stages], "summary": str(run / "summary.json")}
+            "stages": [stage_result(s, run, revision or "unknown") for s in stages],
+            "summary": str(run / "summary.json") if run else None}
     emit(summary)
     code = summary["exit_code"]
     if code < 0 and os.name != "nt":

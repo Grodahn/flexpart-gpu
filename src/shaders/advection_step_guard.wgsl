@@ -16,14 +16,6 @@ fn failed() -> bool {
     }
     return false;
 }
-fn finite(v: f32) -> bool { return abs(v) <= 3.402823466e38; }
-// Split-cell arithmetic never reconstructs a signed cell as a floating-point position.
-fn moved(cell: i32, fraction: f32, delta: f32, n: u32) -> vec2<f32> {
-    let local = fraction + delta;
-    let bounded = clamp(local, -f32(cell), f32(i32(n - 1u) - cell));
-    let shift = floor(bounded);
-    return vec2<f32>(shift, bounded - shift);
-}
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) nwg: vec3<u32>) {
     let lane = gid.y * (nwg.x * 64u) + gid.x;

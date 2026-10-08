@@ -98,6 +98,11 @@ impl ForwardTimeLoopDriver {
                     .resolve_step_times(self.current_time_seconds, self.config.timestep_seconds)
             })
             .transpose()?;
+        // A deferred fatal transaction must be rejected before another release or sort mutates particles.
+        if let Some(step) = &self.pending_advection {
+            step.require_success(&self.gpu_context).await?;
+        }
+        self.pending_advection = None;
         self.apply_spatial_sort_if_enabled()?;
 
         let profiling = is_profiling_enabled();
@@ -160,6 +165,7 @@ impl ForwardTimeLoopDriver {
             step.require_success(&self.gpu_context).await?;
         }
         self.pending_advection = None;
+
         self.staged_particles
             .set_dispatch_count(self.particle_buffers.particle_count());
 

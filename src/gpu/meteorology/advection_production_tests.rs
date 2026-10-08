@@ -461,3 +461,203 @@ fn poison(
         );
     }
 }
+
+#[test]
+fn test_forward_interior_time_deferred_failure_and_top_boundary() {
+    let grid = GridDomain {
+        xlon0: 6.0,
+        ylat0: 50.0,
+        dx: 0.25,
+        dy: 0.25,
+        nx: 8,
+        ny: 4,
+    };
+    let legacy_wind = uniform_wind_field(
+        &WindFieldGrid::new(
+            8,
+            4,
+            3,
+            3,
+            3,
+            0.25,
+            0.25,
+            6.0,
+            50.0,
+            ndarray::Array1::from_vec(vec![0.0, 1.0, 2.0]),
+        ),
+        1000.0,
+        1000.0,
+        1000.0,
+    );
+    let mut surface = SurfaceFields::zeros(8, 4);
+    surface.surface_pressure_pa.fill(101_325.0);
+    surface.temperature_2m_k.fill(290.0);
+    surface.dewpoint_2m_k.fill(285.0);
+    surface.mixing_height_m.fill(1000.0);
+    let releases: Vec<_> = ["20240101000001", "20240101000002"]
+        .into_iter()
+        .map(|time| ReleaseConfig {
+            name: time.into(),
+            start_time: time.into(),
+            end_time: time.into(),
+            lon: 6.6875,
+            lat: 50.25,
+            z_min: 100.0,
+            z_max: 100.0,
+            mass_kg: 1.0,
+            particle_count: 1,
+            species_masses_kg: None,
+            raw: BTreeMap::new(),
+        })
+        .collect();
+    let root = std::path::Path::new("target/ci-gate/resident-advection-production");
+    std::fs::create_dir_all(root).unwrap();
+    let mut evidence = Vec::new();
+    for variant in ["interior", "deferred-fatal", "changing-top"] {
+        let s0 = analytic_snapshot(START_SECONDS, true);
+        let mut s1 = analytic_snapshot(START_SECONDS + 4, true);
+        if variant == "changing-top" {
+            for field in &mut s1.fields {
+                if field.id == FieldId::Temperature {
+                    for value in &mut field.values {
+                        *value += 1.0;
+                    }
+                }
+            }
+        }
+        let r0 = runtime(&s0, "#173 declared synthetic geometry");
+        let r1 = runtime(&s1, "#173 declared synthetic geometry");
+        let input_file = format!("source-{variant}.json");
+        let inputs = serde_json::to_vec(&json!({"snapshot_json":[serde_json::to_string(&s0).unwrap(),serde_json::to_string(&s1).unwrap()],
+            "native_motion_json":[serde_json::to_string(&native_motion(&s0,"#173 declared synthetic geometry")).unwrap(),
+                serde_json::to_string(&native_motion(&s1,"#173 declared synthetic geometry")).unwrap()],"runtimes":[&r0,&r1]})).unwrap();
+        let input_sha256 = format!("{:x}", Sha256::digest(&inputs));
+        std::fs::write(root.join(&input_file), &inputs).unwrap();
+        let source = bracket([&s0, &s1], [&r0, &r1]);
+        let config = ForwardTimeLoopConfig {
+            start_timestamp: "20240101000001".into(),
+            end_timestamp: "20240101000002".into(),
+            timestep_seconds: 1,
+            sync_particle_store_each_step: false,
+            collect_deposition_probabilities_each_step: false,
+            ..ForwardTimeLoopConfig::default()
+        };
+        let mut driver = pollster::block_on(ForwardTimeLoopDriver::new(
+            config,
+            &releases,
+            grid.clone(),
+            3,
+        ))
+        .expect("required forward WGSL adapter for deferred transaction");
+        let mut slot = CanonicalMeteorologySlot::default();
+        let prepared = driver
+            .prepare_canonical_meteorology(source, &mut slot)
+            .unwrap();
+        let adapter = GpuAdapterEvidence::from_context(prepared.context());
+        let owners = std::sync::Arc::clone(prepared.resources());
+        if variant == "deferred-fatal" {
+            poison(&owners, prepared.context(), Some((0, 0)), false);
+        }
+        drop(prepared);
+        let met = MetTimeBracket {
+            canonical: Some(&owners),
+            wind_t0: &legacy_wind,
+            wind_t1: &legacy_wind,
+            surface_t0: &surface,
+            surface_t1: &surface,
+            time_t0_seconds: START_SECONDS,
+            time_t1_seconds: START_SECONDS + 4,
+        };
+        let forcing = ForwardStepForcing::default();
+        let result = pollster::block_on(driver.run_timestep(&met, &forcing));
+        if variant == "changing-top" {
+            assert!(
+                result.is_err(),
+                "undefined changing-top transport must fail closed"
+            );
+            assert!(owners.fields()[0].resident_advection_top_m().is_err());
+            evidence.push(json!({"variant":variant,"adapter":adapter,"rejected":true,"input_file":input_file,"input_sha256":input_sha256}));
+            continue;
+        }
+        let initial = driver.particle_store().as_slice().to_vec();
+        let (particles, status, metadata, values, queries) =
+            pollster::block_on(driver.test_advection_state());
+        if variant == "deferred-fatal" {
+            if std::env::var("FLEXPART_GPU_COMPACTION").as_deref() == Ok("1") {
+                assert!(
+                    result.is_err(),
+                    "compaction observes status at its existing count checkpoint"
+                );
+            } else {
+                assert!(
+                    result.is_ok(),
+                    "deferred mode has no immediate particle readback"
+                );
+            }
+            assert!(pollster::block_on(driver.finalize()).is_err());
+            assert!(pollster::block_on(driver.accumulate_concentration_grid(
+                crate::gpu::ConcentrationGridShape {
+                    nx: 8,
+                    ny: 4,
+                    nz: 1
+                },
+                crate::gpu::ConcentrationGriddingParams::default()
+            ))
+            .is_err());
+            assert!(pollster::block_on(driver.run_timestep(&met, &forcing)).is_err());
+            assert_eq!(
+                driver
+                    .particle_store()
+                    .as_slice()
+                    .iter()
+                    .filter(|p| p.is_active())
+                    .count(),
+                1,
+                "next release must not run after fatal status"
+            );
+            let (after, _, _, _, _) = pollster::block_on(driver.test_advection_state());
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&after),
+                bytemuck::cast_slice::<_, u8>(&initial)
+            );
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&particles),
+                bytemuck::cast_slice::<_, u8>(&initial)
+            );
+        } else {
+            result.unwrap();
+            pollster::block_on(driver.finalize()).unwrap();
+            let policy = crate::gpu::vertical::vertical_model_comparison_policy().unwrap();
+            let actual = [
+                particles[0].cell_x as f32 + particles[0].pos_x,
+                values[0],
+                values[9],
+            ];
+            assert_eq!(
+                crate::gpu::compare_finite_values(
+                    &[3.515, 0.65, 0.88],
+                    &actual.map(f64::from),
+                    policy
+                )
+                .unwrap()
+                .verdict,
+                crate::gpu::NumericalVerdict::Passed
+            );
+            assert_ne!(metadata[0].time, metadata[3].time);
+            assert_ne!(queries[0].fraction_x, queries[3].fraction_x);
+            assert!(status.iter().step_by(4).take(6).all(|v| *v == 0));
+        }
+        evidence.push(json!({"variant":variant,"adapter":adapter,"status":status,"metadata":metadata,
+            "sampled_values":values,"queries":queries,"atomic_preservation":variant=="deferred-fatal","input_file":input_file,"input_sha256":input_sha256}));
+    }
+    let revision = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .unwrap();
+    std::fs::write(
+        root.join("interior-deferred-boundary.json"),
+        serde_json::to_vec_pretty(&json!({"candidate_revision":String::from_utf8(revision.stdout).unwrap().trim(),"rows":evidence})).unwrap(),
+    )
+    .unwrap();
+    eprintln!("RESIDENT-ADVECTION-112-DEFERRED: interior sampling, atomic deferred failure, next release/output rejection and changing-top guard passed");
+}

@@ -17,12 +17,6 @@ struct Params { capacity: u32, active_count: u32, nx: u32, ny: u32,
 @group(0) @binding(2) var<storage, read> status: array<u32>;
 @group(0) @binding(3) var<storage, read_write> queries: array<Query>;
 @group(0) @binding(4) var<uniform> params: Params;
-fn failed() -> bool {
-    for (var stage = 0u; stage < 6u; stage++) {
-        if (status[stage * (params.capacity + 1u)] != 0u) { return true; }
-    }
-    return false;
-}
 fn finite(v: f32) -> bool { return abs(v) <= 3.402823466e38; }
 // Split-cell arithmetic never reconstructs a signed cell as a floating-point position.
 fn moved(cell: i32, fraction: f32, delta: f32, n: u32) -> vec2<f32> {

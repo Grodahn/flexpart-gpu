@@ -49,6 +49,20 @@ def audit(root=Path("target/ci-gate/resident-advection-production")):
             component, stage = failure
             assert row["status"][(stage * 3 + component) * 131] != 0 and row["atomic_preservation"] is True
     assert observed == expected
+    supplemental = json.loads((root / "interior-deferred-boundary.json").read_text(encoding="utf-8"))
+    assert supplemental["candidate_revision"] == revision
+    variants = {r["variant"]: r for r in supplemental["rows"]}
+    assert set(variants) == {"interior", "deferred-fatal", "changing-top"}
+    for row in variants.values():
+        assert row["adapter"]["adapter_class"] in ("hardware_gpu", "software_wgsl")
+        assert hashlib.sha256((root / row["input_file"]).read_bytes()).hexdigest() == row["input_sha256"]
+    interior = variants["interior"]
+    assert interior["metadata"][0]["time"]["instantaneous"]["epoch_seconds"] == 1704067201
+    assert interior["metadata"][3]["time"]["instantaneous"]["epoch_seconds"] == 1704067202
+    assert all(interior["status"][i * 4] == 0 for i in range(6))
+    assert variants["deferred-fatal"]["status"][0] != 0
+    assert variants["deferred-fatal"]["atomic_preservation"] is True
+    assert variants["changing-top"]["rejected"] is True
     print("RESIDENT-ADVECTION-112 evidence audit passed: 48 required real-driver cases")
 
 

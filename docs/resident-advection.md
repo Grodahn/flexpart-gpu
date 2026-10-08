@@ -38,7 +38,8 @@ particle byte untouched on failure, including inactive tails and padding.
 Compaction may operate on private state; failed compacted state is never published
 or accepted by its host count consumer.
 
-Forward status is observed at existing previous-step synchronization and explicit
+Forward status is observed at the previous-step synchronization before another
+release or sort can mutate particles, and at explicit
 per-step/output/finalization host checkpoints. Backward checks it before particle
 readback/source attribution. Deferred forward output checks status before output
 acceptance. No particle query or sampled wind travels GPU -> CPU -> GPU.
@@ -79,7 +80,9 @@ or pinned oracle definitions are changed. This is not full FLEXPART parity.
 requires actual WGSL execution through both real production drivers. It covers
 constant/spatially varying U, distinct positions/times, signed backward motion,
 active prefixes 1/3/130, predictor-only V/W and initial-U device-source poisoning,
-cross-workgroup atomic preservation, and nontrivial inactive tails. Deliberately
+cross-workgroup atomic preservation, nontrivial inactive tails, interior-time
+forward sampling, deferred failure rejection before a subsequent release/output,
+and fail-closed changing-top geometry. Deliberately
 contradictory legacy wind proves it is not sampled by the canonical branch.
 Run it separately with `FLEXPART_GPU_VALIDATION=1` and
 `FLEXPART_GPU_COMPACTION=1`; CI retains all configurations.

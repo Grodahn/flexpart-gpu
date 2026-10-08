@@ -77,21 +77,16 @@ pub(crate) struct ResidentAdvectionStep {
     pub(crate) metadata: Vec<ResidentSampleMetadata>,
 }
 impl ResidentAdvectionStep {
-    /// Encode both canonical Petterssen stages into private state without submitting.
+    /// Allocate and validate explicit timestep resources before recording any scientific stages.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn encode(
+    fn prepare(
         ctx: &GpuContext,
         original: &ParticleBuffers,
         staged: &ParticleBuffers,
         fields: &[CanonicalGpuField<'_>; 3],
         grid: &HorizontalGrid,
-        times: [MeteorologyTimeSelection; 2],
         signed_dt: f32,
         scale: VelocityToGridScale,
-        kernels: &ResidentAdvectionKernels,
-        sampling: &MeteorologyCompositionKernels<'_>,
-        resident: &ResidentQueryKernels<'_>,
-        encoder: &mut wgpu::CommandEncoder,
     ) -> Result<Self, MeteorologyCompositionError> {
         let invalid = |reason| MeteorologyCompositionError::Incompatible(reason);
         if !original.belongs_to(ctx)
@@ -106,7 +101,7 @@ impl ResidentAdvectionStep {
         if !signed_dt.is_finite()
             || !scale.x_grid_per_meter.is_finite()
             || !scale.y_grid_per_meter.is_finite()
-            || scale.z_grid_per_meter != 1.0
+            || scale.z_grid_per_meter.to_bits() != 1.0_f32.to_bits()
         {
             return Err(invalid(
                 "canonical advection requires finite scales and AGL metres with z scale one",
@@ -148,7 +143,7 @@ impl ResidentAdvectionStep {
             scale.y_grid_per_meter.to_bits(),
             top.to_bits(),
         ];
-        let mut result = Self {
+        let result = Self {
             #[cfg(test)]
             queries: allocation(16 * u64::from(capacity), "Petterssen final query evidence")?,
             status: allocation(
@@ -166,6 +161,29 @@ impl ResidentAdvectionStep {
             capacity,
             metadata: Vec::with_capacity(6),
         };
+        Ok(result)
+    }
+
+    /// Encode both canonical Petterssen stages into private state without submitting.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn encode(
+        ctx: &GpuContext,
+        original: &ParticleBuffers,
+        staged: &ParticleBuffers,
+        fields: &[CanonicalGpuField<'_>; 3],
+        grid: &HorizontalGrid,
+        times: [MeteorologyTimeSelection; 2],
+        signed_dt: f32,
+        scale: VelocityToGridScale,
+        kernels: &ResidentAdvectionKernels,
+        sampling: &MeteorologyCompositionKernels<'_>,
+        resident: &ResidentQueryKernels<'_>,
+        encoder: &mut wgpu::CommandEncoder,
+    ) -> Result<Self, MeteorologyCompositionError> {
+        let mut result = Self::prepare(ctx, original, staged, fields, grid, signed_dt, scale)?;
+        let capacity = result.capacity;
+        let active = u32::try_from(original.particle_count())
+            .map_err(|_| MeteorologyCompositionError::Incompatible("advection prefix overflow"))?;
         // Transaction state is an explicit D2D snapshot. Scientific particles remain unchanged until commit.
         encoder.copy_buffer_to_buffer(
             &original.particle_buffer,

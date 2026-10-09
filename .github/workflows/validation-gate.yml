@@ -106,6 +106,14 @@ jobs:
           chmod +x scripts/ci-gate.sh scripts/vertical/flex_extract_etadot_oracle.sh
           scripts/ci-gate.sh --particles 1000 --require-flex-extract-oracle
 
+      - name: Reproduce nonuniform-column shared-height research oracle
+        working-directory: flexpart-gpu
+        run: |
+          set -euo pipefail
+          python3 scripts/interpolation/test_shared_height_oracle.py
+          python3 scripts/interpolation/run_shared_height_oracle.py \
+            --checkout ../flexpart --output-dir target/ci-gate/shared-height-oracle
+
       - name: Upload gate artifacts (reports, logs, manifests)
         if: always()
         uses: actions/upload-artifact@v4

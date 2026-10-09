@@ -14,6 +14,18 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ---
 
+### 2026-10-09 — Verify shared-height remapping for nonuniform native columns (#118)
+**Impact**: none (research and architecture decision; production rejection retained)
+**Files**: `docs/research/shared-height-118.md`, `docs/interpolation-contract.md`,
+`scripts/interpolation/shared_height_oracle.*`, shared-height research fixtures.
+**Validation**: Genuine pinned FLEXPART 11.1 initialization, native height,
+field transformation and public meter-wind sampling distinguish native sampling
+and invented averaged geometry from remap-then-sample. U/V and regional boundary
+interface omega/W are supported by this experiment; interior W slope, center-W,
+ASL sampler execution and #180 transport boundaries are not proved. Future GPU
+preparation must preserve #30 geometry and #80 normalization; no production
+calculation or numerical policy changes here.
+
 ### 2026-10-08 — Adopt canonical resident Petterssen transport in both production drivers
 **Impact**: physics / numerics (consumer migration; no new interpolation equations)
 **Files**: `src/gpu/advection_resident.rs`, four `advection_*` consumer shaders,

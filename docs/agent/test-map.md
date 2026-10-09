@@ -59,6 +59,7 @@ Choose the subdomain; do not run every row for one field edit.
 
 - Canonical metadata validation lives in the private owners linked by the [repository map](repo-map.md#meteorology); snapshot boundary tests exercise grid/coordinate/time checks through the supported facade. Sampling/device tests retain their public entry points.
 - Composition regression: `cargo test --test meteorology_composition -- --test-threads=1`; [existing composition tests](../../tests/meteorology_composition.rs).
+- Nonuniform-column research (#118): `python scripts/interpolation/test_shared_height_oracle.py`; direct pinned gate: `python scripts/interpolation/run_shared_height_oracle.py --checkout <pristine-flexpart> --output-dir target/shared-height-run-1`. [Decision and limitations](../research/shared-height-118.md); use a new output directory per run. This proves the scoped direct-routine result, not GPU execution or consumer adoption.
 - Host geometry has its own [focused verification entry](#vertical-geometry); [direct oracle driver](../../scripts/vertical/direct_oracle_driver.f90) and [production W driver](../../scripts/interpolation/w_production_oracle.sh) are owned by the linked geometry/spatial contracts.
 - Broader gates: [software WGSL workflow](../../.github/workflows/software-wgpu.yml) for device fixtures; [technical gate](../../.github/workflows/validation-gate.yml) for pinned geometry/flex_extract oracles. Kernel evidence does not prove #76/#77 production adoption.
 

@@ -613,3 +613,26 @@ than extending this contract.
   surface archive — real #29 source referenced by `era5-etex-real-column-v1`; #30 CI
   supplies the pinned direct-routine vertical-oracle evidence for that selection.
 - `reference/flexpart-11.1.json` — pinned reference manifest.
+
+## 10. Nonuniform native columns: shared-height decision (#118)
+
+The [pinned-source trace and direct experiment](research/shared-height-118.md)
+establish that the supported `eta=no` ECMWF path remaps distinct native columns
+onto one run-lifetime **AGL** `height[]` grid before horizontal, vertical and
+temporal wind sampling. The target comes from the first mother-grid column with
+`ps>100000 Pa` in the initial member (fallback `(0,nymin1)`), or restart levels;
+it is not a mean native profile, per-column ASL grid or per-bracket regeneration.
+The [raw input/output and decoded evidence](../fixtures/interpolation/shared-height-v1/report.json)
+distinguish native-column sampling and invented averaged geometry from the actual
+pristine remapped result for U/V and boundary-column interface omega/W.
+
+The architecture decision preserves immutable #29 input and #30 column geometry,
+adds derived GPU-resident prepared U/V fields and an explicitly identified shared
+target upstream of the existing #76/#171 samplers, and keeps their operation
+order. Preparation, resource/status handoff and consumer adoption require separate
+device/oracle proof. Neither production code nor the current nonuniform-stencil
+or ASL-terrain rejection changes in #118. Center-W equivalence is unproved;
+interface W reuses #30/#80 normalization and needs a separate direct interior
+slope proof before general production adoption. This does not resolve #180's
+transport-domain top. The research document defines field scope, target identity,
+met-bracket lifetime, memory cost, unsupported routes and reproduction commands.

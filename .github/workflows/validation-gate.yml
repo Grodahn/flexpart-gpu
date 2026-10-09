@@ -150,6 +150,14 @@ jobs:
             scripts/ci-gate.sh --particles 1000 --require-flex-extract-oracle
           fi
 
+      - name: Reproduce nonuniform-column shared-height research oracle
+        working-directory: flexpart-gpu
+        run: |
+          set -euo pipefail
+          python3 scripts/interpolation/test_shared_height_oracle.py
+          python3 scripts/interpolation/run_shared_height_oracle.py \
+            --checkout ../flexpart --output-dir target/ci-gate/shared-height-oracle
+
       - name: Record dependency cache checksums
         working-directory: flexpart-gpu
         run: python3 scripts/cargo_cache_integrity.py record

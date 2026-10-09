@@ -19,6 +19,10 @@ from pathlib import Path
 
 SCHEMA = "flexpart-gpu.oracle-build-cache.v2"
 MAKE_ARGUMENTS = "FC=gfortran eta=no arch=x86-64 -j4"
+TOOLCHAIN_COMMAND = (
+    "set -euo pipefail; gfortran -v 2>&1; ld --version; "
+    "sha256sum /usr/bin/gfortran /usr/bin/ld; dpkg-query -W"
+)
 
 
 def sha256(path: Path) -> str:
@@ -146,18 +150,25 @@ def require_pristine(checkout: Path, project: Path) -> None:
         raise ValueError("oracle checkout must be pinned and pristine")
 
 
+def toolchain_identity(image: str | None = None) -> str:
+    """Identify the concrete running compiler/linker/packages using one shared recipe."""
+    command = ["bash", "-c", TOOLCHAIN_COMMAND]
+    if image:
+        command = ["docker", "run", "--rm", image, *command]
+    toolchain = subprocess.check_output(command, text=True)
+    if not toolchain:
+        raise ValueError("missing toolchain identity")
+    return toolchain
+
+
 def image_identity() -> tuple[str, str]:
     """Resolve an immutable image and its concrete compiler/linker/package identity."""
     image = subprocess.check_output(
         ["docker", "image", "inspect", "flexpart-fortran:latest", "--format", "{{.Id}}"],
         text=True).strip()
-    toolchain = subprocess.check_output(
-        ["docker", "run", "--rm", image, "bash", "-c",
-         "set -euo pipefail; gfortran -v 2>&1; ld --version; "
-         "sha256sum /usr/bin/gfortran /usr/bin/ld; dpkg-query -W"], text=True)
-    if not image or not toolchain:
-        raise ValueError("missing image/toolchain identity")
-    return image, toolchain
+    if not image:
+        raise ValueError("missing image identity")
+    return image, toolchain_identity(image)
 
 
 def resolved_identity(project: Path, checkout: Path, image: str, toolchain: str) -> dict:
@@ -196,13 +207,16 @@ def prepare(project: Path, checkout: Path, status_output: Path, clean: bool) -> 
             print("Oracle build cache: VERIFIED_REUSE", flush=True)
         else:
             metadata.unlink(missing_ok=True)
-            environment = dict(os.environ, FLEXPART_DIR=checkout.as_posix())
+            environment = dict(os.environ, FLEXPART_DIR=checkout.as_posix(),
+                               FLEXPART_ORACLE_IMAGE_ID="flexpart-fortran:latest")
             compose = ["docker", "compose", "-f", str(project / "docker/docker-compose.fortran.yml")]
             with log.open("w", encoding="utf-8") as stream:
                 command = compose + ["build"] + (["--no-cache"] if clean else []) + ["flexpart-fortran"]
                 stream.write("=== docker compose build ===\n")
                 stream.flush()
                 subprocess.run(command, env=environment, stdout=stream, stderr=subprocess.STDOUT, check=True)
+                image, toolchain = image_identity()
+                run_environment = dict(environment, FLEXPART_ORACLE_IMAGE_ID=image)
                 stream.write("=== make clean; full Fortran compilation ===\n")
                 stream.flush()
                 try:
@@ -213,13 +227,12 @@ def prepare(project: Path, checkout: Path, status_output: Path, clean: bool) -> 
                         "set -euo pipefail; cd /workspace/flexpart/src; "
                         "make -f makefile_gfortran clean; "
                         "FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4; test -x FLEXPART"],
-                        env=environment, stdout=stream, stderr=subprocess.STDOUT, check=True)
+                        env=run_environment, stdout=stream, stderr=subprocess.STDOUT, check=True)
                 finally:
                     subprocess.run(["git", "-c", f"safe.directory={checkout.as_posix()}",
                                     "-C", str(checkout), "checkout", "--", "src/FLEXPART.f90"], check=True)
                     (checkout / "src/gitversion.txt").unlink(missing_ok=True)
             require_pristine(checkout, project)
-            image, toolchain = image_identity()
             identity = resolved_identity(project, checkout, image, toolchain)
             with log.open("a", encoding="utf-8") as stream:
                 stream.write("\n=== resolved image and toolchain ===\n" + image + "\n" + toolchain)
@@ -246,6 +259,20 @@ def cached_command(metadata: Path, inputs: list[Path], artifacts: list[Path], co
     their complete recipe/source and retained binary/provenance artifact set.
     These records are local build records, never restored from untrusted CI.
     """
+    source = Path(os.environ.get("ORACLE_SRC", str(checkout / "src")))
+    if source.resolve() != (checkout / "src").resolve():
+        # A selected alternate link tree is outside this parent's identity.
+        # Preserve legacy compilation without consulting an unrelated record.
+        subprocess.run(command, check=True)
+        print("Direct oracle build: UNCACHED (different link tree)", flush=True)
+        return
+    bound_image = os.environ.get("FLEXPART_ORACLE_IMAGE_ID", "")
+    if not bound_image.startswith("sha256:"):
+        # Reuse requires a caller bound to the verified immutable image.
+        # Standalone containers without that binding retain full compilation.
+        subprocess.run(command, check=True)
+        print("Direct oracle build: UNCACHED (no immutable image binding)", flush=True)
+        return
     if not parent.is_file():
         # Standalone legacy callers may have built the pristine objects without
         # #92. Preserve their full compilation path; never infer a cache hit.
@@ -253,21 +280,17 @@ def cached_command(metadata: Path, inputs: list[Path], artifacts: list[Path], co
         print("Direct oracle build: UNCACHED (no verified parent build)", flush=True)
         return
     parent_record = json.loads(parent.read_text())
-    if parent_record.get("schema") != SCHEMA or not parent_record.get("artifacts_sha256"):
+    if (not isinstance(parent_record, dict) or parent_record.get("schema") != SCHEMA
+            or not parent_record.get("artifacts_sha256")
+            or not isinstance(parent_record.get("docker_image_id"), str)
+            or parent_record["docker_image_id"] != bound_image):
         raise ValueError("direct driver requires the current verified parent build")
     require_pristine(checkout, project)
-    current = cache_identity(project, checkout)
-    if (current["inputs_sha256"] != parent_record["identity"]["inputs_sha256"]
-            or not validate(parent, parent_record["identity"], parent_record["docker_image_id"],
-                            checkout / "src/FLEXPART")):
+    # Re-derive every identity field, including the running compiler/toolchain.
+    # Comparing a parent record with values read from itself misses corruption.
+    current = resolved_identity(project, checkout, bound_image, toolchain_identity())
+    if not validate(parent, current, current["docker_image_id"], checkout / "src/FLEXPART"):
         raise ValueError("direct driver parent build is missing, changed or corrupt")
-    source = Path(os.environ.get("ORACLE_SRC", str(checkout / "src")))
-    if source.resolve() != (checkout / "src").resolve():
-        # Standalone callers can select a different link tree. The verified
-        # parent cannot identify that tree, so retain their compilation path.
-        subprocess.run(command, check=True)
-        print("Direct oracle build: UNCACHED (different link tree)", flush=True)
-        return
     identity = {"parent_sha256": sha256(parent),
                 "inputs_sha256": {str(p): sha256(p) for p in inputs},
                 "command": command, "cache_owner_sha256": sha256(Path(__file__)),

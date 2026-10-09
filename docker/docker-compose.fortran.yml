@@ -9,7 +9,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.fortran
-    image: flexpart-fortran:latest
+    image: "${FLEXPART_ORACLE_IMAGE_ID:-flexpart-fortran:latest}"
     working_dir: /workspace/flexpart/src
     user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     stdin_open: true
@@ -25,6 +25,7 @@ services:
       # Host-visible result directories for the comparison scripts.
       - ../target:/workspace/target
     environment:
+      FLEXPART_ORACLE_IMAGE_ID: "${FLEXPART_ORACLE_IMAGE_ID:-}"
       FC: "gfortran"
       OMP_NUM_THREADS: "1"
       OMP_THREAD_LIMIT: "1"

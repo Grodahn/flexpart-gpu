@@ -178,6 +178,8 @@ oracle_prepare_cached() {
     tail -40 "${ORACLE_BUILD_LOG}" >&2 || true
     return 1
   fi
+  # Scientific executions use the same immutable image as cached compilation.
+  export FLEXPART_ORACLE_IMAGE_ID="$("${HOST_PYTHON}" -c 'import json,sys; print(json.load(open(sys.argv[1]))["docker_image_id"])' "${ORACLE_CACHE_STATUS_FILE}")"
   if [ "${ORACLE_VERBOSE}" = "1" ]; then cat "${ORACLE_BUILD_LOG}"; fi
 }
 

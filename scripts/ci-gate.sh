@@ -232,6 +232,8 @@ else
   fi
   cp "${PROJECT_ROOT}/target/oracle-cache/build.log" "${OUTPUT_DIR}/oracle-build.log"
   cp "${PROJECT_ROOT}/target/oracle-cache/build.json" "${OUTPUT_DIR}/oracle-build.json"
+  # Bind every subsequent driver to the exact immutable image verified above.
+  export FLEXPART_ORACLE_IMAGE_ID="$("${HOST_PYTHON}" -c 'import json,sys; print(json.load(open(sys.argv[1]))["docker_image_id"])' "${OUTPUT_DIR}/oracle-build-status.json")"
   "${HOST_PYTHON}" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' \
     "${ORACLE_EXECUTABLE}" > "${OUTPUT_DIR}/oracle-executable.sha256"
   test -s "${OUTPUT_DIR}/oracle-executable.sha256" || fail "Could not hash oracle executable"

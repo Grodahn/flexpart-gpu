@@ -26,7 +26,13 @@ class VerifiedCacheTest(unittest.TestCase):
         self.head = mock.patch.object(cache, "git_head", return_value="a" * 40)
         self.head.start()
         self.addCleanup(self.head.stop)
-        self.identity = cache.cache_identity(self.project, self.oracle)
+        self.image_environment = mock.patch.dict(cache.os.environ, {"FLEXPART_ORACLE_IMAGE_ID": "sha256:image"})
+        self.image_environment.start()
+        self.addCleanup(self.image_environment.stop)
+        self.toolchain = mock.patch.object(cache, "toolchain_identity", return_value="test toolchain")
+        self.toolchain.start()
+        self.addCleanup(self.toolchain.stop)
+        self.identity = cache.resolved_identity(self.project, self.oracle, "sha256:image", "test toolchain")
         self.record()
 
     def record(self):
@@ -101,6 +107,65 @@ class VerifiedCacheTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 cache.cached_command(metadata, [driver], [binary], command, **arguments)
 
+    def test_direct_driver_rederives_every_parent_identity_field(self):
+        driver = self.root / "driver.f90"
+        driver.write_text("source")
+        binary = self.root / "driver"
+        metadata = self.root / "driver-build.json"
+        command = [sys.executable, "-c", "from pathlib import Path; "
+                   f"Path({str(binary)!r}).write_bytes(b'compiled')"]
+        arguments = dict(parent=self.metadata, project=self.project, checkout=self.oracle)
+        with mock.patch.object(cache, "require_pristine"), contextlib.redirect_stdout(io.StringIO()):
+            cache.cached_command(metadata, [driver], [binary], command, **arguments)
+            original = self.metadata.read_bytes()
+            for field in ("oracle_commit", "make_arguments", "toolchain_sha256",
+                          "docker_image_id", "cache_key"):
+                with self.subTest(field=field):
+                    record = json.loads(original)
+                    record["identity"][field] = "corrupt"
+                    self.metadata.write_text(json.dumps(record))
+                    with mock.patch.object(cache.subprocess, "run", side_effect=AssertionError("compiled corrupt parent")):
+                        with self.assertRaises(ValueError):
+                            cache.cached_command(metadata, [driver], [binary], command, **arguments)
+                    self.metadata.write_bytes(original)
+            with mock.patch.object(cache, "toolchain_identity", return_value="changed running toolchain"):
+                with self.assertRaises(ValueError):
+                    cache.cached_command(metadata, [driver], [binary], command, **arguments)
+
+    def test_direct_driver_requires_matching_immutable_image_binding(self):
+        driver = self.root / "driver.f90"
+        driver.write_text("source")
+        binary = self.root / "driver"
+        metadata = self.root / "driver-build.json"
+        command = [sys.executable, "-c", "from pathlib import Path; "
+                   f"Path({str(binary)!r}).write_bytes(b'compiled')"]
+        arguments = dict(parent=self.metadata, project=self.project, checkout=self.oracle)
+        with mock.patch.dict(cache.os.environ, {"FLEXPART_ORACLE_IMAGE_ID": "sha256:other"}):
+            with self.assertRaises(ValueError):
+                cache.cached_command(metadata, [driver], [binary], command, **arguments)
+        with mock.patch.dict(cache.os.environ, {"FLEXPART_ORACLE_IMAGE_ID": ""}), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            cache.cached_command(metadata, [driver], [binary], command, **arguments)
+        self.assertEqual(b"compiled", binary.read_bytes())
+        self.assertIn("UNCACHED (no immutable image binding)", output.getvalue())
+        self.assertFalse(metadata.exists())
+
+    def test_alternate_link_tree_does_not_consult_unrelated_parent(self):
+        self.metadata.write_text("corrupt unrelated parent")
+        driver = self.root / "alternate.f90"
+        driver.write_text("source")
+        binary = self.root / "alternate-driver"
+        command = [sys.executable, "-c", "from pathlib import Path; "
+                   f"Path({str(binary)!r}).write_bytes(b'compiled')"]
+        with mock.patch.dict(cache.os.environ, {"ORACLE_SRC": str(self.root / "alternate-src")}), \
+                mock.patch.object(cache, "require_pristine", side_effect=AssertionError("consulted unrelated checkout")), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            cache.cached_command(self.root / "alternate-build.json", [driver], [binary], command,
+                                 parent=self.metadata, project=self.project, checkout=self.oracle)
+        self.assertEqual(b"compiled", binary.read_bytes())
+        self.assertIn("UNCACHED (different link tree)", output.getvalue())
+        self.assertFalse((self.root / "alternate-build.json").exists())
+
     def test_failed_direct_build_does_not_publish_success(self):
         driver = self.root / "driver.f90"
         driver.write_text("source")
@@ -111,6 +176,25 @@ class VerifiedCacheTest(unittest.TestCase):
                                      [sys.executable, "-c", "raise SystemExit(1)"],
                                      parent=self.metadata, project=self.project, checkout=self.oracle)
         self.assertFalse(metadata.exists())
+
+    def test_preparation_records_the_immutable_image_used_for_compilation(self):
+        status = self.root / "status.json"
+        with mock.patch.object(cache, "require_pristine"), \
+                mock.patch.object(cache, "image_identity", side_effect=[
+                    ("sha256:before", "old toolchain"), ("sha256:built", "built toolchain"),
+                    ("sha256:retagged", "other toolchain")]) as image, \
+                mock.patch.object(cache.subprocess, "run") as run, \
+                contextlib.redirect_stdout(io.StringIO()):
+            cache.prepare(self.project, self.oracle, status, clean=False)
+        compose_runs = [call for call in run.call_args_list if "run" in call.args[0]]
+        self.assertEqual(len(compose_runs), 1)
+        self.assertEqual(compose_runs[0].kwargs["env"]["FLEXPART_ORACLE_IMAGE_ID"], "sha256:built")
+        self.assertEqual(image.call_count, 2)
+        record = json.loads((self.project / "target/oracle-cache/build.json").read_text())
+        self.assertEqual(record["docker_image_id"], "sha256:built")
+        self.assertEqual(record["identity"]["toolchain_sha256"],
+                         cache.hashlib.sha256(b"built toolchain").hexdigest())
+        self.assertEqual(json.loads(status.read_text())["docker_image_id"], "sha256:built")
 
     def test_dirty_or_unpinned_checkout_is_rejected_before_reuse(self):
         (self.project / "reference/flexpart-11.1.json").write_text(

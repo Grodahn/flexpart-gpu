@@ -796,7 +796,7 @@
     "grep -q \"HANNA-PREFIX-139: .*capacity=8 active=$active substeps=$substeps\"",
     "grep -q \"HANNA-BOUNDS-139\""
   ],
-  "gate_source_sha256": "b1274ccbcd35d46ef9b81fdeabb21084424e9738efe4cdc0e9fa5ea971a6c8af",
+  "gate_source_sha256": "960784abebde3fa07cd63e5e77eaa9c77e7ccf150999218a6ad2f46923cb52ee",
   "artifact_paths": {
     ".github/workflows/software-wgpu.yml": [
       "target/ci-gate/gpu-preflight.json",

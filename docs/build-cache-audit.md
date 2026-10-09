@@ -18,6 +18,15 @@ and cleanliness checks. Concurrent preparation fails explicitly; an interrupted
 process may leave `target/oracle-cache/prepare.lock`, which must be removed only
 after confirming no preparation is active.
 
+Direct-driver reuse re-derives the complete parent identity and the running
+compiler/linker/package identity; corrupted revision/flags/image/key fields cannot
+be accepted by comparing a record to itself. Compilation and later Oracle
+invocations bind the verified immutable Docker image ID, so retagging `latest`
+cannot change their environment. A standalone container without an immutable
+binding compiles uncached; a mismatched binding fails. Explicit alternate link
+trees retain uncached legacy compilation without depending on an unrelated
+parent record.
+
 These are local, trusted build records. Oracle artifacts are never restored
 from GitHub caches or accepted from PR uploads. A record does not authenticate
 arbitrary externally supplied binaries. Missing/malformed records, changed

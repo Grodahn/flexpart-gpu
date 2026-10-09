@@ -230,7 +230,7 @@
       "driver_source": "scripts/interpolation/w_production_oracle.f90",
       "driver_sha256": "c325c1da654d2bc433fe217445742f226c7f1a63c9dff339d017c9e67442223b",
       "harness_source": "scripts/interpolation/w_production_oracle.sh",
-      "harness_sha256": "a1e687c4ba94b84317c845074cbf67f92a6024de070c767f1b197aa2f2faa3fb",
+      "harness_sha256": "721bff07e3d499cd1d5d20476a4d6f368b799af39e842a0d26d909332c2a835a",
       "packer_source": "scripts/interpolation/prepare_w_production_oracle.py",
       "packer_sha256": "39ecf78eeb158a1a13e4f691f58b032709c0cba8593577e75ec9d1d31b29bb8e",
       "reference_manifest_sha256": "2c13a87733098e385dc12f33d1bf5ca60ba275775f472ec279b8a0a234c3a464",

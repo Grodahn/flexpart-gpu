@@ -143,6 +143,15 @@ of these identities match:
 - retained FLEXPART executable SHA-256;
 - retained full build-log SHA-256.
 
+Issue #176 extends this same owner to `scripts/ci-gate.sh` and direct-driver
+compilation. The v2 identity additionally verifies relevant source bytes,
+compiler/linker/package identity, and every retained object/module hash. Old
+v1 records rebuild once. Metadata publication is atomic. Driver records inherit
+the verified parent identity and check their recipe/source/binary artifacts.
+Scientific executions and comparison/provenance checks always run again.
+See [the build-cache audit](build-cache-audit.md) for measurements, trusted Cargo
+cache boundaries, invalidation checks and the full cold/warm/clean audit.
+
 A missing or malformed record, missing image/executable, changed hash, changed
 revision, or explicit `--clean` produces a rebuild. The normal path performs no
 package installation or source download; Docker may resolve packages only when

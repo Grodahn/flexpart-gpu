@@ -24,6 +24,8 @@ class OracleBuildCacheTest(unittest.TestCase):
         (project / "docker" / "docker-compose.fortran.yml").write_text("services: {}\n")
         (project / "reference" / "flexpart-11.1.json").write_text('{"pinned_commit":"abc"}\n')
         (oracle / "src" / "makefile_gfortran").write_text("all:\n\ttrue\n")
+        (oracle / "src" / "reference.o").write_bytes(b"object")
+        (oracle / "src" / "reference.mod").write_bytes(b"module")
         return project, oracle
 
     @mock.patch.object(oracle_build_cache, "git_head", return_value="a" * 40)
@@ -53,6 +55,7 @@ class OracleBuildCacheTest(unittest.TestCase):
                         "identity": identity,
                         "docker_image_id": "sha256:image",
                         "oracle_executable_sha256": oracle_build_cache.sha256(executable),
+                        "artifacts_sha256": oracle_build_cache.build_artifacts(executable),
                         "build_log_sha256": oracle_build_cache.sha256(build_log),
                     }
                 )

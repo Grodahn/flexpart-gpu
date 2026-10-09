@@ -1,0 +1,178 @@
+{
+  "contract": "https://github.com/Grodahn/flexpart-gpu/issues/176",
+  "provenance_marker": "GPT6.1 Sol",
+  "revision": "1f6d4f7a4eca6d5648f0fe23dc49858c534e2dc0",
+  "audit_run": 37879173210,
+  "oracle_count_scope": "Pinned FLEXPART parent image/full build and three direct-driver build groups; separate flex_extract preparation is unchanged.",
+  "environment": {
+    "runner": "ubuntu-22.04",
+    "image": "20261004.315.1",
+    "rust": "1.99.0",
+    "docker": "28.0.4",
+    "python": "3.10.12",
+    "adapter": "llvmpipe (LLVM 15.0.7, 256 bits)",
+    "backend": "vulkan"
+  },
+  "runs": [
+    {
+      "mode": "cold",
+      "elapsed_seconds": 715.7337696250001,
+      "exit_code": 0,
+      "terminal_bytes": 45895,
+      "oracle_build_status": "REBUILT",
+      "executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+      "cache_key": "dfd7ae08d72c77d64ae66313a95271347cc4dedfcb79f31192d08ce77224774e",
+      "scientific_payload_sha256": {
+        "interpolation/contract-v1.json": "9a084d13c2ae64b852366c9b1cbbc6d7ead0c634b702ca892b6358bffeb57970",
+        "w-production-oracle/w-production-oracle-v1.json": "ed7295800a14a6e271d58a09085e931910bb0f7a74c70dcbb785da89bbaa8be4",
+        "vertical-column/routine-oracle-output.txt": "5015ea3a9a9e42b1a2b88c60c2867b74a632bffd1b9cfefdc186b005c752b197",
+        "vertical-column/real-routine-oracle-output.txt": "7fe3f5fa17d0067464258c93efbe1bbf9cf2403b4d442191b08b6deb29e026a4",
+        "vertical-column/conformance-output.txt": "af658ab084a8cee9c57b9d508d1240d157416326165b959cd05efab0e4c1bf8a",
+        "vertical-column/real-conformance-output.txt": "9d00d882d3505930fbbb57b83b0ba6452b18b933abe9243329c354f690202dca"
+      },
+      "direct_build_hits": 7,
+      "direct_build_rebuilds": 3,
+      "docker_image_builds": 1,
+      "make_clean_invocations": 1,
+      "full_fortran_compiler_commands": 45,
+      "retained_build_log_bytes": 157369
+    },
+    {
+      "mode": "warm",
+      "elapsed_seconds": 12.176962833000061,
+      "exit_code": 0,
+      "terminal_bytes": 29974,
+      "oracle_build_status": "REUSED",
+      "executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+      "cache_key": "dfd7ae08d72c77d64ae66313a95271347cc4dedfcb79f31192d08ce77224774e",
+      "scientific_payload_sha256": {
+        "interpolation/contract-v1.json": "9a084d13c2ae64b852366c9b1cbbc6d7ead0c634b702ca892b6358bffeb57970",
+        "w-production-oracle/w-production-oracle-v1.json": "ed7295800a14a6e271d58a09085e931910bb0f7a74c70dcbb785da89bbaa8be4",
+        "vertical-column/routine-oracle-output.txt": "5015ea3a9a9e42b1a2b88c60c2867b74a632bffd1b9cfefdc186b005c752b197",
+        "vertical-column/real-routine-oracle-output.txt": "7fe3f5fa17d0067464258c93efbe1bbf9cf2403b4d442191b08b6deb29e026a4",
+        "vertical-column/conformance-output.txt": "af658ab084a8cee9c57b9d508d1240d157416326165b959cd05efab0e4c1bf8a",
+        "vertical-column/real-conformance-output.txt": "9d00d882d3505930fbbb57b83b0ba6452b18b933abe9243329c354f690202dca"
+      },
+      "direct_build_hits": 10,
+      "direct_build_rebuilds": 0,
+      "docker_image_builds": 0,
+      "make_clean_invocations": 0,
+      "full_fortran_compiler_commands": 0,
+      "retained_build_log_bytes": 157369
+    },
+    {
+      "mode": "clean",
+      "elapsed_seconds": 204.5907863770001,
+      "exit_code": 0,
+      "terminal_bytes": 29946,
+      "oracle_build_status": "REBUILT",
+      "executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+      "cache_key": "b9af40fdc801ebee1b6759524e0b13b244e3d6a7af9b29662b0a7e7aec08c641",
+      "scientific_payload_sha256": {
+        "interpolation/contract-v1.json": "9a084d13c2ae64b852366c9b1cbbc6d7ead0c634b702ca892b6358bffeb57970",
+        "w-production-oracle/w-production-oracle-v1.json": "ed7295800a14a6e271d58a09085e931910bb0f7a74c70dcbb785da89bbaa8be4",
+        "vertical-column/routine-oracle-output.txt": "5015ea3a9a9e42b1a2b88c60c2867b74a632bffd1b9cfefdc186b005c752b197",
+        "vertical-column/real-routine-oracle-output.txt": "7fe3f5fa17d0067464258c93efbe1bbf9cf2403b4d442191b08b6deb29e026a4",
+        "vertical-column/conformance-output.txt": "af658ab084a8cee9c57b9d508d1240d157416326165b959cd05efab0e4c1bf8a",
+        "vertical-column/real-conformance-output.txt": "9d00d882d3505930fbbb57b83b0ba6452b18b933abe9243329c354f690202dca"
+      },
+      "direct_build_hits": 7,
+      "direct_build_rebuilds": 3,
+      "docker_image_builds": 1,
+      "make_clean_invocations": 1,
+      "full_fortran_compiler_commands": 45,
+      "retained_build_log_bytes": 156186
+    }
+  ],
+  "fresh_reports": [
+    {
+      "mode": "cold",
+      "generated_at_utc": "2026-10-09T03:39:10.125319+00:00",
+      "oracle_clean": true,
+      "candidate_revision": "1f6d4f7a4eca6d5648f0fe23dc49858c534e2dc0",
+      "status": "TECHNICAL_PASS"
+    },
+    {
+      "mode": "warm",
+      "generated_at_utc": "2026-10-09T03:39:22.326124+00:00",
+      "oracle_clean": true,
+      "candidate_revision": "1f6d4f7a4eca6d5648f0fe23dc49858c534e2dc0",
+      "status": "TECHNICAL_PASS"
+    },
+    {
+      "mode": "clean",
+      "generated_at_utc": "2026-10-09T03:42:46.941473+00:00",
+      "oracle_clean": true,
+      "candidate_revision": "1f6d4f7a4eca6d5648f0fe23dc49858c534e2dc0",
+      "status": "TECHNICAL_PASS"
+    }
+  ],
+  "software_cargo": [
+    {
+      "mode": "seed",
+      "run_id": 37879170680,
+      "conclusion": "success",
+      "steps": {
+        "Restore trusted Cargo compilation cache": 1.0,
+        "Verify restored Cargo compilation bytes": 0.0,
+        "Prove H2D, WGSL arithmetic, D2H, and adapter provenance": 40.0,
+        "Run required software WGSL advection smoke test": 39.0,
+        "Prove canonical forward and backward production advection": 35.0,
+        "Record dependency cache checksums": 3.0,
+        "Post Restore trusted Cargo compilation cache": 46.0
+      },
+      "terminal_transcript_bytes": 224901
+    },
+    {
+      "mode": "warm",
+      "run_id": 37879526290,
+      "conclusion": "success",
+      "steps": {
+        "Restore trusted Cargo compilation cache": 6.0,
+        "Verify restored Cargo compilation bytes": 2.0,
+        "Prove H2D, WGSL arithmetic, D2H, and adapter provenance": 12.0,
+        "Run required software WGSL advection smoke test": 12.0,
+        "Prove canonical forward and backward production advection": 27.0,
+        "Record dependency cache checksums": 1.0,
+        "Post Restore trusted Cargo compilation cache": 0.0
+      },
+      "terminal_transcript_bytes": 204575
+    }
+  ],
+  "technical_cargo": {
+    "seed_run": 37879173210,
+    "compressed_bytes": 405282571,
+    "dependency_files": 2388,
+    "uncompressed_bytes": 1763892661,
+    "runs": [
+      {
+        "mode": "missing",
+        "run_id": 37879175284,
+        "conclusion": "success",
+        "steps": {
+          "Restore trusted Cargo compilation cache": 1.0,
+          "Verify restored Cargo compilation bytes": 0.0,
+          "Run full Rust library test suite": 70.0,
+          "Run small deterministic technical gate": 733.0,
+          "Record dependency cache checksums": 3.0,
+          "Post Restore trusted Cargo compilation cache": 1.0
+        },
+        "terminal_transcript_bytes": 256648
+      },
+      {
+        "mode": "warm",
+        "run_id": 37880604387,
+        "conclusion": "success",
+        "steps": {
+          "Restore trusted Cargo compilation cache": 7.0,
+          "Verify restored Cargo compilation bytes": 3.0,
+          "Run full Rust library test suite": 30.0,
+          "Run small deterministic technical gate": 257.0,
+          "Record dependency cache checksums": 2.0,
+          "Post Restore trusted Cargo compilation cache": 1.0
+        },
+        "terminal_transcript_bytes": 228728
+      }
+    ]
+  }
+}

@@ -152,6 +152,27 @@ def investigate(native, shared, queries):
     return comparisons
 
 
+def audit_query_inputs(inputs, target, queries):
+    """Bind executed f32 query heights to raw brackets and require finite coverage."""
+    coverage = set()
+    for raw, actual in zip(inputs['query_time_s_x_y_target_bracket_fraction'], queries):
+        time, x, y, bracket, fraction = raw
+        require(time == int(time) and bracket == int(bracket), 'noninteger query time/bracket')
+        require(actual[1:4] == [int(time), f32(x), f32(y)], 'raw query/output mismatch')
+        k = int(bracket)
+        if k in (0, len(target)):
+            require(fraction == 0, 'boundary query must declare zero fraction')
+            expected_z = target[0] if k == 0 else target[-1]
+            coverage.add('lower' if k == 0 else 'upper')
+        else:
+            require(1 <= k < len(target) and 0 < f32(fraction) < 1, 'invalid strict interior query')
+            expected_z = f32(target[k-1] + f32(f32(fraction) * f32(target[k] - target[k-1])))
+            require(target[k-1] < expected_z < target[k], 'rounded query is not strict interior')
+            coverage.add('interior')
+        require(actual[4] == expected_z, 'raw query height/output mismatch')
+    require(coverage == {'lower', 'upper', 'interior'}, 'missing vertical query coverage')
+
+
 def report(checkout, run):
     root = Path(__file__).resolve().parents[2]
     manifest = json.loads((root / 'reference/flexpart-11.1.json').read_text())
@@ -166,9 +187,8 @@ def report(checkout, run):
             require(row[4:7] == list(map(f32, raw[2:])), 'raw wind input/output mismatch')
             if level == 1:
                 require(row[2] == f32(col['pressure_pa']), 'raw pressure input/output mismatch')
-    for raw, actual in zip(inputs['query_time_s_x_y_target_bracket_fraction'], queries):
-        require(actual[1:4] == [int(raw[0]), f32(raw[1]), f32(raw[2])], 'raw query/output mismatch')
     target = [shared[1, 0, k][0] for k in range(1, 5)]
+    audit_query_inputs(inputs, target, queries)
     require(target == [native[1, 0, k][0] for k in range(1, 5)], 'initializer did not select first high-pressure column')
     require(all([shared[m, x, k][0] for k in range(1, 5)] == target for m in (1, 2) for x in (0, 1)),
             'target grid changed across columns/times')
@@ -230,6 +250,7 @@ def report(checkout, run):
                                'scripts/interpolation/prepare_shared_height_oracle.py',
                                'scripts/interpolation/w_production_oracle.sh',
                                'scripts/interpolation/prepare_w_production_oracle.py',
+                               'scripts/oracle_build_cache.py',
                                'reference/flexpart-11.1.json']},
                            'linked_objects_sha256': {p: sha256(run / 'build/upstream' / p) for p in linked},
                            'artifacts_sha256': {p: sha256(run / p) for p in artifacts},

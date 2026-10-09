@@ -51,6 +51,7 @@ PARTICLES="1000"
 ORACLE_CHECKOUT="${PROJECT_ROOT}/../flexpart"
 FLEXEXTRACT_CHECKOUT="${PROJECT_ROOT}/../flex_extract"
 SKIP_ORACLE_BUILD="0"
+CLEAN_ORACLE="0"
 REQUIRE_FLEXEXTRACT_ORACLE="0"
 CI_CASE_ALLOWLIST="SW-WGPU-ADVECTION-001 SYNTHETIC-UNIFORM-WIND-SMOKE"
 
@@ -73,7 +74,7 @@ usage() {
 Usage:
   scripts/ci-gate.sh [--output-dir <dir>] [--particles <n>]
                      [--oracle-checkout <dir>] [--flex-extract-checkout <dir>]
-                     [--require-flex-extract-oracle] [--skip-oracle-build]
+                     [--require-flex-extract-oracle] [--skip-oracle-build] [--clean]
 
 Options:
   --output-dir <dir>       Output directory (default: target/ci-gate).
@@ -85,6 +86,7 @@ Options:
                            only when the checkout exists).
   --require-flex-extract-oracle
                            Fail the gate when the flex_extract checkout is absent instead of reporting NOT_WIRED.
+  --clean                 Force no-cache image and clean Fortran/driver builds.
   --skip-oracle-build      Skip Docker oracle build (local iteration only;
                            the gate then reports INCOMPLETE and fails).
   -h, --help               Show this help.
@@ -99,12 +101,18 @@ while [ $# -gt 0 ]; do
     --flex-extract-checkout) FLEXEXTRACT_CHECKOUT="$2"; shift 2 ;;
     --require-flex-extract-oracle) REQUIRE_FLEXEXTRACT_ORACLE="1"; shift ;;
     --skip-oracle-build) SKIP_ORACLE_BUILD="1"; shift ;;
+    --clean) CLEAN_ORACLE="1"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) log_error "Unknown argument: $1"; usage; exit 2 ;;
   esac
 done
 
 mkdir -p "${OUTPUT_DIR}"
+# A build-cache hit may retain compilation artifacts, never a prior run's
+# result. Remove the gate-owned verdicts before even checking prerequisites.
+rm -f "${OUTPUT_DIR}/ci-gate-report.json" "${OUTPUT_DIR}/run-manifest.json" \
+  "${OUTPUT_DIR}/gpu-preflight.json" "${OUTPUT_DIR}/candidate-output.json" \
+  "${OUTPUT_DIR}/oracle-build-status.json" "${OUTPUT_DIR}/oracle-build.json"
 FLEXEXTRACT_STATUS_FILE="${OUTPUT_DIR}/flex-extract-oracle-status.txt"
 rm -rf "${OUTPUT_DIR}/flex-extract-oracle"
 rm -f "${OUTPUT_DIR}/flex-extract-etadot.log" "${FLEXEXTRACT_STATUS_FILE}"
@@ -205,63 +213,27 @@ if [ "${SKIP_ORACLE_BUILD}" = "1" ]; then
   log_warn "--skip-oracle-build was given; oracle build is NOT_RUN and the gate will report INCOMPLETE."
   echo "NOT_RUN (skipped by --skip-oracle-build)" > "${OUTPUT_DIR}/oracle-build.log"
 else
-  log_info "Step 2/6: build oracle image and compile FLEXPART..."
-  if ! command -v docker >/dev/null 2>&1; then
-    fail "Docker is required for the oracle build but was not found"
-  fi
-  if [ ! -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" ]; then
-    fail "Fortran compose file not found at docker/docker-compose.fortran.yml"
-  fi
-  # The oracle compose file defaults to user 1000:1000, but GitHub runners
-  # use UID 1001. Override the run user so the bind-mounted checkout stays
-  # writable (bash UID is readonly, so pass --user instead of exporting UID).
+  log_info "Step 2/6: verify/rebuild the shared pinned oracle cache..."
   DOCKER_USER_ARGS=""
   if command -v id >/dev/null 2>&1; then
     DOCKER_USER_ARGS="--user $(id -u):$(id -g)"
-    # shellcheck disable=SC2086
-    log_info "Docker run user override: ${DOCKER_USER_ARGS}"
   fi
-  {
-    echo "=== docker compose build ==="
-    docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" build flexpart-fortran
-    echo "=== fortran compile ==="
-    # shellcheck disable=SC2086
-    docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
-      ${DOCKER_USER_ARGS} \
-      flexpart-fortran bash -c "
-        set -euo pipefail
-        container_oracle_head=\$(git -C /workspace/flexpart rev-parse HEAD)
-        test \"\$container_oracle_head\" = \"${PINNED_COMMIT}\"
-        cd /workspace/flexpart/src
-        make -f makefile_gfortran clean >/dev/null 2>&1 || true
-        FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4 2>&1 | tail -5
-        test -x FLEXPART
-        rm -f gitversion.txt
-        git checkout -- src/FLEXPART.f90 2>/dev/null || git checkout -- FLEXPART.f90
-        rm -f gitversion.txt
-      "
-    echo "=== compiler and image provenance ==="
-    docker run --rm flexpart-fortran:latest gfortran --version | head -1
-    docker image inspect flexpart-fortran:latest --format '{{.Id}}'
-  } 2>&1 | tee "${OUTPUT_DIR}/oracle-build.log"
-  if [ ! -x "${ORACLE_EXECUTABLE}" ]; then
-    fail "Oracle executable missing after build: ${ORACLE_EXECUTABLE}"
+  CLEAN_ARGS=()
+  if [ "${CLEAN_ORACLE}" = "1" ]; then
+    CLEAN_ARGS+=(--clean)
+    rm -f "${OUTPUT_DIR}/vertical-column/oracle-build/build.json" \
+      "${OUTPUT_DIR}/interpolation/oracle-build/build.json" \
+      "${OUTPUT_DIR}/w-production-oracle/oracle-build/build.json"
   fi
-  # The v11.1 makefile stamps the git version into the tracked
-  # src/FLEXPART.f90 (sed gitversion_tmp) plus an untracked gitversion.txt.
-  # Restore both on the host so the oracle stays pristine; the compiled
-  # binary itself is git-ignored and remains.
-  git -C "${ORACLE_CHECKOUT}" checkout -- src/FLEXPART.f90 2>/dev/null || true
-  rm -f "${ORACLE_CHECKOUT}/src/gitversion.txt"
-  # The build must leave the oracle checkout clean.
-  ORACLE_POST_STATUS="$(git -C "${ORACLE_CHECKOUT}" status --porcelain 2>/dev/null || true)"
-  if [ -n "${ORACLE_POST_STATUS}" ]; then
-    log_error "Oracle status after build:"
-    echo "${ORACLE_POST_STATUS}" | head -20
-    # Untracked build leftovers that upstream does not ignore fail closed,
-    # but list them explicitly for debugging.
-    fail "Oracle checkout is dirty after build; the build must remove generated stamps (see docs/reference-environment.md)"
+  if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/oracle_build_cache.py" prepare \
+    --project-root "${PROJECT_ROOT}" --oracle-checkout "${ORACLE_CHECKOUT}" \
+    --status-output "${OUTPUT_DIR}/oracle-build-status.json" "${CLEAN_ARGS[@]}"; then
+    fail "Pinned oracle cache preparation failed; full log: target/oracle-cache/build.log"
   fi
+  cp "${PROJECT_ROOT}/target/oracle-cache/build.log" "${OUTPUT_DIR}/oracle-build.log"
+  cp "${PROJECT_ROOT}/target/oracle-cache/build.json" "${OUTPUT_DIR}/oracle-build.json"
+  # Bind every subsequent driver to the exact immutable image verified above.
+  export FLEXPART_ORACLE_IMAGE_ID="$("${HOST_PYTHON}" -c 'import json,sys; print(json.load(open(sys.argv[1]))["docker_image_id"])' "${OUTPUT_DIR}/oracle-build-status.json")"
   "${HOST_PYTHON}" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' \
     "${ORACLE_EXECUTABLE}" > "${OUTPUT_DIR}/oracle-executable.sha256"
   test -s "${OUTPUT_DIR}/oracle-executable.sha256" || fail "Could not hash oracle executable"
@@ -276,6 +248,7 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
   VERTICAL_DIR="${OUTPUT_DIR}/vertical-column"
   VERTICAL_BUILD_DIR="${VERTICAL_DIR}/oracle-build"
   mkdir -p "${VERTICAL_DIR}" "${VERTICAL_BUILD_DIR}"
+  find "${VERTICAL_DIR}" -mindepth 1 -maxdepth 1 ! -name oracle-build -exec rm -rf {} +
 
   if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/prepare_oracle_column.py" \
     --snapshot "${PROJECT_ROOT}/fixtures/vertical/synthetic-column-v1.json" \
@@ -304,29 +277,17 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
       mkdir -p \"\$build\"
       cd \"\$build\"
 
-      objects=\$(find \"\$oracle_src\" -maxdepth 1 -type f -name '*.o' ! -name 'FLEXPART.o' -print | sort | tr '\\n' ' ')
-      test -n \"\$objects\"
-      test -f \"\$oracle_src/verttransform_mod.o\"
-      test -f \"\$oracle_src/windfields_mod.o\"
-
-      gfortran -O0 -I\"\$oracle_src\" -fopenmp -mcmodel=large \
-        /workspace/flexpart-gpu/scripts/vertical/direct_oracle_driver.f90 \
-        \$objects \
-        -L/usr/lib/x86_64-linux-gnu -Wl,-rpath=/usr/lib/x86_64-linux-gnu \
-        -leccodes -leccodes_f90 -lm -lnetcdff \
-        -o \"\$build/flexpart-vertical-routine-oracle\"
-
-      nm \"\$build/flexpart-vertical-routine-oracle\" > \"\$build/flexpart-vertical-routine-oracle.symbols\"
-      grep -q '__verttransform_mod_MOD_verttransform_ecmwf_heights' \
-        \"\$build/flexpart-vertical-routine-oracle.symbols\"
-      sha256sum \"\$oracle_src/verttransform_mod.o\" > \"\$build/verttransform_mod.o.sha256\"
-      sha256sum \"\$oracle_src/windfields_mod.o\" > \"\$build/windfields_mod.o.sha256\"
-
-      gfortran -O0 -J\"\$build\" -I\"\$build\" \
-        \"\$oracle_src/par_mod.f90\" \
-        \"\$oracle_src/qvsat_mod.f90\" \
-        /workspace/flexpart-gpu/scripts/vertical/oracle_column.f90 \
-        -o \"\$build/vertical-conformance-harness\"
+      python3 /workspace/flexpart-gpu/scripts/oracle_build_cache.py cached-command \
+        --metadata \"\$build/build.json\" \
+        --input /workspace/flexpart-gpu/scripts/vertical/build_direct_oracle.sh \
+        --input /workspace/flexpart-gpu/scripts/vertical/direct_oracle_driver.f90 \
+        --input /workspace/flexpart-gpu/scripts/vertical/oracle_column.f90 \
+        --artifact \"\$build/flexpart-vertical-routine-oracle\" \
+        --artifact \"\$build/vertical-conformance-harness\" \
+        --artifact \"\$build/flexpart-vertical-routine-oracle.symbols\" \
+        --artifact \"\$build/verttransform_mod.o.sha256\" \
+        --artifact \"\$build/windfields_mod.o.sha256\" \
+        --command bash /workspace/flexpart-gpu/scripts/vertical/build_direct_oracle.sh \"\$build\"
 
       \"\$build/flexpart-vertical-routine-oracle\" \
         /workspace/target/ci-gate/vertical-column/oracle-input.txt \
@@ -498,11 +459,9 @@ fi
 if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
   log_info "Step 2d/6: regenerate and verify the interpolation oracle contract fixture (#71)..."
   INTERPOL_DIR="${OUTPUT_DIR}/interpolation"
-  # The direct-oracle harness intentionally reuses its binary across the eight
-  # cases within one run. Start every gate invocation from a clean interpolation
-  # directory so a local rerun can never combine current sources/provenance with
-  # a stale executable from an earlier checkout.
-  rm -rf "${INTERPOL_DIR}"
+  # Retain only validated compilation artifacts. Inputs, outputs, comparisons
+  # and provenance are regenerated for this invocation.
+  find "${INTERPOL_DIR}" -mindepth 1 -maxdepth 1 ! -name oracle-build -exec rm -rf {} + 2>/dev/null || test ! -d "${INTERPOL_DIR}"
   INTERPOL_BUILD_DIR="${INTERPOL_DIR}/oracle-build"
   mkdir -p "${INTERPOL_DIR}" "${INTERPOL_BUILD_DIR}" "${INTERPOL_DIR}/oracle-output"
 
@@ -621,7 +580,7 @@ fi
 if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
   log_info "Step 2e/6: regenerate and verify the end-to-end W production oracle (#80)..."
   W_PRODUCTION_DIR="${OUTPUT_DIR}/w-production-oracle"
-  rm -rf "${W_PRODUCTION_DIR}"
+  find "${W_PRODUCTION_DIR}" -mindepth 1 -maxdepth 1 ! -name oracle-build -exec rm -rf {} + 2>/dev/null || test ! -d "${W_PRODUCTION_DIR}"
   mkdir -p "${W_PRODUCTION_DIR}/oracle-build"
 
   if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/interpolation/prepare_w_production_oracle.py" \
@@ -689,6 +648,8 @@ fi
 # ---------------------------------------------------------------------------
 VERTICAL_SAMPLING_DIR="${OUTPUT_DIR}/vertical-sampling"
 mkdir -p "${VERTICAL_SAMPLING_DIR}"
+rm -f "${VERTICAL_SAMPLING_DIR}/vertical-model-level-regression.json" \
+  "${VERTICAL_SAMPLING_DIR}/vertical-interface-w-production-oracle.json"
 if ! cargo test --lib meteorology::vertical_sampling::tests 2>&1 | tee "${VERTICAL_SAMPLING_DIR}/unit-tests.log"; then
   fail "Rust #73 vertical-sampling unit tests failed"
 fi

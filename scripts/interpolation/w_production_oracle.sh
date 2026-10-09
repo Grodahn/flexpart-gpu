@@ -16,7 +16,9 @@ if [ -z "${objects}" ]; then
   exit 1
 fi
 
-(
+compile_driver() {
+  set -euo pipefail
+  (
   cd "${BUILD}"
   gfortran -O0 -I"${ORACLE_SRC}" -fopenmp -mcmodel=large -c "${DRIVER}" \
     -o w-production-oracle-driver.o
@@ -37,7 +39,16 @@ fi
     objdump -d --disassemble=MAIN__ w-production-oracle
     objdump -d --disassemble=__interpol_mod_MOD_interpol_wind w-production-oracle
   } > w-production-oracle.call-sites
-)
+  )
+}
+export BUILD ORACLE_SRC DRIVER objects
+export -f compile_driver
+python3 /workspace/flexpart-gpu/scripts/oracle_build_cache.py cached-command \
+  --metadata "${BUILD}/build.json" --input "${BASH_SOURCE[0]}" --input "${DRIVER}" \
+  --artifact "${BINARY}" --artifact "${BUILD}/w-production-oracle-driver.o" \
+  --artifact "${BUILD}/w-production-oracle.link-map" --artifact "${BUILD}/compiler-identity.txt" \
+  --artifact "${BUILD}/linked-objects.txt" --artifact "${BUILD}/w-production-oracle.nm" \
+  --artifact "${BUILD}/w-production-oracle.call-sites" --command bash -c compile_driver
 
 grep -q '__verttransform_mod_MOD_verttransform_ecmwf_heights' "${BUILD}/w-production-oracle.nm"
 grep -q '__verttransform_mod_MOD_verttransform_ecmwf_windfields' "${BUILD}/w-production-oracle.nm"

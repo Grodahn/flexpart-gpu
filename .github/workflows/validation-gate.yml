@@ -10,6 +10,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      cache_audit:
+        description: Run complete cold, warm and forced-clean technical gates
+        type: boolean
+        default: false
 
 jobs:
   technical-gate:
@@ -29,7 +34,42 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - name: Identify runner image for Cargo cache
+        id: cache-environment
+        run: echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - name: Restore trusted Cargo compilation cache
+        id: cargo-cache
+        # Pull requests may read scoped trusted caches, but never publish them.
+        # GitHub also prevents protected branches from reading feature/PR caches.
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: "flexpart-gpu -> target"
+          key: ubuntu-22.04-${{ runner.arch }}-default-features-${{ steps.cache-environment.outputs.image }}-${{ hashFiles('**/build.rs', '**/.cargo/config*') }}
+          env-vars: "RUST CARGO CC CXX CFLAGS CXXFLAGS LDFLAGS"
+          cache-targets: "false"
+          # Only compiler artifacts enter the archive; reports/oracle outputs
+          # are excluded even if the action cleanup cannot remove a file.
+          cache-directories: |
+            flexpart-gpu/target/debug/deps
+            flexpart-gpu/target/debug/build
+            flexpart-gpu/target/debug/.fingerprint
+            flexpart-gpu/target/release/deps
+            flexpart-gpu/target/release/build
+            flexpart-gpu/target/release/.fingerprint
+            flexpart-gpu/.cargo-cache-integrity
+          cache-workspace-crates: "false"
+          cache-bin: "false"
+          save-if: ${{ github.event_name != 'pull_request' }}
 
+      - name: Verify restored Cargo compilation bytes
+        working-directory: flexpart-gpu
+        run: python3 scripts/cargo_cache_integrity.py verify
+      - name: Verify build-cache invalidation and atomic publication
+        working-directory: flexpart-gpu
+        run: |
+          python3 scripts/test_agent_validation.py
+          python3 scripts/test_oracle_build_cache.py
+          python3 scripts/test_cargo_cache_integrity.py
       - name: Check Rust formatting
         working-directory: flexpart-gpu
         run: cargo fmt --all -- --check
@@ -104,7 +144,11 @@ jobs:
           set -euo pipefail
           cd flexpart-gpu
           chmod +x scripts/ci-gate.sh scripts/vertical/flex_extract_etadot_oracle.sh
-          scripts/ci-gate.sh --particles 1000 --require-flex-extract-oracle
+          if [ "${{ inputs.cache_audit }}" = "true" ]; then
+            python3 scripts/audit_build_cache.py
+          else
+            scripts/ci-gate.sh --particles 1000 --require-flex-extract-oracle
+          fi
 
       - name: Reproduce nonuniform-column shared-height research oracle
         working-directory: flexpart-gpu
@@ -114,10 +158,16 @@ jobs:
           python3 scripts/interpolation/run_shared_height_oracle.py \
             --checkout ../flexpart --output-dir target/ci-gate/shared-height-oracle
 
+      - name: Record dependency cache checksums
+        working-directory: flexpart-gpu
+        run: python3 scripts/cargo_cache_integrity.py record
       - name: Upload gate artifacts (reports, logs, manifests)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ci-technical-gate-${{ github.run_id }}
-          path: flexpart-gpu/target/ci-gate/
+          path: |
+            flexpart-gpu/target/ci-gate/
+            flexpart-gpu/target/oracle-cache/
+            flexpart-gpu/target/build-cache-audit/
           retention-days: 30

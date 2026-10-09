@@ -22,3 +22,6 @@ Thumbs.db
 *.profraw
 *.profdata
 coverage/
+
+# Dependency checksum metadata retained outside the cache action's target cleanup.
+/.cargo-cache-integrity/

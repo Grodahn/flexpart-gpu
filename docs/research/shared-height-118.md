@@ -182,8 +182,8 @@ python scripts/interpolation/run_shared_height_oracle.py --checkout <pristine-fl
 python scripts/interpolation/test_shared_height_oracle.py
 ```
 
-The launcher records resolved image ID, mounts the oracle read-only and uses the
-existing #80 linker/symbol/disassembly capture. The shell checks actual commit
+The launcher records and executes the resolved immutable image ID, mounts the
+oracle read-only and uses the existing #80 linker/symbol/disassembly capture. The shell checks actual commit
 and clean status before and after, archives only tracked pinned source into a
 fresh build directory (no stale objects), builds the complete model at
 `FC=gfortran eta=no arch=x86-64 -j4`, then links the research driver at
@@ -199,7 +199,9 @@ compile/driver logs, executable, every linked object, symbol inventory,
 cross-reference map and disassembly under the named target directory; volatile
 build/executable hashes are recorded per run rather than required equal across
 build paths. The frozen report is the inspected baseline, not a portable binary.
-CI regenerates from the pristine pin and retains fresh artifacts on failure too.
+The evidence audit binds each executed f32 query height to its raw target bracket
+and fraction and requires lower/upper boundaries plus strict interiors. CI
+regenerates from the pristine pin and retains fresh artifacts on failure too.
 
 No production source or shader changes belong to #118. The follow-up preparation,
 consumer adoption and W slope proof are separate verification boundaries.
@@ -207,5 +209,10 @@ consumer adoption and W slope proof are separate verification boundaries.
 Published follow-ups: [#184 GPU U/V preparation](https://github.com/Grodahn/flexpart-gpu/issues/184),
 [#185 GPU U/V consumer integration](https://github.com/Grodahn/flexpart-gpu/issues/185)
 (depends on #184), and [#186 direct interior-W slope proof](https://github.com/Grodahn/flexpart-gpu/issues/186)
-(prerequisite for general W preparation; reuses #80). Their contracts retain the
-scope and fail-closed boundaries above.
+(prerequisite for general W preparation; reuses #80). #184 initially supports
+the directly tested initial high-pressure column at (0,0). #185 ends at the
+#76/#171 U/V query handoff: the existing forward/backward drivers require a full
+U/V/W vector, so their adoption remains with the production-consumer owners
+after a separately validated W route exists. #186 requires independent x-only,
+y-only and zero-slope diagnostic controls around the genuine production call.
+Their contracts retain the scope and fail-closed boundaries above.

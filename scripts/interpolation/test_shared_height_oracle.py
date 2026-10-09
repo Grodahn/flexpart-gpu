@@ -2,11 +2,17 @@
 """Fail-closed regression checks for the #118 research evidence consumer."""
 
 import copy
+import contextlib
+import io
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from prepare_shared_height_oracle import decode, decode_input, investigate
+from prepare_shared_height_oracle import audit_query_inputs, decode, decode_input, investigate
+from run_shared_height_oracle import main as launch
 
 
 FIXTURE = Path(__file__).resolve().parents[2] / 'fixtures/interpolation/shared-height-v1'
@@ -18,6 +24,39 @@ class ResearchEvidenceTests(unittest.TestCase):
         native, shared, queries = decode(FIXTURE / 'output.txt')
         self.assertEqual(len(investigate(native, shared, queries)), 9)
         self.assertEqual(len(decode_input(FIXTURE / 'input.txt')['columns_repeated_in_y']), 4)
+        audit_query_inputs(decode_input(FIXTURE / 'input.txt'),
+                           [shared[1, 0, k][0] for k in range(1, 5)], queries)
+
+    def test_changed_declared_height_fails(self):
+        _, shared, queries = decode(FIXTURE / 'output.txt')
+        inputs = decode_input(FIXTURE / 'input.txt')
+        inputs['query_time_s_x_y_target_bracket_fraction'][1][-1] = 0.55
+        with self.assertRaisesRegex(ValueError, 'height/output mismatch'):
+            audit_query_inputs(inputs, [shared[1, 0, k][0] for k in range(1, 5)], queries)
+
+    def test_missing_upper_boundary_fails(self):
+        _, shared, queries = decode(FIXTURE / 'output.txt')
+        inputs = decode_input(FIXTURE / 'input.txt')
+        inputs['query_time_s_x_y_target_bracket_fraction'][4][-2] = 0
+        queries[4][4] = 0
+        with self.assertRaisesRegex(ValueError, 'missing vertical query coverage'):
+            audit_query_inputs(inputs, [shared[1, 0, k][0] for k in range(1, 5)], queries)
+
+    def test_launcher_runs_recorded_immutable_image(self):
+        SCRATCH.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
+            checkout = Path(directory) / 'oracle'
+            (checkout / '.git').mkdir(parents=True)
+            identity = 'sha256:' + 'a' * 64
+            calls = [subprocess.CompletedProcess([], 0, stdout=identity + '\n'),
+                     subprocess.CompletedProcess([], 0)]
+            argv = ['launcher', '--checkout', str(checkout), '--output-dir', str(Path(directory) / 'run')]
+            with patch.object(sys, 'argv', argv), patch('subprocess.run', side_effect=calls) as run:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    launch()
+            command = run.call_args_list[1].args[0]
+            self.assertEqual(command[command.index('bash') - 1], identity)
+            self.assertIn(f'RESEARCH_IMAGE_ID={identity}', command)
 
     def test_missing_native_row_fails(self):
         SCRATCH.mkdir(parents=True, exist_ok=True)

@@ -1,8 +1,8 @@
 {
   "revision": "56b7577a38a5ce62387315ed8f5dc01e00b96679",
   "headers": {
-    ".github/workflows/software-wgpu.yml": "name: Software WGSL smoke\n\non:\n  pull_request:\n  push:\n    branches: [main]\n\njobs:\n  software-wgpu:\n    runs-on: ubuntu-22.04\n    env:\n      FLEXPART_GPU_SOFTWARE: \"1\"\n      FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}\n      WGPU_BACKEND: vulkan\n      LIBGL_ALWAYS_SOFTWARE: \"1\"\n",
-    ".github/workflows/validation-gate.yml": "name: Technical validation gate\n\n# Small deterministic technical gate (RISK-03.3G-01, Issue #6 point 4).\n# Technical gate only: TECHNICAL_PASS does not establish scientific parity\n# and does not close Issue #6. The full ETEX mini run never executes here;\n# it stays local/manual (see extended-validation.yml and docs/ci-gates.md).\n\non:\n  pull_request:\n  push:\n    branches: [main]\n  workflow_dispatch:\n\njobs:\n  technical-gate:\n    runs-on: ubuntu-22.04\n    timeout-minutes: 60\n    env:\n      FLEXPART_GPU_SOFTWARE: \"1\"\n      WGPU_BACKEND: vulkan\n      LIBGL_ALWAYS_SOFTWARE: \"1\"\n"
+    ".github/workflows/software-wgpu.yml": "name: Software WGSL smoke\n\non:\n  pull_request:\n  push:\n    branches: [main]\n  workflow_dispatch:\n\njobs:\n  software-wgpu:\n    runs-on: ubuntu-22.04\n    env:\n      FLEXPART_GPU_SOFTWARE: \"1\"\n      FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}\n      WGPU_BACKEND: vulkan\n      LIBGL_ALWAYS_SOFTWARE: \"1\"\n",
+    ".github/workflows/validation-gate.yml": "name: Technical validation gate\n\n# Small deterministic technical gate (RISK-03.3G-01, Issue #6 point 4).\n# Technical gate only: TECHNICAL_PASS does not establish scientific parity\n# and does not close Issue #6. The full ETEX mini run never executes here;\n# it stays local/manual (see extended-validation.yml and docs/ci-gates.md).\n\non:\n  pull_request:\n  push:\n    branches: [main]\n  workflow_dispatch:\n    inputs:\n      cache_audit:\n        description: Run complete cold, warm and forced-clean technical gates\n        type: boolean\n        default: false\n\njobs:\n  technical-gate:\n    runs-on: ubuntu-22.04\n    timeout-minutes: 60\n    env:\n      FLEXPART_GPU_SOFTWARE: \"1\"\n      WGPU_BACKEND: vulkan\n      LIBGL_ALWAYS_SOFTWARE: \"1\"\n"
   },
   "invocations": [
     {
@@ -781,7 +781,7 @@
       "Preserve configuration facade and parser behavior": "e0b2aa33bd4baf0385a6a25a656d5243f5b13fc6339d597fd4f8cdd6d26ed6f7",
       "Clone pinned FLEXPART 11.1 oracle": "1e07ca8c26c815bf9bd489a4eb7a468673fc22aa026b808d08573fd102e135d8",
       "Clone pinned flex_extract 7.1.2 oracle": "ede9affb6f99dedf14a96d364498da72e2db3bb9e09659d286bdf4fdeb195438",
-      "Run small deterministic technical gate": "0108581b4c45db2b1f745083bd83c4c989f82c81b2709c369a431cebfa4e60a9"
+      "Run small deterministic technical gate": "9c5e8fa526f507587a06fb5c827962bb122ec9ff0374d4ebcaad0a20f150f55c"
     }
   },
   "required_checks": [
@@ -796,7 +796,7 @@
     "grep -q \"HANNA-PREFIX-139: .*capacity=8 active=$active substeps=$substeps\"",
     "grep -q \"HANNA-BOUNDS-139\""
   ],
-  "gate_source_sha256": "8ac75656f8114431bd9e649df07944bb638fdcfbfdd6fa5116a4bcc65137f655",
+  "gate_source_sha256": "960784abebde3fa07cd63e5e77eaa9c77e7ccf150999218a6ad2f46923cb52ee",
   "artifact_paths": {
     ".github/workflows/software-wgpu.yml": [
       "target/ci-gate/gpu-preflight.json",

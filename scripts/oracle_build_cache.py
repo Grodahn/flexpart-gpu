@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Deterministically identify and validate reusable FLEXPART oracle builds.
 
-This helper does not build or run an oracle.  It only records whether the
-existing executable and Docker image match the inputs consumed by the existing
-``run-corpus.sh`` build path.  A cache miss therefore always falls back to that
-same pinned build, rather than introducing an alternate oracle path.
+The corpus and technical gate share this build-preparation owner. A cache hit
+skips compilation only; scientific execution and validation stay with their
+existing callers and always run freshly.
 """
 
 from __future__ import annotations
@@ -12,11 +11,18 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 
-SCHEMA = "flexpart-gpu.oracle-build-cache.v1"
+SCHEMA = "flexpart-gpu.oracle-build-cache.v2"
+MAKE_ARGUMENTS = "FC=gfortran eta=no arch=x86-64 -j4"
+TOOLCHAIN_COMMAND = (
+    "set -euo pipefail; gfortran -v 2>&1; ld --version; "
+    "sha256sum /usr/bin/gfortran /usr/bin/ld; dpkg-query -W"
+)
 
 
 def sha256(path: Path) -> str:
@@ -47,9 +53,16 @@ def cache_identity(project_root: Path, oracle_checkout: Path) -> dict:
         "oracle_manifest": sha256(project_root / "reference" / "flexpart-11.1.json"),
         "oracle_makefile": sha256(oracle_checkout / "src" / "makefile_gfortran"),
     }
+    # Hash the source bytes too: a matching HEAD alone cannot identify a dirty
+    # checkout. Generated objects/modules are checked separately on every hit.
+    for path in sorted((oracle_checkout / "src").rglob("*")):
+        if path.is_file() and (path.suffix.lower() in (".f90", ".f", ".h", ".inc")
+                               or path.name.startswith("makefile")):
+            inputs[path.relative_to(oracle_checkout).as_posix()] = sha256(path)
+    inputs["cache_owner"] = sha256(Path(__file__))
     identity = {
         "oracle_commit": git_head(oracle_checkout),
-        "make_arguments": "FC=gfortran eta=no arch=x86-64 -j4",
+        "make_arguments": MAKE_ARGUMENTS,
         "inputs_sha256": inputs,
     }
     encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
@@ -57,11 +70,35 @@ def cache_identity(project_root: Path, oracle_checkout: Path) -> dict:
     return identity
 
 
+def atomic_json(path: Path, record: dict) -> None:
+    """Publish only a complete record, even if a build or writer is interrupted."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".")
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(record, stream, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def build_artifacts(executable: Path) -> dict:
+    """Identify the complete retained link/module set used by direct drivers."""
+    paths = sorted((*executable.parent.glob("*.o"), *executable.parent.glob("*.mod")))
+    if not any(p.suffix == ".o" for p in paths) or not any(p.suffix == ".mod" for p in paths):
+        raise ValueError("oracle build requires both objects and compiler modules")
+    return {path.name: sha256(path) for path in paths}
+
+
 def validate(metadata_path: Path, identity: dict, image_id: str, executable: Path) -> bool:
     """Return whether retained image and executable exactly match the cache record."""
     try:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        artifacts = build_artifacts(executable)
+    except (OSError, ValueError):
         return False
     build_log = metadata_path.with_name("build.log")
     return (
@@ -69,6 +106,8 @@ def validate(metadata_path: Path, identity: dict, image_id: str, executable: Pat
         and metadata.get("schema") == SCHEMA
         and metadata.get("identity") == identity
         and metadata.get("docker_image_id") == image_id
+        and bool(image_id)
+        and metadata.get("artifacts_sha256") == artifacts
         and executable.is_file()
         and metadata.get("oracle_executable_sha256") == sha256(executable)
         and build_log.is_file()
@@ -98,67 +137,207 @@ def write_status(
         "log": str(build_log.resolve()),
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(record, separators=(",", ":")) + "\n", encoding="utf-8")
+    atomic_json(output_path, record)
+
+
+def require_pristine(checkout: Path, project: Path) -> None:
+    """Reject an unpinned or dirty oracle before consuming any retained build."""
+    pin = json.loads((project / "reference/flexpart-11.1.json").read_text())["pinned_commit"]
+    status = subprocess.check_output(
+        ["git", "-c", f"safe.directory={checkout.resolve().as_posix()}",
+         "-C", str(checkout), "status", "--porcelain"], text=True)
+    if git_head(checkout) != pin or status.strip():
+        raise ValueError("oracle checkout must be pinned and pristine")
+
+
+def toolchain_identity(image: str | None = None) -> str:
+    """Identify the concrete running compiler/linker/packages using one shared recipe."""
+    command = ["bash", "-c", TOOLCHAIN_COMMAND]
+    if image:
+        command = ["docker", "run", "--rm", image, *command]
+    toolchain = subprocess.check_output(command, text=True)
+    if not toolchain:
+        raise ValueError("missing toolchain identity")
+    return toolchain
+
+
+def image_identity() -> tuple[str, str]:
+    """Resolve an immutable image and its concrete compiler/linker/package identity."""
+    image = subprocess.check_output(
+        ["docker", "image", "inspect", "flexpart-fortran:latest", "--format", "{{.Id}}"],
+        text=True).strip()
+    if not image:
+        raise ValueError("missing image identity")
+    return image, toolchain_identity(image)
+
+
+def resolved_identity(project: Path, checkout: Path, image: str, toolchain: str) -> dict:
+    """Use the same complete identity for every build-record caller."""
+    identity = cache_identity(project, checkout)
+    identity.pop("cache_key")
+    identity["toolchain_sha256"] = hashlib.sha256(toolchain.encode()).hexdigest()
+    identity["docker_image_id"] = image
+    identity["cache_key"] = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return identity
+
+
+def prepare(project: Path, checkout: Path, status_output: Path, clean: bool) -> None:
+    """Prepare #92's pinned build for both corpus and technical-gate consumers."""
+    project, checkout = project.resolve(), checkout.resolve()
+    cache = project / "target/oracle-cache"
+    cache.mkdir(parents=True, exist_ok=True)
+    # A concurrent caller must fail explicitly rather than hash a half-built
+    # executable. This lock covers this owner's build and publication only.
+    lock = cache / "prepare.lock"
+    lock.mkdir()
+    try:
+        status_output.unlink(missing_ok=True)
+        require_pristine(checkout, project)
+        metadata = cache / "build.json"
+        log = cache / "build.log"
+        executable = checkout / "src/FLEXPART"
+        try:
+            image, toolchain = image_identity()
+        except subprocess.CalledProcessError:
+            image, toolchain = "", ""
+        identity = resolved_identity(project, checkout, image, toolchain)
+        if not clean and image and validate(metadata, identity, image, executable):
+            disposition = "REUSED"
+            print("Oracle build cache: VERIFIED_REUSE", flush=True)
+        else:
+            metadata.unlink(missing_ok=True)
+            environment = dict(os.environ, FLEXPART_DIR=checkout.as_posix(),
+                               FLEXPART_ORACLE_IMAGE_ID="flexpart-fortran:latest")
+            compose = ["docker", "compose", "-f", str(project / "docker/docker-compose.fortran.yml")]
+            with log.open("w", encoding="utf-8") as stream:
+                command = compose + ["build"] + (["--no-cache"] if clean else []) + ["flexpart-fortran"]
+                stream.write("=== docker compose build ===\n")
+                stream.flush()
+                subprocess.run(command, env=environment, stdout=stream, stderr=subprocess.STDOUT, check=True)
+                image, toolchain = image_identity()
+                run_environment = dict(environment, FLEXPART_ORACLE_IMAGE_ID=image)
+                stream.write("=== make clean; full Fortran compilation ===\n")
+                stream.flush()
+                try:
+                    user = ["--user", f"{os.getuid()}:{os.getgid()}"] if hasattr(os, "getuid") else []
+                    subprocess.run(compose + ["run", "--rm", *user,
+                        "-e", "GIT_CONFIG_COUNT=1", "-e", "GIT_CONFIG_KEY_0=safe.directory",
+                        "-e", "GIT_CONFIG_VALUE_0=/workspace/flexpart", "flexpart-fortran", "bash", "-c",
+                        "set -euo pipefail; cd /workspace/flexpart/src; "
+                        "make -f makefile_gfortran clean; "
+                        "FC=gfortran make -f makefile_gfortran eta=no arch=x86-64 -j4; test -x FLEXPART"],
+                        env=run_environment, stdout=stream, stderr=subprocess.STDOUT, check=True)
+                finally:
+                    subprocess.run(["git", "-c", f"safe.directory={checkout.as_posix()}",
+                                    "-C", str(checkout), "checkout", "--", "src/FLEXPART.f90"], check=True)
+                    (checkout / "src/gitversion.txt").unlink(missing_ok=True)
+            require_pristine(checkout, project)
+            identity = resolved_identity(project, checkout, image, toolchain)
+            with log.open("a", encoding="utf-8") as stream:
+                stream.write("\n=== resolved image and toolchain ===\n" + image + "\n" + toolchain)
+            atomic_json(metadata, {
+                "schema": SCHEMA, "identity": identity, "docker_image_id": image,
+                "oracle_executable_sha256": sha256(executable),
+                "artifacts_sha256": build_artifacts(executable), "build_log_sha256": sha256(log),
+            })
+            disposition = "REBUILT"
+            print("Oracle build cache: REBUILT", flush=True)
+        require_pristine(checkout, project)
+        write_status(status_output, disposition, identity, image, metadata, log)
+    finally:
+        lock.rmdir()
+
+
+def cached_command(metadata: Path, inputs: list[Path], artifacts: list[Path], command: list[str], *,
+                   parent: Path = Path("/workspace/target/oracle-cache/build.json"),
+                   project: Path = Path("/workspace/flexpart-gpu"),
+                   checkout: Path = Path("/workspace/flexpart")) -> None:
+    """Reuse compilation only; callers always run and check scientific outputs afterwards.
+
+    Direct drivers inherit the verified #92 parent build identity and supply
+    their complete recipe/source and retained binary/provenance artifact set.
+    These records are local build records, never restored from untrusted CI.
+    """
+    source = Path(os.environ.get("ORACLE_SRC", str(checkout / "src")))
+    if source.resolve() != (checkout / "src").resolve():
+        # A selected alternate link tree is outside this parent's identity.
+        # Preserve legacy compilation without consulting an unrelated record.
+        subprocess.run(command, check=True)
+        print("Direct oracle build: UNCACHED (different link tree)", flush=True)
+        return
+    bound_image = os.environ.get("FLEXPART_ORACLE_IMAGE_ID", "")
+    if not bound_image.startswith("sha256:"):
+        # Reuse requires a caller bound to the verified immutable image.
+        # Standalone containers without that binding retain full compilation.
+        subprocess.run(command, check=True)
+        print("Direct oracle build: UNCACHED (no immutable image binding)", flush=True)
+        return
+    if not parent.is_file():
+        # Standalone legacy callers may have built the pristine objects without
+        # #92. Preserve their full compilation path; never infer a cache hit.
+        subprocess.run(command, check=True)
+        print("Direct oracle build: UNCACHED (no verified parent build)", flush=True)
+        return
+    parent_record = json.loads(parent.read_text())
+    if (not isinstance(parent_record, dict) or parent_record.get("schema") != SCHEMA
+            or not parent_record.get("artifacts_sha256")
+            or not isinstance(parent_record.get("docker_image_id"), str)
+            or parent_record["docker_image_id"] != bound_image):
+        raise ValueError("direct driver requires the current verified parent build")
+    require_pristine(checkout, project)
+    # Re-derive every identity field, including the running compiler/toolchain.
+    # Comparing a parent record with values read from itself misses corruption.
+    current = resolved_identity(project, checkout, bound_image, toolchain_identity())
+    if not validate(parent, current, current["docker_image_id"], checkout / "src/FLEXPART"):
+        raise ValueError("direct driver parent build is missing, changed or corrupt")
+    identity = {"parent_sha256": sha256(parent),
+                "inputs_sha256": {str(p): sha256(p) for p in inputs},
+                "command": command, "cache_owner_sha256": sha256(Path(__file__)),
+                "build_environment": {key: os.environ.get(key, "") for key in
+                    ("ORACLE_SRC", "objects", "FC", "FFLAGS", "LDFLAGS", "LIBRARY_PATH", "CPATH",
+                     "LD_LIBRARY_PATH", "COMPILER_PATH", "GCC_EXEC_PREFIX")}}
+    log = metadata.with_suffix(".log")
+    try:
+        record = json.loads(metadata.read_text())
+        hit = (record.get("schema") == SCHEMA and record.get("identity") == identity
+               and record.get("artifacts_sha256") == {str(p): sha256(p) for p in artifacts}
+               and record.get("build_log_sha256") == sha256(log))
+    except (OSError, ValueError, AttributeError):
+        hit = False
+    if hit:
+        print(f"Direct oracle build: VERIFIED_REUSE ({metadata})", flush=True)
+        return
+    metadata.unlink(missing_ok=True)
+    metadata.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("w") as stream:
+        subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, check=True)
+    atomic_json(metadata, {"schema": SCHEMA, "identity": identity,
+                          "artifacts_sha256": {str(p): sha256(p) for p in artifacts},
+                          "build_log_sha256": sha256(log)})
+    print(f"Direct oracle build: REBUILT ({metadata})", flush=True)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("key", "validate", "record", "status"))
-    parser.add_argument("--project-root", type=Path, required=True)
-    parser.add_argument("--oracle-checkout", type=Path, required=True)
+    parser.add_argument("action", choices=("prepare", "cached-command"))
+    parser.add_argument("--project-root", type=Path)
+    parser.add_argument("--oracle-checkout", type=Path)
     parser.add_argument("--metadata", type=Path)
-    parser.add_argument("--image-id")
-    parser.add_argument("--executable", type=Path)
-    parser.add_argument("--build-log", type=Path)
-    parser.add_argument("--status", choices=("REUSED", "REBUILT"))
     parser.add_argument("--status-output", type=Path)
+    parser.add_argument("--clean", action="store_true")
+    parser.add_argument("--input", type=Path, action="append", default=[])
+    parser.add_argument("--artifact", type=Path, action="append", default=[])
+    parser.add_argument("--command", nargs=argparse.REMAINDER, default=[])
     args = parser.parse_args()
-
-    identity = cache_identity(args.project_root, args.oracle_checkout)
-    if args.action == "key":
-        print(json.dumps(identity, sort_keys=True))
-        return
-    if args.action == "status":
-        if (
-            args.metadata is None
-            or args.image_id is None
-            or args.build_log is None
-            or args.status is None
-            or args.status_output is None
-        ):
-            parser.error(
-                "status requires --metadata, --image-id, --build-log, --status, and --status-output"
-            )
-        write_status(
-            args.status_output,
-            args.status,
-            identity,
-            args.image_id,
-            args.metadata,
-            args.build_log,
-        )
-        print(args.status_output)
-        return
-    if args.metadata is None or args.image_id is None or args.executable is None:
-        parser.error("validate/record require --metadata, --image-id, and --executable")
-    if args.action == "validate":
-        if validate(args.metadata, identity, args.image_id, args.executable):
-            print("REUSED")
-            return
-        print("REBUILD")
-        raise SystemExit(1)
-
-    record = {
-        "schema": SCHEMA,
-        "identity": identity,
-        "docker_image": "flexpart-fortran:latest",
-        "docker_image_id": args.image_id,
-        "oracle_executable_sha256": sha256(args.executable),
-        "build_log_sha256": sha256(args.metadata.with_name("build.log")),
-    }
-    args.metadata.parent.mkdir(parents=True, exist_ok=True)
-    args.metadata.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-    print(args.metadata)
+    if args.action == "cached-command":
+        if not args.metadata or not args.input or not args.artifact or not args.command:
+            parser.error("cached-command requires metadata, inputs, artifacts and --command")
+        cached_command(args.metadata, args.input, args.artifact, args.command)
+    else:
+        if args.project_root is None or args.oracle_checkout is None or args.status_output is None:
+            parser.error("prepare requires project-root, oracle-checkout and status-output")
+        prepare(args.project_root, args.oracle_checkout, args.status_output, args.clean)
 
 
 if __name__ == "__main__":

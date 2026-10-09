@@ -296,6 +296,14 @@ taken over here):
 
 ## 6. Technical gates versus scientific parity
 
+Build preparation uses the shared #92/#176 verified oracle cache. To force a
+complete reproducibility rebuild, add `--clean` to `scripts/ci-gate.sh`.
+The manual technical workflow's `cache_audit` option runs complete cold, warm
+and forced-clean gates with separate retained evidence; normal PR coverage is
+unchanged. Cargo archives contain only compilation dependencies and checksum
+metadata; required tests, adapters, scientific outputs and provenance execute
+freshly after restoration. See [build reuse and measurements](build-cache-audit.md).
+
 - `TECHNICAL_PASS` means plumbing works: the oracle is pinned and builds,
   the software adapter executes real WGSL, the analytical displacement is
   within 36.0 ± 0.2 km, and the small candidate smoke produces checked

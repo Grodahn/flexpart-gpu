@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -23,12 +24,14 @@ def main():
     image = manifest['execution_profile']['docker']['image']
     identity = subprocess.run(['docker', 'image', 'inspect', image, '--format', '{{.Id}}'],
                               check=True, capture_output=True, text=True).stdout.strip()
+    if re.fullmatch(r'sha256:[0-9a-f]{64}', identity) is None:
+        parser.error('Docker inspect did not return an immutable image identity')
     output.parent.mkdir(parents=True, exist_ok=True)
     log = output.with_name(output.name + '-container.log')
     command = ['docker', 'run', '--rm', '-e', f'RESEARCH_IMAGE_ID={identity}',
                '-v', f'{root.as_posix()}:/workspace/flexpart-gpu',
                '-v', f'{args.checkout.resolve().as_posix()}:/workspace/flexpart:ro',
-               '-w', '/workspace/flexpart', image, 'bash',
+               '-w', '/workspace/flexpart', identity, 'bash',
                '/workspace/flexpart-gpu/scripts/interpolation/shared_height_oracle.sh',
                '/workspace/flexpart', '/workspace/flexpart-gpu/target/' + relative.as_posix()]
     with log.open('w', encoding='utf-8') as stream:

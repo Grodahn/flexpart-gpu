@@ -32,35 +32,21 @@ if [ -z "${objects}" ]; then
 fi
 
 COMPILER_VERSION="$(gfortran --version | sed -n '1p')"
-FINGERPRINT_OUTPUT="${BUILD}/interpolation-oracle.build-fingerprint.txt"
-build_fingerprint="$(
-  {
-    printf 'harness '
-    sha256sum "${BASH_SOURCE[0]}"
-    printf 'driver '
-    sha256sum "${DRIVER}"
-    printf 'compiler %s\n' "${COMPILER_VERSION}"
-    printf '%s\n' "${objects}" | while IFS= read -r object; do
-      sha256sum "${object}"
-    done
-  } | sha256sum | awk '{print $1}'
-)"
-stored_fingerprint=""
-if [ -f "${FINGERPRINT_OUTPUT}" ]; then
-  stored_fingerprint="$(cat "${FINGERPRINT_OUTPUT}")"
-fi
-
-if [ ! -x "${BUILD}/interpolation-oracle" ] || [ "${stored_fingerprint}" != "${build_fingerprint}" ]; then
-  tmp_binary="${BUILD}/interpolation-oracle.tmp"
+compile_driver() {
+  set -euo pipefail
+  local tmp_binary="${BUILD}/interpolation-oracle.tmp"
   rm -f "${tmp_binary}"
-  # shellcheck disable=SC2046
+  # shellcheck disable=SC2086
   gfortran -O0 -I"${ORACLE_SRC}" -fopenmp -mcmodel=large "${DRIVER}" ${objects} \
     -L/usr/lib/x86_64-linux-gnu -Wl,-rpath=/usr/lib/x86_64-linux-gnu \
-    -leccodes -leccodes_f90 -lm -lnetcdff \
-    -o "${tmp_binary}"
+    -leccodes -leccodes_f90 -lm -lnetcdff -o "${tmp_binary}"
   mv "${tmp_binary}" "${BUILD}/interpolation-oracle"
-  printf '%s\n' "${build_fingerprint}" > "${FINGERPRINT_OUTPUT}"
-fi
+}
+export BUILD ORACLE_SRC DRIVER objects
+export -f compile_driver
+python3 /workspace/flexpart-gpu/scripts/oracle_build_cache.py cached-command \
+  --metadata "${BUILD}/build.json" --input "${BASH_SOURCE[0]}" --input "${DRIVER}" \
+  --artifact "${BUILD}/interpolation-oracle" --command bash -c compile_driver
 
 COMPILER_VERSION_OUTPUT="${BUILD}/interpolation-oracle.compiler-version.txt"
 LINKED_OBJECTS_OUTPUT="${BUILD}/interpolation-oracle.linked-objects.txt"

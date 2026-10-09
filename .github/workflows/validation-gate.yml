@@ -56,7 +56,7 @@ jobs:
             flexpart-gpu/target/release/deps
             flexpart-gpu/target/release/build
             flexpart-gpu/target/release/.fingerprint
-            flexpart-gpu/target/cargo-cache-integrity
+            flexpart-gpu/.cargo-cache-integrity
           cache-workspace-crates: "false"
           cache-bin: "false"
           save-if: ${{ github.event_name != 'pull_request' }}

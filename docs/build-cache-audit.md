@@ -54,7 +54,8 @@ caches. Workspace crates are excluded by the action. Scientific output trees,
 GPU reports, oracle binaries and PASS results cannot enter these archives.
 `cargo_cache_integrity.py` verifies the dependency artifact checksums before any
 tests; missing/malformed/incomplete/damaged caches discard compilation artifacts
-and rebuild normally. Required tests and GPU evidence checks always follow.
+and rebuild normally. The checksum sidecar stays outside `target` so the action's
+post-job target cleanup cannot delete it before publication. Required tests and GPU evidence checks always follow.
 PR events can restore scoped caches but cannot save them. Main cannot read
 feature/PR-scoped caches; trusted manual audit runs can save their own branch
 cache without making it available to protected main.

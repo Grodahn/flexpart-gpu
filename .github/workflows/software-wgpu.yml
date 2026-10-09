@@ -42,7 +42,7 @@ jobs:
             target/release/deps
             target/release/build
             target/release/.fingerprint
-            target/cargo-cache-integrity
+            .cargo-cache-integrity
           cache-workspace-crates: "false"
           cache-bin: "false"
           save-if: ${{ github.event_name != 'pull_request' }}

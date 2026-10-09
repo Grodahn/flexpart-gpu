@@ -12,7 +12,7 @@ from oracle_build_cache import atomic_json, sha256
 
 DIRECTORIES = tuple(Path("target") / profile / kind
                     for profile in ("debug", "release") for kind in ("deps", "build", ".fingerprint"))
-MANIFEST = Path("target/cargo-cache-integrity/manifest.json")
+MANIFEST = Path(".cargo-cache-integrity/manifest.json")
 
 
 def dependency_files(root: Path) -> dict[str, str]:

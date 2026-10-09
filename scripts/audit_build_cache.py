@@ -35,7 +35,8 @@ def audit(root: Path, output: Path) -> None:
                "exit_code": result.returncode, "terminal_bytes": log.stat().st_size}
         rows.append(row)
         atomic_json(output / "measurements.json", {"runs": rows})
-        shutil.copytree(gate, output / name)
+        # Preserve oracle-run symlinks, including intentionally dangling build links.
+        shutil.copytree(gate, output / name, symlinks=True)
         if result.returncode:
             raise RuntimeError(f"{name} technical gate failed; see {log}")
         status = json.loads((gate / "oracle-build-status.json").read_text())

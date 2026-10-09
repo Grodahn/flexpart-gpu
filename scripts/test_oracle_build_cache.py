@@ -137,7 +137,7 @@ class CargoCachePolicyTest(unittest.TestCase):
             directories = block.split("          cache-directories: |\n")[1].split("          cache-workspace-crates:")[0]
             self.assertEqual(set(directories.split()), {
                 prefix + "target/" + profile + "/" + folder
-                for profile in ("debug", "release") for folder in ("deps", "build", ".fingerprint")} | {prefix + "target/cargo-cache-integrity"})
+                for profile in ("debug", "release") for folder in ("deps", "build", ".fingerprint")} | {prefix + ".cargo-cache-integrity"})
 
 
 if __name__ == "__main__":

@@ -155,6 +155,9 @@ def audit(workflows=None, baseline=None):
     workflows = workflows or {path: (ROOT / path).read_text(encoding='utf-8') for path in WORKFLOWS}
     after = []
     for path, text in workflows.items():
+        if path == WORKFLOWS[0] and '  gpu-meteorology:' in text:
+            from software_wgpu_evidence import monolithic_view
+            text = monolithic_view(text)
         # Triggers, required job identity and global adapter/provenance settings stay exact.
         require(text.split('    steps:')[0] == baseline['headers'][path], f'{path}: trigger/job/env drift')
         actual = steps(text)

@@ -636,3 +636,34 @@ interface W reuses #30/#80 normalization and needs a separate direct interior
 slope proof before general production adoption. This does not resolve #180's
 transport-domain top. The research document defines field scope, target identity,
 met-bracket lifetime, memory cost, unsupported routes and reproduction commands.
+
+## 11. Interior W correction decision (#186)
+
+The [direct four-control interior experiment](research/interior-w-186.md) extends
+#118's boundary-only W evidence to a regional 3x3 grid with native height
+differences in both directions. Genuine pinned `verttransform_ecmwf_windfields`
+produces independently nonzero X/Y corrections at both source times; their sum
+agrees with full minus zero under #80's unchanged combined velocity policy.
+Raw/native/shared/query values and hashed provenance are frozen in
+[`interior-w-v1`](../fixtures/interpolation/interior-w-v1/report.json).
+
+W preparation must consume #30's already normalized interface m/s and distinct
+interface AGL heights, remap to #184's run-owned common AGL grid, then add the
+native **center** height slope at each bracketed strict target interior. Use the
+current column's center bracket indices for both neighbor-height stencils and
+#184's **already remapped same-source U/V** as multipliers. X uses
+`dxconst/cos(latitude)` and Y uses `dyconst`; these are physical inverse grid
+distances. Regional horizontal boundaries and target endpoints skip correction.
+There is no additional orography term, target-dependent omega conversion, or
+query-time correction. Keep terrain ASL and native/shared AGL separate.
+
+The research decision specifies layout, source/geometry/normalization/target/
+horizontal/context identities, GPU residency, source-bracket lifetimes and
+fail-closed unsupported cases. Existing GPU runtime, canonical preparation and
+horizontal -> vertical -> temporal query components remain authoritative.
+Separate W GPU preparation and W canonical adoption require actual device and
+direct-oracle proof. #184/#185 remain U/V-only; production consumer ownership
+and #180 remain separate. Center-W, global/nested/polar routes, unbracketed
+strict target heights and unsupported initializer routes gain no acceptance.
+Current nonuniform/ASL rejection stays until validated GPU adoption replaces
+its specifically proved path. No production Rust/WGSL changes belong to #186.

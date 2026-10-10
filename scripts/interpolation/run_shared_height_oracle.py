@@ -12,6 +12,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--checkout', type=Path, required=True)
     parser.add_argument('--output-dir', type=Path, required=True)
+    parser.add_argument('--interior-w', action='store_true', help='Run issue #186 four-control interior experiment')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     output = args.output_dir.resolve()
@@ -33,7 +34,7 @@ def main():
                '-v', f'{args.checkout.resolve().as_posix()}:/workspace/flexpart:ro',
                '-w', '/workspace/flexpart', identity, 'bash',
                '/workspace/flexpart-gpu/scripts/interpolation/shared_height_oracle.sh',
-               '/workspace/flexpart', '/workspace/flexpart-gpu/target/' + relative.as_posix()]
+               '/workspace/flexpart', '/workspace/flexpart-gpu/target/' + relative.as_posix(), 'interior-w' if args.interior_w else 'shared-height']
     with log.open('w', encoding='utf-8') as stream:
         completed = subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT)
     if completed.returncode:

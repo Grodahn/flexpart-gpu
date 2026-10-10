@@ -47,6 +47,8 @@ Keep the final checks and owner-specific pinned-oracle gates described below.
 
 ## Meteorology
 
+- Shared-height U/V preparation: `cargo test --test shared_height_gpu -- --test-threads=1`; [evidence audit](../../scripts/interpolation/check_shared_height_gpu.py). Required actual device execution; compare all #118 rows, then repeat with the freshly regenerated direct oracle. [Lifecycle and unsupported routes](../shared-height-preparation.md).
+
 Choose the subdomain; do not run every row for one field edit.
 
 | Surface | Fast focused check | Required device/oracle evidence |

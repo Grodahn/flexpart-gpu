@@ -157,6 +157,16 @@ jobs:
           python3 scripts/interpolation/test_shared_height_oracle.py
           python3 scripts/interpolation/run_shared_height_oracle.py \
             --checkout ../flexpart --output-dir target/ci-gate/shared-height-oracle
+      - name: Compare prepared GPU U/V against the freshly regenerated direct oracle
+        working-directory: flexpart-gpu
+        env:
+          FLEXPART_GPU_SHARED_HEIGHT_ORACLE: target/ci-gate/shared-height-oracle/report.json
+          FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          cargo test --test shared_height_gpu -- --test-threads=1 --nocapture > target/ci-gate/shared-height-gpu.log 2>&1
+          python3 scripts/interpolation/check_shared_height_gpu.py target/ci-gate/shared-height-gpu/comparison.json --software
+          python3 scripts/interpolation/test_check_shared_height_gpu.py
 
       - name: Record dependency cache checksums
         working-directory: flexpart-gpu

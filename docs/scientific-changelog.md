@@ -455,3 +455,17 @@ particles were clamped to z < 3m.
 - [ ] `physics_validation_advection_turbulence_pbl` test passes
 - [ ] No new linter warnings in modified files
 ```
+
+### 2026-10-10 — Add scoped shared-height U/V GPU preparation (#184)
+**Impact**: numerics (new preparation stage; no consumer adoption)
+**Files**: `src/gpu/shared_height.rs`, `src/shaders/shared_height_uv.wgsl`
+**Validation**: Every #118 direct pinned U/V row on actual WGSL, software and hardware,
+with retained finite differences and resource provenance; vertical nonregression.
+
+Add a GPU-only preparation stage ported from pinned FLEXPART 11.1
+`verttransform_mod.f90:296-353,487-623`, using #30 heights and explicit U10/V10.
+The accepted initializer is restricted to the directly verified non-restart
+regional mother column `(0,0)` with pressure >100000 Pa; other routes fail closed.
+No interpolation equations, W semantics, production consumers or existing
+nonuniform-geometry rejections change. This establishes preparation-only device
+evidence, not production advection parity. See [the lifecycle contract](shared-height-preparation.md).

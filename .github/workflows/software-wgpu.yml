@@ -98,6 +98,13 @@ jobs:
             exit 1
           fi
           grep -q "software_adapter=true" target/ci-gate/sw-wgpu-advection.log
+      - name: Prove shared-height U/V preparation against the pinned fixture
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-gate
+          cargo test --test shared_height_gpu -- --test-threads=1 --nocapture > target/ci-gate/shared-height-gpu.log 2>&1
+          python3 scripts/interpolation/check_shared_height_gpu.py target/ci-gate/shared-height-gpu/comparison.json --software
+          python3 scripts/interpolation/test_check_shared_height_gpu.py
       - name: Prove accumulated-field GPU oracle parity
         run: |
           set -euo pipefail
@@ -667,6 +674,8 @@ jobs:
             target/ci-gate/pbl-options.log
             target/ci-gate/pbl-diagnostics.log
             target/ci-gate/sw-wgpu-advection.log
+            target/ci-gate/shared-height-gpu.log
+            target/ci-gate/shared-height-gpu/*.json
             target/ci-gate/accumulation-gpu.log
             target/ci-gate/accumulation-gpu/*.json
             target/ci-gate/horizontal-gpu.log

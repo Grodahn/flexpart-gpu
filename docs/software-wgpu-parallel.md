@@ -2,10 +2,11 @@
 
 Contract: [issue #177](https://github.com/Grodahn/flexpart-gpu/issues/177).
 Baseline main: `2c4dc3d39502673bf4bed76e14855a44b9ee2d6c`.
-The branch was subsequently rebased onto `217d3c1` after main merged #191.
-Its added interior-W research oracle remains required in the untouched technical
-workflow. The software baseline did not change; the inventory separately records
-the preserved independent-workflow revision and hashes.
+The branch was subsequently rebased onto `47ccf4f` after main merged #191 and #189.
+Their interior-W research oracle and shared-height U/V GPU/fresh-oracle checks
+remain required. The inventory keeps the original frozen obligations and appends
+the new current-main U/V stage, artifacts and invocation, with its upstream revision.
+It separately records current-main and independent-workflow identities and hashes.
 Externally supplied provenance marker: **GPT6.1 Sol**.
 
 The [frozen before/after mapping](software-wgpu-before.json) contains each original
@@ -18,7 +19,7 @@ unchanged. Run `python scripts/software_wgpu_evidence.py audit` and
 
 | Independent domain | Original obligations |
 | --- | --- |
-| `gpu-meteorology` | #90 accumulation; #89 temporal; #88 vertical/W; #87 horizontal; #171 resident queries/status; #76 composition; #173 canonical driver preparation and lineage; all original scientific validators and reports |
+| `gpu-meteorology` | #90 accumulation; #89 temporal; #88 vertical/W; #87 horizontal; #171 resident queries/status; #76 composition; #173 canonical driver preparation and lineage; #184 shared-height U/V preparation merged during implementation; all original scientific validators and reports |
 | `gpu-transport-physics` | Analytical advection; settling; PBL; forward/backward; all four compaction × validation cells; dry/wet prefix and bounds; Hanna/Langevin; deterministic corpus; #112 production advection in production, validation and compaction modes |
 | Both domains | Explicit Lavapipe ICD/software/Vulkan settings; unchanged trusted dependency cache restoration/integrity/publication; formatting; real H2D/WGSL/D2H preflight |
 
@@ -124,5 +125,7 @@ failed, and the required aggregate still ran and failed with
 `required domain failed/cancelled/skipped`. Sixteen focused handoff/exit/cache
 negative tests and the seventeen existing coverage/shell tests pass. Formatting,
 Clippy (existing warnings), full Cargo tests and navigation passed locally.
-The PR links final required CI against its reviewed head, including the preserved
-new main interior-W oracle gate. No issue closure or scientific parity is claimed.
+These timing observations precede main's #189 merge. Final required CI additionally
+runs the newly merged shared-height U/V stage and retains its artifact/validator;
+the PR links checks and artifact inspection for that reviewed head. No issue closure
+or scientific parity is claimed.

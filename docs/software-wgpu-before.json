@@ -562,6 +562,28 @@
       ],
       "mode": "compaction",
       "log": "target/ci-gate/resident-advection-compaction.log"
+    },
+    {
+      "workflow": ".github/workflows/software-wgpu.yml",
+      "step": "Prove shared-height U/V preparation against the pinned fixture",
+      "argv": [
+        "cargo",
+        "test",
+        "--test",
+        "shared_height_gpu",
+        "--",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "env": {
+        "FLEXPART_GPU_SOFTWARE": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "WGPU_BACKEND": "vulkan",
+        "LIBGL_ALWAYS_SOFTWARE": "1"
+      },
+      "owners": [
+        "gpu-meteorology"
+      ]
     }
   ],
   "steps": [
@@ -781,6 +803,15 @@
         "gpu-meteorology",
         "gpu-transport-physics"
       ]
+    },
+    {
+      "name": "Prove shared-height U/V preparation against the pinned fixture",
+      "block": "name: Prove shared-height U/V preparation against the pinned fixture\n        run: |\n          set -euo pipefail\n          mkdir -p target/ci-gate\n          cargo test --test shared_height_gpu -- --test-threads=1 --nocapture > target/ci-gate/shared-height-gpu.log 2>&1\n          python3 scripts/interpolation/check_shared_height_gpu.py target/ci-gate/shared-height-gpu/comparison.json --software\n          python3 scripts/interpolation/test_check_shared_height_gpu.py\n",
+      "sha256": "6f86b04499e5352cfbdbf538629548b4706d5eab065e6993bfd428e3d7813a92",
+      "owners": [
+        "gpu-meteorology"
+      ],
+      "added_from_revision": "47ccf4f44282d16e4a53afa6e07e4d0f590da262"
     }
   ],
   "artifacts": {
@@ -801,7 +832,9 @@
       "target/ci-gate/vertical-gpu.log",
       "target/ci-gate/vertical-gpu/*.json",
       "target/horizontal-gpu-evidence.json",
-      "target/temporal-gpu-evidence.json"
+      "target/temporal-gpu-evidence.json",
+      "target/ci-gate/shared-height-gpu.log",
+      "target/ci-gate/shared-height-gpu/*.json"
     ],
     "gpu-transport-physics": [
       "target/ci-gate/corpus-subset.log",
@@ -824,8 +857,10 @@
     ]
   },
   "independent_workflow_sha256": {
-    ".github/workflows/validation-gate.yml": "f94aa4447d992407ea04dc62eaf42359bc6a397f5ac046a88074985067f1cb01",
+    ".github/workflows/validation-gate.yml": "4b2777df72f06139491c16d4091abeeaf259b768986a5df0909b03881f35c5a1",
     ".github/workflows/extended-validation.yml": "a560ac94e577ae67993fba29cd93452f9cdcc45b4a9997d5da35c85c234ce59e"
   },
-  "preserved_independent_workflow_revision": "217d3c148d2486e1bd76b8ce65e45abedfc13c82"
+  "preserved_independent_workflow_revision": "47ccf4f44282d16e4a53afa6e07e4d0f590da262",
+  "current_main_revision": "47ccf4f44282d16e4a53afa6e07e4d0f590da262",
+  "current_main_workflow_sha256": "0f9465eea855eaa853f9114a05961d344b4704bd471b71a9e3fd9134d5bae68e"
 }

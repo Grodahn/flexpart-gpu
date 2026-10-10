@@ -183,6 +183,10 @@ def audit_payload(root, domain):
             result = subprocess.run([sys.executable, '-c', code], cwd=root, env=env, capture_output=True, text=True)
             require(result.returncode == 0, step['name']+': '+result.stderr[-2000:])
     if domain == 'gpu-meteorology':
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/interpolation/check_shared_height_gpu.py'),
+                                 str((root / 'target/ci-gate/shared-height-gpu/comparison.json').resolve()), '--software'],
+                                cwd=root, capture_output=True, text=True)
+        require(result.returncode == 0, 'shared-height U/V: '+result.stderr[-2000:])
         paths = [p for p in files if p.startswith('target/ci-gate/accumulation-gpu/') and p.endswith('.json')]
         for prefix in ('large_scale_precipitation', 'convective_precipitation'):
             require(sum(Path(p).name.startswith(prefix+'-cell-') for p in paths) == 12, 'accumulation cell count')

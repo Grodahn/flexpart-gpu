@@ -405,6 +405,10 @@ fn test_shared_height_every_pinned_uv_row_and_reuse() {
         .iter()
         .map(PreparedSharedHeightUv::metadata)
         .collect::<Vec<_>>());
+    // Preserve serde's exact identity preimage so the audit need not invent float formatting.
+    let mut target_identity = prepared[0].target().identity().clone();
+    target_identity.identity_sha256.clear();
+    record["serialized_target_identity"] = json!(serde_json::to_string(&target_identity).unwrap());
     std::fs::write(
         format!("{directory}/comparison.json"),
         serde_json::to_vec_pretty(&record).unwrap(),

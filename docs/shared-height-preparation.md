@@ -63,3 +63,8 @@ inputs, differences, source/target identities and adapter/shader/oracle hashes
 are written to `target/ci-gate/shared-height-gpu/` or the explicitly selected
 `FLEXPART_GPU_SHARED_HEIGHT_EVIDENCE` directory. The checker rejects missing
 rows, execution, provenance, changed hashes or finite tolerance failures.
+The audit also compares every canonical U/V, surface and geometry-driving field,
+hybrid coefficient and source time with the direct driver's decoded inputs.
+Self-consistent candidate hashes cannot replace input equivalence. Adapter
+classification, complete comparison counts/metrics, physical metadata and the
+exact serialized target-identity preimage are checked before accepting evidence.

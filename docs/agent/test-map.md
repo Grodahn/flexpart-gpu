@@ -44,6 +44,7 @@ Keep the final checks and owner-specific pinned-oracle gates described below.
 - Fast host falsification: `cargo test --lib gpu::evidence::tests`.
 - Device evidence: `cargo run --bin gpu-preflight -- --software --json-output target/gpu-preflight.json`; require passed smoke and correct adapter class.
 - Final infrastructure gate: [software WGSL workflow](../../.github/workflows/software-wgpu.yml). Smoke proves runtime transfers/execution, not physics.
+- CI orchestration: `python scripts/software_wgpu_evidence.py audit` and `python scripts/test_software_wgpu_evidence.py`; [domain ownership and artifact diagnosis](../software-wgpu-parallel.md). Both independent GPU domains run preflight; the required `software-wgpu` aggregate validates their current-run artifacts.
 
 ## Meteorology
 

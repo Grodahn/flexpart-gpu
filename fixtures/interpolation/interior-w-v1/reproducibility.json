@@ -1,0 +1,362 @@
+{
+  "schema": {
+    "id": "flexpart-gpu.interior-w-reproducibility",
+    "version": 1
+  },
+  "state": "PASS",
+  "validation_level": "direct_pinned_routines_synthetic_research_only",
+  "exact_raw_and_decoded_reproduction": true,
+  "raw_output_sha256": "9ad956387fe5fd78fbe6d9af69cbb2d72e7f5d68bb5af1dffe0616f524107072",
+  "comparison_policy": {
+    "owner": "issue #80",
+    "absolute_m_s": 1e-06,
+    "relative": 1e-05
+  },
+  "verifier_sha256": "8317a276c736f506b8525945f0bcbcf2767257e0480ef14652d9c88f3f802fa0",
+  "builds": [
+    {
+      "report_sha256": "f93d19f7667930abe1857542ef87ea34f0b5c53c214b7f33bf68c9c79fa55b26",
+      "provenance": {
+        "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+        "checkout_clean_before_after": true,
+        "docker_image_id": "sha256:6bcff83c01c30fd7ce7ae4e32342885a93081e427df5d53feed72d6aff5b103e",
+        "compiler": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+        "build_profile": {
+          "id": "flexpart-11.1-single-thread",
+          "version": 1,
+          "runtime_environment": {
+            "OMP_NUM_THREADS": "1",
+            "OMP_THREAD_LIMIT": "1",
+            "OMP_DYNAMIC": "FALSE",
+            "OMP_NESTED": "FALSE",
+            "OMP_MAX_ACTIVE_LEVELS": "1",
+            "OMP_SCHEDULE": "static",
+            "OMP_PROC_BIND": "FALSE",
+            "OMP_WAIT_POLICY": "PASSIVE"
+          },
+          "build": {
+            "makefile": "src/makefile_gfortran",
+            "make_arguments": "eta=no arch=x86-64",
+            "fortran_compiler": "gfortran",
+            "optimization": "-O3",
+            "openmp_flag": "-fopenmp",
+            "arch_flag": "-march=x86-64",
+            "eta": "no",
+            "netcdf": "enabled (USE_NCF)"
+          },
+          "docker": {
+            "image": "flexpart-fortran:latest",
+            "dockerfile": "docker/Dockerfile.fortran",
+            "compose_file": "docker/docker-compose.fortran.yml",
+            "base_image": "ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7",
+            "ubuntu_snapshot": "20260910T000000Z"
+          },
+          "required_inputs": [
+            "COMMAND",
+            "RELEASES",
+            "OUTGRID",
+            "AGECLASSES",
+            "RECEPTORS",
+            "SPECIES/SPECIES_*",
+            "METEO_ARGS.txt",
+            "generated GRIB meteorology and AVAILABLE"
+          ],
+          "external_seed_control": "unavailable",
+          "repeatability_cases": {
+            "ADV-ANA-001": "deterministic",
+            "WIND-UNI-002": "stochastic"
+          },
+          "minimum_repetitions": 5
+        },
+        "driver_flags": [
+          "-O0",
+          "-fopenmp",
+          "-mcmodel=large"
+        ],
+        "sources_sha256": {
+          "src/verttransform_mod.f90": "7d7ba231f960779dc63f19073103c489441da116cec12c6b8875dc06a5b7422c",
+          "src/windfields_mod.f90": "440ec62b9a7b8f4534e913b2af2a41aabdf44072b3fe77edbc213866e698e7d1",
+          "src/interpol_mod.f90": "cc7ab1a55267971ca540d88d3992c613897e0a219da5b66fe2358b5eaeb9bf63",
+          "src/par_mod.f90": "3164314b5d7212ff5136b5605634fe3c34426aef1320c9fb499ded31f021a9db",
+          "src/getfields_mod.f90": "c3b4ce1adae8ab5e12ae51b2e2c4170925d326cbc6240d3531265eddd92433aa",
+          "src/makefile_gfortran": "6e3c2e6d34e5f1fb1fd5e9b784299eab4f3bcb7d7710239d0372f2a9c11ab1f0"
+        },
+        "research_sources_sha256": {
+          "scripts/interpolation/interior_w_oracle.f90": "f413a55dcdfec326d458d0bdbede1cc9c34cb0ba4e86bb08ea950ea655565b06",
+          "scripts/interpolation/prepare_interior_w_oracle.py": "decb88684658ff33f01630d1896f2bdac64695264733650241d054805669cd4f",
+          "scripts/interpolation/test_interior_w_oracle.py": "ec1b69ac3b404975f0b0447f8ebf7c1d777f8a7d4e2e80be707b23fe766d275b",
+          "scripts/interpolation/run_shared_height_oracle.py": "552e2149ddacb4ca30e50f78aafae4f9348e29636f554c8a3963402862e7ed99",
+          "scripts/interpolation/shared_height_oracle.sh": "baee75aaad988a003fa325e56c6cd65294c2bdf90a98a6f99c674c1474d4698f",
+          "scripts/interpolation/prepare_shared_height_oracle.py": "93e07e8ced40d925655a39c7dbd91ea9afe15206c25de10f26af5f24b8ca3d87",
+          "scripts/interpolation/w_production_oracle.sh": "721bff07e3d499cd1d5d20476a4d6f368b799af39e842a0d26d909332c2a835a",
+          "scripts/interpolation/prepare_w_production_oracle.py": "39ecf78eeb158a1a13e4f691f58b032709c0cba8593577e75ec9d1d31b29bb8e",
+          "scripts/oracle_build_cache.py": "9786c45832d999fe05deb6035ff68214210861f349425521bcacd19b4965b10c",
+          "reference/flexpart-11.1.json": "2c13a87733098e385dc12f33d1bf5ca60ba275775f472ec279b8a0a234c3a464"
+        },
+        "linked_objects_sha256": {
+          "advance_mod.o": "f7dc068e479ac2065a3540834683f460c4dc26f16f2f729270e8705a0df1d98c",
+          "binary_output_mod.o": "bc1d6d5edf0118f3962ace011f69b39baaa51d034b016bae9fd06f2dd6be892c",
+          "cbl_mod.o": "eafd84b3431204dc100e6c4e6658f39f61274231ec5908d6c78cd821a810c2d9",
+          "chemistry_mod.o": "de7590ab5370f13d6c26563183218f54ffb39ee1c9d647bc0eff26f35ec866b7",
+          "class_gribfile_mod.o": "9966e37ede0e7ab06f349d650c57dbc8847550f7111ec4d1eb4812dce581b7c8",
+          "cmapf_mod.o": "e55ac25a5f3d72516dbb01a7ff5abbee8024bd61d9059f09ee5e0203a22a6152",
+          "com_mod.o": "7dae0209329dd677d169283fb668399619315f0a9cfa05fdfe9dba97ca44906b",
+          "conv_mod.o": "0154fa222e2ca4fdcc69926f4fef92ca4e15547aaf253cacbb73752badd9f1c7",
+          "date_mod.o": "cf003966d6e46ecf440fa4d2b9009428009d38e8e55a0af6d19a0036fcb57503",
+          "drydepo_mod.o": "b84a4316e8fcc82fd72086131e40b694c23a3c64d4fd86967c201957f4eb913a",
+          "emissions_mod.o": "ec0c5969b589d0650a2baa51e3d161fd3e68ca33ef13a0acf4e3fca826f33085",
+          "erf_mod.o": "fb3834c829796e58a0e0febee364b6523f46caa5deb22a96d27ee967d282f998",
+          "flux_mod.o": "5a2ef795bf7d6765acbb5c5715881be8174aeb24f218ed71d21deef7412cbdcd",
+          "getfields_mod.o": "6d6fa8c5d0410dcffb0424e5df5f46b86e9348f5acc6b4e9ff516c88308d2b30",
+          "initdomain_mod.o": "0b6087ad8e5bc57ec783f048ba2429fab93d97531924ba1c1c2e799d09e76ef7",
+          "initialise_mod.o": "244e368caea8e01d898896e6b0c34f26ca60e7b4492e2f8810f85c16492e628f",
+          "interpol_mod.o": "978476033566ec72870fa67a566f210c0b61a311269c2ceef9e971006ee994b5",
+          "mean_mod.o": "d1f1820086470dbee71e2056d30836a8fb7337e1adde58607b1138d02ce54a0c",
+          "netcdf_output_mod.o": "5644fd49393e0251dfcf28ba56ff7591737b06e0d83e60e6007432d082add7f1",
+          "outgrid_mod.o": "792550e480719d2899f6868e0e26591ddaa48fe69f33b05ba25c2a42557b1fe3",
+          "output_mod.o": "d2c2736aa290c2b0d9878c996d52da42ca185b93f859eeb80f724544d74bd898",
+          "par_mod.o": "35f49221989fd170d98ff41ce8559330db3328419dd51b2a26d5c0a311f106eb",
+          "particle_mod.o": "47cfe943c7fa1537d6851516560ea98fc84ea7a1a4f2e2e8e646df39918bbdde",
+          "pbl_profile_mod.o": "2725d757d02d1b5d3a8dd7636503c71b0bb503635c86f220af1bd2853aa89379",
+          "plume_mod.o": "6d5ee927b9b1fdb95e3050e053b63c8743b7281032aa1cac4e3489ab3ba8c930",
+          "point_mod.o": "3f4e561791ceafb2d099a29303a4e31d7a1d46d9d66d59ede93d15e476df5a79",
+          "qvsat_mod.o": "69068d51926ebb79fa7b96a1ee241943fafd885cfd8054092a9072352f0dcd1b",
+          "random_mod.o": "19274d9de0a7680ba6779ec5ce69b479aefdeaa046219d8aacf6ac73ec9968c0",
+          "readoptions_mod.o": "1d5aa412c1bc0c25f1b63fc3f941d2d6dba755f314b1c6d78473754d2959f921",
+          "receptor_mod.o": "7f82a78b721b8ae961ecf9d97bf9a0c67626bda6f049fcf1e50381904b3e8a76",
+          "receptor_netcdf_mod.o": "03b367981ad41deb9240553c5e2129ca9e9c197d9422dc3b4dc3b1d00d36d8b3",
+          "restart_mod.o": "d60dc8e51ff45679947460fd29e5f5f04b33fb199f299c91f7d66590cbc95816",
+          "settling_mod.o": "14f5768dfed42f3a100b66c9dcab9a952ea2377eea658d2c04200ddfa2de299d",
+          "sort_mod.o": "342f9ba24420fa815cde0fb41241cc17e20cae77ce3179c7dd79d50f8d8a1138",
+          "timemanager_mod.o": "4b202a8ee86e493b0b6df5b0420dd1d944e4cc043967c0ba31ddc2a5f5f0d8fb",
+          "totals_mod.o": "fb54345dccc6d7a0c88c4b7f69278f03e793fecac821822210053f0fe4fc0ac5",
+          "turbulence_mod.o": "bd8cbd579c9785ffba09d470478ee075ac0d31ba57384821f29556217861cf99",
+          "txt_output_mod.o": "3c7657abd08b95c350db5924de54bd2e7687cda22ec4960e5e0aedb99a3a0bd0",
+          "unc_mod.o": "9f4bd378cd83e78fa0ccd226a2daafe540dc92002bc949c7fa6d973ec897a751",
+          "verttransform_mod.o": "880c8b141becf69b5c30c4e3a2b5f12ccabdfebd2d82883aa984b03acf04e507",
+          "wetdepo_mod.o": "a4e337d5c3e45ffe51012f234091ca4d8c444fcdacae64e5b535a9cfc24337dd",
+          "windfields_mod.o": "e363174f4984952775e4440a63f1dbdf6bed79f1bd213f5c6a6ed76e112886b5",
+          "xmass_mod.o": "74fedfc72cb8c65899fc5f1cdb0866d50dcf8b61f1882cec944273088ea2e990"
+        },
+        "artifacts_sha256": {
+          "input.txt": "b4975ee8212457edeef11037a752fe4b3dcb12f9cb0e401706a2972ca8f02125",
+          "output.txt": "9ad956387fe5fd78fbe6d9af69cbb2d72e7f5d68bb5af1dffe0616f524107072",
+          "full-build.log": "714ad74731540eb998085de5f2c2487b52476f410d31a2a86972f06b1f64cfd7",
+          "driver-build-run.log": "84881ccd97b23895ae55de73470cc2978e544244986facf80ea8bba17f8cd641",
+          "checkout-before.txt": "0c5cadb3987d87640c63c2e5176da07a652172fb30088c813c84feb154a5e1b2",
+          "checkout-after.txt": "0c5cadb3987d87640c63c2e5176da07a652172fb30088c813c84feb154a5e1b2",
+          "build/w-production-oracle": "4d186f797cf22970aefc3494dd9bd5907fda7a6a0651a97f04bb1068a3ee06a9",
+          "build/w-production-oracle-driver.o": "d8c81217ed41a5ba1e9dbfe219ac5935067a4f8f14d9de492ad19b4d332fb70d",
+          "build/w-production-oracle.nm": "77a2d0444095b07d96c44cbbfda30024349c75dd725a663eea50689703f1a5c1",
+          "build/w-production-oracle.call-sites": "a35c5d65812769c7a21958908e7fd1657082432e191745407e4c44e3acdbbfa3",
+          "build/w-production-oracle.link-map": "9c9b393f771a021cb0ad1df51190a31970364048e11c78b795376e85e866b1cf",
+          "build/linked-objects.txt": "388d1f824306df30fc74fbedc6464e86602b6a93ba782e9e1dad20ffacc3327c",
+          "build/compiler-identity.txt": "9e9d4386d9ee356d38035834a85bdc95acd63962aebf458438bc50b4b049afb6"
+        },
+        "verified_call_edges": [
+          {
+            "caller": "MAIN__",
+            "callee": "__verttransform_mod_MOD_verttransform_ecmwf_heights",
+            "caller_address": "0x8ed9",
+            "callee_address": "0x160f50",
+            "verified_in_linked_executable": true
+          },
+          {
+            "caller": "MAIN__",
+            "callee": "__verttransform_mod_MOD_verttransform_ecmwf_windfields",
+            "caller_address": "0x8ed9",
+            "callee_address": "0x161e40",
+            "verified_in_linked_executable": true
+          },
+          {
+            "caller": "MAIN__",
+            "callee": "__interpol_mod_MOD_interpol_wind",
+            "caller_address": "0x8ed9",
+            "callee_address": "0xa2820",
+            "verified_in_linked_executable": true
+          },
+          {
+            "caller": "__interpol_mod_MOD_interpol_wind",
+            "callee": "__interpol_mod_MOD_interpol_wind_meter",
+            "caller_address": "0xa2820",
+            "callee_address": "0xa04a0",
+            "verified_in_linked_executable": true
+          }
+        ],
+        "initializer_binding_verified": true
+      }
+    },
+    {
+      "report_sha256": "d0b33147d1c97883545cea73a3dc3b22adbd1fa0d60ac2b55495dcb7674dd147",
+      "provenance": {
+        "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+        "checkout_clean_before_after": true,
+        "docker_image_id": "sha256:6bcff83c01c30fd7ce7ae4e32342885a93081e427df5d53feed72d6aff5b103e",
+        "compiler": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+        "build_profile": {
+          "id": "flexpart-11.1-single-thread",
+          "version": 1,
+          "runtime_environment": {
+            "OMP_NUM_THREADS": "1",
+            "OMP_THREAD_LIMIT": "1",
+            "OMP_DYNAMIC": "FALSE",
+            "OMP_NESTED": "FALSE",
+            "OMP_MAX_ACTIVE_LEVELS": "1",
+            "OMP_SCHEDULE": "static",
+            "OMP_PROC_BIND": "FALSE",
+            "OMP_WAIT_POLICY": "PASSIVE"
+          },
+          "build": {
+            "makefile": "src/makefile_gfortran",
+            "make_arguments": "eta=no arch=x86-64",
+            "fortran_compiler": "gfortran",
+            "optimization": "-O3",
+            "openmp_flag": "-fopenmp",
+            "arch_flag": "-march=x86-64",
+            "eta": "no",
+            "netcdf": "enabled (USE_NCF)"
+          },
+          "docker": {
+            "image": "flexpart-fortran:latest",
+            "dockerfile": "docker/Dockerfile.fortran",
+            "compose_file": "docker/docker-compose.fortran.yml",
+            "base_image": "ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7",
+            "ubuntu_snapshot": "20260910T000000Z"
+          },
+          "required_inputs": [
+            "COMMAND",
+            "RELEASES",
+            "OUTGRID",
+            "AGECLASSES",
+            "RECEPTORS",
+            "SPECIES/SPECIES_*",
+            "METEO_ARGS.txt",
+            "generated GRIB meteorology and AVAILABLE"
+          ],
+          "external_seed_control": "unavailable",
+          "repeatability_cases": {
+            "ADV-ANA-001": "deterministic",
+            "WIND-UNI-002": "stochastic"
+          },
+          "minimum_repetitions": 5
+        },
+        "driver_flags": [
+          "-O0",
+          "-fopenmp",
+          "-mcmodel=large"
+        ],
+        "sources_sha256": {
+          "src/verttransform_mod.f90": "7d7ba231f960779dc63f19073103c489441da116cec12c6b8875dc06a5b7422c",
+          "src/windfields_mod.f90": "440ec62b9a7b8f4534e913b2af2a41aabdf44072b3fe77edbc213866e698e7d1",
+          "src/interpol_mod.f90": "cc7ab1a55267971ca540d88d3992c613897e0a219da5b66fe2358b5eaeb9bf63",
+          "src/par_mod.f90": "3164314b5d7212ff5136b5605634fe3c34426aef1320c9fb499ded31f021a9db",
+          "src/getfields_mod.f90": "c3b4ce1adae8ab5e12ae51b2e2c4170925d326cbc6240d3531265eddd92433aa",
+          "src/makefile_gfortran": "6e3c2e6d34e5f1fb1fd5e9b784299eab4f3bcb7d7710239d0372f2a9c11ab1f0"
+        },
+        "research_sources_sha256": {
+          "scripts/interpolation/interior_w_oracle.f90": "f413a55dcdfec326d458d0bdbede1cc9c34cb0ba4e86bb08ea950ea655565b06",
+          "scripts/interpolation/prepare_interior_w_oracle.py": "decb88684658ff33f01630d1896f2bdac64695264733650241d054805669cd4f",
+          "scripts/interpolation/test_interior_w_oracle.py": "ec1b69ac3b404975f0b0447f8ebf7c1d777f8a7d4e2e80be707b23fe766d275b",
+          "scripts/interpolation/run_shared_height_oracle.py": "552e2149ddacb4ca30e50f78aafae4f9348e29636f554c8a3963402862e7ed99",
+          "scripts/interpolation/shared_height_oracle.sh": "baee75aaad988a003fa325e56c6cd65294c2bdf90a98a6f99c674c1474d4698f",
+          "scripts/interpolation/prepare_shared_height_oracle.py": "93e07e8ced40d925655a39c7dbd91ea9afe15206c25de10f26af5f24b8ca3d87",
+          "scripts/interpolation/w_production_oracle.sh": "721bff07e3d499cd1d5d20476a4d6f368b799af39e842a0d26d909332c2a835a",
+          "scripts/interpolation/prepare_w_production_oracle.py": "39ecf78eeb158a1a13e4f691f58b032709c0cba8593577e75ec9d1d31b29bb8e",
+          "scripts/oracle_build_cache.py": "9786c45832d999fe05deb6035ff68214210861f349425521bcacd19b4965b10c",
+          "reference/flexpart-11.1.json": "2c13a87733098e385dc12f33d1bf5ca60ba275775f472ec279b8a0a234c3a464"
+        },
+        "linked_objects_sha256": {
+          "advance_mod.o": "0805d27fce43ca20f57b781f5317bab2bb250d4049f85372f8dfaad51777ea69",
+          "binary_output_mod.o": "12fa1bced3803791495d98bd1e26c979a08a809c4c8fe24dc9e4acdc57686a77",
+          "cbl_mod.o": "a4bf46a766be7ca5602c6635a32fc91096f76da73f988997a169bfcfea7716de",
+          "chemistry_mod.o": "473ce53203e441e3a7d6da70c113e4e0c18d1c2568209bb30c5826b6389978e0",
+          "class_gribfile_mod.o": "7180415ec3b036fe4fe4c9c498c95b4cb136779043e9cf0928cc122997b588b6",
+          "cmapf_mod.o": "d4d7a746eb8667891015ee238ef201a1cbcc8b315b6f0b428d6893741b3db45c",
+          "com_mod.o": "1b48be1715d3d15efeac19d491b116e37ed647044eae32a62ffa06073abc6a05",
+          "conv_mod.o": "23fcda6d9e17f9ac822cd51e7683d11d034da0f0066b5ee6380040cbcd524330",
+          "date_mod.o": "7911c476eab665d16e8486a5a81f5e06796287cff06ae0ad3c8d20b896376857",
+          "drydepo_mod.o": "ec8b5315fdc90df17180471417212f4f012c3d9304048a4d49470c647ac332ce",
+          "emissions_mod.o": "39dc358a5c797a09565bd0f1e12ea28d9b7af210e9cfcb9aecdfbfb932ee1f65",
+          "erf_mod.o": "f57679b8e6cf00936858484220c1b42716dabaad2288ebc61202e9ef38c419dc",
+          "flux_mod.o": "080b7b1c8e2cf68d89fb5ed9a830febb101d5ef6fe06b2539b656ea24d868c1b",
+          "getfields_mod.o": "b70eed8695a7b4bda642f39445432a259c3b97219fd521d7cc39975bff7ee0be",
+          "initdomain_mod.o": "a8d843cc68be6074b1e1d0348ebd13052d427e577ad4ef5333f92fe04d9a0fe7",
+          "initialise_mod.o": "9b5e497dc5eaefec2e0d3805285515caf4c172523d79c7304fa9fd19d2880d76",
+          "interpol_mod.o": "41a81b44e3c51c480a208a0385a403463b2d184027ffd19aabcc2d58e93c81d0",
+          "mean_mod.o": "b735e74be17608994ec92044814f925c56276470c9dec0b51cb8c87f841c965c",
+          "netcdf_output_mod.o": "9edd4ab08242f272750ab7f602b82175c9c074891055bc9856842ccea72123f0",
+          "outgrid_mod.o": "a36831436dd7e6d599164061087f6fde907642839fa37cf210c80f23cb6b480f",
+          "output_mod.o": "8befcb883ea5be0df5604a719c018bc5c22ff9738561f464f7a9e20b230cbea8",
+          "par_mod.o": "7a556dc04f012a581ea9a606ed6b15200f75da212eda689963a44f9f9b11e8fd",
+          "particle_mod.o": "9e83e91d921e4c6af7191bc9c3b56df4995784feec796eb2973be815571434ab",
+          "pbl_profile_mod.o": "5291d9ccf793694a40cfe79a2e2e30fb027ac030bf23f33b655adf0b46a1e459",
+          "plume_mod.o": "9ec02c22b62ce7da419c177fed8827167b3e11f6cb5356640b0eb6671c39553e",
+          "point_mod.o": "cc5a728dbb91cee2485e8e4b9278573e3206f5036d820a78815c838bf3d71a01",
+          "qvsat_mod.o": "5b8bd135c48510afa97ea0af7ab935607b9043c11f9ca6801a99394db984dcc9",
+          "random_mod.o": "5863d1f46a82c363309ef151e4d50c867d72ddec9db9df2b4271243d5afc33df",
+          "readoptions_mod.o": "4de3db8724050196c5645e1b19778674863d0f86403624a34cd367b525251208",
+          "receptor_mod.o": "d7e2f34152ea22c844f4941cb04c0526f6bd41d59146ffeef47d2db97b736b3a",
+          "receptor_netcdf_mod.o": "c4a136d83dd29bcb82a3348537fa67c5d0cd56bf58ea02ddd8b29097e75f4a43",
+          "restart_mod.o": "f839567132148cda7f776740da9fe9ba783c94c4ba3eac1286e43e6c14282e23",
+          "settling_mod.o": "d45dc66f8f6266d7c5dd35122d49dd6f0a827d70696b26039a108805ce001b4b",
+          "sort_mod.o": "476458911247f754d046c0b9949f956779a96425648710568fdd6abcba86a5b3",
+          "timemanager_mod.o": "c8346b9d8804acde84fd441fcf0391f54769f3ba0093d974bc9e9a6a71546b81",
+          "totals_mod.o": "dc31232878cfad47bc1d07506c85064a8088d9cf185f0b8026bebd08c831ac7a",
+          "turbulence_mod.o": "6cec0d1ce872ba84cbe77cf7fbd22dfc3d12d401765a7d97a613a7d45f2a538e",
+          "txt_output_mod.o": "d016c492cc2babc41f393d2ad3f2d9604d56ea3ce4d601b172fbcc9f0d6867db",
+          "unc_mod.o": "b62b0679b7033cf2213bb1d4f77c9ba865ba2224b34f201b3a4f5d2c87bb7bdb",
+          "verttransform_mod.o": "c79f18721f2a449ee6fcfe1398782bf4fde0ab6fa68e33d4da43595b0741450c",
+          "wetdepo_mod.o": "f5af3f5e1c8565e76e55f974a6536427660bc32cda9e730ff8954b42af3fa1ab",
+          "windfields_mod.o": "9dd74bdc5d678215373e9a2db45f38d4059910276505ba3a78cb2b6d678d6505",
+          "xmass_mod.o": "e5237d116b8b5e5bbc1ad20bc19acae4d96a9e945ad05c98e9ea1b6ed7e246b7"
+        },
+        "artifacts_sha256": {
+          "input.txt": "b4975ee8212457edeef11037a752fe4b3dcb12f9cb0e401706a2972ca8f02125",
+          "output.txt": "9ad956387fe5fd78fbe6d9af69cbb2d72e7f5d68bb5af1dffe0616f524107072",
+          "full-build.log": "714ad74731540eb998085de5f2c2487b52476f410d31a2a86972f06b1f64cfd7",
+          "driver-build-run.log": "84881ccd97b23895ae55de73470cc2978e544244986facf80ea8bba17f8cd641",
+          "checkout-before.txt": "0c5cadb3987d87640c63c2e5176da07a652172fb30088c813c84feb154a5e1b2",
+          "checkout-after.txt": "0c5cadb3987d87640c63c2e5176da07a652172fb30088c813c84feb154a5e1b2",
+          "build/w-production-oracle": "b2c11fb8ebdd445b95c11918eec5f86139c71bbb738e472a25916652e34e9f51",
+          "build/w-production-oracle-driver.o": "d8c81217ed41a5ba1e9dbfe219ac5935067a4f8f14d9de492ad19b4d332fb70d",
+          "build/w-production-oracle.nm": "77a2d0444095b07d96c44cbbfda30024349c75dd725a663eea50689703f1a5c1",
+          "build/w-production-oracle.call-sites": "a35c5d65812769c7a21958908e7fd1657082432e191745407e4c44e3acdbbfa3",
+          "build/w-production-oracle.link-map": "83658b6ecb771cbface8b2e125ba1d1bd18ead5ebc1ff302ba7d34a86cb93816",
+          "build/linked-objects.txt": "388d1f824306df30fc74fbedc6464e86602b6a93ba782e9e1dad20ffacc3327c",
+          "build/compiler-identity.txt": "9e9d4386d9ee356d38035834a85bdc95acd63962aebf458438bc50b4b049afb6"
+        },
+        "verified_call_edges": [
+          {
+            "caller": "MAIN__",
+            "callee": "__verttransform_mod_MOD_verttransform_ecmwf_heights",
+            "caller_address": "0x8ed9",
+            "callee_address": "0x160f50",
+            "verified_in_linked_executable": true
+          },
+          {
+            "caller": "MAIN__",
+            "callee": "__verttransform_mod_MOD_verttransform_ecmwf_windfields",
+            "caller_address": "0x8ed9",
+            "callee_address": "0x161e40",
+            "verified_in_linked_executable": true
+          },
+          {
+            "caller": "MAIN__",
+            "callee": "__interpol_mod_MOD_interpol_wind",
+            "caller_address": "0x8ed9",
+            "callee_address": "0xa2820",
+            "verified_in_linked_executable": true
+          },
+          {
+            "caller": "__interpol_mod_MOD_interpol_wind",
+            "callee": "__interpol_mod_MOD_interpol_wind_meter",
+            "caller_address": "0xa2820",
+            "callee_address": "0xa04a0",
+            "verified_in_linked_executable": true
+          }
+        ],
+        "initializer_binding_verified": true
+      }
+    }
+  ]
+}

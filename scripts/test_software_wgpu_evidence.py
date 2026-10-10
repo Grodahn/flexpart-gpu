@@ -61,6 +61,12 @@ class AggregateTests(unittest.TestCase):
     def test_all_domains_valid_pass(self):
         self.assertEqual(self.aggregate()['state'], 'PASS')
 
+    def test_frozen_workflow_paths_are_portable(self):
+        baseline = json.loads(evidence.CONTRACT.read_text())
+        for path in baseline['independent_workflow_sha256']:
+            self.assertNotIn('\\', path)
+            self.assertTrue((evidence.ROOT / path).is_file())
+
     def test_each_domain_failure_cancellation_skip_rejected(self):
         for domain in self.domains:
             for state in ('failure', 'cancelled', 'skipped'):

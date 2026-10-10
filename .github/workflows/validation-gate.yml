@@ -168,6 +168,19 @@ jobs:
           python3 scripts/interpolation/check_shared_height_gpu.py target/ci-gate/shared-height-gpu/comparison.json --software
           python3 scripts/interpolation/test_check_shared_height_gpu.py
 
+      - name: Reproduce interior W four-control research oracle
+        working-directory: flexpart-gpu
+        run: |
+          set -euo pipefail
+          python3 scripts/interpolation/test_interior_w_oracle.py
+          python3 scripts/interpolation/run_shared_height_oracle.py --interior-w \
+            --checkout ../flexpart --output-dir target/ci-gate/interior-w-first
+          python3 scripts/interpolation/run_shared_height_oracle.py --interior-w \
+            --checkout ../flexpart --output-dir target/ci-gate/interior-w-second
+          python3 scripts/interpolation/compare_interior_w_builds.py \
+            --first target/ci-gate/interior-w-first --second target/ci-gate/interior-w-second \
+            --output target/ci-gate/interior-w-reproducibility.json
+
       - name: Record dependency cache checksums
         working-directory: flexpart-gpu
         run: python3 scripts/cargo_cache_integrity.py record

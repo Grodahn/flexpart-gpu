@@ -111,6 +111,8 @@ Start at the [stable facade](../../src/meteorology/vertical.rs) and select its
 - Shared-resource consumer: `cargo test --test meteorology_composition -- --test-threads=1`; it must retain caller-owned submission and zero intermediate readbacks. Host-only checks: `cargo test --lib gpu::vertical::tests`.
 - Broader: final Rust checks, [software WGSL](../../.github/workflows/software-wgpu.yml), [technical oracle gate](../../.github/workflows/validation-gate.yml), [navigation checks](../../scripts/check_agent_navigation.py). [Inventory/context](gpu-vertical-decomposition.md). These preserve #88 evidence and do not add a scientific claim.
 
+- Interior W research: `python scripts/interpolation/test_interior_w_oracle.py`; reproduce two fresh builds with the [shared launcher](../../scripts/interpolation/run_shared_height_oracle.py) `--interior-w` mode and audit both with [the paired build verifier](../../scripts/interpolation/compare_interior_w_builds.py). Direct pinned-routine evidence only; [decision and commands](../research/interior-w-186.md#reproduction-and-fail-closed-evidence).
+
 ## Simulation
 
 - Canonical driver preparation (#173): `cargo test --test canonical_timeloop_meteorology -- --nocapture --test-threads=1`; [integration target](../../tests/canonical_timeloop_meteorology.rs), [handoff/lifetimes](../canonical-timeloop-meteorology.md). Required real WGSL U/V/center-W readiness evidence is `target/ci-gate/canonical-timeloop-meteorology/report.json`; negative preflight, reuse, transitions and both signed time selections are covered. Keep the existing #171 and pinned stage gates; this is preparation, not migrated advection.

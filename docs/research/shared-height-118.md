@@ -216,3 +216,25 @@ U/V/W vector, so their adoption remains with the production-consumer owners
 after a separately validated W route exists. #186 requires independent x-only,
 y-only and zero-slope diagnostic controls around the genuine production call.
 Their contracts retain the scope and fail-closed boundaries above.
+
+## Interior W handoff established by #186
+
+The [#186 direct interior experiment and architecture decision](interior-w-186.md)
+supersede the interior-W evidence gap identified above for its bracketed regional
+interface-omega route. The original 2x2 fixture still proves only boundary W;
+its scientific values and acceptance scope remain unchanged. The new 3x3,
+two-time fixture executes four calls to the same pinned routine and independently
+distinguishes X/Y corrections and their sum. The correction multiplies native
+center-height slopes by already remapped U/V, after normalized-interface W
+remapping, with no explicit terrain-slope term.
+
+W GPU preparation can reuse #30 normalized interface motion/geometry and #184
+prepared U/V with identical source and target provenance. It must apply the
+correction once before #76/#171 sampling. Separate W adoption owns the complete
+vector/status/lifetime handoff, coordinated with #185; production consumers
+remain with their owners. Center-W, unbracketed target heights, global/nested/
+polar/unsupported initializer paths and #180 remain outside this numerical proof.
+The linked #186 decision contains the full source ranges, numerical controls,
+resource architecture, normalization lineage and reproducibility contract.
+
+W follow-ups after successful #186 proof: [#188 preparation](https://github.com/Grodahn/flexpart-gpu/issues/188) and [#190 adoption](https://github.com/Grodahn/flexpart-gpu/issues/190), coordinated with #184/#185.

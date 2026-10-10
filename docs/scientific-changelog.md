@@ -14,6 +14,18 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ---
 
+### 2026-10-10 — Freeze pinned interior W slope correction (#186)
+**Impact**: none (direct-oracle research; production rejection retained)
+**Files**: `docs/research/interior-w-186.md`, `docs/interpolation-contract.md`,
+`scripts/interpolation/interior_w_oracle.f90`, shared research harness and fixtures.
+**Validation**: Four genuine pristine FLEXPART 11.1 calls on a nonuniform 3x3
+regional grid independently distinguish X/Y and additive full W correction at
+both source times, with fractional interior and boundary-height sampling. Native
+center-height slopes multiply remapped U/V after normalized-interface W remap.
+Two fresh source builds reproduce frozen values exactly under unchanged #80
+velocity policy. No Fortran deviation, production calculation, additional
+normalization contract, or GPU/full-production parity claim is introduced.
+
 ### 2026-10-09 — Verify shared-height remapping for nonuniform native columns (#118)
 **Impact**: none (research and architecture decision; production rejection retained)
 **Files**: `docs/research/shared-height-118.md`, `docs/interpolation-contract.md`,

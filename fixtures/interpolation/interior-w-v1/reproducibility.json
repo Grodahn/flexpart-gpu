@@ -12,15 +12,16 @@
     "absolute_m_s": 1e-06,
     "relative": 1e-05
   },
-  "verifier_sha256": "8317a276c736f506b8525945f0bcbcf2767257e0480ef14652d9c88f3f802fa0",
+  "verifier_sha256": "fd6a863beb706f0fbb2a3872c5bdae3ba717c65582d59714c062ee46105c5a6e",
   "builds": [
     {
-      "report_sha256": "f93d19f7667930abe1857542ef87ea34f0b5c53c214b7f33bf68c9c79fa55b26",
+      "report_sha256": "17191f5aba9cc0273e95d17dee29c06e651570adc8f98491eb69a9dffc1130a0",
       "provenance": {
         "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
         "checkout_clean_before_after": true,
         "docker_image_id": "sha256:6bcff83c01c30fd7ce7ae4e32342885a93081e427df5d53feed72d6aff5b103e",
         "compiler": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+        "fresh_build_id": "/tmp/flexpart-height-research.KkKulMIG",
         "build_profile": {
           "id": "flexpart-11.1-single-thread",
           "version": 1,
@@ -83,8 +84,8 @@
         },
         "research_sources_sha256": {
           "scripts/interpolation/interior_w_oracle.f90": "f413a55dcdfec326d458d0bdbede1cc9c34cb0ba4e86bb08ea950ea655565b06",
-          "scripts/interpolation/prepare_interior_w_oracle.py": "decb88684658ff33f01630d1896f2bdac64695264733650241d054805669cd4f",
-          "scripts/interpolation/test_interior_w_oracle.py": "ec1b69ac3b404975f0b0447f8ebf7c1d777f8a7d4e2e80be707b23fe766d275b",
+          "scripts/interpolation/prepare_interior_w_oracle.py": "dd6abe1de00bb0d2975529dca6510cdabca8ec36ce2d8293bf1b25f2166e3651",
+          "scripts/interpolation/test_interior_w_oracle.py": "418c7a43fd1d8e8beb475dfe56e671f99c3fed553ed61b053b2cf0b757f11699",
           "scripts/interpolation/run_shared_height_oracle.py": "552e2149ddacb4ca30e50f78aafae4f9348e29636f554c8a3963402862e7ed99",
           "scripts/interpolation/shared_height_oracle.sh": "baee75aaad988a003fa325e56c6cd65294c2bdf90a98a6f99c674c1474d4698f",
           "scripts/interpolation/prepare_shared_height_oracle.py": "93e07e8ced40d925655a39c7dbd91ea9afe15206c25de10f26af5f24b8ca3d87",
@@ -187,12 +188,13 @@
       }
     },
     {
-      "report_sha256": "d0b33147d1c97883545cea73a3dc3b22adbd1fa0d60ac2b55495dcb7674dd147",
+      "report_sha256": "400b32194c996086a41c3457c83b4e5451ce15198d797f37ad0438c0204048cf",
       "provenance": {
         "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
         "checkout_clean_before_after": true,
         "docker_image_id": "sha256:6bcff83c01c30fd7ce7ae4e32342885a93081e427df5d53feed72d6aff5b103e",
         "compiler": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+        "fresh_build_id": "/tmp/flexpart-height-research.sVMcFkBI",
         "build_profile": {
           "id": "flexpart-11.1-single-thread",
           "version": 1,
@@ -255,8 +257,8 @@
         },
         "research_sources_sha256": {
           "scripts/interpolation/interior_w_oracle.f90": "f413a55dcdfec326d458d0bdbede1cc9c34cb0ba4e86bb08ea950ea655565b06",
-          "scripts/interpolation/prepare_interior_w_oracle.py": "decb88684658ff33f01630d1896f2bdac64695264733650241d054805669cd4f",
-          "scripts/interpolation/test_interior_w_oracle.py": "ec1b69ac3b404975f0b0447f8ebf7c1d777f8a7d4e2e80be707b23fe766d275b",
+          "scripts/interpolation/prepare_interior_w_oracle.py": "dd6abe1de00bb0d2975529dca6510cdabca8ec36ce2d8293bf1b25f2166e3651",
+          "scripts/interpolation/test_interior_w_oracle.py": "418c7a43fd1d8e8beb475dfe56e671f99c3fed553ed61b053b2cf0b757f11699",
           "scripts/interpolation/run_shared_height_oracle.py": "552e2149ddacb4ca30e50f78aafae4f9348e29636f554c8a3963402862e7ed99",
           "scripts/interpolation/shared_height_oracle.sh": "baee75aaad988a003fa325e56c6cd65294c2bdf90a98a6f99c674c1474d4698f",
           "scripts/interpolation/prepare_shared_height_oracle.py": "93e07e8ced40d925655a39c7dbd91ea9afe15206c25de10f26af5f24b8ca3d87",

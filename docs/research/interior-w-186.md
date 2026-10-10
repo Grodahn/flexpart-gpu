@@ -123,8 +123,8 @@ The unchanged endpoints independently confirm the correction-skipping behavior.
 The pinned routine multiplies **each native** omega value by its corresponding
 `pinmconv` in lines 544-545 and 620-621, then interpolates the normalized values
 on W/interface heights. It does not multiply a shared-grid W result by one
-target-dependent conversion factor. Negative pressure-increasing omega becomes
-positive upward W through the negative native derivative.
+target-dependent conversion factor. Negative omega (pressure decreasing, Pa/s)
+becomes positive upward W through the negative native derivative.
 
 #30 already owns this conversion (`omega_interface_flexpart11_pinmconv_v1`),
 native interface and center geometry, ordering, and same-Snapshot provenance.
@@ -226,11 +226,20 @@ verified.
 Frozen scientific rows and raw output must reproduce exactly across two fresh
 builds. Volatile binary, object and log hashes are retained per build rather
 than silently required equal across different scratch paths. The paired
-reproducibility record retains those run identities. The auditor refuses missing
+reproducibility record retains those run identities. The linker map binds each
+object inventory to one fresh scratch-build origin; two relocated copies of one
+build cannot satisfy the two-build proof. The standalone verifier reconstructs
+the routine call edges and initializer binding from retained evidence and checks
+the compiler record, rather than trusting report flags. Frozen regression checks
+also require the paired record, its current verifier hash, the baseline report
+hash, both complete provenance inventories and distinct build origins. Raw and
+decoded records must match the frozen scientific baseline. A failed baseline
+comparison cannot publish a success report. The auditor refuses missing
 frozen evidence, incomplete/nonfinite/duplicate records, incorrect control
 factors, changed U/V/target/input/query values, either missing direction,
 opposite-sign cancellation, nonadditivity, normalization ambiguity, source
-changes, missing linkage or malformed image identity. Technical CI reproduces
+changes, missing linkage, fractional queries rounded onto a target boundary,
+or malformed image identity. Technical CI reproduces
 the oracle and uploads complete fresh artifacts, including on failure.
 
 

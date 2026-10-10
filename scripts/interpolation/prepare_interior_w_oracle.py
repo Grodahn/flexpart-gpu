@@ -182,6 +182,8 @@ def investigate(inputs, decoded):
         k=int(k)
         require((k in (0,4) and fraction == 0) or (1<=k<=3 and 0<fraction<1), 'invalid height case')
         z = target[0] if k==0 else target[-1] if k==4 else f32(target[k-1]+f32(f32(fraction)*f32(target[k]-target[k-1])))
+        if k not in (0,4):
+            require(target[k-1] < z < target[k], 'rounded query is not strict interior')
         for v in VARIANTS:
             q=queries[v,number]
             require(q[:4] == [time,f32(x),f32(y),z], 'query input/output mismatch')
@@ -210,6 +212,27 @@ def investigate(inputs, decoded):
             'query_contributions':query_checks, 'normalization_diagnostics':normalization_checks}
 
 
+def linked_execution(build):
+    """Reconstruct actual routine edges and fresh-build origin from retained linkage."""
+    edges=verify_call_edges((build/'w-production-oracle.nm').read_text(),
+                            (build/'w-production-oracle.call-sites').read_text())
+    link_map=(build/'w-production-oracle.link-map').read_text()
+    require(re.search(r'^__verttransform_mod_MOD_verttransform_init\s+[^\n]*verttransform_mod.o\n'
+                      r'\s+w-production-oracle-driver.o$', link_map, re.M),
+            'missing initializer binding')
+    linked=(build/'linked-objects.txt').read_text().splitlines()
+    require(linked==sorted(set(linked)) and len(linked)>3 and 'FLEXPART.o' not in linked,
+            'invalid object inventory')
+    # Absolute LOAD entries survive artifact relocation and distinguish an
+    # independently compiled scratch tree from a copy of an earlier run.
+    loads=re.findall(r'^LOAD (/tmp/flexpart-height-research\.[^/\s]+)/build/upstream/([^/\s]+\.o)$',
+                     link_map, re.M)
+    require(sorted(name for _,name in loads)==linked, 'link map/object inventory mismatch')
+    origins={origin for origin,_ in loads}
+    require(len(origins)==1, 'missing/ambiguous fresh-build origin')
+    return edges, origins.pop()
+
+
 def provenance(checkout, run):
     """Reuse #80 symbol/call verification and #118 pristine scratch-build provenance."""
     manifest=json.loads((ROOT/'reference/flexpart-11.1.json').read_text())
@@ -218,11 +241,7 @@ def provenance(checkout, run):
     for name in ('checkout-before.txt','checkout-after.txt'):
         require((run/name).read_text() == manifest['pinned_commit']+'\n', 'failed retained pristine check')
     build=run/'build'
-    edges=verify_call_edges((build/'w-production-oracle.nm').read_text(),
-                            (build/'w-production-oracle.call-sites').read_text())
-    require(re.search(r'^__verttransform_mod_MOD_verttransform_init\s+[^\n]*verttransform_mod.o\n'
-                      r'\s+w-production-oracle-driver.o$', (build/'w-production-oracle.link-map').read_text(), re.M),
-            'missing initializer binding')
+    edges, fresh_build_id=linked_execution(build)
     image=os.environ.get('RESEARCH_IMAGE_ID','')
     require(re.fullmatch(r'sha256:[0-9a-f]{64}',image), 'missing immutable image')
     sources=['verttransform_mod.f90','windfields_mod.f90','interpol_mod.f90','par_mod.f90',
@@ -240,6 +259,7 @@ def provenance(checkout, run):
               'prepare_w_production_oracle.py']
     return {'pinned_commit':manifest['pinned_commit'],'checkout_clean_before_after':True,
             'docker_image_id':image,'compiler':(build/'compiler-identity.txt').read_text().strip(),
+            'fresh_build_id':fresh_build_id,
             'build_profile':manifest['execution_profile'],'driver_flags':['-O0','-fopenmp','-mcmodel=large'],
             'sources_sha256':{'src/'+p:sha256(checkout/'src'/p) for p in sources},
             'research_sources_sha256':{p:canonical_text_sha256(ROOT/p) for p in
@@ -250,26 +270,30 @@ def provenance(checkout, run):
             'initializer_binding_verified':True}
 
 
+def build_report(checkout, run):
+    """Reaudit retained genuine execution without changing any scientific values."""
+    inputs=decode_input(run/'input.txt')
+    decoded=decode(run/'output.txt')
+    scientific={'decoded_inputs':inputs, 'geometry':decoded[0],
+                'native_rows':[{'key':list(k),'values':v} for k,v in sorted(decoded[1].items())],
+                'shared_rows':[{'key':list(k),'height_uv_w':v} for k,v in sorted(decoded[2].items())],
+                'queries':[{'key':list(k),'time_x_y_agl_asl_uv_w':v} for k,v in sorted(decoded[3].items())],
+                **investigate(inputs,decoded)}
+    return {'schema':{'id':'flexpart-gpu.interior-w-research','version':1},'issue':186,
+            'verdict':'independent_x_y_interior_correction_verified',
+            'validation_level':'direct_pinned_routines_synthetic_research_only',
+            'comparison_policy':{'owner':'issue #80','absolute_m_s':ABSOLUTE_TOLERANCE_M_S,
+                                 'relative':RELATIVE_TOLERANCE},
+            'scientific':scientific,'provenance':provenance(checkout,run)}
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--checkout',type=Path,required=True)
     parser.add_argument('--run',type=Path,required=True)
     parser.add_argument('--expected',type=Path,required=True)
     args=parser.parse_args()
-    inputs=decode_input(args.run/'input.txt')
-    decoded=decode(args.run/'output.txt')
-    scientific={'decoded_inputs':inputs, 'geometry':decoded[0],
-                'native_rows':[{'key':list(k),'values':v} for k,v in sorted(decoded[1].items())],
-                'shared_rows':[{'key':list(k),'height_uv_w':v} for k,v in sorted(decoded[2].items())],
-                'queries':[{'key':list(k),'time_x_y_agl_asl_uv_w':v} for k,v in sorted(decoded[3].items())],
-                **investigate(inputs,decoded)}
-    result={'schema':{'id':'flexpart-gpu.interior-w-research','version':1},'issue':186,
-            'verdict':'independent_x_y_interior_correction_verified',
-            'validation_level':'direct_pinned_routines_synthetic_research_only',
-            'comparison_policy':{'owner':'issue #80','absolute_m_s':ABSOLUTE_TOLERANCE_M_S,
-                                 'relative':RELATIVE_TOLERANCE},
-            'scientific':scientific,'provenance':provenance(args.checkout,args.run)}
-    (args.run/'report.json').write_text(json.dumps(result,indent=2)+'\n')
+    result=build_report(args.checkout,args.run)
     frozen=args.expected/'report.json'
     require(frozen.exists(), 'frozen evidence absent; inspect and freeze explicitly')
     expected=json.loads(frozen.read_text())
@@ -281,6 +305,9 @@ def main():
         require(result['provenance'][key]==expected['provenance'][key], 'changed provenance '+key)
     require(sha256(args.run/'output.txt')==sha256(args.expected/'output.txt'), 'changed raw output')
     require(canonical_text_sha256(args.run/'input.txt')==canonical_text_sha256(args.expected/'input.txt'), 'changed raw input')
+    # A failed frozen comparison must not leave a success-shaped report that a
+    # subsequent standalone paired verifier could mistake for accepted evidence.
+    (args.run/'report.json').write_text(json.dumps(result,indent=2)+'\n', encoding='utf-8')
     print(json.dumps({'state':'PASS','verdict':result['verdict'],'queries':15}))
 
 

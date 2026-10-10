@@ -73,7 +73,7 @@ class AggregateTests(unittest.TestCase):
         with patch.object(evidence, 'contract', return_value=baseline):
             evidence.monolithic_view(text, strict=True)
             with self.assertRaisesRegex(ValueError, 'cache namespace'):
-                evidence.monolithic_view(text.replace('shared-key: software-wgpu', 'shared-key: other'))
+                evidence.monolithic_view(text.replace('          shared-key: ', '          shared-key: other-'))
 
     def test_each_domain_failure_cancellation_skip_rejected(self):
         for domain in self.domains:

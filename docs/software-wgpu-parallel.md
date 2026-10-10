@@ -31,9 +31,11 @@ after newline normalization; their identities are frozen in the mapping.
 
 The pinned Rust cache action includes `github.job` in its automatic key. Renaming
 jobs initially caused complete compilation cache misses despite identical explicit
-keys and dependencies. Both domains therefore set `shared-key: software-wgpu` to
-materialize the former automatic namespace. This preserves #176's actual complete
-cache key; its action pin, additional key, dependencies, integrity checks, archived
+keys and dependencies. Both domains therefore set `shared-key` to the original
+additional key followed by `-software-wgpu`. The pinned action's `src/config.ts`
+uses shared-key in place of the entire key-plus-job prefix, so a job-name-only
+shared-key also misses the original cache. Materializing the complete prefix
+preserves #176's actual complete cache key; its action pin, dependencies, integrity checks, archived
 directories and PR read-only publication policy remain unchanged. The mapping
 auditor permits only this exact namespace preservation and rejects other values.
 

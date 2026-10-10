@@ -33,7 +33,7 @@ jobs:
         with:
           workspaces: ". -> target"
           # Preserve the original automatic job-based #176 cache namespace.
-          shared-key: software-wgpu
+          shared-key: ubuntu-22.04-${{ runner.arch }}-default-features-${{ steps.cache-environment.outputs.image }}-${{ hashFiles('**/build.rs', '**/.cargo/config*') }}-software-wgpu
           key: ubuntu-22.04-${{ runner.arch }}-default-features-${{ steps.cache-environment.outputs.image }}-${{ hashFiles('**/build.rs', '**/.cargo/config*') }}
           env-vars: "RUST CARGO CC CXX CFLAGS CXXFLAGS LDFLAGS"
           cache-targets: "false"
@@ -575,7 +575,7 @@ jobs:
         with:
           workspaces: ". -> target"
           # Preserve the original automatic job-based #176 cache namespace.
-          shared-key: software-wgpu
+          shared-key: ubuntu-22.04-${{ runner.arch }}-default-features-${{ steps.cache-environment.outputs.image }}-${{ hashFiles('**/build.rs', '**/.cargo/config*') }}-software-wgpu
           key: ubuntu-22.04-${{ runner.arch }}-default-features-${{ steps.cache-environment.outputs.image }}-${{ hashFiles('**/build.rs', '**/.cargo/config*') }}
           env-vars: "RUST CARGO CC CXX CFLAGS CXXFLAGS LDFLAGS"
           cache-targets: "false"

@@ -2,6 +2,10 @@
 
 Contract: [issue #177](https://github.com/Grodahn/flexpart-gpu/issues/177).
 Baseline main: `2c4dc3d39502673bf4bed76e14855a44b9ee2d6c`.
+The branch was subsequently rebased onto `217d3c1` after main merged #191.
+Its added interior-W research oracle remains required in the untouched technical
+workflow. The software baseline did not change; the inventory separately records
+the preserved independent-workflow revision and hashes.
 Externally supplied provenance marker: **GPT6.1 Sol**.
 
 The [frozen before/after mapping](software-wgpu-before.json) contains each original

@@ -824,7 +824,8 @@
     ]
   },
   "independent_workflow_sha256": {
-    ".github/workflows/validation-gate.yml": "b02ed42844a22b662659b63487fd2fe2fbbb4d65b710cab2354de4607688dc5b",
+    ".github/workflows/validation-gate.yml": "f94aa4447d992407ea04dc62eaf42359bc6a397f5ac046a88074985067f1cb01",
     ".github/workflows/extended-validation.yml": "a560ac94e577ae67993fba29cd93452f9cdcc45b4a9997d5da35c85c234ce59e"
-  }
+  },
+  "preserved_independent_workflow_revision": "217d3c148d2486e1bd76b8ce65e45abedfc13c82"
 }

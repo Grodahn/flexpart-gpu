@@ -79,10 +79,50 @@ the domain manifests before rerunning tests. Missing artifacts are failures even
 when a cancelled runner cannot upload its logs.
 
 The timing comparison is recorded in [measurements](software-wgpu-measurements.json)
-after real PR execution. Two GPU runners were chosen to bound repeated setup and
+from actual complete GitHub runs. Two GPU runners were chosen to bound repeated setup and
 restore overhead; a third runtime runner would repeat setup for a short smoke.
 Measurements distinguish workflow elapsed time, critical path, overlapping domain
 intervals, setup/cache/test durations, total job runner minutes, terminal bytes and
 artifact counts/compressed sizes. Hosted-runner variation and different compilation
 cache dispositions limit attribution. This orchestration makes no scientific parity
 or hardware-GPU performance claim.
+
+## Observed timing and runner cost
+
+| Complete successful software run | Wall / critical path (s) | Runner minutes | Verified Cargo restores | GPU overlap (s) | Transcript bytes | Artifact count / compressed bytes |
+| --- | --- | --- | --- | --- | --- | --- |
+| [Historical main](https://github.com/Grodahn/flexpart-gpu/actions/runs/37930806734) | 161 / 158 | 2.63 | 1 | 0 | 160,162 | 1 / 720,323 |
+| [Current-environment monolith](https://github.com/Grodahn/flexpart-gpu/actions/runs/38063045486) | 139 / 135 | 2.25 | 1 | 0 | 204,281 | 1 / 720,323 |
+| [Initial split, cache misses](https://github.com/Grodahn/flexpart-gpu/actions/runs/38062644702) | 169 / 166 | 4.83 | 0 | 127 | 361,036 | 3 / 738,463 |
+| [Rebased split, cache misses](https://github.com/Grodahn/flexpart-gpu/actions/runs/38063706325) | 154 / 151 | 4.47 | 0 | 119 | 360,944 | 3 / 738,738 |
+| [Exact original cache keys restored](https://github.com/Grodahn/flexpart-gpu/actions/runs/38063861101) | 147 / 145 | 4.08 | 2 | 102 | 340,321 | 3 / 734,172 |
+
+The restored-cache split's meteorology job took 103 s and transport 135 s; the
+aggregate took 7 s. Setup including restores took 39/30 s, cache restore 10/7 s,
+integrity verification 3/3 s, preflight compilation/smoke 19/12 s, and scientific
+compile/test/assertion steps 40/86 s. The current-environment monolith spent 27 s
+in setup, 5 s restoring, 2 s verifying, 11 s in preflight and 93 s in scientific
+steps. Retained libtest execution summaries sum to 4.06 s for meteorology and
+50.81 s for transport in the split; step durations additionally include compilation.
+All 59 meteorology and 74 transport tests, 177 required payload files, two domain
+manifests and the aggregate report were independently inspected after download.
+Both domain keys exactly match the original full cache key, and their fresh
+scientific evidence is independent of the restored compilation bytes.
+
+This sample improved wall time by 14 s versus historical main but regressed by
+8 s (5.8%) versus the current-environment monolith. Runner occupancy increased by
+1.83 minutes (81.5%) against the latter. **No consistent wall-clock speedup is
+demonstrated.** The two-domain layout is already the smallest split that preserves
+required concurrent independence; adding a third runtime runner is not justified
+by the measured repeated setup/restore cost. No third-runner experiment was run.
+The observations are retained, including unsuccessful optimization outcomes;
+runner/network/compilation variance prevents a general speedup guarantee.
+
+[Actual failed-domain run](https://github.com/Grodahn/flexpart-gpu/actions/runs/38062368049)
+also proves workflow-level failure behavior: transport succeeded, meteorology
+failed, and the required aggregate still ran and failed with
+`required domain failed/cancelled/skipped`. Sixteen focused handoff/exit/cache
+negative tests and the seventeen existing coverage/shell tests pass. Formatting,
+Clippy (existing warnings), full Cargo tests and navigation passed locally.
+The PR links final required CI against its reviewed head, including the preserved
+new main interior-W oracle gate. No issue closure or scientific parity is claimed.

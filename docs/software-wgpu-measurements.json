@@ -1,1 +1,485 @@
-{"state":"PENDING_REAL_PR_CI","baseline_run_id":37930806734}
+{
+  "schema": "flexpart-gpu.software-wgpu-measurements.v1",
+  "state": "VERIFIED_EXECUTION_MIXED_TIMING",
+  "provenance_marker": "GPT6.1 Sol",
+  "observations": [
+    {
+      "run_id": 37930806734,
+      "source_head": "2c4dc3d39502673bf4bed76e14855a44b9ee2d6c",
+      "url": "https://github.com/Grodahn/flexpart-gpu/actions/runs/37930806734",
+      "conclusion": "success",
+      "workflow_wall_seconds": 161.0,
+      "critical_path_seconds": 158.0,
+      "runner_minutes": 2.6333333333333333,
+      "successful_job_count": 1,
+      "gpu_domain_overlap_seconds": 0,
+      "jobs": [
+        {
+          "job": "software-wgpu",
+          "conclusion": "success",
+          "start": "2026-10-09T12:33:23Z",
+          "end": "2026-10-09T12:36:01Z",
+          "seconds": 158.0,
+          "environment_setup_including_cache_seconds": 37.0,
+          "cargo_restore_seconds": 5.0,
+          "cargo_integrity_seconds": 3.0,
+          "preflight_compile_and_smoke_seconds": 20.0,
+          "test_compile_and_verification_seconds": 97.0,
+          "seal_seconds": 0,
+          "post_cache_publication_seconds": 1.0
+        }
+      ],
+      "terminal_transcript_utf8_bytes": 160162,
+      "cache_verified_reuse_records": 1,
+      "cache_miss_or_invalid_records": 0,
+      "artifacts": [
+        {
+          "name": "software-wgpu-smoke-37930806734",
+          "bytes": 720323,
+          "id": 11616147306
+        }
+      ],
+      "artifact_count": 1,
+      "compressed_artifact_bytes": 720323
+    },
+    {
+      "run_id": 38063045486,
+      "source_head": "217d3c148d2486e1bd76b8ce65e45abedfc13c82",
+      "url": "https://github.com/Grodahn/flexpart-gpu/actions/runs/38063045486",
+      "conclusion": "success",
+      "workflow_wall_seconds": 139.0,
+      "critical_path_seconds": 135.0,
+      "runner_minutes": 2.25,
+      "successful_job_count": 1,
+      "gpu_domain_overlap_seconds": 0,
+      "jobs": [
+        {
+          "job": "software-wgpu",
+          "conclusion": "success",
+          "start": "2026-10-10T15:18:07Z",
+          "end": "2026-10-10T15:20:22Z",
+          "seconds": 135.0,
+          "environment_setup_including_cache_seconds": 27.0,
+          "cargo_restore_seconds": 5.0,
+          "cargo_integrity_seconds": 2.0,
+          "preflight_compile_and_smoke_seconds": 11.0,
+          "test_compile_and_verification_seconds": 93.0,
+          "seal_seconds": 0,
+          "post_cache_publication_seconds": 0.0
+        }
+      ],
+      "terminal_transcript_utf8_bytes": 204281,
+      "cache_verified_reuse_records": 1,
+      "cache_miss_or_invalid_records": 0,
+      "artifacts": [
+        {
+          "name": "software-wgpu-smoke-38063045486",
+          "bytes": 720323,
+          "id": 11673488704
+        }
+      ],
+      "artifact_count": 1,
+      "compressed_artifact_bytes": 720323
+    },
+    {
+      "run_id": 38062644702,
+      "source_head": "fc25c5d5365986b344228787285c1d64b00507fe",
+      "url": "https://github.com/Grodahn/flexpart-gpu/actions/runs/38062644702",
+      "conclusion": "success",
+      "workflow_wall_seconds": 169.0,
+      "critical_path_seconds": 166.0,
+      "runner_minutes": 4.833333333333333,
+      "successful_job_count": 3,
+      "gpu_domain_overlap_seconds": 127.0,
+      "jobs": [
+        {
+          "job": "gpu-transport-physics",
+          "conclusion": "success",
+          "start": "2026-10-10T15:12:08Z",
+          "end": "2026-10-10T15:14:41Z",
+          "seconds": 153.0,
+          "environment_setup_including_cache_seconds": 25.0,
+          "cargo_restore_seconds": 1.0,
+          "cargo_integrity_seconds": 0.0,
+          "preflight_compile_and_smoke_seconds": 33.0,
+          "test_compile_and_verification_seconds": 90.0,
+          "seal_seconds": 0.0,
+          "post_cache_publication_seconds": 0.0
+        },
+        {
+          "job": "gpu-meteorology",
+          "conclusion": "success",
+          "start": "2026-10-10T15:12:09Z",
+          "end": "2026-10-10T15:14:16Z",
+          "seconds": 127.0,
+          "environment_setup_including_cache_seconds": 21.0,
+          "cargo_restore_seconds": 1.0,
+          "cargo_integrity_seconds": 0.0,
+          "preflight_compile_and_smoke_seconds": 40.0,
+          "test_compile_and_verification_seconds": 59.0,
+          "seal_seconds": 0.0,
+          "post_cache_publication_seconds": 0.0
+        },
+        {
+          "job": "software-wgpu",
+          "conclusion": "success",
+          "start": "2026-10-10T15:14:44Z",
+          "end": "2026-10-10T15:14:54Z",
+          "seconds": 10.0,
+          "environment_setup_including_cache_seconds": null,
+          "cargo_restore_seconds": 0,
+          "cargo_integrity_seconds": 0,
+          "preflight_compile_and_smoke_seconds": 0,
+          "test_compile_and_verification_seconds": 0,
+          "seal_seconds": 0,
+          "post_cache_publication_seconds": 0
+        }
+      ],
+      "terminal_transcript_utf8_bytes": 361036,
+      "cache_verified_reuse_records": 0,
+      "cache_miss_or_invalid_records": 2,
+      "artifacts": [
+        {
+          "name": "software-wgpu-aggregate-38062644702-1",
+          "bytes": 888,
+          "id": 11673617950
+        },
+        {
+          "name": "software-wgpu-transport-physics-38062644702-1",
+          "bytes": 520578,
+          "id": 11673129098
+        },
+        {
+          "name": "software-wgpu-meteorology-38062644702-1",
+          "bytes": 216997,
+          "id": 11673094029
+        }
+      ],
+      "artifact_count": 3,
+      "compressed_artifact_bytes": 738463
+    },
+    {
+      "run_id": 38063706325,
+      "source_head": "5915f533059a6039c30b40a6b29cc8c7bc781b23",
+      "url": "https://github.com/Grodahn/flexpart-gpu/actions/runs/38063706325",
+      "conclusion": "success",
+      "workflow_wall_seconds": 154.0,
+      "critical_path_seconds": 151.0,
+      "runner_minutes": 4.466666666666667,
+      "successful_job_count": 3,
+      "gpu_domain_overlap_seconds": 119.0,
+      "jobs": [
+        {
+          "job": "gpu-meteorology",
+          "conclusion": "success",
+          "start": "2026-10-10T15:27:50Z",
+          "end": "2026-10-10T15:30:10Z",
+          "seconds": 140.0,
+          "environment_setup_including_cache_seconds": 24.0,
+          "cargo_restore_seconds": 2.0,
+          "cargo_integrity_seconds": 0.0,
+          "preflight_compile_and_smoke_seconds": 45.0,
+          "test_compile_and_verification_seconds": 61.0,
+          "seal_seconds": 0.0,
+          "post_cache_publication_seconds": 1.0
+        },
+        {
+          "job": "gpu-transport-physics",
+          "conclusion": "success",
+          "start": "2026-10-10T15:27:50Z",
+          "end": "2026-10-10T15:29:49Z",
+          "seconds": 119.0,
+          "environment_setup_including_cache_seconds": 19.0,
+          "cargo_restore_seconds": 0.0,
+          "cargo_integrity_seconds": 0.0,
+          "preflight_compile_and_smoke_seconds": 26.0,
+          "test_compile_and_verification_seconds": 68.0,
+          "seal_seconds": 0.0,
+          "post_cache_publication_seconds": 1.0
+        },
+        {
+          "job": "software-wgpu",
+          "conclusion": "success",
+          "start": "2026-10-10T15:30:12Z",
+          "end": "2026-10-10T15:30:21Z",
+          "seconds": 9.0,
+          "environment_setup_including_cache_seconds": null,
+          "cargo_restore_seconds": 0,
+          "cargo_integrity_seconds": 0,
+          "preflight_compile_and_smoke_seconds": 0,
+          "test_compile_and_verification_seconds": 0,
+          "seal_seconds": 0,
+          "post_cache_publication_seconds": 0
+        }
+      ],
+      "terminal_transcript_utf8_bytes": 360944,
+      "cache_verified_reuse_records": 0,
+      "cache_miss_or_invalid_records": 2,
+      "artifacts": [
+        {
+          "name": "software-wgpu-meteorology-38063706325-1",
+          "bytes": 217036,
+          "id": 11674575370
+        },
+        {
+          "name": "software-wgpu-aggregate-38063706325-1",
+          "bytes": 888,
+          "id": 11673939395
+        },
+        {
+          "name": "software-wgpu-transport-physics-38063706325-1",
+          "bytes": 520814,
+          "id": 11673539781
+        }
+      ],
+      "artifact_count": 3,
+      "compressed_artifact_bytes": 738738
+    },
+    {
+      "run_id": 38063861101,
+      "source_head": "8b0f06317ff7b1e760e6f5a669b4f1fed8d9dfbb",
+      "url": "https://github.com/Grodahn/flexpart-gpu/actions/runs/38063861101",
+      "conclusion": "success",
+      "workflow_wall_seconds": 147.0,
+      "critical_path_seconds": 145.0,
+      "runner_minutes": 4.083333333333333,
+      "successful_job_count": 3,
+      "gpu_domain_overlap_seconds": 102.0,
+      "jobs": [
+        {
+          "job": "gpu-meteorology",
+          "conclusion": "success",
+          "start": "2026-10-10T15:30:09Z",
+          "end": "2026-10-10T15:31:52Z",
+          "seconds": 103.0,
+          "environment_setup_including_cache_seconds": 39.0,
+          "cargo_restore_seconds": 10.0,
+          "cargo_integrity_seconds": 3.0,
+          "preflight_compile_and_smoke_seconds": 19.0,
+          "test_compile_and_verification_seconds": 40.0,
+          "seal_seconds": 0.0,
+          "post_cache_publication_seconds": 1.0
+        },
+        {
+          "job": "gpu-transport-physics",
+          "conclusion": "success",
+          "start": "2026-10-10T15:30:10Z",
+          "end": "2026-10-10T15:32:25Z",
+          "seconds": 135.0,
+          "environment_setup_including_cache_seconds": 30.0,
+          "cargo_restore_seconds": 7.0,
+          "cargo_integrity_seconds": 3.0,
+          "preflight_compile_and_smoke_seconds": 12.0,
+          "test_compile_and_verification_seconds": 86.0,
+          "seal_seconds": 0.0,
+          "post_cache_publication_seconds": 1.0
+        },
+        {
+          "job": "software-wgpu",
+          "conclusion": "success",
+          "start": "2026-10-10T15:32:27Z",
+          "end": "2026-10-10T15:32:34Z",
+          "seconds": 7.0,
+          "environment_setup_including_cache_seconds": null,
+          "cargo_restore_seconds": 0,
+          "cargo_integrity_seconds": 0,
+          "preflight_compile_and_smoke_seconds": 0,
+          "test_compile_and_verification_seconds": 0,
+          "seal_seconds": 0,
+          "post_cache_publication_seconds": 0
+        }
+      ],
+      "terminal_transcript_utf8_bytes": 340321,
+      "cache_verified_reuse_records": 2,
+      "cache_miss_or_invalid_records": 0,
+      "artifacts": [
+        {
+          "name": "software-wgpu-meteorology-38063861101-1",
+          "bytes": 214703,
+          "id": 11674740038
+        },
+        {
+          "name": "software-wgpu-transport-physics-38063861101-1",
+          "bytes": 518579,
+          "id": 11674019543
+        },
+        {
+          "name": "software-wgpu-aggregate-38063861101-1",
+          "bytes": 890,
+          "id": 11674009407
+        }
+      ],
+      "artifact_count": 3,
+      "compressed_artifact_bytes": 734172
+    }
+  ],
+  "comparison": {
+    "baseline_run": 38063045486,
+    "parallel_run": 38063861101,
+    "wall_seconds_change": 8.0,
+    "wall_percent_change": 5.755395683453246,
+    "runner_minutes_change": 1.833333333333333,
+    "runner_percent_change": 81.48148148148147,
+    "conclusion": "No consistent wall-clock speedup demonstrated across these hosted-runner observations. Two GPU domains are the smallest topology satisfying required concurrent independence. Complete cold and restored-cache runs execute all required evidence."
+  },
+  "artifact_inspection": {
+    "state": "PASS",
+    "domains": [
+      {
+        "domain": "gpu-meteorology",
+        "files": 145,
+        "retained_bytes": 1433666,
+        "test_count": 59,
+        "adapter": {
+          "name": "llvmpipe (LLVM 15.0.7, 256 bits)",
+          "backend": "vulkan",
+          "device_type": "cpu",
+          "vendor_id": 65541,
+          "device_id": 0,
+          "driver": "llvmpipe",
+          "driver_info": "Mesa 23.2.1-1ubuntu3.1~22.04.4 (LLVM 15.0.7)",
+          "adapter_class": "software_wgsl",
+          "software_fallback_requested": true
+        },
+        "identity": {
+          "GITHUB_SHA": "4e72c1a2aa2395f930f085cb63361324a4de487a",
+          "GITHUB_RUN_ID": "38063861101",
+          "GITHUB_RUN_ATTEMPT": "1",
+          "FLEXPART_GPU_CANDIDATE_REVISION": "8b0f06317ff7b1e760e6f5a669b4f1fed8d9dfbb"
+        },
+        "stages": 16,
+        "log_count": 8,
+        "summed_libtest_execution_seconds": 4.0600000000000005
+      },
+      {
+        "domain": "gpu-transport-physics",
+        "files": 32,
+        "retained_bytes": 22787251,
+        "test_count": 74,
+        "adapter": {
+          "name": "llvmpipe (LLVM 15.0.7, 256 bits)",
+          "backend": "vulkan",
+          "device_type": "cpu",
+          "vendor_id": 65541,
+          "device_id": 0,
+          "driver": "llvmpipe",
+          "driver_info": "Mesa 23.2.1-1ubuntu3.1~22.04.4 (LLVM 15.0.7)",
+          "adapter_class": "software_wgsl",
+          "software_fallback_requested": true
+        },
+        "identity": {
+          "GITHUB_SHA": "4e72c1a2aa2395f930f085cb63361324a4de487a",
+          "GITHUB_RUN_ID": "38063861101",
+          "GITHUB_RUN_ATTEMPT": "1",
+          "FLEXPART_GPU_CANDIDATE_REVISION": "8b0f06317ff7b1e760e6f5a669b4f1fed8d9dfbb"
+        },
+        "stages": 17,
+        "log_count": 16,
+        "summed_libtest_execution_seconds": 50.81
+      }
+    ],
+    "aggregate": {
+      "state": "PASS",
+      "identity": {
+        "GITHUB_SHA": "4e72c1a2aa2395f930f085cb63361324a4de487a",
+        "GITHUB_RUN_ID": "38063861101",
+        "GITHUB_RUN_ATTEMPT": "1",
+        "FLEXPART_GPU_CANDIDATE_REVISION": "8b0f06317ff7b1e760e6f5a669b4f1fed8d9dfbb"
+      },
+      "domains": {
+        "gpu-meteorology": {
+          "tests": 59,
+          "logs": {
+            "target/ci-gate/accumulation-gpu.log": 10,
+            "target/ci-gate/canonical-timeloop-meteorology.log": 3,
+            "target/ci-gate/horizontal-gpu.log": 15,
+            "target/ci-gate/meteorology-composition.log": 3,
+            "target/ci-gate/meteorology-resident-corner.log": 2,
+            "target/ci-gate/meteorology-resident.log": 1,
+            "target/ci-gate/temporal-gpu.log": 1,
+            "target/ci-gate/vertical-gpu.log": 24
+          },
+          "adapter": {
+            "name": "llvmpipe (LLVM 15.0.7, 256 bits)",
+            "backend": "vulkan",
+            "device_type": "cpu",
+            "vendor_id": 65541,
+            "device_id": 0,
+            "driver": "llvmpipe",
+            "driver_info": "Mesa 23.2.1-1ubuntu3.1~22.04.4 (LLVM 15.0.7)",
+            "adapter_class": "software_wgsl",
+            "software_fallback_requested": true
+          }
+        },
+        "gpu-transport-physics": {
+          "tests": 74,
+          "logs": {
+            "target/ci-gate/corpus-subset.log": 6,
+            "target/ci-gate/dry-prefix.log": 4,
+            "target/ci-gate/hanna-forward-1-0.log": 7,
+            "target/ci-gate/hanna-forward-1-1.log": 7,
+            "target/ci-gate/hanna-prefix.log": 3,
+            "target/ci-gate/langevin.log": 4,
+            "target/ci-gate/pbl-diagnostics.log": 3,
+            "target/ci-gate/pbl-options.log": 4,
+            "target/ci-gate/resident-advection-compaction.log": 2,
+            "target/ci-gate/resident-advection-production.log": 2,
+            "target/ci-gate/resident-advection-validation.log": 2,
+            "target/ci-gate/settling-gpu.log": 7,
+            "target/ci-gate/sw-wgpu-advection.log": 1,
+            "target/ci-gate/timeloop-production.log": 10,
+            "target/ci-gate/timeloop-validation.log": 8,
+            "target/ci-gate/wet-prefix.log": 4
+          },
+          "adapter": {
+            "name": "llvmpipe (LLVM 15.0.7, 256 bits)",
+            "backend": "vulkan",
+            "device_type": "cpu",
+            "vendor_id": 65541,
+            "device_id": 0,
+            "driver": "llvmpipe",
+            "driver_info": "Mesa 23.2.1-1ubuntu3.1~22.04.4 (LLVM 15.0.7)",
+            "adapter_class": "software_wgsl",
+            "software_fallback_requested": true
+          }
+        }
+      }
+    }
+  },
+  "actual_failed_aggregate": {
+    "run_id": 38062368049,
+    "meteorology": "failure",
+    "transport": "success",
+    "aggregate": "failure",
+    "report": {
+      "state": "FAIL",
+      "error": "required domain failed/cancelled/skipped"
+    }
+  },
+  "local_verification": {
+    "format": "PASS",
+    "clippy": "PASS_WITH_EXISTING_WARNINGS",
+    "cargo_test": "PASS_37_SUCCESSFUL_TARGET_SUMMARIES",
+    "coverage_negative_tests": 17,
+    "aggregate_negative_tests": 16,
+    "navigation": "PASS"
+  },
+  "measurement_method": {
+    "workflow_wall": "completed updated_at minus created_at from the GitHub run API",
+    "critical_path": "latest required job completion minus first job start; includes aggregate queue/handoff",
+    "runner_minutes": "sum of each job completed_at minus started_at / 60; execution occupancy, not rounded billing",
+    "setup": "job start to preflight step start; includes checkout/toolchain/cache/install/audits",
+    "test_compile_and_verification": "summed named scientific/test step durations; includes compilation and assertions",
+    "terminal_bytes": "retained gh run view --log UTF-8 transcript, measured consistently on Windows",
+    "artifact_bytes": "compressed size_in_bytes from the GitHub artifacts API",
+    "overlap": "intersection of the two GPU job intervals",
+    "precision": "GitHub step/job timestamps have whole-second precision; zero-second stages still executed"
+  },
+  "limitations": [
+    "Hosted-runner, network and compile-time variation; no controlled repeated-sample speedup guarantee.",
+    "Added source revisions in #191 preserve the identical software Rust/WGSL workload; the independent technical workflow has additional required research oracle execution.",
+    "Runtime is folded into the two required GPU runners; no separate third-runner experiment.",
+    "Scientific verdicts and software-versus-hardware execution classifications are unchanged.",
+    "Final reviewed-head CI is linked in the PR; the recorded observational run identities remain immutable."
+  ]
+}

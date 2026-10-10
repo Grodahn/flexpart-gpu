@@ -44,7 +44,11 @@ def stage_id(index, step):
 
 def original_block(block):
     """Remove only the newly attached Actions execution-record id."""
-    return re.sub(r'^        id: original-\d+\n', '', block, flags=re.M)
+    block = re.sub(r'^        id: original-\d+\n', '', block, flags=re.M)
+    # The pinned action defaults to github.job. Materialize the old value after
+    # renaming jobs so its actual cache identity remains unchanged.
+    return block.replace('          # Preserve the original automatic job-based #176 cache namespace.\n'
+                         '          shared-key: software-wgpu\n', '')
 
 
 def split_jobs(text):
@@ -73,6 +77,8 @@ def monolithic_view(text, strict=False):
         require('    runs-on: ubuntu-22.04\n' in header, 'adapter runner drift')
         require('    needs:' not in header and '    if:' not in header, 'independent domain conditional/dependency')
         selected[domain] = coverage.steps(jobs[domain])
+        require('          shared-key: software-wgpu\n' in selected[domain].get('Restore trusted Cargo compilation cache', ''),
+                'original Cargo cache namespace changed')
     aggregate = jobs['software-wgpu']
     require('    name: software-wgpu\n' in aggregate and '    if: always()\n' in aggregate
             and '    needs: [gpu-meteorology, gpu-transport-physics]\n' in aggregate,

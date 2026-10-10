@@ -25,6 +25,14 @@ Device creation remains serialized wherever the original command required it.
 The technical oracle gate and manual extended workflow are byte-for-byte unchanged
 after newline normalization; their identities are frozen in the mapping.
 
+The pinned Rust cache action includes `github.job` in its automatic key. Renaming
+jobs initially caused complete compilation cache misses despite identical explicit
+keys and dependencies. Both domains therefore set `shared-key: software-wgpu` to
+materialize the former automatic namespace. This preserves #176's actual complete
+cache key; its action pin, additional key, dependencies, integrity checks, archived
+directories and PR read-only publication policy remain unchanged. The mapping
+auditor permits only this exact namespace preservation and rejects other values.
+
 `software-wgpu` remains the externally visible aggregate check, with both required
 domains in `needs` and `if: always()`. No trigger/path filter, matrix or optional
 domain can bypass it. GitHub's main branch-protection endpoint reported “Branch

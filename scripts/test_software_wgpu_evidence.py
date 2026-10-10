@@ -67,6 +67,14 @@ class AggregateTests(unittest.TestCase):
             self.assertNotIn('\\', path)
             self.assertTrue((evidence.ROOT / path).is_file())
 
+    def test_original_cache_namespace_is_required(self):
+        baseline = json.loads(evidence.CONTRACT.read_text())
+        text = (evidence.ROOT / '.github/workflows/software-wgpu.yml').read_text()
+        with patch.object(evidence, 'contract', return_value=baseline):
+            evidence.monolithic_view(text, strict=True)
+            with self.assertRaisesRegex(ValueError, 'cache namespace'):
+                evidence.monolithic_view(text.replace('shared-key: software-wgpu', 'shared-key: other'))
+
     def test_each_domain_failure_cancellation_skip_rejected(self):
         for domain in self.domains:
             for state in ('failure', 'cancelled', 'skipped'):

@@ -54,7 +54,32 @@ Trilinear interpolation in (x, y, z):
 Only the **mean** wind is interpolated here. Turbulent fluctuations are handled
 separately by the Langevin equation.
 
-## Source Files
+## Pinned upper transport boundary (#180)
+
+The direct [#180 transport proof and finite adoption contract](../research/transport-top-180.md)
+execute pristine FLEXPART 11.1 `advance` and `pushpartdown`, including the compiled
+Petterssen correction. In the accepted regional `eta=no` route, `height(nz)` is
+the endpoint of the run-lifetime shared AGL target initialized on the initial
+mother member. It is unchanged by the particle's native column or source time.
+Reuse #184's existing target and #185's query resources for future adoption;
+complete matching prepared U/V/W adoption remains a prerequisite.
+
+The original inclusive test is `z >= height(nz)`. Backward transport with the
+settling flag sets sticky `nstop`; other cases assign the f32 expression
+`height(nz) - 100*(nxmax/3.e5)`. Boundary action occurs before advanced-time
+sampling and after correction, which is applied to the adjusted predictor.
+The preceding schematic trapezoidal formula is equivalent only when boundary
+actions do not intervene. The current GPU top clamp does not establish this
+behavior. Existing changing-top rejection remains until the follow-up is proved.
+
+The proof retains 24 boundary and 72 public-advance cases, exact raw/decoded
+observations and two distinct fresh-build provenance inventories. It introduces
+no GPU trajectory tolerance. A f64 probe just below the top remains below in
+Fortran even when narrowing to f32 would round it to the top; GPU adoption must
+state its representable-state scope. Restart, ETA, global/nested/polar routes
+and adaptive PBL substeps are not numerically accepted by this experiment.
+
+## Source files
 
 | File | Role |
 |------|------|

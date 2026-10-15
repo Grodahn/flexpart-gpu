@@ -1,0 +1,36 @@
+name: Pinned transport top oracle
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  transport-top-oracle:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare existing Fortran image and pristine pin
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-gate
+          docker build -f docker/Dockerfile.fortran -t flexpart-fortran:latest . > target/ci-gate/top-image-build.log 2>&1
+          pinned=$(python3 -c 'import json; print(json.load(open("reference/flexpart-11.1.json"))["pinned_commit"])')
+          git -c core.autocrlf=false clone https://gitlab.phaidra.org/flexpart/flexpart.git target/pristine-flexpart > target/ci-gate/top-clone.log 2>&1
+          git -C target/pristine-flexpart checkout "$pinned"
+          test -z "$(git -C target/pristine-flexpart status --porcelain)"
+      - name: Execute and audit two genuine transport builds
+        run: |
+          set -euo pipefail
+          python3 scripts/transport/run_top_boundary_oracle.py --checkout target/pristine-flexpart --output-dir target/ci-gate/top-first
+          python3 scripts/transport/run_top_boundary_oracle.py --checkout target/pristine-flexpart --output-dir target/ci-gate/top-second
+          python3 scripts/transport/compare_top_boundary_builds.py --first target/ci-gate/top-first --second target/ci-gate/top-second --output target/ci-gate/top-reproducibility.json
+          python3 scripts/transport/test_top_boundary_oracle.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pinned-transport-top-${{ github.run_id }}
+          path: target/ci-gate/
+          retention-days: 30

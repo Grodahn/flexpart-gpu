@@ -129,6 +129,8 @@ Start at the [stable facade](../../src/meteorology/vertical.rs) and select its
 
 ## Transport-advection
 
+- Direct top-boundary research (#180): `python scripts/transport/test_top_boundary_oracle.py`; reproduce two fresh builds with [the launcher](../../scripts/transport/run_top_boundary_oracle.py) and audit with [the paired verifier](../../scripts/transport/compare_top_boundary_builds.py). [Exact commands, scope and precision limitation](../research/transport-top-180.md#reproduction-and-audit); [CI](../../.github/workflows/transport-top-oracle.yml). This is direct pinned-routine evidence, not GPU parity.
+
 - Canonical production adoption: `cargo test --lib gpu::meteorology::advection_production_tests`; repeat with validation and compaction environments, retaining [real-driver evidence](../resident-advection.md). Legacy diagnostic timeloop checks do not replace it. After the real-driver target, run
   `python scripts/test_check_resident_advection_evidence.py` to reject incomplete status,
   stale/missing evidence, nonfinite samples and loss of mixed-lane atomicity coverage.

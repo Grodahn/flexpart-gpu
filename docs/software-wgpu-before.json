@@ -812,6 +812,15 @@
         "gpu-meteorology"
       ],
       "added_from_revision": "47ccf4f44282d16e4a53afa6e07e4d0f590da262"
+    },
+    {
+      "name": "Prove normalized interface W preparation and independent slopes (#188)",
+      "block": "name: Prove normalized interface W preparation and independent slopes (#188)\n        run: |\n          set -euo pipefail\n          cargo test --test shared_height_w_gpu -- --test-threads=1 --nocapture > target/ci-gate/interior-w-gpu.log 2>&1\n          python3 scripts/interpolation/check_shared_height_w_gpu.py target/ci-gate/interior-w-gpu/comparison.json --software\n          python3 scripts/interpolation/test_check_shared_height_w_gpu.py\n",
+      "sha256": "68499e643327f0c51009437317c2fa74b091ee7aa1a5c5a6a217ccd1ac8514a2",
+      "owners": [
+        "gpu-meteorology"
+      ],
+      "issue": 188
     }
   ],
   "artifacts": {
@@ -834,7 +843,9 @@
       "target/horizontal-gpu-evidence.json",
       "target/temporal-gpu-evidence.json",
       "target/ci-gate/shared-height-gpu.log",
-      "target/ci-gate/shared-height-gpu/*.json"
+      "target/ci-gate/shared-height-gpu/*.json",
+      "target/ci-gate/interior-w-gpu.log",
+      "target/ci-gate/interior-w-gpu/*.json"
     ],
     "gpu-transport-physics": [
       "target/ci-gate/corpus-subset.log",
@@ -857,10 +868,14 @@
     ]
   },
   "independent_workflow_sha256": {
-    ".github/workflows/validation-gate.yml": "4b2777df72f06139491c16d4091abeeaf259b768986a5df0909b03881f35c5a1",
+    ".github/workflows/validation-gate.yml": "b5f53230db3ee16feaa1b2cb838265ec369c054c8883e3394056be420657c7ac",
     ".github/workflows/extended-validation.yml": "a560ac94e577ae67993fba29cd93452f9cdcc45b4a9997d5da35c85c234ce59e"
   },
   "preserved_independent_workflow_revision": "47ccf4f44282d16e4a53afa6e07e4d0f590da262",
   "current_main_revision": "47ccf4f44282d16e4a53afa6e07e4d0f590da262",
-  "current_main_workflow_sha256": "0f9465eea855eaa853f9114a05961d344b4704bd471b71a9e3fd9134d5bae68e"
+  "current_main_workflow_sha256": "0f9465eea855eaa853f9114a05961d344b4704bd471b71a9e3fd9134d5bae68e",
+  "issue_188_integration": {
+    "scope": "Append W preparation proof to existing meteorology domain and fresh direct-oracle gate; preserve all prior steps and domain aggregation",
+    "prior_validation_gate_sha256": "4b2777df72f06139491c16d4091abeeaf259b768986a5df0909b03881f35c5a1"
+  }
 }

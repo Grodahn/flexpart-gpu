@@ -67,7 +67,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     result = compare(args.first, args.second)
-    args.output.write_text(json.dumps(result, indent=2) + '\n')
+    args.output.write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8', newline='\n')
     print(json.dumps({'state': result['state'], 'push_cases': 24, 'advance_cases': 72,
                       'builds': 2, 'report': str(args.output)}))
 

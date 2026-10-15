@@ -6,7 +6,7 @@
   "state": "PASS",
   "comparison": "exact raw bytes and decoded observations; distinct fresh source builds",
   "baseline_report_sha256": "1354922d5e37c17f9b5b4c57fbb40a4e11401f912bbf180e2f064be3ae0b09c9",
-  "verifier_sha256": "3e3f93b6a9f941cb103143216075203597a26aa59bb10858d194fde81e7307bd",
+  "verifier_sha256": "b104398ed9dbe2f7fb515c5f2640c3e8decba8bb165326b58c000f4d93a6cf39",
   "raw_output_sha256": "b10df540cc86ebb1afaccba6f9178deabbf4af1135c76adfc582868e2c957be2",
   "runs": [
     {

@@ -33,4 +33,6 @@ jobs:
         with:
           name: pinned-transport-top-${{ github.run_id }}
           path: target/ci-gate/
+          # The audited pristine source archive includes tracked .gitignore files.
+          include-hidden-files: true
           retention-days: 30

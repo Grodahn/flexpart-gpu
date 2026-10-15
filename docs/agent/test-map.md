@@ -68,6 +68,8 @@ Choose the subdomain; do not run every row for one field edit.
 
 ## Resident meteorology
 
+- Shared-height U/V adoption: `cargo test --test shared_height_query -- --nocapture --test-threads=1`; [complete query/status audit](../../scripts/interpolation/check_shared_height_query.py). Compare all 36 public #76/#171 U/V query results with #118, and require both software and hardware execution. [Ownership, statuses and scope](../shared-height-query.md).
+
 - Focused required device proof: `cargo test --test meteorology_resident -- --nocapture --test-threads=1`; [test](../../tests/meteorology_resident.rs). Missing adapters fail.
 - Evidence: `target/ci-gate/meteorology-resident/report.json` records source/grid/#30 identities, split inputs, capacities/prefixes, stages, status, adapter and one-submission/no-intermediate-D2H proof. Tests gate fixture writes on-device and compare fatal-state bytes.
 - Scientific gates remain the existing horizontal/vertical/temporal rows above, using their pinned oracles and unchanged tolerances. [Software CI](../../.github/workflows/software-wgpu.yml) requires this chain and those existing gates. This is #171 composition evidence, not #112–#115 migration or a new parity claim.

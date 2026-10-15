@@ -13,6 +13,7 @@ from unittest.mock import patch
 import software_wgpu_evidence as evidence
 
 REAL_AUDIT_PAYLOAD = evidence.audit_payload
+REAL_CONTRACT = evidence.contract
 
 
 class AggregateTests(unittest.TestCase):
@@ -77,6 +78,18 @@ class AggregateTests(unittest.TestCase):
             evidence.monolithic_view(text, strict=True)
             with self.assertRaisesRegex(ValueError, 'cache namespace'):
                 evidence.monolithic_view(text.replace('          shared-key: ', '          shared-key: other-'))
+
+    def test_shared_height_query_stage_and_artifacts_are_required(self):
+        baseline = REAL_CONTRACT()
+        text = (evidence.ROOT / '.github/workflows/software-wgpu.yml').read_text()
+        with patch.object(evidence, 'contract', return_value=baseline):
+            self.assertIn('shared-height-query-185', evidence.expected_stages('gpu-meteorology'))
+            self.assertIn('target/ci-gate/shared-height-query/*.json', baseline['artifacts']['gpu-meteorology'])
+            evidence.monolithic_view(text, strict=True)
+            changed = text.replace('      - '+evidence.QUERY_STEP, '')
+            self.assertNotEqual(text, changed)
+            with self.assertRaisesRegex(ValueError, 'protected evidence step missing'):
+                evidence.monolithic_view(changed, strict=True)
 
     def test_each_domain_failure_cancellation_skip_rejected(self):
         for domain in self.domains:

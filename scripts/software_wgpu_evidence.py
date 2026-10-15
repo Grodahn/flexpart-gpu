@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / 'docs/software-wgpu-before.json'
@@ -163,11 +164,52 @@ def execution_summary(root, files):
     return {'tests': sum(logs.values()), 'logs': logs, 'adapter': adapter}
 
 
+def reject_json_constant(value):
+    """Reject non-JSON numeric literals rather than normalizing invalid evidence."""
+    raise ValueError('nonstandard JSON number: '+value)
+
+
+def validate_json_files(root, files):
+    """Check every required JSON artifact before any validator can select a copy."""
+    for path in files:
+        if not path.endswith('.json'):
+            continue
+        try:
+            json.loads((root / path).read_text(encoding='utf-8'), parse_constant=reject_json_constant)
+        except ValueError as error:
+            raise ValueError(f'invalid required JSON artifact {path}: {error}') from error
+
+
+def run_resident_audit(root, directory, label):
+    """Call the existing scientific validator with a selected report directory."""
+    code = ('import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); '
+            'from check_resident_advection_evidence import audit; audit(Path(sys.argv[2]))')
+    result = subprocess.run([sys.executable, '-c', code, str(ROOT / 'scripts'), str(directory.resolve())],
+                            cwd=root, capture_output=True, text=True)
+    require(result.returncode == 0, 'resident advection '+label+': '+result.stderr[-2000:])
+
+
+def revalidate_resident_advection(root):
+    """Validate the original and each configuration without changing hashed files."""
+    directory = root / 'target/ci-gate/resident-advection-production'
+    run_resident_audit(root, directory, 'original')
+    with tempfile.TemporaryDirectory(prefix='resident-validation-', dir=directory.parent) as name:
+        selected = Path(name)
+        for path in directory.glob('*.json'):
+            if path.name not in ('report.json', 'interior-deferred-boundary.json'):
+                shutil.copyfile(path, selected / path.name)
+        for mode in ('production', 'validation', 'compaction'):
+            for report in ('report', 'interior-deferred-boundary'):
+                shutil.copyfile(directory / f'{mode}-{report}.json', selected / f'{report}.json')
+            run_resident_audit(root, selected, mode)
+
+
 def audit_payload(root, domain):
     """Recompute counts and execute the unchanged scientific Python assertions."""
     import check_ci_test_coverage as coverage
 
     files = files_for(root, domain)
+    validate_json_files(root, files)
     execution = execution_summary(root, files)
     logs = execution['logs']
     # All original inline report assertions are reused, including shader/input,
@@ -219,14 +261,8 @@ def audit_payload(root, domain):
             text = (root / 'target/ci-gate' / filename).read_text()
             require(all(m in text for m in required), 'required completion marker absent: '+filename)
         require(logs['target/ci-gate/sw-wgpu-advection.log'] == 1, 'advection executed count')
-        # Validate each retained configuration, not only the last overwritten report.
-        for mode in ('production', 'validation', 'compaction'):
-            directory = root / 'target/ci-gate/resident-advection-production'
-            for name in ('report', 'interior-deferred-boundary'):
-                shutil.copyfile(directory / f'{mode}-{name}.json', directory / f'{name}.json')
-            result = subprocess.run([sys.executable, str(ROOT / 'scripts/check_resident_advection_evidence.py')], cwd=root,
-                                    capture_output=True, text=True)
-            require(result.returncode == 0, 'resident advection '+mode+': '+result.stderr[-2000:])
+        revalidate_resident_advection(root)
+    require(files == files_for(root, domain), 'required evidence changed during validation')
     return execution
 
 
@@ -269,6 +305,7 @@ def seal(domain, env):
         record['contract_sha256'] = digest(CONTRACT)
         record['files'] = files_for(ROOT, domain)
         record['execution'] = audit_payload(ROOT, domain)
+        require(record['files'] == files_for(destination, domain), 'uploaded evidence differs from validated source')
         record['status'] = 'passed'
     finally:
         (destination / 'manifest.json').write_text(json.dumps(record, indent=2)+'\n')

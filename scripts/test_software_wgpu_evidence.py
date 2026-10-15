@@ -5,11 +5,14 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
 
 import software_wgpu_evidence as evidence
+
+REAL_AUDIT_PAYLOAD = evidence.audit_payload
 
 
 class AggregateTests(unittest.TestCase):
@@ -130,6 +133,84 @@ class AggregateTests(unittest.TestCase):
         self.edit_record(domain, lambda r: r.update(files=evidence.files_for(self.bundle(domain), domain)))
         with self.assertRaises(ValueError):
             self.aggregate()
+
+    def test_unreferenced_malformed_required_json_fails_before_revalidation(self):
+        domain = self.domains[1]
+        bundle = self.bundle(domain)
+        path = 'target/ci-gate/retained-report.json'
+        self.contract['artifacts'][domain].append(path)
+        (bundle / path).write_text('{malformed')
+        with self.assertRaisesRegex(ValueError, 'invalid required JSON artifact.*retained-report'):
+            REAL_AUDIT_PAYLOAD(bundle, domain)
+
+    def test_nonstandard_json_numbers_fail_closed(self):
+        path = self.root / 'required.json'
+        for value in ('NaN', 'Infinity', '-Infinity'):
+            path.write_text('{"value": '+value+'}')
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'nonstandard JSON number'):
+                evidence.validate_json_files(self.root, {'required.json': evidence.digest(path)})
+
+    def test_resident_revalidation_preserves_original_bytes(self):
+        directory = self.root / 'target/ci-gate/resident-advection-production'
+        directory.mkdir(parents=True)
+        modes = ('original', 'production', 'validation', 'compaction')
+        for mode in modes:
+            prefix = '' if mode == 'original' else mode+'-'
+            for name in ('report', 'interior-deferred-boundary'):
+                (directory / f'{prefix}{name}.json').write_text(json.dumps({'selection': mode}))
+        (directory / 'inputs.json').write_text('{"retained_input": true}')
+        original = {p.name: p.read_bytes() for p in directory.iterdir()}
+        observed = []
+
+        def inspect(root, selected, label):
+            self.assertEqual(root, self.root)
+            for name in ('report', 'interior-deferred-boundary'):
+                self.assertEqual(json.loads((selected / f'{name}.json').read_text())['selection'], label)
+            self.assertEqual((selected / 'inputs.json').read_bytes(), original['inputs.json'])
+            observed.append(label)
+
+        with patch.object(evidence, 'run_resident_audit', side_effect=inspect):
+            evidence.revalidate_resident_advection(self.root)
+        self.assertEqual(observed, list(modes))
+        self.assertEqual({p.name: p.read_bytes() for p in directory.iterdir()}, original)
+        self.assertEqual(list(directory.parent.glob('resident-validation-*')), [])
+
+    def test_original_resident_report_must_pass_actual_validator(self):
+        directory = self.root / 'target/ci-gate/resident-advection-production'
+        directory.mkdir(parents=True)
+        report = directory / 'report.json'
+        report.write_text('{malformed original}')
+        with self.assertRaisesRegex(ValueError, 'resident advection original'):
+            evidence.revalidate_resident_advection(self.root)
+        self.assertEqual(report.read_text(), '{malformed original}')
+
+    def test_resident_validator_failure_cannot_hide_behind_pass_output(self):
+        result = subprocess.CompletedProcess([], 37, stdout='PASS', stderr='')
+        with patch.object(evidence.subprocess, 'run', return_value=result):
+            with self.assertRaisesRegex(ValueError, 'resident advection failed-command'):
+                evidence.run_resident_audit(self.root, self.root, 'failed-command')
+
+    def test_seal_rejects_copy_that_differs_from_validated_source(self):
+        domain = self.domains[1]
+        shutil.copytree(self.bundle(domain) / 'target', self.root / 'target')
+        workflow = self.root / '.github/workflows/software-wgpu.yml'
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text('')
+        env = {**self.env, 'DOMAIN_STEPS': json.dumps({'original-0': {'outcome': 'success', 'conclusion': 'success'}})}
+        copy_file = shutil.copyfile
+
+        def changed_copy(source, target):
+            result = copy_file(source, target)
+            if target.name == 'test.log':
+                target.write_text('different uploaded bytes')
+            return result
+
+        with patch.object(evidence, 'ROOT', self.root), patch.object(evidence, 'monolithic_view'), \
+                patch.object(evidence.shutil, 'copyfile', side_effect=changed_copy):
+            with self.assertRaisesRegex(ValueError, 'uploaded evidence differs'):
+                evidence.seal(domain, env)
+        manifest = self.root / 'target/software-wgpu' / domain / 'manifest.json'
+        self.assertEqual(json.loads(manifest.read_text())['status'], 'failed')
 
     def test_missing_evidence_and_tampered_bytes_rejected(self):
         path = self.bundle(self.domains[0]) / 'target/ci-gate/test.log'

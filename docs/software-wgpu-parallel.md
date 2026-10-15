@@ -64,6 +64,13 @@ a summary `PASS` or artifact filenames alone. Download, parse, adapter, source,
 hash, comparison, command, cancellation and skip failures all fail the required job.
 Its own compact report is uploaded as `software-wgpu-aggregate-<run_id>-<attempt>`.
 
+All required JSON files are parsed before scientific revalidation. The original
+resident-advection reports must pass before the three retained configurations are
+checked in a temporary directory. Validation preserves every hash-bound input byte;
+post-validation hashes detect unexpected writes, and sealing additionally checks
+that the uploaded copies match the validated source files. Malformed originals
+cannot be hidden by replacing them with valid configuration reports.
+
 Run `python scripts/test_software_wgpu_evidence.py` for focused negative fixtures.
 The handoff tests use small synthetic files and separately test genuine Bash exit
 37 despite a misleading `PASS` marker. Scientific assertions remain covered by
@@ -122,8 +129,8 @@ runner/network/compilation variance prevents a general speedup guarantee.
 [Actual failed-domain run](https://github.com/Grodahn/flexpart-gpu/actions/runs/38062368049)
 also proves workflow-level failure behavior: transport succeeded, meteorology
 failed, and the required aggregate still ran and failed with
-`required domain failed/cancelled/skipped`. Sixteen focused handoff/exit/cache
-negative tests and the seventeen existing coverage/shell tests pass. Formatting,
+`required domain failed/cancelled/skipped`. Twenty-two focused handoff/exit/cache
+regressions and the seventeen existing coverage/shell tests pass. Formatting,
 Clippy (existing warnings), full Cargo tests and navigation passed locally.
 These timing observations precede main's #189 merge. Final required CI additionally
 runs the newly merged shared-height U/V stage and retains its artifact/validator;

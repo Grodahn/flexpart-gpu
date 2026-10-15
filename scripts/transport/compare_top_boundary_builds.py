@@ -22,6 +22,9 @@ def retained(run):
     require(p['tools_sha256'] == {s: text_digest(ROOT / s) for s in TOOLS}, 'stale verifier/tools')
     require(set(p['artifacts_sha256']) == set(ARTIFACTS) and len(p['linked_objects_sha256']) > 20,
             'incomplete provenance inventories')
+    linked = (run / 'build/linked-objects.txt').read_text().splitlines()
+    require(linked == sorted(set(linked)) and 'FLEXPART.o' not in linked and
+            set(linked) == set(p['linked_objects_sha256']), 'incomplete linked-object hash inventory')
     for artifact, expected in p['artifacts_sha256'].items():
         require(digest(run / artifact) == expected, f'changed artifact: {artifact}')
     for obj, expected in p['linked_objects_sha256'].items():

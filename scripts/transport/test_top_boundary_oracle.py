@@ -64,6 +64,19 @@ class TopBoundaryEvidenceTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 retained(run)
 
+    def test_omitted_linked_object_hash_is_rejected(self):
+        with tempfile.TemporaryDirectory(dir=self.scratch) as tmp:
+            run = Path(tmp)
+            report = json.loads((FIXTURE / 'report.json').read_text())
+            report['state'] = 'PASS'
+            (run / 'output.txt').write_bytes((FIXTURE / 'output.txt').read_bytes())
+            (run / 'build').mkdir()
+            (run / 'build/linked-objects.txt').write_text('\n'.join(sorted(report['provenance']['linked_objects_sha256'])) + '\n')
+            del report['provenance']['linked_objects_sha256']['advance_mod.o']
+            (run / 'report.json').write_text(json.dumps(report))
+            with self.assertRaisesRegex(ValueError, 'incomplete linked-object'):
+                retained(run)
+
 
 if __name__ == '__main__':
     unittest.main()

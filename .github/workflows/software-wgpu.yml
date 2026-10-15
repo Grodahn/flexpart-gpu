@@ -7,8 +7,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  software-wgpu:
+  gpu-meteorology:
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     env:
       FLEXPART_GPU_SOFTWARE: "1"
       FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -17,6 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
+        id: original-0
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -30,6 +32,8 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: ". -> target"
+          # Preserve the original automatic job-based #176 cache namespace.
+          shared-key: ubuntu-22.04-${{ runner.arch }}-default-features-${{ steps.cache-environment.outputs.image }}-${{ hashFiles('**/build.rs', '**/.cargo/config*') }}-software-wgpu
           key: ubuntu-22.04-${{ runner.arch }}-default-features-${{ steps.cache-environment.outputs.image }}-${{ hashFiles('**/build.rs', '**/.cargo/config*') }}
           env-vars: "RUST CARGO CC CXX CFLAGS CXXFLAGS LDFLAGS"
           cache-targets: "false"
@@ -47,14 +51,22 @@ jobs:
           cache-bin: "false"
           save-if: ${{ github.event_name != 'pull_request' }}
       - name: Verify restored Cargo compilation bytes
+        id: original-3
         run: python3 scripts/cargo_cache_integrity.py verify
       - name: Audit CI test coverage and fail-closed checks
+        id: original-4
         run: |
           python3 scripts/check_ci_test_coverage.py
           python3 scripts/test_check_ci_test_coverage.py
+      - name: Audit parallel orchestration and aggregate negative fixtures
+        run: |
+          python3 scripts/software_wgpu_evidence.py audit
+          python3 scripts/test_software_wgpu_evidence.py
       - name: Check Rust formatting
+        id: original-5
         run: cargo fmt --all -- --check
       - name: Install Lavapipe
+        id: original-6
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers vulkan-tools
@@ -62,6 +74,7 @@ jobs:
           test -n "$icd"
           echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
       - name: Prove H2D, WGSL arithmetic, D2H, and adapter provenance
+        id: original-7
         run: |
           set -euo pipefail
           mkdir -p target/ci-gate
@@ -83,22 +96,8 @@ jobs:
           assert record["failure"] is None
           assert record["skip_reason"] is None
           PY
-      - name: Run required software WGSL advection smoke test
-        run: |
-          set -euo pipefail
-          mkdir -p target/ci-gate
-          cargo test --test integration software_advection::test_sw_wgpu_advection_001_constant_wind_displacement -- --exact --nocapture > target/ci-gate/sw-wgpu-advection.log 2>&1
-          # Fail closed: a missing adapter, a skipped test, or a missing
-          # result must fail the job (never silently pass).
-          grep -q "SW-WGPU-ADVECTION-001" target/ci-gate/sw-wgpu-advection.log
-          grep -q "test result: ok" target/ci-gate/sw-wgpu-advection.log
-          grep -qE "1 passed" target/ci-gate/sw-wgpu-advection.log
-          if grep -q "FAILED" target/ci-gate/sw-wgpu-advection.log; then
-            echo "SW-WGPU smoke log contains FAILED"
-            exit 1
-          fi
-          grep -q "software_adapter=true" target/ci-gate/sw-wgpu-advection.log
       - name: Prove shared-height U/V preparation against the pinned fixture
+        id: original-26
         run: |
           set -euo pipefail
           mkdir -p target/ci-gate
@@ -106,6 +105,7 @@ jobs:
           python3 scripts/interpolation/check_shared_height_gpu.py target/ci-gate/shared-height-gpu/comparison.json --software
           python3 scripts/interpolation/test_check_shared_height_gpu.py
       - name: Prove accumulated-field GPU oracle parity
+        id: original-9
         run: |
           set -euo pipefail
           mkdir -p target/ci-gate
@@ -119,6 +119,7 @@ jobs:
             grep -q '"adapter_class": "software_wgsl"' "$evidence"
           done
       - name: Prove temporal interpolation against the pinned FLEXPART oracle
+        id: original-10
         run: |
           set -euo pipefail
           cargo test --test temporal_gpu test_gpu_vs_oracle_parity -- --exact --nocapture > target/ci-gate/temporal-gpu.log 2>&1
@@ -147,6 +148,7 @@ jobs:
               assert evidence["comparison"]["verdict"] == "passed"
           PY
       - name: Prove canonical vertical GPU sampling against the pinned oracles
+        id: original-11
         env:
           FLEXPART_GPU_REQUIRE_VERTICAL: "1"
         run: |
@@ -203,6 +205,7 @@ jobs:
                   assert evidence["comparison"]["verdict"] == "passed"
           PY
       - name: Prove horizontal interpolation against the pinned FLEXPART oracle
+        id: original-12
         env:
           FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.sha }}
         run: |
@@ -236,54 +239,8 @@ jobs:
               assert evidence["oracle"]["revision"] == "c70586c2b7f5258850705325881c61f557ea9bd8"
               assert evidence["comparison"]["verdict"] == "passed"
           PY
-      - name: Prove settling against the pinned FLEXPART routines
-        env:
-          FLEXPART_GPU_REQUIRE_SETTLING: "1"
-          FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          rm -f target/settling-gpu-evidence.json
-          python3 scripts/generate_settling_oracle.py --audit
-          python3 -m unittest discover -s scripts -p test_generate_settling_oracle.py
-          cargo test --test settling_gpu -- --nocapture > target/ci-gate/settling-gpu.log 2>&1
-          python3 - <<'PY'
-          import hashlib
-          import json
-          import os
-          import subprocess
-          import struct
-          from pathlib import Path
-
-          def read(path):
-              return json.loads(Path(path).read_bytes())
-
-          report = read("target/settling-gpu-evidence.json")
-          canonical = read("fixtures/settling/canonical-vectors-v1.json")
-          oracle = read("fixtures/settling/oracle-v1.json")
-          actual = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-          assert actual == os.environ["FLEXPART_GPU_CANDIDATE_REVISION"]
-          assert report["schema"] == {"id": "flexpart-gpu.settling-gpu-evidence", "version": 1}
-          assert report["status"] is True
-          assert len(report["rows"]) == len(canonical["vectors"]) == 32
-          assert {row["vector_id"] for row in report["rows"]} == {v["id"] for v in canonical["vectors"]}
-          shader = Path("src/shaders/settling_velocity.wgsl").read_bytes().decode().replace("__WORKGROUP_SIZE_X__", "64")
-          shader_hash = hashlib.sha256(shader.encode()).hexdigest()
-          values = {v["id"]: v["settling_velocity_m_s"] for v in oracle["values"]}
-          for row in report["rows"]:
-              assert row["row_verdict"] is True
-              assert struct.pack("!f", row["oracle_settling_velocity_m_s"]) == struct.pack("!f", values[row["vector_id"]])
-              evidence = row["gpu_evidence"]
-              assert evidence["execution"]["status"] == "passed"
-              assert evidence["execution"]["calculation_path"] == "wgsl_device"
-              assert evidence["execution"]["adapter"]["adapter_class"] == "software_wgsl"
-              assert evidence["candidate"]["revision"] == actual
-              assert evidence["candidate"]["shader_sha256"] == shader_hash
-              assert evidence["oracle"]["revision"] == oracle["pinned_revision"]
-              assert evidence["oracle"]["executable_sha256"] == oracle["executable_sha256"]
-              assert evidence["oracle"]["output_sha256"] == oracle["output_sha256"]
-              assert evidence["comparison"]["verdict"] == "passed"
-          PY
       - name: Prove resident particle meteorology queries and fatal-batch gating
+        id: original-14
         run: |
           set -euo pipefail
           mkdir -p target/ci-gate
@@ -331,6 +288,7 @@ jobs:
           assert cases['reuse-after-fatal-status-reset']['status'] == {'fatal': False, 'lanes': [2, 2, 2, 2]}
           PY
       - name: Prove field-specific canonical meteorology composition
+        id: original-15
         run: |
           set -euo pipefail
           cargo test --test meteorology_composition -- --test-threads=1 > target/ci-gate/meteorology-composition.log 2>&1
@@ -484,13 +442,8 @@ jobs:
               assert path.exists(), reference
               assert list(path.glob("*.json")) if path.is_dir() else path.stat().st_size > 0
           PY
-      - name: Preserve shared PBL options and GPU diagnostics (#147)
-        run: |
-          set -euo pipefail
-          cargo test --test pbl_options_contract -- --nocapture > target/ci-gate/pbl-options.log 2>&1
-          grep -q "PBL-OPTIONS-147: .*software_adapter=true public_paths=3 device_results=identical" target/ci-gate/pbl-options.log
-          cargo test --lib gpu::pbl::tests -- --test-threads=1 --nocapture > target/ci-gate/pbl-diagnostics.log 2>&1
       - name: Prove canonical driver input and resident resource readiness (#173)
+        id: original-17
         run: |
           set -euo pipefail
           cargo test --test canonical_timeloop_meteorology -- --nocapture --test-threads=1 > target/ci-gate/canonical-timeloop-meteorology.log 2>&1
@@ -579,7 +532,176 @@ jobs:
               assert row['metadata']['horizontal_grid'] == r['inputs']['snapshots'][0]['horizontal_grid']
               assert len(row['metadata']['geometry_identity']) == 2
           PY
+      - name: Record dependency cache checksums
+        id: original-24
+        run: python3 scripts/cargo_cache_integrity.py record
+      - name: Seal current-run domain evidence
+        if: always()
+        env:
+          DOMAIN_STEPS: ${{ toJSON(steps) }}
+          DOMAIN: gpu-meteorology
+        run: python3 scripts/software_wgpu_evidence.py seal
+      - name: Upload gpu-meteorology evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: software-wgpu-meteorology-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/software-wgpu/gpu-meteorology/
+          if-no-files-found: error
+          retention-days: 30
+  gpu-transport-physics:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      FLEXPART_GPU_SOFTWARE: "1"
+      FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+      WGPU_BACKEND: vulkan
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        id: original-0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Identify runner image for Cargo cache
+        id: cache-environment
+        run: echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - name: Restore trusted Cargo compilation cache
+        id: cargo-cache
+        # Pull requests may read scoped trusted caches, but never publish them.
+        # GitHub also prevents protected branches from reading feature/PR caches.
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: ". -> target"
+          # Preserve the original automatic job-based #176 cache namespace.
+          shared-key: ubuntu-22.04-${{ runner.arch }}-default-features-${{ steps.cache-environment.outputs.image }}-${{ hashFiles('**/build.rs', '**/.cargo/config*') }}-software-wgpu
+          key: ubuntu-22.04-${{ runner.arch }}-default-features-${{ steps.cache-environment.outputs.image }}-${{ hashFiles('**/build.rs', '**/.cargo/config*') }}
+          env-vars: "RUST CARGO CC CXX CFLAGS CXXFLAGS LDFLAGS"
+          cache-targets: "false"
+          # Only compiler artifacts enter the archive; reports/oracle outputs
+          # are excluded even if the action cleanup cannot remove a file.
+          cache-directories: |
+            target/debug/deps
+            target/debug/build
+            target/debug/.fingerprint
+            target/release/deps
+            target/release/build
+            target/release/.fingerprint
+            .cargo-cache-integrity
+          cache-workspace-crates: "false"
+          cache-bin: "false"
+          save-if: ${{ github.event_name != 'pull_request' }}
+      - name: Verify restored Cargo compilation bytes
+        id: original-3
+        run: python3 scripts/cargo_cache_integrity.py verify
+      - name: Check Rust formatting
+        id: original-5
+        run: cargo fmt --all -- --check
+      - name: Install Lavapipe
+        id: original-6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers vulkan-tools
+          icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          test -n "$icd"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+      - name: Prove H2D, WGSL arithmetic, D2H, and adapter provenance
+        id: original-7
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-gate
+          cargo run --bin gpu-preflight -- --software --json-output target/ci-gate/gpu-preflight.json > target/ci-gate/gpu-preflight.log 2>&1
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          record = json.loads(Path("target/ci-gate/gpu-preflight.json").read_text(encoding="utf-8"))
+          assert record["schema"] == {
+              "id": "flexpart-gpu.gpu-preflight",
+              "version": 1,
+          }
+          assert record["status"] == "passed"
+          report = record["report"]
+          assert report["adapter"]["adapter_class"] == "software_wgsl"
+          assert report["smoke_test"]["status"] == "passed"
+          assert report["smoke_test"]["actual_value"] == report["smoke_test"]["expected_value"]
+          assert record["failure"] is None
+          assert record["skip_reason"] is None
+          PY
+      - name: Run required software WGSL advection smoke test
+        id: original-8
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-gate
+          cargo test --test integration software_advection::test_sw_wgpu_advection_001_constant_wind_displacement -- --exact --nocapture > target/ci-gate/sw-wgpu-advection.log 2>&1
+          # Fail closed: a missing adapter, a skipped test, or a missing
+          # result must fail the job (never silently pass).
+          grep -q "SW-WGPU-ADVECTION-001" target/ci-gate/sw-wgpu-advection.log
+          grep -q "test result: ok" target/ci-gate/sw-wgpu-advection.log
+          grep -qE "1 passed" target/ci-gate/sw-wgpu-advection.log
+          if grep -q "FAILED" target/ci-gate/sw-wgpu-advection.log; then
+            echo "SW-WGPU smoke log contains FAILED"
+            exit 1
+          fi
+          grep -q "software_adapter=true" target/ci-gate/sw-wgpu-advection.log
+      - name: Prove settling against the pinned FLEXPART routines
+        id: original-13
+        env:
+          FLEXPART_GPU_REQUIRE_SETTLING: "1"
+          FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          rm -f target/settling-gpu-evidence.json
+          python3 scripts/generate_settling_oracle.py --audit
+          python3 -m unittest discover -s scripts -p test_generate_settling_oracle.py
+          cargo test --test settling_gpu -- --nocapture > target/ci-gate/settling-gpu.log 2>&1
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import struct
+          from pathlib import Path
+
+          def read(path):
+              return json.loads(Path(path).read_bytes())
+
+          report = read("target/settling-gpu-evidence.json")
+          canonical = read("fixtures/settling/canonical-vectors-v1.json")
+          oracle = read("fixtures/settling/oracle-v1.json")
+          actual = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          assert actual == os.environ["FLEXPART_GPU_CANDIDATE_REVISION"]
+          assert report["schema"] == {"id": "flexpart-gpu.settling-gpu-evidence", "version": 1}
+          assert report["status"] is True
+          assert len(report["rows"]) == len(canonical["vectors"]) == 32
+          assert {row["vector_id"] for row in report["rows"]} == {v["id"] for v in canonical["vectors"]}
+          shader = Path("src/shaders/settling_velocity.wgsl").read_bytes().decode().replace("__WORKGROUP_SIZE_X__", "64")
+          shader_hash = hashlib.sha256(shader.encode()).hexdigest()
+          values = {v["id"]: v["settling_velocity_m_s"] for v in oracle["values"]}
+          for row in report["rows"]:
+              assert row["row_verdict"] is True
+              assert struct.pack("!f", row["oracle_settling_velocity_m_s"]) == struct.pack("!f", values[row["vector_id"]])
+              evidence = row["gpu_evidence"]
+              assert evidence["execution"]["status"] == "passed"
+              assert evidence["execution"]["calculation_path"] == "wgsl_device"
+              assert evidence["execution"]["adapter"]["adapter_class"] == "software_wgsl"
+              assert evidence["candidate"]["revision"] == actual
+              assert evidence["candidate"]["shader_sha256"] == shader_hash
+              assert evidence["oracle"]["revision"] == oracle["pinned_revision"]
+              assert evidence["oracle"]["executable_sha256"] == oracle["executable_sha256"]
+              assert evidence["oracle"]["output_sha256"] == oracle["output_sha256"]
+              assert evidence["comparison"]["verdict"] == "passed"
+          PY
+      - name: Preserve shared PBL options and GPU diagnostics (#147)
+        id: original-16
+        run: |
+          set -euo pipefail
+          cargo test --test pbl_options_contract -- --nocapture > target/ci-gate/pbl-options.log 2>&1
+          grep -q "PBL-OPTIONS-147: .*software_adapter=true public_paths=3 device_results=identical" target/ci-gate/pbl-options.log
+          cargo test --lib gpu::pbl::tests -- --test-threads=1 --nocapture > target/ci-gate/pbl-diagnostics.log 2>&1
       - name: Preserve simulation timestep order and output boundaries (#126)
+        id: original-18
         run: |
           set -euo pipefail
           # Complete default regressions, including backward, exactly once.
@@ -588,12 +710,14 @@ jobs:
           FLEXPART_GPU_COMPACTION=0 FLEXPART_GPU_VALIDATION=1 RUST_LOG=flexpart_gpu=info cargo test --test forward_timeloop -- --nocapture > target/ci-gate/timeloop-validation.log 2>&1
           python3 scripts/check_ci_test_coverage.py --log target/ci-gate/timeloop-validation.log --compaction 0 --validation 1
       - name: Prove dry-deposition capacity/prefix handoff (#135)
+        id: original-19
         run: |
           set -euo pipefail
           cargo test --lib gpu::deposition::tests -- --test-threads=1 --nocapture > target/ci-gate/dry-prefix.log 2>&1
           grep -q "DRY-PREFIX-135" target/ci-gate/dry-prefix.log
           grep -q "DRY-BOUNDS-135" target/ci-gate/dry-prefix.log
       - name: Prove wet-deposition capacity/prefix handoff (#138)
+        id: original-20
         run: |
           set -euo pipefail
           cargo test --lib gpu::wet_deposition::tests -- --test-threads=1 --nocapture > target/ci-gate/wet-prefix.log 2>&1
@@ -602,6 +726,7 @@ jobs:
           done
           grep -q "WET-BOUNDS-138" target/ci-gate/wet-prefix.log
       - name: Prove separated Hanna-Langevin capacity/prefix handoff (#139)
+        id: original-21
         run: |
           set -euo pipefail
           cargo test --lib gpu::hanna::tests -- --test-threads=1 --nocapture > target/ci-gate/hanna-prefix.log 2>&1
@@ -621,6 +746,7 @@ jobs:
             python3 scripts/check_ci_test_coverage.py --log "$log" --compaction 1 --validation "$validation"
           done
       - name: Run corpus deterministic subset (Issue #6, point 2)
+        id: original-22
         run: |
           set -euo pipefail
           mkdir -p target/ci-gate
@@ -647,6 +773,7 @@ jobs:
             exit 1
           fi
       - name: Prove canonical forward and backward production advection
+        id: original-23
         run: |
           set -euo pipefail
           for mode in production validation compaction; do
@@ -662,45 +789,47 @@ jobs:
             cp target/ci-gate/resident-advection-production/report.json "target/ci-gate/resident-advection-production/$mode-report.json"
           done
       - name: Record dependency cache checksums
+        id: original-24
         run: python3 scripts/cargo_cache_integrity.py record
-      - name: Upload smoke logs
+      - name: Seal current-run domain evidence
+        if: always()
+        env:
+          DOMAIN_STEPS: ${{ toJSON(steps) }}
+          DOMAIN: gpu-transport-physics
+        run: python3 scripts/software_wgpu_evidence.py seal
+      - name: Upload gpu-transport-physics evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: software-wgpu-smoke-${{ github.run_id }}
-          path: |
-            target/ci-gate/gpu-preflight.json
-            target/ci-gate/gpu-preflight.log
-            target/ci-gate/pbl-options.log
-            target/ci-gate/pbl-diagnostics.log
-            target/ci-gate/sw-wgpu-advection.log
-            target/ci-gate/shared-height-gpu.log
-            target/ci-gate/shared-height-gpu/*.json
-            target/ci-gate/accumulation-gpu.log
-            target/ci-gate/accumulation-gpu/*.json
-            target/ci-gate/horizontal-gpu.log
-            target/horizontal-gpu-evidence.json
-            target/ci-gate/temporal-gpu.log
-            target/ci-gate/vertical-gpu.log
-            target/ci-gate/vertical-gpu/*.json
-            target/ci-gate/dry-prefix.log
-            target/ci-gate/wet-prefix.log
-            target/ci-gate/hanna-prefix.log
-            target/ci-gate/langevin.log
-            target/ci-gate/hanna-forward-*.log
-            target/ci-gate/corpus-subset.log
-            target/ci-gate/timeloop-production.log
-            target/ci-gate/timeloop-validation.log
-            target/temporal-gpu-evidence.json
-            target/settling-gpu-evidence.json
-            target/ci-gate/settling-gpu.log
-            target/ci-gate/meteorology-composition.log
-            target/ci-gate/meteorology-composition/*.json
-            target/ci-gate/meteorology-resident.log
-            target/ci-gate/meteorology-resident-corner.log
-            target/ci-gate/meteorology-resident/*.json
-            target/ci-gate/canonical-timeloop-meteorology.log
-            target/ci-gate/canonical-timeloop-meteorology/*.json
-            target/ci-gate/resident-advection-*.log
-            target/ci-gate/resident-advection-production/*.json
+          name: software-wgpu-transport-physics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/software-wgpu/gpu-transport-physics/
+          if-no-files-found: error
+          retention-days: 30
+  software-wgpu:
+    name: software-wgpu
+    needs: [gpu-meteorology, gpu-transport-physics]
+    if: always()
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download current-run isolated evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: software-wgpu-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/software-wgpu-download
+      - name: Validate all required results and evidence
+        env:
+          REQUIRED_RESULTS: ${{ toJSON(needs) }}
+          FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 scripts/software_wgpu_evidence.py aggregate --root target/software-wgpu-download
+      - name: Upload aggregate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: software-wgpu-aggregate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/software-wgpu-aggregate.json
+          if-no-files-found: error
           retention-days: 30

@@ -5,6 +5,11 @@ Baseline: `56b7577a38a5ce62387315ed8f5dc01e00b96679` (latest main at branch crea
 including #173 and #174). Externally supplied provenance marker: **GPT6.1 Sol**.
 No numerical implementation, oracle pin, fixture, tolerance or verdict changes.
 
+#177 preserves this completed selection/cache contract while splitting runner
+ownership. See [domain mapping and artifact verification](software-wgpu-parallel.md)
+and the [frozen current-main step inventory](software-wgpu-before.json). The auditor
+normalizes actual split steps for its existing assertions; no selection is reduced.
+
 The [before inventory](ci-test-coverage-before.json) lists **every old workflow
 Cargo test invocation**, expanded over finite shell loops, with exact arguments,
 workflow/step and environment. Defaults for absent compaction and validation flags

@@ -3,6 +3,14 @@
 Technical gates only. A green build or smoke test does not establish
 scientific parity and does not close Issue #6.
 
+The software workflow now runs independent `gpu-meteorology` and
+`gpu-transport-physics` jobs, each with Lavapipe and H2D/WGSL/D2H preflight.
+The required final check remains **`software-wgpu`**, runs even after upstream
+failure/cancellation/skip, and verifies downloaded current-run scientific evidence,
+positive test execution, step outcomes, adapter and content/source identities.
+See [ownership, frozen mapping, negative tests and diagnosis](software-wgpu-parallel.md).
+The technical and manual extended workflows remain unchanged.
+
 ## 1. What runs in CI today versus locally
 
 ### In CI on every pull request
@@ -224,8 +232,10 @@ traceable to one concrete run via `GITHUB_RUN_ID`/`GITHUB_SHA` (or
   `candidate-output-check.log`, `candidate-executable.sha256` (when built).
 - `ci-gate.log` (full console transcript).
 
-`software-wgpu.yml` additionally uploads its smoke log as
-`software-wgpu-smoke-<run_id>`. `validation-gate.yml` uploads the whole
+`software-wgpu.yml` uploads isolated `software-wgpu-meteorology-<run_id>-<attempt>`
+and `software-wgpu-transport-physics-<run_id>-<attempt>` bundles plus the aggregate
+report. Every original report/log path is retained inside its owning bundle.
+`validation-gate.yml` uploads the whole
 `target/ci-gate/` directory as `ci-technical-gate-<run_id>`.
 
 ## 5. Report schema (stable contract for parallel tracks)

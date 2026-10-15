@@ -99,7 +99,8 @@ class CoverageTests(unittest.TestCase):
     def test_log_path_in_command_does_not_replace_upload(self):
         texts = self.workflows()
         p = coverage.WORKFLOWS[0]
-        texts[p] = texts[p].replace('            target/ci-gate/hanna-prefix.log\n', '')
+        texts[p] = texts[p].replace('          path: target/software-wgpu/gpu-transport-physics/\n',
+                                   '          path: target/ci-gate/unrelated.log\n')
         with self.assertRaisesRegex(ValueError, 'missing retained artifact'):
             coverage.audit(texts)
 

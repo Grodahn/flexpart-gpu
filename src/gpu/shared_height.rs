@@ -613,6 +613,16 @@ impl SharedHeightPreparer {
 }
 
 impl PreparedSharedHeightUv {
+    /// Retain exact device ownership when lending immutable prepared fields to queries.
+    pub(crate) fn belongs_to(&self, ctx: &GpuContext) -> bool {
+        Arc::ptr_eq(&self.source.0.context, &ctx.identity)
+    }
+
+    /// Distinguish a retained run target from an independent initializer with equal bytes.
+    pub(crate) fn shares_target(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.target.0, &other.target.0)
+    }
+
     /// Lend explicit physical metadata together with exact source and target provenance.
     #[must_use]
     pub fn metadata(&self) -> PreparedSharedHeightMetadata<'_> {

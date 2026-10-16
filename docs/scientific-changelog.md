@@ -14,6 +14,20 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ---
 
+### 2026-10-15 - Adopt prepared shared-height U/V in canonical queries (#185)
+**Impact**: numerics (validated prepared U/V route only)
+**Files**: `src/gpu/meteorology{,/shared_uv,/resident}.rs`, resident adapter and preparation status guard
+**Validation**: all #118 U/V queries through #76/#171; device status/identity regressions
+
+Adopt #184's immutable prepared U/V and run-owned common AGL target in the
+existing #76/#171 query handoff. Reuse horizontal, vertical and temporal kernels
+in pinned `interpol_mod.f90:1651-1703` order. Only this verified representation
+accepts fractional stencils with differing native heights. No new scientific
+equation or deviation from the accepted #118 route is introduced. Preparation
+status, finite results and fatal batch gating remain mandatory. The complete
+U/V/W production-vector requirement, W preparation/adoption and transport-top
+physics remain outside this U/V query integration proof.
+
 ### 2026-10-10 — Freeze pinned interior W slope correction (#186)
 **Impact**: none (direct-oracle research; production rejection retained)
 **Files**: `docs/research/interior-w-186.md`, `docs/interpolation-contract.md`,

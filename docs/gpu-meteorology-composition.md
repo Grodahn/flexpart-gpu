@@ -1,5 +1,11 @@
 # Canonical GPU meteorology composition (#76)
 
+[#185 shared-height U/V adoption](shared-height-query.md) adds the explicit
+`CanonicalGpuField::from_shared_height` resource handoff to both query APIs.
+Only successfully prepared #184 U/V can use fractional nonuniform native
+stencils. Its mandatory device preparation/result status accompanies host
+and resident outputs; native-path and full-vector driver restrictions remain.
+
 `gpu::meteorology` composes the existing #87–#90 resources and encode APIs under
 [GPU_CONTRACT.md](GPU_CONTRACT.md). It adds no shader, interpolation equation,
 provider decoder, physics consumer migration or tolerance policy.

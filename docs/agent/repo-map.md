@@ -25,6 +25,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 ## Meteorology
 
 - Shared-height U/V preparation (#184): [owner](../../src/gpu/shared_height.rs), [kernel](../../src/shaders/shared_height_uv.wgsl), [lifecycle](../shared-height-preparation.md), [device proof](../../tests/shared_height_gpu.rs). Preparation only; #185 owns adoption.
+- Shared-height U/V queries (#185): [typed adoption](../../src/gpu/meteorology/shared_uv.rs), [status guard](../../src/shaders/shared_height_query_status.wgsl), [handoff contract](../shared-height-query.md), [public query proof](../../tests/shared_height_query.rs).
 
 - Stable canonical host API: [meteorology facade](../../src/meteorology/mod.rs); provider ingestion [GRIB](../../src/io/grib2.rs), [NetCDF](../../src/io/netcdf.rs); [stable runtime-geometry facade](../../src/meteorology/vertical.rs) and [geometry owners](#vertical-geometry), [provider vertical transform](../../src/io/vertical_transform.rs).
 - Private source contract owners (read only the matching responsibility): [schema identity/errors](../../src/meteorology/schema.rs), [field matrix/layout/requirements](../../src/meteorology/field.rs), [canonical horizontal grid](../../src/meteorology/grid.rs), [native vertical coordinates](../../src/meteorology/coordinate.rs), [source time metadata](../../src/meteorology/time.rs), [snapshot validation order/provenance](../../src/meteorology/snapshot.rs). [Pre-move inventory/context comparison](meteorology-decomposition.md).

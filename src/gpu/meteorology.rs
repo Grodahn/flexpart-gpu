@@ -9,14 +9,16 @@
 //! Static class fields use horizontal sampling alone.
 //!
 //! Horizontal/vertical order follows FLEXPART `interpol_mod.f90:1651-1703`.
-//! Differing height profiles across an active horizontal stencil are unsupported:
-//! #88 owns column sampling, not a new horizontal geometry interpolation rule.
+//! Native differing-height stencils remain unsupported. Explicit #184 prepared
+//! U/V instead use their verified common AGL grid; #88's equations are unchanged.
 //! Source upload and query preparation are explicit allocation boundaries.
 //! [`PreparedMeteorologySample::encode`] never submits, waits, polls, or reads back.
 
 use serde::{Deserialize, Serialize};
 pub mod resident;
+mod shared_uv;
 use sha2::{Digest, Sha256};
+pub use shared_uv::SharedHeightQueryIdentity;
 use thiserror::Error;
 
 use super::{
@@ -209,6 +211,8 @@ pub struct MeteorologyStageRecord {
 /// Immutable downstream handoff identity, separate from numerical execution evidence.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MeteorologySampleMetadata {
+    /// Present only for the explicitly validated #184 shared-height U/V route.
+    pub shared_height: Option<SharedHeightQueryIdentity>,
     /// Canonical field identity.
     pub field_id: FieldId,
     /// Output unit (including the existing #90 derived-product unit).
@@ -288,6 +292,8 @@ impl From<AccumulatedIntervalMetadata> for AccumulatedIntervalMetadataRecord {
 
 /// Explicit reusable stage initialization; uses the existing runtime and kernels.
 pub struct MeteorologyCompositionKernels<'ctx> {
+    preparation_status: shared_uv::PreparationStatusKernel,
+    result_status: resident::QueryPass,
     context: &'ctx GpuContext,
     horizontal: HorizontalInterpolationKernel,
     vertical: VerticalSampleKernel,
@@ -303,6 +309,13 @@ impl<'ctx> MeteorologyCompositionKernels<'ctx> {
     /// Propagates the owning stage's pipeline/adapter errors.
     pub fn new(ctx: &'ctx GpuContext) -> Result<Self, MeteorologyCompositionError> {
         Ok(Self {
+            preparation_status: shared_uv::PreparationStatusKernel::new(ctx)?,
+            result_status: resident::QueryPass::new(
+                ctx,
+                "shared U/V result status",
+                include_str!("../shaders/resident_sample_status.wgsl"),
+                &[true, false],
+            ),
             context: ctx,
             horizontal: HorizontalInterpolationKernel::new(ctx)?,
             vertical: VerticalSampleKernel::new(ctx)?,
@@ -324,6 +337,7 @@ struct RuntimeColumns<'ctx> {
 }
 
 struct SourceMember<'ctx> {
+    prepared_uv: Option<std::sync::Arc<super::shared_height::PreparedSharedHeightUv>>,
     resident_values: Option<wgpu::Buffer>,
     snapshot: Snapshot,
     snapshot_sha256: String,
@@ -538,6 +552,16 @@ impl<'ctx> CanonicalGpuField<'ctx> {
             &spatial,
         )?;
         Ok(PreparedMeteorologySample {
+            status: self.members[0].prepared_uv.as_ref().map(|_| {
+                ctx.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("shared-height host-query status"),
+                    size: 8,
+                    usage: wgpu::BufferUsages::STORAGE
+                        | wgpu::BufferUsages::COPY_SRC
+                        | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                })
+            }),
             source: self,
             indices,
             spatial,
@@ -584,6 +608,7 @@ impl<'ctx> CanonicalGpuField<'ctx> {
             selected.clone()
         };
         Ok(MeteorologySampleMetadata {
+            shared_height: self.shared_height_identity(indices),
             field_id: self.field_id,
             unit,
             sign: first.field.sign,
@@ -718,6 +743,7 @@ fn upload_member<'ctx>(
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(SourceMember {
+        prepared_uv: None,
         resident_values: resident::upload_source_columns(
             ctx,
             &plane_values,
@@ -974,7 +1000,11 @@ fn prepare_spatial(
         });
     }
     let (vertical_grid, vertical_query, vertical_output, query_agl_m) =
-        if let Some(runtime) = &member.runtime {
+        if let Some(prepared) = &member.prepared_uv {
+            let (grid, query, output, height) =
+                shared_uv::prepare_vertical(ctx, prepared, request.height)?;
+            (Some(grid), Some(query), Some(output), Some(height))
+        } else if let Some(runtime) = &member.runtime {
             let height = request.height.ok_or(MeteorologyCompositionError::Missing(
                 "model field height query",
             ))?;
@@ -1060,6 +1090,7 @@ struct TemporalResources {
 
 /// Prepared query owner; intermediate GPU resources stay alive with the source borrow.
 pub struct PreparedMeteorologySample<'a, 'ctx> {
+    status: Option<wgpu::Buffer>,
     source: &'a CanonicalGpuField<'ctx>,
     indices: Vec<usize>,
     spatial: Vec<SpatialResources>,
@@ -1076,6 +1107,9 @@ pub struct PreparedMeteorologySample<'a, 'ctx> {
 /// Values are `STORAGE/COPY_SRC` f32 lanes in canonical class-index order, or one
 /// scalar. The plan and source owner must outlive the last submitted GPU consumer.
 pub struct EncodedMeteorologySample<'a> {
+    /// Mandatory for prepared U/V: shared fatal word then lane status, using #171 ABI.
+    /// Consumers must reject nonzero fatal status; encoding alone proves no success.
+    pub status: Option<&'a wgpu::Buffer>,
     /// Bind directly to the next GPU consumer; download only at an explicit host boundary.
     pub values: &'a wgpu::Buffer,
     /// Preserved canonical quantity/query/provenance identity.
@@ -1109,6 +1143,7 @@ impl PreparedMeteorologySample<'_, '_> {
         }
         self.stages.clear();
         self.device_copies = 0;
+        self.encode_preparation_status(ctx, kernels, encoder);
         if let Some(source) = &self.source.accumulation {
             encode_accumulated_intervals_gpu_with_kernel(
                 ctx,
@@ -1193,7 +1228,9 @@ impl PreparedMeteorologySample<'_, '_> {
         } else {
             &self.spatial[0].output.buffer
         };
+        self.encode_result_status(ctx, kernels, values, encoder);
         Ok(EncodedMeteorologySample {
+            status: self.status.as_ref(),
             values,
             metadata: &self.metadata,
             stages: &self.stages,
@@ -1213,6 +1250,17 @@ impl SpatialResources {
     ) -> Result<(Vec<MeteorologyStageRecord>, usize), MeteorologyCompositionError> {
         let mut stages = Vec::new();
         let mut device_copies = 0;
+        device_copies += member.encode_prepared_planes(encoder);
+        if let (Some(prepared), Some(grid)) = (&member.prepared_uv, &self.vertical_grid) {
+            encoder.copy_buffer_to_buffer(
+                prepared.target().heights(),
+                0,
+                &grid.heights,
+                0,
+                prepared.target().heights().size(),
+            );
+            device_copies += 1;
+        }
         if let Some(inputs) = &member.w_inputs {
             encode_vertical_remap_w_with_kernel(
                 ctx,

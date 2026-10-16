@@ -19,6 +19,14 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / 'docs/software-wgpu-before.json'
 SCHEMA = 'flexpart-gpu.software-wgpu-domain.v1'
+QUERY_STEP = '''name: Prove shared-height U/V canonical query adoption
+        id: shared-height-query-185
+        run: |
+          set -euo pipefail
+          cargo test --test shared_height_query -- --nocapture --test-threads=1 > target/ci-gate/shared-height-query.log 2>&1
+          python3 scripts/interpolation/check_shared_height_query.py target/ci-gate/shared-height-query/report.json --software
+          python3 scripts/interpolation/test_check_shared_height_query.py
+'''
 
 
 def require(condition, message):
@@ -28,8 +36,15 @@ def require(condition, message):
 
 
 def contract():
-    """Load the finite original commands, evidence and ownership mapping."""
-    return json.loads(CONTRACT.read_text(encoding='utf-8'))
+    """Preserve the frozen #177 gates and add the finite #185 evidence obligation."""
+    import check_ci_test_coverage as coverage
+    result = json.loads(CONTRACT.read_text(encoding='utf-8'))
+    result['steps'].append({'name': 'Prove shared-height U/V canonical query adoption',
+                           'block': QUERY_STEP, 'owners': ['gpu-meteorology'],
+                           'sha256': hashlib.sha256(coverage.normalized(QUERY_STEP).encode()).hexdigest()})
+    result['artifacts']['gpu-meteorology'].extend([
+        'target/ci-gate/shared-height-query.log', 'target/ci-gate/shared-height-query/*.json'])
+    return result
 
 
 def digest(path):
@@ -225,6 +240,10 @@ def audit_payload(root, domain):
             result = subprocess.run([sys.executable, '-c', code], cwd=root, env=env, capture_output=True, text=True)
             require(result.returncode == 0, step['name']+': '+result.stderr[-2000:])
     if domain == 'gpu-meteorology':
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/interpolation/check_shared_height_query.py'),
+                                 str((root / 'target/ci-gate/shared-height-query/report.json').resolve()), '--software'],
+                                cwd=root, capture_output=True, text=True)
+        require(result.returncode == 0, 'shared-height U/V queries: '+result.stderr[-2000:])
         result = subprocess.run([sys.executable, str(ROOT / 'scripts/interpolation/check_shared_height_gpu.py'),
                                  str((root / 'target/ci-gate/shared-height-gpu/comparison.json').resolve()), '--software'],
                                 cwd=root, capture_output=True, text=True)

@@ -34,7 +34,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     // Safe placeholders precede every rejection. #87/#88 never see invalid indices/heights.
     horizontal[lane] = HorizontalQuery(0.0, 0.0, 0u, 0u, 0.0, 0.0, 0.0, 0.0);
     query_heights[lane] = 0.0;
-    if (params.model == 1u) {
+    if (params.model != 0u) {
         for (var level = 0u; level < params.levels; level += 1u) {
             lane_heights[lane * params.levels + level] = source_heights[level];
         }
@@ -75,9 +75,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     }
     horizontal[lane] = HorizontalQuery(0.0, 0.0, ix, jy, dx, dy, 0.0, 0.0);
     query_heights[lane] = q.height_agl_m;
-    if (params.model == 1u) {
+    if (params.model != 0u) {
         for (var level = 0u; level < params.levels; level += 1u) {
-            lane_heights[lane * params.levels + level] = source_heights[base_column * params.levels + level];
+            let height_column = select(base_column, 0u, params.model == 2u);
+            lane_heights[lane * params.levels + level] = source_heights[height_column * params.levels + level];
         }
     }
     if (atomicLoad(&status[lane + 1u]) == 1u) { atomicStore(&status[lane + 1u], 2u); }

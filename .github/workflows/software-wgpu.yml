@@ -104,6 +104,13 @@ jobs:
           cargo test --test shared_height_gpu -- --test-threads=1 --nocapture > target/ci-gate/shared-height-gpu.log 2>&1
           python3 scripts/interpolation/check_shared_height_gpu.py target/ci-gate/shared-height-gpu/comparison.json --software
           python3 scripts/interpolation/test_check_shared_height_gpu.py
+      - name: Prove shared-height U/V canonical query adoption
+        id: shared-height-query-185
+        run: |
+          set -euo pipefail
+          cargo test --test shared_height_query -- --nocapture --test-threads=1 > target/ci-gate/shared-height-query.log 2>&1
+          python3 scripts/interpolation/check_shared_height_query.py target/ci-gate/shared-height-query/report.json --software
+          python3 scripts/interpolation/test_check_shared_height_query.py
       - name: Prove accumulated-field GPU oracle parity
         id: original-9
         run: |

@@ -1,5 +1,10 @@
 # Resident meteorology queries (#171)
 
+[#185 prepared U/V](shared-height-query.md) extends this same query/status ABI
+with an explicit #184 source representation. It reads common target heights
+and checks preparation status on-device; only this route bypasses comparison
+of native column profiles. Other fields and native sources retain the rules below.
+
 This is the reusable query/resource handoff for the canonical #76 facade.
 It establishes composition with existing #87/#88/#89 science, not production
 consumer migration or a new scientific parity claim.

@@ -368,7 +368,8 @@ impl QueryPass {
     }
 }
 
-fn uniform(ctx: &GpuContext, words: &[u32]) -> wgpu::Buffer {
+/// Keep query/status control parameters separate from scientific field transfers.
+pub(super) fn uniform(ctx: &GpuContext, words: &[u32]) -> wgpu::Buffer {
     ctx.device
         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("resident control-plane parameters"),
@@ -443,6 +444,8 @@ impl<'ctx> ResidentQueryKernels<'ctx> {
 /// Unambiguous scalar batch metadata: `values[lane * lane_stride + component]`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResidentSampleMetadata {
+    /// Explicit validated preparation and common target; absent for native sources.
+    pub shared_height: Option<super::SharedHeightQueryIdentity>,
     /// Allocated query lanes.
     pub capacity: u32,
     /// Eligible active prefix (per-lane flags can deactivate lanes within it).
@@ -492,6 +495,12 @@ impl super::SourceMember<'_> {
                 "resident source aggregate exceeds device storage or index limits",
             )
         };
+        if let Some(prepared) = &self.prepared_uv {
+            return Ok((
+                self.prepared_values().expect("typed prepared U/V resource"),
+                prepared.target().heights(),
+            ));
+        }
         let values = self.resident_values.as_ref().ok_or_else(unsupported)?;
         let heights = match &self.runtime {
             Some(runtime) => runtime.resident_heights.as_ref().ok_or_else(unsupported)?,
@@ -526,6 +535,10 @@ impl ResidentSpatial {
         encoder: &mut wgpu::CommandEncoder,
     ) -> Result<(), MeteorologyCompositionError> {
         let bytes = u64::from(batch.capacity) * 4;
+        kernels
+            .preparation_status
+            .encode(ctx, member, &batch.status, encoder);
+        member.encode_prepared_planes(encoder);
         let (values, heights) = member.resident_buffers()?;
         resident.adapter.encode(
             ctx,
@@ -625,7 +638,11 @@ impl ResidentSpatial {
                     u32::try_from(batch.grid.ny).map_err(|_| incompatible("ny"))?,
                     u32::from(member.planes[0].is_periodic_x()),
                     levels,
-                    u32::from(member.runtime.is_some()),
+                    if member.prepared_uv.is_some() {
+                        2
+                    } else {
+                        u32::from(member.runtime.is_some())
+                    },
                     0,
                 ],
             ),
@@ -698,6 +715,7 @@ impl<'ctx> CanonicalGpuField<'ctx> {
         };
         let selected: Vec<_> = indices.iter().map(|i| &self.members[*i]).collect();
         let metadata = ResidentSampleMetadata {
+            shared_height: self.shared_height_identity(&indices),
             capacity: batch.capacity,
             active_count: batch.active_count,
             component_count: 1,

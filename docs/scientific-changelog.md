@@ -14,6 +14,19 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ---
 
+### 2026-10-15 — Prove pinned transport top action and signed correction order (#180)
+**Impact**: none (direct Fortran research; no production GPU change)
+**Files**: `docs/research/transport-top-180.md`, `docs/science/advection.md`,
+`scripts/transport/`, `fixtures/transport/top-boundary-v1/`.
+**Validation**: Genuine optimized pinned `advance` and `pushpartdown` execute
+equal/differing native profiles, both source epochs/directions, inclusive top
+probes, predictor/corrector crossings and real backward settling. The transport
+top is the run-owned shared AGL endpoint. The original below-top placement and
+sticky backward-settling stop differ from a final clamp. Exact raw/decoded
+reproducibility is checked across independent fresh builds; f64-only predicate
+probes expose the explicit f32 representability limit. No Fortran source changes,
+scientific tolerance or GPU/full-production parity claim is introduced.
+
 ### 2026-10-15 - Adopt prepared shared-height U/V in canonical queries (#185)
 **Impact**: numerics (validated prepared U/V route only)
 **Files**: `src/gpu/meteorology{,/shared_uv,/resident}.rs`, resident adapter and preparation status guard

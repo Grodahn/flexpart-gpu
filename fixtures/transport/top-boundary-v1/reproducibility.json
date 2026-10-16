@@ -1,0 +1,455 @@
+{
+  "schema": {
+    "id": "flexpart-gpu.top-boundary-reproducibility",
+    "version": 1
+  },
+  "state": "PASS",
+  "comparison": "exact raw bytes and decoded observations; distinct fresh source builds",
+  "baseline_report_sha256": "1354922d5e37c17f9b5b4c57fbb40a4e11401f912bbf180e2f064be3ae0b09c9",
+  "verifier_sha256": "f19cf7a702966aa9ac5007a8e23f974f4ce6fe0ce5db16061caafbba767fb231",
+  "raw_output_sha256": "b10df540cc86ebb1afaccba6f9178deabbf4af1135c76adfc582868e2c957be2",
+  "runs": [
+    {
+      "report_sha256": "f92d76c2dbd7e5e10c72809268c88f127fe518c54ad4cb3d834363897973c5af",
+      "build_origin": "/tmp/flexpart-top-research.m6S8GgaJ/build/upstream",
+      "provenance": {
+        "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+        "image_id": "sha256:6bcff83c01c30fd7ce7ae4e32342885a93081e427df5d53feed72d6aff5b103e",
+        "profile": {
+          "id": "flexpart-11.1-single-thread",
+          "version": 1,
+          "runtime_environment": {
+            "OMP_NUM_THREADS": "1",
+            "OMP_THREAD_LIMIT": "1",
+            "OMP_DYNAMIC": "FALSE",
+            "OMP_NESTED": "FALSE",
+            "OMP_MAX_ACTIVE_LEVELS": "1",
+            "OMP_SCHEDULE": "static",
+            "OMP_PROC_BIND": "FALSE",
+            "OMP_WAIT_POLICY": "PASSIVE"
+          },
+          "build": {
+            "makefile": "src/makefile_gfortran",
+            "make_arguments": "eta=no arch=x86-64",
+            "fortran_compiler": "gfortran",
+            "optimization": "-O3",
+            "openmp_flag": "-fopenmp",
+            "arch_flag": "-march=x86-64",
+            "eta": "no",
+            "netcdf": "enabled (USE_NCF)"
+          },
+          "docker": {
+            "image": "flexpart-fortran:latest",
+            "dockerfile": "docker/Dockerfile.fortran",
+            "compose_file": "docker/docker-compose.fortran.yml",
+            "base_image": "ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7",
+            "ubuntu_snapshot": "20260910T000000Z"
+          },
+          "required_inputs": [
+            "COMMAND",
+            "RELEASES",
+            "OUTGRID",
+            "AGECLASSES",
+            "RECEPTORS",
+            "SPECIES/SPECIES_*",
+            "METEO_ARGS.txt",
+            "generated GRIB meteorology and AVAILABLE"
+          ],
+          "external_seed_control": "unavailable",
+          "repeatability_cases": {
+            "ADV-ANA-001": "deterministic",
+            "WIND-UNI-002": "stochastic"
+          },
+          "minimum_repetitions": 5
+        },
+        "compiler": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+        "driver_flags": [
+          "-O0",
+          "-fopenmp",
+          "-mcmodel=large"
+        ],
+        "sources_sha256": {
+          "src/advance_mod.f90": "7c11a52ad5e0a4b4de36282d72fd4cbebe47e110a30c3609fda3a3ac266d2d68",
+          "src/binary_output_mod.f90": "cefe477e1c25020eaa2ffca93b93f104a4958f6aa2429a7f28703dba72d0dc12",
+          "src/cbl_mod.f90": "ce6e5eca324db120d31ef74bc5c0dbdbd6cd5e0f51990323b48d956c6a647d29",
+          "src/chemistry_mod.f90": "92c4dffc1ecaee7a0501b05e66d8fda0daf3eb2ba110200ae3420d5cd2233734",
+          "src/class_gribfile_mod.f90": "6d154e10d71ea18313118d22a4ecd898a03c4a4b507dec022bb8831e83e0cf76",
+          "src/cmapf_mod.f90": "467ede9c13153416ffdffceb2c78d409653319077c335890c394e6562f75d9aa",
+          "src/com_mod.f90": "a25dce18fc3d4f3bbbf1b8c64e9b2629fb4e170540d350e555118ab9dd00bab3",
+          "src/conv_mod.f90": "a7437152b6216ff39d213344c6a58f43d5dd9d26db8195409b7d51e333dfe696",
+          "src/coord_ecmwf_mod.f90": "3622737291692ef00886596a832e93500533f3ab188eb5473f1b70613f706e6f",
+          "src/date_mod.f90": "e1e10ae8ca275ca4360708e3788fe8c1eefd0d95d27fba1e4d6cc1b43ef8bb8d",
+          "src/drydepo_mod.f90": "779d21d2790c2118373c66f9394d00596612ced63ebd2efe50fde5d9e26ff585",
+          "src/emissions_mod.f90": "0e33b777f0922b62b6341db6782821a0a2e2f23b4fff419b1a2db51ada2dd566",
+          "src/erf_mod.f90": "98a61f4502fc9c03c07798726a038a78b6af34344fd32535518df190e273a0fc",
+          "src/flux_mod.f90": "b9577374ece7bc45935682192df8569e6c667c40b2d865faa9b4b37551c9fe10",
+          "src/getfields_mod.f90": "c3b4ce1adae8ab5e12ae51b2e2c4170925d326cbc6240d3531265eddd92433aa",
+          "src/gributils/test/.gitignore": "e2df87e3f854c14e5774d1436ce1d073161142373dd6a6ac4bc7153998554402",
+          "src/gributils/test/Makefile": "9f83b04bff4deb289071ffe219978834d09ff4c2fa5742ab4570805bfe280736",
+          "src/gributils/test/testdrive.f90": "7ee36209d62aa4c2cbf5526e5c12e1d1616673eaaa4fcda678e5bd4630ac45d0",
+          "src/initdomain_mod.f90": "92298d5acad69f8cc516a003628ac853fb9e65378c89887917cf00a8923cddff",
+          "src/initialise_mod.f90": "a4d60f9c65ceb7f7063b84f6ba893a4c31e022d8b09adda708e9c7f0a0f68b98",
+          "src/interpol_mod.f90": "cc7ab1a55267971ca540d88d3992c613897e0a219da5b66fe2358b5eaeb9bf63",
+          "src/makefile_gfortran": "6e3c2e6d34e5f1fb1fd5e9b784299eab4f3bcb7d7710239d0372f2a9c11ab1f0",
+          "src/makefile_intel": "a8b3f7ffbac19eaad8a4cbfc204703e2963a4b1d9e65f2e01e05e5e1e7c3a77f",
+          "src/mean_mod.f90": "8e2fa83e70a524d1db9eae10192d7fb78f982df3b71970edbeb16da5ef1be6e9",
+          "src/netcdf_output_mod.f90": "b0078137e7d73328a289f106e097e9af8459d98fd5678ada880c5c53f399618b",
+          "src/outgrid_mod.f90": "19e444c6c0619e13f7d8aabf40047588c24860ab83c9a0b584c1469964609605",
+          "src/output_mod.f90": "391c40cc389a3df1ae5176bb67d42c7eab3705bb015fe55313b3efa825d3daac",
+          "src/par_mod.f90": "3164314b5d7212ff5136b5605634fe3c34426aef1320c9fb499ded31f021a9db",
+          "src/particle_mod.f90": "c44f670e0b42e2065ecda9e3747b3818f12dd4957cfdaaa777a6570e529aa899",
+          "src/pathnames": "bbd18fa3c9648d72233ffb5e7c8b11f7be91ee676907facef9fc520c47dedc67",
+          "src/pbl_profile_mod.f90": "a48e114c7cecf6ab42688a87dc572ff35a4727a5f661f8e4c17ead659399bcbd",
+          "src/plume_mod.f90": "8af5b3cf900d9502a25027251c4757f05dc498f73e41e802e077d8691bf2a711",
+          "src/point_mod.f90": "6cc06a4f0b06e970613edf5de361a1a22fc3e0d4894ce12e65b04c2f84cfe49f",
+          "src/qvsat_mod.f90": "c5854076f296e4a5c131a51c6bb8918f57cdd410c9f3cac554be59dc2397fffb",
+          "src/random_mod.f90": "782bd3abfdb3b370335664d722e9620dc86d59e2866eefd981a37a641f802b7a",
+          "src/readoptions_mod.f90": "2d28cacdcc65bf22f5c3ec9e4934d07611e3039f5e051ffb2e0b0d7573d3daff",
+          "src/receptor_mod.f90": "a7a071feedfa9d795769f6ce84816ca2e7a7cb5c988814da0f7fc2977b6aa394",
+          "src/receptor_netcdf_mod.f90": "2a8bf12dd3e14b353a15e85063dd444eccc038be99023e093588e3ea26980130",
+          "src/restart_mod.f90": "278a4393cb6eb1ea6082a3115ce46cfbe9886c86f28b7bf28831955176942d01",
+          "src/settling_mod.f90": "0d9dba082515315cae3ab8a707b5436e5993e18c42c68a9015d34eebbb9400dc",
+          "src/sort_mod.f90": "5e623f9889bc276e96da6a6ea57db156a34d9ec92dbd76405ad0ab4c869a87fa",
+          "src/timemanager_mod.f90": "93c35cd77de162046c6099e3e3fa4230a65d0f2a5e29bdffb4f108a109f2bd34",
+          "src/totals_mod.f90": "7d889e3534b1ca58da2551e7500ccea1ee07bd4bbf5125f53399c5b906e2ae90",
+          "src/turbulence_mod.f90": "7b19233cac6d7add940e610f485aa3fbdcf4fe4f55af15ce6bec2a629d5b6984",
+          "src/txt_output_mod.f90": "7a4ca2dc8c38065b31b1918089946e71e45d066fd6a352dfcf07e262d69de06f",
+          "src/unc_mod.f90": "88cfdb1250ba7dd0a528f78ce38f8413c477c80f85828a1d6aef8fbf259e3e2c",
+          "src/verttransform_mod.f90": "7d7ba231f960779dc63f19073103c489441da116cec12c6b8875dc06a5b7422c",
+          "src/wetdepo_mod.f90": "217e4a74ea62ee489f6e7c97b87b874add387a766dcf5a3044da400d41e6c291",
+          "src/windfields_mod.f90": "440ec62b9a7b8f4534e913b2af2a41aabdf44072b3fe77edbc213866e698e7d1",
+          "src/xmass_mod.f90": "a8847a04d43020d081968ee8f1cdcdbbd322df602c4a6839056c9792bda2c041"
+        },
+        "tools_sha256": {
+          "scripts/transport/top_boundary_oracle.f90": "b7a3d784253b12859754919067600b4e4952b9e1590a845b7ac80e44afd73eea",
+          "scripts/transport/top_boundary_oracle.sh": "c30c37d5e1b41e1a08e48bc4e83edfbed284be55bb25116cd8afe78aa4fbc95b",
+          "scripts/transport/run_top_boundary_oracle.py": "0cf706d1ad3615962a92cd01c14e96a6aef0fee1eb19217adedc318b3d13f306",
+          "scripts/transport/verify_top_boundary_oracle.py": "2ff43b8e6c264771119bd567d74bbf9d4159d921631fe2adb16268ec9908ae8e",
+          "scripts/interpolation/w_production_oracle.sh": "721bff07e3d499cd1d5d20476a4d6f368b799af39e842a0d26d909332c2a835a",
+          "scripts/oracle_build_cache.py": "9786c45832d999fe05deb6035ff68214210861f349425521bcacd19b4965b10c",
+          "reference/flexpart-11.1.json": "2c13a87733098e385dc12f33d1bf5ca60ba275775f472ec279b8a0a234c3a464"
+        },
+        "linked_objects_sha256": {
+          "advance_mod.o": "0a9e1691e7318ec1e98500bd9a632a8003063f8da125d976f956561705dae49e",
+          "binary_output_mod.o": "a8a8fb6bf4e349694ff2a7769d31c403e7b64ae2ed2115de16c104c66736ba58",
+          "cbl_mod.o": "cd6f16987a307c3ca8ae629a22191df78d055966a70ae5d00e0714428d16b786",
+          "chemistry_mod.o": "1d58a6edf70b84598fc692934ab0287e9e064c6693a959125bbc18ad24a822fb",
+          "class_gribfile_mod.o": "1dfa813906d4440e266b5d02f127b614d3fd18386553d3e0281807cdc3e706dd",
+          "cmapf_mod.o": "6283218816ac64e37c8460a82f0195755a8b9b798c1636b1d5a475e1f297c08d",
+          "com_mod.o": "6eed7d5da29f32709e2f895872e07bf2ece9999aec664e6de0422d2a67fd32f6",
+          "conv_mod.o": "5f477a37e64a098a7789fe03c3d060c92423e579a799b878e1b2374604b4eabc",
+          "date_mod.o": "d051d8b85263a44b6e234474f8f4fe7e2cd16c74c26139e498646f87872f723e",
+          "drydepo_mod.o": "8923d06467c06170c97cd935847572e1c13dcb80a40f9240547c9337c76165d7",
+          "emissions_mod.o": "9a2ab4fc488f450e0dc1ab19d0700ac790fefff3c2241e16d47d44e4787ece9f",
+          "erf_mod.o": "e7615e57339fa3e69e325686a3edb382d1bb8d6cadbb08058d5a50fb1416d1c9",
+          "flux_mod.o": "9a33164dd5b3d0c9f94186fd25ad2307efb57abc6f21a5534093c265ec483b16",
+          "getfields_mod.o": "b8dd4a240c0f60a29febfce030ee9ea84e17fa752b2d63d3b33abfef5818f190",
+          "initdomain_mod.o": "1a4fcf3746c2a4dcf0606f4c4d45e58f8651081685370422683daa6e996af545",
+          "initialise_mod.o": "3c6b681839ffcc89b56c6dd8548c28c7d46075b1c8349e146a48b1578eecf543",
+          "interpol_mod.o": "656720beac73ae719865002aa0c25486a38c436e31f55b078e3dae5924fb3d6d",
+          "mean_mod.o": "84afae372e6ddabfd7f94b5132f7092d1a96cccec7c821dddf98270875934620",
+          "netcdf_output_mod.o": "cdd2fb836eb12f077b06572110bf1209b9d468706f45c99d733d9243333e0936",
+          "outgrid_mod.o": "1ec7722b7c3ab9d95aea7e3ff7ff3c71a6d5bf4a4f90c5e11a2e84914beeab57",
+          "output_mod.o": "b9c93694329ca9d815f21231ab916dd9e826da7638134d9e214cae672b85d977",
+          "par_mod.o": "43f70634e40ed575e1da883c433b32274a1c94df620d72dfe25f3d4788db644b",
+          "particle_mod.o": "8bbbd161217d65808615586eeab38802b629e959d293b28a0a3ff542ceba2a79",
+          "pbl_profile_mod.o": "40830589b5f11415e2c55df92def65dad7cfae6703eba7f7bbdf0c7c1f4aad2c",
+          "plume_mod.o": "996df22c00bfc3fed1f4ba448a45f999559288c7838d46d8802644e8d3f9ccde",
+          "point_mod.o": "b1ae90e449994d56f87377b624e3784b2567e48811f19ce1e2bceb1b322ef251",
+          "qvsat_mod.o": "ee9c7786d1f5b65beb084197953c022c78ab8e5ccf015a165adde64a8fd3aaac",
+          "random_mod.o": "be74fb73c14be71531ed121a288e6b4c0709bf49fa424a1a504b36fabccc47aa",
+          "readoptions_mod.o": "09daa9856fe47290cda4834e77fd8317f831acf35c6d7b2e626ecc93d024b5a0",
+          "receptor_mod.o": "927469ea0a517858360c0cd50c1c95a8fbec29241fc1cc1bb9ddc80df41e6e28",
+          "receptor_netcdf_mod.o": "c09cc7b0658254572fb82aa981a88178fee4aacf8c4029cc500f9b5adc46591f",
+          "restart_mod.o": "1b7b084548fa616425a3b068355d9463f992f4ace4e3387cf902477db0d63f80",
+          "settling_mod.o": "04db6b0b9bb1d3cb09db2c189e535a283c4fbc3100f945b8dbe16780087f9771",
+          "sort_mod.o": "a2da86cbbc51720d47b750b97c249ce302005cf3c39ada2d9b9fac0126ad40df",
+          "timemanager_mod.o": "f39ac22e9927b67a53ea7a57b7cf807a43a20fef0126414b4e3d90026863dfb8",
+          "totals_mod.o": "ebd7f37f6dc137c8243b6b2ab7d35c8c5c509a7106d08ad72954107cb4360886",
+          "turbulence_mod.o": "6f1d348d043889650b4602e9c842602c633207cc4680cff3e4133f985a923b83",
+          "txt_output_mod.o": "55ef614db509573e7570acc8a5ece5374e48e3e60cae6f2be9a898efbf1de689",
+          "unc_mod.o": "aa4e8537f24de0a755d39e08358ff2f2dc5bc49d7eaba2d82d70775d39991409",
+          "verttransform_mod.o": "38974031c1c20591c419b046efbbffa8e33987daa74747a392ed218bad4757da",
+          "wetdepo_mod.o": "534081294c69bc51fd3043fbca042a7abe6426a2fda1663bca4621d93d1b7b2c",
+          "windfields_mod.o": "835439738afb22879b395933d72e65cc78a8567512694def7b714a1a641b22d3",
+          "xmass_mod.o": "63561500c2acc82bd4c4692609efaa6c82b60b97a08fb4e4a204b296aa6b3794"
+        },
+        "artifacts_sha256": {
+          "input.txt": "a8cce6b7bfafebb60acafe2bf5d9389f21d90fbe58b918bdebbf14fa07bdc4a1",
+          "output.txt": "b10df540cc86ebb1afaccba6f9178deabbf4af1135c76adfc582868e2c957be2",
+          "full-build.log": "714ad74731540eb998085de5f2c2487b52476f410d31a2a86972f06b1f64cfd7",
+          "driver-build-run.log": "84881ccd97b23895ae55de73470cc2978e544244986facf80ea8bba17f8cd641",
+          "checkout-before.txt": "0c5cadb3987d87640c63c2e5176da07a652172fb30088c813c84feb154a5e1b2",
+          "checkout-after.txt": "0c5cadb3987d87640c63c2e5176da07a652172fb30088c813c84feb154a5e1b2",
+          "build/w-production-oracle": "3e7a8882d4d513aab3c617ab3c1fe0cea4f5e89a6f97a47a9ee68a09e47ca1c7",
+          "build/w-production-oracle-driver.o": "5e6889f0bb85ca71e86b4cb7fc2a64c9999e8fe29c448362349061fd364a9c57",
+          "build/w-production-oracle.nm": "0283925d52149ede9fcbbbd0d19f58413a5a571e38e09072603e0e90fdd34b36",
+          "build/w-production-oracle.call-sites": "19e775d9170c39c14bfcdc9ca24b3ef34674bc9098a78de9f35cad75deb469d9",
+          "build/w-production-oracle.link-map": "434b8ed3cfe2f1e522621a71aae7013f9d9cbcdb93d05d1cfe65c5a199681c82",
+          "build/linked-objects.txt": "388d1f824306df30fc74fbedc6464e86602b6a93ba782e9e1dad20ffacc3327c",
+          "build/compiler-identity.txt": "9e9d4386d9ee356d38035834a85bdc95acd63962aebf458438bc50b4b049afb6",
+          "build/advance_mod.original.o": "2747141b14db17fde030b301516680dbfeaa900d93e7644228df1100f294e369",
+          "build/advance-original.text": "d78d2e34b3ef53c3ad94b18bdc6e2beb9bc421564d0b8310dcabd4557e210119",
+          "build/advance-exported.text": "d78d2e34b3ef53c3ad94b18bdc6e2beb9bc421564d0b8310dcabd4557e210119",
+          "build/advance-original.disassembly": "61e34b84f3611f579ee05357caf7c56bae7cb4116805e58cc48d7bfab7c0d3a2",
+          "build/advance-exported.disassembly": "7aa598affe8d8509514448dfcc779e7bddd38b8d237e4c74462bd37c237222b6",
+          "build/executable.disassembly": "f379cd7be9c9f6451d70513c76d6f7e29171ed746402f24560794caf2960cb85",
+          "build/advance-original.elf": "90f4c8607b262f52cfdd5a90e5d184544ebdfa210a234952fd2c94f82c7c6cbf",
+          "build/advance-exported.elf": "428bb9b385a326e25166dcf3a7bf071db4d2d41bd8b043e081d22ffb81b95563"
+        },
+        "verified_call_edges": [
+          [
+            "MAIN__",
+            "__advance_mod_MOD_advance"
+          ],
+          [
+            "MAIN__",
+            "__advance_mod_MOD_pushpartdown"
+          ],
+          [
+            "MAIN__",
+            "__verttransform_mod_MOD_verttransform_init"
+          ],
+          [
+            "MAIN__",
+            "__verttransform_mod_MOD_verttransform_ecmwf_heights"
+          ],
+          [
+            "__advance_mod_MOD_advance",
+            "__interpol_mod_MOD_interpol_wind"
+          ],
+          [
+            "__advance_mod_MOD_advance",
+            "__interpol_mod_MOD_interpol_wind_short"
+          ],
+          [
+            "__advance_mod_MOD_advance",
+            "__settling_mod_MOD_get_settling"
+          ]
+        ],
+        "symbol_export": "pushpartdown visibility only; repeating objcopy on original reproduces the entire linked object"
+      }
+    },
+    {
+      "report_sha256": "31178c66b348044a003a136a9ea8bdfae06bd435d89bd750c00589c2bfe329c8",
+      "build_origin": "/tmp/flexpart-top-research.l6WBxdgx/build/upstream",
+      "provenance": {
+        "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+        "image_id": "sha256:6bcff83c01c30fd7ce7ae4e32342885a93081e427df5d53feed72d6aff5b103e",
+        "profile": {
+          "id": "flexpart-11.1-single-thread",
+          "version": 1,
+          "runtime_environment": {
+            "OMP_NUM_THREADS": "1",
+            "OMP_THREAD_LIMIT": "1",
+            "OMP_DYNAMIC": "FALSE",
+            "OMP_NESTED": "FALSE",
+            "OMP_MAX_ACTIVE_LEVELS": "1",
+            "OMP_SCHEDULE": "static",
+            "OMP_PROC_BIND": "FALSE",
+            "OMP_WAIT_POLICY": "PASSIVE"
+          },
+          "build": {
+            "makefile": "src/makefile_gfortran",
+            "make_arguments": "eta=no arch=x86-64",
+            "fortran_compiler": "gfortran",
+            "optimization": "-O3",
+            "openmp_flag": "-fopenmp",
+            "arch_flag": "-march=x86-64",
+            "eta": "no",
+            "netcdf": "enabled (USE_NCF)"
+          },
+          "docker": {
+            "image": "flexpart-fortran:latest",
+            "dockerfile": "docker/Dockerfile.fortran",
+            "compose_file": "docker/docker-compose.fortran.yml",
+            "base_image": "ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7",
+            "ubuntu_snapshot": "20260910T000000Z"
+          },
+          "required_inputs": [
+            "COMMAND",
+            "RELEASES",
+            "OUTGRID",
+            "AGECLASSES",
+            "RECEPTORS",
+            "SPECIES/SPECIES_*",
+            "METEO_ARGS.txt",
+            "generated GRIB meteorology and AVAILABLE"
+          ],
+          "external_seed_control": "unavailable",
+          "repeatability_cases": {
+            "ADV-ANA-001": "deterministic",
+            "WIND-UNI-002": "stochastic"
+          },
+          "minimum_repetitions": 5
+        },
+        "compiler": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+        "driver_flags": [
+          "-O0",
+          "-fopenmp",
+          "-mcmodel=large"
+        ],
+        "sources_sha256": {
+          "src/advance_mod.f90": "7c11a52ad5e0a4b4de36282d72fd4cbebe47e110a30c3609fda3a3ac266d2d68",
+          "src/binary_output_mod.f90": "cefe477e1c25020eaa2ffca93b93f104a4958f6aa2429a7f28703dba72d0dc12",
+          "src/cbl_mod.f90": "ce6e5eca324db120d31ef74bc5c0dbdbd6cd5e0f51990323b48d956c6a647d29",
+          "src/chemistry_mod.f90": "92c4dffc1ecaee7a0501b05e66d8fda0daf3eb2ba110200ae3420d5cd2233734",
+          "src/class_gribfile_mod.f90": "6d154e10d71ea18313118d22a4ecd898a03c4a4b507dec022bb8831e83e0cf76",
+          "src/cmapf_mod.f90": "467ede9c13153416ffdffceb2c78d409653319077c335890c394e6562f75d9aa",
+          "src/com_mod.f90": "a25dce18fc3d4f3bbbf1b8c64e9b2629fb4e170540d350e555118ab9dd00bab3",
+          "src/conv_mod.f90": "a7437152b6216ff39d213344c6a58f43d5dd9d26db8195409b7d51e333dfe696",
+          "src/coord_ecmwf_mod.f90": "3622737291692ef00886596a832e93500533f3ab188eb5473f1b70613f706e6f",
+          "src/date_mod.f90": "e1e10ae8ca275ca4360708e3788fe8c1eefd0d95d27fba1e4d6cc1b43ef8bb8d",
+          "src/drydepo_mod.f90": "779d21d2790c2118373c66f9394d00596612ced63ebd2efe50fde5d9e26ff585",
+          "src/emissions_mod.f90": "0e33b777f0922b62b6341db6782821a0a2e2f23b4fff419b1a2db51ada2dd566",
+          "src/erf_mod.f90": "98a61f4502fc9c03c07798726a038a78b6af34344fd32535518df190e273a0fc",
+          "src/flux_mod.f90": "b9577374ece7bc45935682192df8569e6c667c40b2d865faa9b4b37551c9fe10",
+          "src/getfields_mod.f90": "c3b4ce1adae8ab5e12ae51b2e2c4170925d326cbc6240d3531265eddd92433aa",
+          "src/gributils/test/.gitignore": "e2df87e3f854c14e5774d1436ce1d073161142373dd6a6ac4bc7153998554402",
+          "src/gributils/test/Makefile": "9f83b04bff4deb289071ffe219978834d09ff4c2fa5742ab4570805bfe280736",
+          "src/gributils/test/testdrive.f90": "7ee36209d62aa4c2cbf5526e5c12e1d1616673eaaa4fcda678e5bd4630ac45d0",
+          "src/initdomain_mod.f90": "92298d5acad69f8cc516a003628ac853fb9e65378c89887917cf00a8923cddff",
+          "src/initialise_mod.f90": "a4d60f9c65ceb7f7063b84f6ba893a4c31e022d8b09adda708e9c7f0a0f68b98",
+          "src/interpol_mod.f90": "cc7ab1a55267971ca540d88d3992c613897e0a219da5b66fe2358b5eaeb9bf63",
+          "src/makefile_gfortran": "6e3c2e6d34e5f1fb1fd5e9b784299eab4f3bcb7d7710239d0372f2a9c11ab1f0",
+          "src/makefile_intel": "a8b3f7ffbac19eaad8a4cbfc204703e2963a4b1d9e65f2e01e05e5e1e7c3a77f",
+          "src/mean_mod.f90": "8e2fa83e70a524d1db9eae10192d7fb78f982df3b71970edbeb16da5ef1be6e9",
+          "src/netcdf_output_mod.f90": "b0078137e7d73328a289f106e097e9af8459d98fd5678ada880c5c53f399618b",
+          "src/outgrid_mod.f90": "19e444c6c0619e13f7d8aabf40047588c24860ab83c9a0b584c1469964609605",
+          "src/output_mod.f90": "391c40cc389a3df1ae5176bb67d42c7eab3705bb015fe55313b3efa825d3daac",
+          "src/par_mod.f90": "3164314b5d7212ff5136b5605634fe3c34426aef1320c9fb499ded31f021a9db",
+          "src/particle_mod.f90": "c44f670e0b42e2065ecda9e3747b3818f12dd4957cfdaaa777a6570e529aa899",
+          "src/pathnames": "bbd18fa3c9648d72233ffb5e7c8b11f7be91ee676907facef9fc520c47dedc67",
+          "src/pbl_profile_mod.f90": "a48e114c7cecf6ab42688a87dc572ff35a4727a5f661f8e4c17ead659399bcbd",
+          "src/plume_mod.f90": "8af5b3cf900d9502a25027251c4757f05dc498f73e41e802e077d8691bf2a711",
+          "src/point_mod.f90": "6cc06a4f0b06e970613edf5de361a1a22fc3e0d4894ce12e65b04c2f84cfe49f",
+          "src/qvsat_mod.f90": "c5854076f296e4a5c131a51c6bb8918f57cdd410c9f3cac554be59dc2397fffb",
+          "src/random_mod.f90": "782bd3abfdb3b370335664d722e9620dc86d59e2866eefd981a37a641f802b7a",
+          "src/readoptions_mod.f90": "2d28cacdcc65bf22f5c3ec9e4934d07611e3039f5e051ffb2e0b0d7573d3daff",
+          "src/receptor_mod.f90": "a7a071feedfa9d795769f6ce84816ca2e7a7cb5c988814da0f7fc2977b6aa394",
+          "src/receptor_netcdf_mod.f90": "2a8bf12dd3e14b353a15e85063dd444eccc038be99023e093588e3ea26980130",
+          "src/restart_mod.f90": "278a4393cb6eb1ea6082a3115ce46cfbe9886c86f28b7bf28831955176942d01",
+          "src/settling_mod.f90": "0d9dba082515315cae3ab8a707b5436e5993e18c42c68a9015d34eebbb9400dc",
+          "src/sort_mod.f90": "5e623f9889bc276e96da6a6ea57db156a34d9ec92dbd76405ad0ab4c869a87fa",
+          "src/timemanager_mod.f90": "93c35cd77de162046c6099e3e3fa4230a65d0f2a5e29bdffb4f108a109f2bd34",
+          "src/totals_mod.f90": "7d889e3534b1ca58da2551e7500ccea1ee07bd4bbf5125f53399c5b906e2ae90",
+          "src/turbulence_mod.f90": "7b19233cac6d7add940e610f485aa3fbdcf4fe4f55af15ce6bec2a629d5b6984",
+          "src/txt_output_mod.f90": "7a4ca2dc8c38065b31b1918089946e71e45d066fd6a352dfcf07e262d69de06f",
+          "src/unc_mod.f90": "88cfdb1250ba7dd0a528f78ce38f8413c477c80f85828a1d6aef8fbf259e3e2c",
+          "src/verttransform_mod.f90": "7d7ba231f960779dc63f19073103c489441da116cec12c6b8875dc06a5b7422c",
+          "src/wetdepo_mod.f90": "217e4a74ea62ee489f6e7c97b87b874add387a766dcf5a3044da400d41e6c291",
+          "src/windfields_mod.f90": "440ec62b9a7b8f4534e913b2af2a41aabdf44072b3fe77edbc213866e698e7d1",
+          "src/xmass_mod.f90": "a8847a04d43020d081968ee8f1cdcdbbd322df602c4a6839056c9792bda2c041"
+        },
+        "tools_sha256": {
+          "scripts/transport/top_boundary_oracle.f90": "b7a3d784253b12859754919067600b4e4952b9e1590a845b7ac80e44afd73eea",
+          "scripts/transport/top_boundary_oracle.sh": "c30c37d5e1b41e1a08e48bc4e83edfbed284be55bb25116cd8afe78aa4fbc95b",
+          "scripts/transport/run_top_boundary_oracle.py": "0cf706d1ad3615962a92cd01c14e96a6aef0fee1eb19217adedc318b3d13f306",
+          "scripts/transport/verify_top_boundary_oracle.py": "2ff43b8e6c264771119bd567d74bbf9d4159d921631fe2adb16268ec9908ae8e",
+          "scripts/interpolation/w_production_oracle.sh": "721bff07e3d499cd1d5d20476a4d6f368b799af39e842a0d26d909332c2a835a",
+          "scripts/oracle_build_cache.py": "9786c45832d999fe05deb6035ff68214210861f349425521bcacd19b4965b10c",
+          "reference/flexpart-11.1.json": "2c13a87733098e385dc12f33d1bf5ca60ba275775f472ec279b8a0a234c3a464"
+        },
+        "linked_objects_sha256": {
+          "advance_mod.o": "ccfe945cf921434b9fc57cd284288791a468822bddb87d4b2233822738c542d1",
+          "binary_output_mod.o": "b20dcd2e77f28bb747409147e35ab2de29968df8b7f0f5a797d2061c24001436",
+          "cbl_mod.o": "233530333be12646783e05b47f8780311429a2b7b7573884456352ed5af6f592",
+          "chemistry_mod.o": "9e68ac2cfa3ada27af0f2a7952be2223198fce532720eb4b8ae6f1760e33c899",
+          "class_gribfile_mod.o": "a785e07072535bf7bd4d24928a115ee47ed3a96edce0d3f13ed5c60e77deb401",
+          "cmapf_mod.o": "e1c95e475b8970b9679aa8e57d1484a1dbd19757fe7bee0efa1534eb0092f5f8",
+          "com_mod.o": "96ef727550eaf25e76879d52d5520ba0226756c87ba9f6ea193cf1f59b1d128b",
+          "conv_mod.o": "a2566fce06b7fd0e47e4f2569b29e26ea5da0509e1745167826b43238d79c6ee",
+          "date_mod.o": "3744e3b70350e7daeb48f935500d5938ce1c213294c15d8699fa07269db203ce",
+          "drydepo_mod.o": "de3189d5ad34827a86768a2d7f39c704e75a65753529bee2c0bc2392cae2d9a8",
+          "emissions_mod.o": "4cf99e9e89a270caba3647427a76c533a7f436330ff37765a000ee20cdd78fa8",
+          "erf_mod.o": "2ba11fd6f58ce07ac04619200727bcd51ef9385ea1ead94ee28602b287a0afec",
+          "flux_mod.o": "e1e25a8b3a9d7266e72e28ab91cc96e42b92576cd254ba222c814a3854b79ca0",
+          "getfields_mod.o": "3de76ed64e2e7d37cf832364a3dff0faf71e7c2066ff951267e9916613818751",
+          "initdomain_mod.o": "38ae8fd5020da2e6a55492444e915248882dd586ca80beb34bce45213337be3e",
+          "initialise_mod.o": "aa4d456fe913e2b434c7f923ef878f5202f281db0fe2bf91d607b547b0ab01e0",
+          "interpol_mod.o": "c7fb911b296443093e426aebd80314f76515372b24dce316f1e2e3185befafdc",
+          "mean_mod.o": "a33a7bec5fe2c5c2ce473b45b7eb39592ddfc30fa7af361f6cabd653e26b1446",
+          "netcdf_output_mod.o": "374b7ce08005d18dfdfdd283b28221161a78b0d06bfcef4ec4f34175219daef6",
+          "outgrid_mod.o": "6c3fce906601d9d2bc4242b85adbf70c00b348e625c3ccb3092b59feee7c9403",
+          "output_mod.o": "8fe190c02ef4281aabb8f2ae672859b33b95a15263e5375aa9959a7f1b709ce8",
+          "par_mod.o": "82d6cff5ac8e327b00630d18f1b827cd3976d41cd98c261741828316d83e9f5e",
+          "particle_mod.o": "a4166e307f877c81a26fc98eb74fcab98f35c76f8acf21a87f0f4f9a211ca78d",
+          "pbl_profile_mod.o": "2b2d0bff6174daaef7452d20fe23f68f66af8bff850d424c91f8233e907432e4",
+          "plume_mod.o": "2a3944116a0626eae520ae811b1ce0a193426891c933d0075b670e39b226a367",
+          "point_mod.o": "d585cbb9130add89756e6bdb85c72b62aecd8c0d12e9c50835d0da0c3796f7e0",
+          "qvsat_mod.o": "e42c85152789708733876ef0d530f2cfc4a429b9d7de9de3c9c88e7f6dd6605e",
+          "random_mod.o": "1918e24fe9aef7f2c01bdbabc0e3d52f6f9715d7e3cf58924928e0b49f2d2be5",
+          "readoptions_mod.o": "56eab319dc0d3e5bc4422ae3379aaea23ae8c2d77ca5ce56ab677898dd9df40b",
+          "receptor_mod.o": "fba7aea83c8b100e573e5d0eff9ea0d23db3064a1b71155e61ff2e84f4aeca3a",
+          "receptor_netcdf_mod.o": "bb056ef8fb8386f21fe0f6636bd065107ac777f792761a7191753bd80cd50e0e",
+          "restart_mod.o": "bf2694a7726dc67cf0f194be8c1457636c250bab249110199e3fde19f7820e90",
+          "settling_mod.o": "7ebcc06c37c69fc7df7b6a775492142b02dc5aae461cd3b2e11bb1a859bdf1e4",
+          "sort_mod.o": "45b31b708b58cf61e1d239c1f4a879d7ef882fe51c4cae359f4ff1f7328ed0cd",
+          "timemanager_mod.o": "4d06df5941875b194881fb6d9f034f1161b35432968aeadd76bb26c0d85ab2db",
+          "totals_mod.o": "41517fc4cbf0306f524e232ce217bcfff94e16395679d6169c42bf9fcd48ae1f",
+          "turbulence_mod.o": "37cb456a29f3546848a16a8dcb26ba972016659c5f722560849655305da0d59d",
+          "txt_output_mod.o": "891395c6370e2cf77ae3f2b45265a763a0026ab60c634d42218bd941d403d58f",
+          "unc_mod.o": "3c0a0cba93f98d19dfab23e7fa5cce24e256984b9c3e699f8b34abcec6c0abdb",
+          "verttransform_mod.o": "0c2bbd7544840049497a4cca83e75a8d38568516a9dd30a021ad4156ae73f6c2",
+          "wetdepo_mod.o": "467541a1e5e7e5d7e247ed0f67d3e656022040e38909f4e0ea9033e21ab2f60f",
+          "windfields_mod.o": "95e2d5ea90999a5137ea360bf9bb0dcf10d8f672cdfa76557bcf845294aa4a4f",
+          "xmass_mod.o": "6dc8222775e9ffc58889561b6f028c5ece99aafb0621adf5cf57266644a21796"
+        },
+        "artifacts_sha256": {
+          "input.txt": "a8cce6b7bfafebb60acafe2bf5d9389f21d90fbe58b918bdebbf14fa07bdc4a1",
+          "output.txt": "b10df540cc86ebb1afaccba6f9178deabbf4af1135c76adfc582868e2c957be2",
+          "full-build.log": "714ad74731540eb998085de5f2c2487b52476f410d31a2a86972f06b1f64cfd7",
+          "driver-build-run.log": "84881ccd97b23895ae55de73470cc2978e544244986facf80ea8bba17f8cd641",
+          "checkout-before.txt": "0c5cadb3987d87640c63c2e5176da07a652172fb30088c813c84feb154a5e1b2",
+          "checkout-after.txt": "0c5cadb3987d87640c63c2e5176da07a652172fb30088c813c84feb154a5e1b2",
+          "build/w-production-oracle": "26c0b988d2f4208811efbf48f39b41029855a2e91ae892287281b09c00c6a86d",
+          "build/w-production-oracle-driver.o": "5e6889f0bb85ca71e86b4cb7fc2a64c9999e8fe29c448362349061fd364a9c57",
+          "build/w-production-oracle.nm": "0283925d52149ede9fcbbbd0d19f58413a5a571e38e09072603e0e90fdd34b36",
+          "build/w-production-oracle.call-sites": "19e775d9170c39c14bfcdc9ca24b3ef34674bc9098a78de9f35cad75deb469d9",
+          "build/w-production-oracle.link-map": "86d3b3aeeb5f14ac700b165d83293c397f4c76a9b9c2fb734bcf4e5b93df9d09",
+          "build/linked-objects.txt": "388d1f824306df30fc74fbedc6464e86602b6a93ba782e9e1dad20ffacc3327c",
+          "build/compiler-identity.txt": "9e9d4386d9ee356d38035834a85bdc95acd63962aebf458438bc50b4b049afb6",
+          "build/advance_mod.original.o": "66c1a007820b6bba0a476525251c99cdfc080b870a1bee35d16df21b37eb5dc0",
+          "build/advance-original.text": "d78d2e34b3ef53c3ad94b18bdc6e2beb9bc421564d0b8310dcabd4557e210119",
+          "build/advance-exported.text": "d78d2e34b3ef53c3ad94b18bdc6e2beb9bc421564d0b8310dcabd4557e210119",
+          "build/advance-original.disassembly": "1cb23e24e0206d187f0ce861cddba1298c06adce1710719673c36d33fe8fcf7b",
+          "build/advance-exported.disassembly": "3c54676c2c094542d6628305856bf2dcd002821bd0aeea9ef7fbfce2a5734032",
+          "build/executable.disassembly": "b859502ee98dba1a910623f941ffe12eda4ecb83e6736fe584adf6eec610b71a",
+          "build/advance-original.elf": "90f4c8607b262f52cfdd5a90e5d184544ebdfa210a234952fd2c94f82c7c6cbf",
+          "build/advance-exported.elf": "428bb9b385a326e25166dcf3a7bf071db4d2d41bd8b043e081d22ffb81b95563"
+        },
+        "verified_call_edges": [
+          [
+            "MAIN__",
+            "__advance_mod_MOD_advance"
+          ],
+          [
+            "MAIN__",
+            "__advance_mod_MOD_pushpartdown"
+          ],
+          [
+            "MAIN__",
+            "__verttransform_mod_MOD_verttransform_init"
+          ],
+          [
+            "MAIN__",
+            "__verttransform_mod_MOD_verttransform_ecmwf_heights"
+          ],
+          [
+            "__advance_mod_MOD_advance",
+            "__interpol_mod_MOD_interpol_wind"
+          ],
+          [
+            "__advance_mod_MOD_advance",
+            "__interpol_mod_MOD_interpol_wind_short"
+          ],
+          [
+            "__advance_mod_MOD_advance",
+            "__settling_mod_MOD_get_settling"
+          ]
+        ],
+        "symbol_export": "pushpartdown visibility only; repeating objcopy on original reproduces the entire linked object"
+      }
+    }
+  ]
+}

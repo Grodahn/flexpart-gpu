@@ -508,3 +508,12 @@ regional mother column `(0,0)` with pressure >100000 Pa; other routes fail close
 No interpolation equations, W semantics, production consumers or existing
 nonuniform-geometry rejections change. This establishes preparation-only device
 evidence, not production advection parity. See [the lifecycle contract](shared-height-preparation.md).
+
+## Issue #188: GPU shared-height W preparation
+
+Add the #186 normalized-interface remap and regional interior X/Y correction on
+the existing #184 target and same-source U/V resources. No physical equation,
+normalization, query or production-consumer contract changes. Evaluate the
+pinned latitude cosine with an f32 degree-14 even polynomial because native
+GPU cosine rounding can exceed the unchanged velocity budget near
+cancellation; see [the numerical proof and scope](shared-height-w-preparation.md).

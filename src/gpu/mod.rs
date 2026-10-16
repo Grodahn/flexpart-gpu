@@ -29,6 +29,7 @@ pub mod preflight;
 pub mod rng;
 pub mod settling;
 pub mod shared_height;
+pub mod shared_height_w;
 pub mod temporal;
 pub mod vertical;
 pub mod wet_deposition;

@@ -24,6 +24,8 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## Meteorology
 
+- Shared-height W preparation (#188): [owner](../../src/gpu/shared_height_w.rs), [interface remap](../../src/shaders/shared_height_w_remap.wgsl), [interior slopes](../../src/shaders/interior_w_slope.wgsl), [handoff](../shared-height-w-preparation.md), [device proof](../../tests/shared_height_w_gpu.rs). Reuses #184; #190 owns adoption.
+
 - Shared-height U/V preparation (#184): [owner](../../src/gpu/shared_height.rs), [kernel](../../src/shaders/shared_height_uv.wgsl), [lifecycle](../shared-height-preparation.md), [device proof](../../tests/shared_height_gpu.rs). Preparation only; #185 owns adoption.
 - Shared-height U/V queries (#185): [typed adoption](../../src/gpu/meteorology/shared_uv.rs), [status guard](../../src/shaders/shared_height_query_status.wgsl), [handoff contract](../shared-height-query.md), [public query proof](../../tests/shared_height_query.rs).
 

@@ -623,6 +623,16 @@ impl PreparedSharedHeightUv {
         Arc::ptr_eq(&self.target.0, &other.target.0)
     }
 
+    /// Lend the retained native upload for the #188 same-source slope calculation.
+    pub(crate) fn source(&self) -> &SharedHeightSource {
+        &self.source
+    }
+
+    /// Lend native center heights without another geometry upload or reconstruction.
+    pub(crate) fn native(&self) -> &wgpu::Buffer {
+        &self.source.0.native
+    }
+
     /// Lend explicit physical metadata together with exact source and target provenance.
     #[must_use]
     pub fn metadata(&self) -> PreparedSharedHeightMetadata<'_> {

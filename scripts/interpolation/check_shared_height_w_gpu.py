@@ -122,6 +122,16 @@ def check(path, software=False, hardware=False):
     require(len(inputs['snapshots'])==len(inputs['native_motion'])==len(record['w_sources'])==len(record['uv_metadata'])==2, 'source count')
     require(record['final_w_status']==record['final_uv_status']==[[2]*9,[2]*9], 'preparation not completed')
     target=record['target']; heights=record['actual_target_height_m_agl']
+    serialized_target=record.get('serialized_target_identity')
+    require(isinstance(serialized_target,str), 'missing target identity preimage')
+    target_preimage=dict(target,identity_sha256='')
+    decoded_target=json.loads(serialized_target)
+    # Direct serde f32 serialization is shortest-roundtrip; serde Value uses f64 numbers.
+    require_f32_values(decoded_target['height_m_agl'],target_preimage['height_m_agl'], 'target preimage heights')
+    decoded_target['height_m_agl']=target_preimage['height_m_agl']
+    require(decoded_target==target_preimage and
+            digest(serialized_target.encode())==target['identity_sha256'], 'target provenance hash')
+    require(target['selection_rule']=='regional_mother_nonrestart_first_y_then_x_ps_gt_100000_at_0_0_ground_zero', 'target selection rule')
     require(heights==target['height_m_agl'] and len(heights)==4 and heights[0]==0, 'target values')
     require(target['height_sha256']==digest(struct.pack('<4f',*heights)) and target['selected_xy']==[0,0], 'target byte hash/selection')
     for a,b in zip(heights,oracle['scientific']['target_height_m_agl']):require(abs(a-b)<=max(.02,1e-5*abs(b)), 'target #30 policy')

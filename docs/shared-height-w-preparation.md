@@ -59,7 +59,7 @@ must fail the frozen full result. Endpoints and horizontal boundaries are
 exactly unchanged across controls; endpoint copies equal the uploaded normalized
 f32 values exactly, with the Fortran comparison using the velocity policy.
 
-The X latitude factor is the pinned cosine. Some DirectX native cosine
+The X latitude factor is the pinned cosine. Some native GPU cosine
 implementations exceed the final velocity budget near cancellation. The WGSL
 therefore evaluates the even cosine Maclaurin polynomial through degree 14 on
 the accepted `[-pi/2,pi/2]` interval. Its exact-arithmetic truncation error is
@@ -88,11 +88,12 @@ Use `FLEXPART_GPU_SOFTWARE=1` and `--software` for a real software-WGSL adapter.
 Missing devices fail the test; they cannot produce passing evidence.
 `FLEXPART_GPU_INTERIOR_W_EVIDENCE` chooses a separate evidence directory.
 
-Evidence includes exact serialized source/native/U/V/grid preimages, native
+Evidence includes exact serialized source/native/U/V/grid/target preimages, native
 interface lanes, raw device W and U/V, target bytes, all direct references,
 individual slope contributions, differences, hashes, linked-oracle provenance
-and `GpuCalculationEvidence`. The auditor recomputes comparisons and input hashes;
-mutation tests reject absent/corrupt rows, directions, provenance and execution.
+and `GpuCalculationEvidence`. The auditor recomputes comparisons, input hashes
+and the shared-target identity, and requires the supported #184 target selection
+rule. Mutation tests reject absent/corrupt rows, directions, provenance and execution.
 Full logs remain with the owning run. The software CI adds this test/validator to
 #177's meteorology domain and immutable aggregate evidence; the technical gate
 also uses its two freshly reproduced direct oracle builds.

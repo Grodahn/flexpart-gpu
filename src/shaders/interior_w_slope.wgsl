@@ -1,6 +1,6 @@
 // FLEXPART 11.1 verttransform_mod.f90:625-655; windfields_mod.f90:630-631.
-// W += interpolated native-native_center_height slope_x * U_shared * dxconst / cos(latitude)
-//    + interpolated native-native_center_height slope_y * V_shared * dyconst.
+// W += interpolated native-center-height slope_x * U_shared * dxconst / cos(latitude)
+//    + interpolated native-center-height slope_y * V_shared * dyconst.
 // Same current-column native_center_height indices are used in every neighbor; no terrain term.
 struct Parameters {
     nx:u32, ny:u32, levels:u32, padding:u32,
@@ -23,7 +23,7 @@ const DEGREE_TO_RADIAN:f32=PI/180.0;
 fn finite(v:f32)->bool{return abs(v)<=3.402823466e38;}
 fn native_center_height(level:u32,column:u32)->f32{return native_uv[level*params.nx*params.ny+column].x;}
 // Evaluate the pinned cosine on the accepted nonpolar interval [-pi/2,pi/2].
-// Native DirectX cosine error can exceed the final velocity budget at cancellation.
+// Native GPU cosine error can exceed the final velocity budget at cancellation.
 // The even Maclaurin polynomial through x^14 has < 7e-11 truncation error here.
 // This retains f32 arithmetic and the pinned latitude factor.
 fn latitude_cosine(angle:f32)->f32 {

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Mutation tests for the #188 required device evidence auditor."""
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -53,6 +54,44 @@ class EvidenceTests(unittest.TestCase):
                        lambda r:r['target'].update(height_sha256='0'*64),
                        lambda r:r['gpu_evidence']['oracle'].update(executable_sha256='0'*64)]:
             with self.subTest(change=change), self.assertRaises(ValueError):self.audit(change)
+
+    @staticmethod
+    def rebind_target(record, target, serialized):
+        """Keep every dependent envelope consistent so the target audit is exercised."""
+        record['target']=target
+        record['serialized_target_identity']=serialized
+        for index in range(2):
+            record['uv_metadata'][index]['target']=copy.deepcopy(target)
+            metadata=json.loads(record['serialized_uv_metadata'][index])
+            metadata['target']=json.loads(serialized)
+            metadata['target']['identity_sha256']=target['identity_sha256']
+            encoded=json.dumps(metadata,separators=(',',':'))
+            record['serialized_uv_metadata'][index]=encoded
+            rebound=hashlib.sha256(encoded.encode()).hexdigest()
+            record['w_sources'][index]['prepared_uv_sha256']=rebound
+            record['w_metadata'][index]['source']['prepared_uv_sha256']=rebound
+            record['w_metadata'][index]['prepared_uv']['target']=copy.deepcopy(target)
+
+    def test_consistently_rebound_false_target_identity_fails(self):
+        def change(record):
+            target=copy.deepcopy(record['target']);target['identity_sha256']='0'*64
+            self.rebind_target(record,target,record['serialized_target_identity'])
+        with self.assertRaisesRegex(ValueError,'target provenance hash'):self.audit(change)
+
+    def test_consistently_rebound_unsupported_selection_fails(self):
+        def change(record):
+            target=copy.deepcopy(record['target']);target['selection_rule']='unsupported_selection'
+            preimage=json.loads(record['serialized_target_identity'])
+            preimage['selection_rule']=target['selection_rule']
+            encoded=json.dumps(preimage,separators=(',',':'))
+            target['identity_sha256']=hashlib.sha256(encoded.encode()).hexdigest()
+            self.rebind_target(record,target,encoded)
+        with self.assertRaisesRegex(ValueError,'target selection rule'):self.audit(change)
+
+    def test_missing_or_drifted_target_preimage_fails(self):
+        for change in [lambda r:r.pop('serialized_target_identity'),
+                       lambda r:r.update(serialized_target_identity=r['serialized_target_identity']+' ')]:
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError,'target'):self.audit(change)
 
     def test_missing_direction_and_unbound_metrics_fail(self):
         for change in [lambda r:r['contributions'].pop(), lambda r:r['contributions'][0].update(x_m_s=0.0),

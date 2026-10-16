@@ -537,7 +537,11 @@ fn test_shared_w_every_fortran_control_row_and_retained_reuse() {
     }
     let candidate_executable = std::env::current_exe().unwrap();
     let candidate_executable_sha256 = sha256_hex(&std::fs::read(&candidate_executable).unwrap());
+    let mut target_preimage = prepared[0].source().uv().target().identity().clone();
+    target_preimage.identity_sha256.clear();
+    let serialized_target_identity = serde_json::to_string(&target_preimage).unwrap();
     let record = json!({
+        "serialized_target_identity":serialized_target_identity,
         "candidate_executable_sha256":candidate_executable_sha256,
         "source_sha256":{
             "src/gpu/shared_height_w.rs":sha256_hex(include_bytes!("../src/gpu/shared_height_w.rs")),

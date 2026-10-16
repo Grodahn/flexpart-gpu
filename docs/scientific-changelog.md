@@ -502,5 +502,5 @@ Add the #186 normalized-interface remap and regional interior X/Y correction on
 the existing #184 target and same-source U/V resources. No physical equation,
 normalization, query or production-consumer contract changes. Evaluate the
 pinned latitude cosine with an f32 degree-14 even polynomial because native
-DirectX cosine rounding can exceed the unchanged velocity budget near
+GPU cosine rounding can exceed the unchanged velocity budget near
 cancellation; see [the numerical proof and scope](shared-height-w-preparation.md).

@@ -14,6 +14,7 @@ def retained(run):
     report = json.loads((run / 'report.json').read_text())
     require(report['state'] == 'PASS', 'record-only execution is not regression verification')
     require(report['science'] == decode(run / 'output.txt'), 'decoded report/raw disagreement')
+    require(digest(run / 'output.txt') == digest(FIXTURE / 'output.txt'), 'frozen raw output changed')
     baseline = json.loads((FIXTURE / 'report.json').read_text())
     require(report['science'] == baseline['science'], 'scientific baseline disagreement')
     p = report['provenance']

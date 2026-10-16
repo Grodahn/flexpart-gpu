@@ -77,6 +77,18 @@ class TopBoundaryEvidenceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'incomplete linked-object'):
                 retained(run)
 
+    def test_reformatted_raw_bytes_cannot_pass_as_frozen_reproduction(self):
+        with tempfile.TemporaryDirectory(dir=self.scratch) as tmp:
+            run = Path(tmp)
+            report = json.loads((FIXTURE / 'report.json').read_text())
+            report['state'] = 'PASS'
+            (run / 'output.txt').write_bytes((FIXTURE / 'output.txt').read_bytes().replace(b'GRID ', b'GRID  ', 1))
+            self.assertEqual(decode(run / 'output.txt'), report['science'])
+            report['provenance']['artifacts_sha256']['output.txt'] = digest(run / 'output.txt')
+            (run / 'report.json').write_text(json.dumps(report))
+            with self.assertRaisesRegex(ValueError, 'frozen raw output changed'):
+                retained(run)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -642,7 +642,7 @@ fn test_shared_vector_all_public_query_rows_identity_and_fatal_atomicity() {
             field.id = FieldId::VerticalVelocity;
             field.sign = SignConvention::PositiveUpward;
             field.vertical_staggering = VerticalStaggering::LevelInterface;
-            field.shape[0] += 1;
+            field.shape[2] += 1;
             field.values = geometry
                 .runtime_view()
                 .unwrap()

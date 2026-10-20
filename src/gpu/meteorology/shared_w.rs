@@ -37,6 +37,24 @@ impl SharedHeightWQueryIdentity {
     }
 }
 
+fn prepared_w_descriptor(
+    source: &crate::meteorology::Field,
+    target_levels: usize,
+) -> Result<crate::meteorology::Field, MeteorologyCompositionError> {
+    let mut field = source.clone();
+    field.id = FieldId::VerticalVelocity;
+    field.sign = crate::meteorology::SignConvention::PositiveUpward;
+    // Canonical shape is [x,y,z], independently of x-fastest buffer indexing.
+    *field
+        .shape
+        .get_mut(2)
+        .ok_or(MeteorologyCompositionError::Incompatible(
+            "shared-height W requires a three-dimensional descriptor",
+        ))? = target_levels;
+    field.values.clear();
+    Ok(field)
+}
+
 impl CanonicalGpuField<'_> {
     /// Adopt one complete same-source U/V/W vector, in that order, on #184's AGL target.
     /// This validates immutable identities without reading device status. Each query
@@ -98,15 +116,48 @@ impl CanonicalGpuField<'_> {
         for member in &mut vertical.members {
             // The descriptor represents the prepared metric grid. Native interface
             // staggering and normalization remain explicit in corrected_w metadata.
-            member.field.id = FieldId::VerticalVelocity;
-            member.field.sign = crate::meteorology::SignConvention::PositiveUpward;
-            *member.field.shape.first_mut().ok_or_else(invalid)? = member.planes.len();
-            member.field.values.clear();
+            member.field = prepared_w_descriptor(&member.field, member.planes.len())?;
             member.runtime.as_mut().ok_or_else(invalid)?.motion = member
                 .prepared_w
                 .as_ref()
                 .map(|w| w.source().identity().normalization.clone());
         }
         Ok(fields)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_prepared_w_descriptor_preserves_horizontal_shape_and_replaces_z() {
+        let snapshot: Snapshot = serde_json::from_str(include_str!(
+            "../../../fixtures/vertical/synthetic-column-v1.json"
+        ))
+        .expect("canonical fixture");
+        let mut source = snapshot
+            .fields
+            .iter()
+            .find(|field| field.id == FieldId::Temperature)
+            .expect("fixture model-level shape")
+            .clone();
+        source.id = FieldId::WindU;
+        source.unit = crate::meteorology::Unit::MeterPerSecond;
+        source.sign = crate::meteorology::SignConvention::PositiveEastward;
+        let original = source.clone();
+        let target_levels = source.shape[2] + 1;
+        let descriptor = prepared_w_descriptor(&source, target_levels).expect("3-D source");
+        assert_eq!(
+            descriptor.shape,
+            [source.shape[0], source.shape[1], target_levels]
+        );
+        assert_eq!(descriptor.id, FieldId::VerticalVelocity);
+        assert_eq!(
+            descriptor.sign,
+            crate::meteorology::SignConvention::PositiveUpward
+        );
+        assert!(descriptor.values.is_empty());
+        assert_eq!(source, original);
     }
 }

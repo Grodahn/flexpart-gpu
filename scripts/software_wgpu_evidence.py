@@ -28,6 +28,15 @@ QUERY_STEP = '''name: Prove shared-height U/V canonical query adoption
           python3 scripts/interpolation/test_check_shared_height_query.py
 '''
 
+VECTOR_STEP = '''name: Prove complete shared-height U/V/W canonical queries (#190)
+        id: shared-height-vector-190
+        run: |
+          set -euo pipefail
+          cargo test --test shared_height_vector -- --nocapture --test-threads=1 > target/ci-gate/shared-height-vector.log 2>&1
+          python3 scripts/interpolation/check_shared_height_vector.py target/ci-gate/shared-height-vector/report.json --software
+          python3 scripts/interpolation/test_check_shared_height_vector.py
+'''
+
 
 def require(condition, message):
     """Fail closed on incomplete execution or provenance."""
@@ -44,6 +53,11 @@ def contract():
                            'sha256': hashlib.sha256(coverage.normalized(QUERY_STEP).encode()).hexdigest()})
     result['artifacts']['gpu-meteorology'].extend([
         'target/ci-gate/shared-height-query.log', 'target/ci-gate/shared-height-query/*.json'])
+    result['steps'].append({'name': 'Prove complete shared-height U/V/W canonical queries (#190)',
+                           'block': VECTOR_STEP, 'owners': ['gpu-meteorology'],
+                           'sha256': hashlib.sha256(coverage.normalized(VECTOR_STEP).encode()).hexdigest()})
+    result['artifacts']['gpu-meteorology'].extend([
+        'target/ci-gate/shared-height-vector.log', 'target/ci-gate/shared-height-vector/*.json'])
     return result
 
 
@@ -252,6 +266,10 @@ def audit_payload(root, domain):
                                  str((root / 'target/ci-gate/interior-w-gpu/comparison.json').resolve()), '--software'],
                                 cwd=root, capture_output=True, text=True)
         require(result.returncode == 0, 'shared-height W: '+result.stderr[-2000:])
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/interpolation/check_shared_height_vector.py'),
+                                 str((root / 'target/ci-gate/shared-height-vector/report.json').resolve()), '--software'],
+                                cwd=root, capture_output=True, text=True)
+        require(result.returncode == 0, 'shared-height complete vector: '+result.stderr[-2000:])
         paths = [p for p in files if p.startswith('target/ci-gate/accumulation-gpu/') and p.endswith('.json')]
         for prefix in ('large_scale_precipitation', 'convective_precipitation'):
             require(sum(Path(p).name.startswith(prefix+'-cell-') for p in paths) == 12, 'accumulation cell count')

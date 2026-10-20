@@ -79,6 +79,18 @@ class AggregateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'cache namespace'):
                 evidence.monolithic_view(text.replace('          shared-key: ', '          shared-key: other-'))
 
+    def test_complete_vector_stage_and_artifacts_are_required(self):
+        baseline = REAL_CONTRACT()
+        text = (evidence.ROOT / '.github/workflows/software-wgpu.yml').read_text()
+        with patch.object(evidence, 'contract', return_value=baseline):
+            self.assertIn('shared-height-vector-190', evidence.expected_stages('gpu-meteorology'))
+            self.assertIn('target/ci-gate/shared-height-vector/*.json', baseline['artifacts']['gpu-meteorology'])
+            evidence.monolithic_view(text, strict=True)
+            changed = text.replace('      - '+evidence.VECTOR_STEP, '')
+            self.assertNotEqual(text, changed)
+            with self.assertRaisesRegex(ValueError, 'protected evidence step missing'):
+                evidence.monolithic_view(changed, strict=True)
+
     def test_shared_height_query_stage_and_artifacts_are_required(self):
         baseline = REAL_CONTRACT()
         text = (evidence.ROOT / '.github/workflows/software-wgpu.yml').read_text()

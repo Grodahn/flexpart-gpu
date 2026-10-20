@@ -5,6 +5,8 @@ with an explicit #184 source representation. It reads common target heights
 and checks preparation status on-device; only this route bypasses comparison
 of native column profiles. Other fields and native sources retain the rules below.
 
+[#190 complete U/V/W](shared-height-vector.md) additionally adopts #188 corrected W with its exact same-source U/V owners, common target and normalization/correction lineage. Each component checks all three preparation dependencies before sampling. Only this explicit prepared route gains shared-grid W support.
+
 This is the reusable query/resource handoff for the canonical #76 facade.
 It establishes composition with existing #87/#88/#89 science, not production
 consumer migration or a new scientific parity claim.

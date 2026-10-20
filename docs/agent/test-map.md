@@ -70,6 +70,8 @@ Choose the subdomain; do not run every row for one field edit.
 
 ## Resident meteorology
 
+- Shared-height U/V/W adoption: `cargo test --test shared_height_vector -- --nocapture --test-threads=1`; [complete-vector audit](../../scripts/interpolation/check_shared_height_vector.py). All 15 full #186 QUERY rows through #76/#171 plus the atomic vector fixture; require both software and hardware adapters. [Identity and lifetime contract](../shared-height-vector.md).
+
 - Shared-height U/V adoption: `cargo test --test shared_height_query -- --nocapture --test-threads=1`; [complete query/status audit](../../scripts/interpolation/check_shared_height_query.py). Compare all 36 public #76/#171 U/V query results with #118, and require both software and hardware execution. [Ownership, statuses and scope](../shared-height-query.md).
 
 - Focused required device proof: `cargo test --test meteorology_resident -- --nocapture --test-threads=1`; [test](../../tests/meteorology_resident.rs). Missing adapters fail.

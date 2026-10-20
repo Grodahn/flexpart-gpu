@@ -77,6 +77,10 @@ incomplete, skipped or nonfinite execution cannot pass.
 Negative cases cover identities, source reuse, native and ASL rejection, time and
 capacity guards, inactive lanes/tails, cross-workgroup failure, independent
 incomplete W, pending/unexecuted/failed preparation, failed dependencies and
-nonfinite corners. Existing composition, resident, driver and #87/#88/#89 gates
+nonfinite corners. The native-interface test supplies schema-valid normalized W
+and requires the specific unsupported multi-column error. The evidence auditor
+binds query sources to the exact prepared U/V metadata and checks physical signs,
+grid/geometry provenance, temporal brackets and scalar query layouts.
+Existing composition, resident, driver and #87/#88/#89 gates
 remain required. This evidence proves the canonical query handoff; it does not
 claim full FLEXPART production parity.

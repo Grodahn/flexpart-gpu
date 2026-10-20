@@ -81,6 +81,47 @@ class QueryEvidenceTests(unittest.TestCase):
             self.write(value)
             with self.subTest(mutation=mutation),self.assertRaises(ValueError):check(self.path)
 
+    def test_self_consistent_query_sources_must_match_prepared_resources(self):
+        for field in ('geometry_identity', 'input_sha256'):
+            value = copy.deepcopy(self.original)
+            value['sources'][1][field] = 'f'*64
+            for name in ('host_metadata', 'resident_metadata'):
+                for metadata in value[name]:
+                    if field == 'geometry_identity':
+                        metadata['geometry_identity'][1] = 'f'*64
+                    else:
+                        metadata['shared_height']['source_input_sha256'][1] = 'f'*64
+            self.write(value)
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'query source differs'):
+                check(self.path)
+
+    def test_query_physical_bracket_and_layout_metadata_are_required(self):
+        paths = [('host_metadata', 0, 'sign'),
+                 ('resident_metadata', 0, 'horizontal_staggering'),
+                 ('resident_metadata', 0, 'horizontal_grid', 'dx_deg'),
+                 ('host_metadata', 0, 'geometry_provenance', 0, 'height_algorithm_id'),
+                 ('resident_metadata', 5, 'temporal_bracket', 'weights', 'dt1_seconds'),
+                 *[('resident_metadata', 0, key) for key in
+                   ('capacity', 'active_count', 'component_count', 'lane_stride')],
+                 ('host_metadata', 0, 'value_count'),
+                 ('host_metadata', 0, 'resolved_heights_agl_m', 0)]
+        for path in paths:
+            value = copy.deepcopy(self.original)
+            selected = value
+            for key in path[:-1]:
+                selected = selected[key]
+            selected[path[-1]] = 2
+            self.write(value)
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                check(self.path)
+
+    def test_native_interface_w_requires_the_specific_unsupported_route(self):
+        value = copy.deepcopy(self.original)
+        next(c for c in value['negative_cases'] if c['case'] == 'native-interface-w')['rejection'] = 'missing W'
+        self.write(value)
+        with self.assertRaisesRegex(ValueError, 'unsupported geometry boundary'):
+            check(self.path)
+
 
 if __name__ == '__main__':
     unittest.main()

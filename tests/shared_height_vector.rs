@@ -626,15 +626,63 @@ fn test_shared_vector_all_public_query_rows_identity_and_fatal_atomicity() {
         "native-nonuniform",
         native_field.prepare_sample(&ctx, request)
     );
-    rejected!(
-        "native-interface-w",
-        CanonicalGpuField::upload(
-            &ctx,
-            FieldId::VerticalVelocity,
-            &refs,
-            &views.iter().copied().map(Some).collect::<Vec<_>>()
+    // A missing W field would reject at schema validation and never exercise
+    // the native interface path's unsupported multi-column geometry boundary.
+    let native_snapshots: Vec<_> = snapshots
+        .iter()
+        .zip(&geometries)
+        .map(|(snapshot, geometry)| {
+            let mut snapshot = snapshot.clone();
+            let mut field = snapshot
+                .fields
+                .iter()
+                .find(|f| f.id == FieldId::WindU)
+                .unwrap()
+                .clone();
+            field.id = FieldId::VerticalVelocity;
+            field.sign = SignConvention::PositiveUpward;
+            field.vertical_staggering = VerticalStaggering::LevelInterface;
+            field.shape[0] += 1;
+            field.values = geometry
+                .runtime_view()
+                .unwrap()
+                .vertical_velocity()
+                .unwrap()
+                .values_ms()
+                .to_vec();
+            snapshot.fields.push(field);
+            snapshot.validate(&Requirements::advection()).unwrap();
+            snapshot
+        })
+        .collect();
+    let native_geometries: Vec<_> = native_snapshots
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            reconstruct_vertical_geometry_with_motion(s, &fixture::native(i + 1)).unwrap()
+        })
+        .collect();
+    let native_error = CanonicalGpuField::upload(
+        &ctx,
+        FieldId::VerticalVelocity,
+        &native_snapshots.iter().collect::<Vec<_>>(),
+        &native_geometries
+            .iter()
+            .map(|g| Some(g.runtime_view().unwrap()))
+            .collect::<Vec<_>>(),
+    )
+    .err()
+    .expect("native multi-column interface W must reject");
+    let flexpart_gpu::gpu::meteorology::MeteorologyCompositionError::Vertical(
+        flexpart_gpu::gpu::vertical::GpuVerticalError::Sampling(
+            flexpart_gpu::meteorology::vertical_sampling::VerticalSamplingError::UnsupportedInterfaceRuntime {reason}
         )
+    ) = native_error else {panic!("unexpected native W rejection: {native_error}")};
+    assert_eq!(
+        reason,
+        "#80 freezes a single vertical column without horizontal slope correction"
     );
+    negatives.push(json!({"case":"native-interface-w","passed":true,"rejection":reason}));
     for (case, active, mut parts, fault, expected_valid) in [
         (
             "cross-workgroup",

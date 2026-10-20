@@ -95,6 +95,8 @@ def check(path,software=False,hardware=False):
     target = report['targets'][0]
     require(len(report['targets']) == 2 and report['targets'][1] == target, 'common run target')
     require(len(report['sources']) == 2 and target['initial_source'] == report['sources'][0], 'initial source')
+    require(report['sources'] == [metadata['source'] for metadata in report['uv_metadata']],
+            'query source differs from prepared U/V source')
     heights = report['actual_target_height_m_agl']
     require(heights == target['height_m_agl'] and len(heights) == 4 and
             hashlib.sha256(struct.pack('<4f', *heights)).hexdigest() == target['height_sha256'], 'device target bytes')
@@ -118,7 +120,12 @@ def check(path,software=False,hardware=False):
         for index,metadata in enumerate(report[metadata_name]):
             component=index//15;query=queries[index%15]
             require(metadata['field_id']==('wind_u','wind_v','vertical_velocity')[component] and
-                metadata['unit']=='meter_per_second' and metadata['vertical_staggering']=='level_center','physical output contract')
+                metadata['unit']=='meter_per_second' and metadata['vertical_staggering']=='level_center' and
+                metadata['sign']==('positive_eastward','positive_northward','positive_upward')[component] and
+                metadata['horizontal_staggering']=='cell_center', 'physical output contract')
+            require(metadata['horizontal_grid']==report['sources'][0]['grid'] and
+                metadata['geometry_provenance']==[s['geometry_provenance'] for s in report['sources']],
+                'query grid/geometry provenance')
             shared=metadata['shared_height']
             require(shared=={'preparation':'shared_height_uvw_190','target_identity_sha256':target['identity_sha256'],
                 'target_height_sha256':target['height_sha256'],'source_input_sha256':[s['input_sha256'] for s in report['sources']],
@@ -128,6 +135,21 @@ def check(path,software=False,hardware=False):
                 metadata['source_times']==[s['time'] for s in report['sources']],'bracket sources')
             selection=metadata['request']['time'] if metadata_name=='host_metadata' else metadata['time']
             require(selection=={'instantaneous':{'calendar':'gregorian','epoch_seconds':query['time_s']}},'query time')
+            sample_time=query['time_s']
+            require(metadata['temporal_bracket']=={
+                'lower_index':0, 'upper_index':1,
+                'source_timestamps':{'lower_epoch_seconds':0, 'upper_epoch_seconds':3600},
+                'application':{0:'first_endpoint',1800:'linear_interior',3600:'last_endpoint'}[sample_time],
+                'weights':{'dt1_seconds':sample_time,'dt2_seconds':3600-sample_time,
+                           'inverse_span_per_second':1/3600}}, 'query bracket identity')
+            if metadata_name=='resident_metadata':
+                require(all(metadata[key]==1 for key in ('capacity','active_count','component_count','lane_stride')),
+                        'resident query layout')
+            else:
+                require(metadata['value_count']==1 and
+                    len(metadata['resolved_heights_agl_m'])==2 and
+                    all(f32_bits(height)==f32_bits(query['height_m_agl'])
+                        for height in metadata['resolved_heights_agl_m']), 'host query layout')
             if component==2 and metadata_name=='host_metadata':require(metadata['motion_provenance']==[s['normalization'] for s in report['w_sources']],'W normalization handoff')
             if metadata_name=='host_metadata':
                 request=metadata['request']
@@ -223,6 +245,9 @@ def check(path,software=False,hardware=False):
         name=case['case']
         if name=='adjacent-bracket-reuse':
             require(len(case['values'])==3 and all(math.isfinite(a) and a==b for a,b in case['values']),'retained adjacent source')
+        if name=='native-interface-w':
+            require(case['rejection']=='#80 freezes a single vertical column without horizontal slope correction',
+                    'native interface W did not reach the unsupported geometry boundary')
         if name not in expected_device:continue
         result=case['result'];statuses=result['statuses'];values=result['output']
         require(len(statuses)==3 and len(values)==130 and all(len(s['lanes'])==130 for s in statuses),'vector checkpoint dimensions')

@@ -14,6 +14,22 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ---
 
+### 2026-10-20 — Adopt prepared shared-height U/V/W queries (#190)
+**Impact**: numerics (validated prepared full-vector route only)
+**Files**: `src/gpu/meteorology.rs`, `src/gpu/meteorology/shared_uv.rs`,
+`src/gpu/meteorology/shared_w.rs`
+**Validation**: 90 direct #186 public-API comparisons plus 45 vector-consumer
+comparisons on actual software and hardware WGSL adapters; identity/status regressions.
+
+The canonical #76 prepared-field and #171 resident APIs consume #188's corrected
+interface-source W with its exact #184 U/V and target owners. Preparation status
+and normalization/correction identities remain mandatory. No scientific equation,
+normalization, correction, sampler, tolerance or native-field behavior changes.
+Validation compares all 15 genuine #186 full QUERY rows through both APIs, plus
+a status-aware vector fixture. This is canonical query integration evidence;
+production consumers and #180 transport boundaries remain separate. See the
+[handoff and reproduction contract](shared-height-vector.md).
+
 ### 2026-10-15 â€” Prove pinned transport top action and signed correction order (#180)
 **Impact**: none (direct Fortran research; no production GPU change)
 **Files**: `docs/research/transport-top-180.md`, `docs/science/advection.md`,

@@ -10,15 +10,18 @@
 //!
 //! Horizontal/vertical order follows FLEXPART `interpol_mod.f90:1651-1703`.
 //! Native differing-height stencils remain unsupported. Explicit #184 prepared
-//! U/V instead use their verified common AGL grid; #88's equations are unchanged.
+//! U/V and #190 full U/V/W instead use their verified common AGL grid;
+//! #88's equations are unchanged.
 //! Source upload and query preparation are explicit allocation boundaries.
 //! [`PreparedMeteorologySample::encode`] never submits, waits, polls, or reads back.
 
 use serde::{Deserialize, Serialize};
 pub mod resident;
 mod shared_uv;
+mod shared_w;
 use sha2::{Digest, Sha256};
 pub use shared_uv::SharedHeightQueryIdentity;
+pub use shared_w::SharedHeightWQueryIdentity;
 use thiserror::Error;
 
 use super::{
@@ -337,6 +340,7 @@ struct RuntimeColumns<'ctx> {
 }
 
 struct SourceMember<'ctx> {
+    prepared_w: Option<std::sync::Arc<super::shared_height_w::PreparedSharedHeightW>>,
     prepared_uv: Option<std::sync::Arc<super::shared_height::PreparedSharedHeightUv>>,
     resident_values: Option<wgpu::Buffer>,
     snapshot: Snapshot,
@@ -743,6 +747,7 @@ fn upload_member<'ctx>(
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(SourceMember {
+        prepared_w: None,
         prepared_uv: None,
         resident_values: resident::upload_source_columns(
             ctx,
@@ -856,7 +861,16 @@ impl CanonicalGpuField<'_> {
         match (kind, selection) {
             (TemporalKind::Instantaneous, MeteorologyTimeSelection::Instantaneous(request)) => {
                 let snapshots: Vec<_> = self.members.iter().map(|m| &m.snapshot).collect();
-                let bracket = resolve_temporal_bracket(self.field_id, &snapshots, request)?;
+                // Prepared W shares the exact validated U/V source time. Its source
+                // may carry normalized motion in #30 rather than a Snapshot W field.
+                let time_field = if self.field_id == FieldId::VerticalVelocity
+                    && self.members[0].prepared_w.is_some()
+                {
+                    FieldId::WindU
+                } else {
+                    self.field_id
+                };
+                let bracket = resolve_temporal_bracket(time_field, &snapshots, request)?;
                 Ok((
                     vec![bracket.lower_index, bracket.upper_index],
                     Some(bracket),

@@ -27,6 +27,8 @@ path moves. Markdown links are the machine-readable path surface, audited by
 - Shared-height W preparation (#188): [owner](../../src/gpu/shared_height_w.rs), [interface remap](../../src/shaders/shared_height_w_remap.wgsl), [interior slopes](../../src/shaders/interior_w_slope.wgsl), [handoff](../shared-height-w-preparation.md), [device proof](../../tests/shared_height_w_gpu.rs). Reuses #184; #190 owns adoption.
 
 - Shared-height U/V preparation (#184): [owner](../../src/gpu/shared_height.rs), [kernel](../../src/shaders/shared_height_uv.wgsl), [lifecycle](../shared-height-preparation.md), [device proof](../../tests/shared_height_gpu.rs). Preparation only; #185 owns adoption.
+- Shared-height full-vector queries (#190): [typed adoption](../../src/gpu/meteorology/shared_w.rs), [handoff](../shared-height-vector.md), [device/oracle proof](../../tests/shared_height_vector.rs). Reuses #184/#188 and #76/#171; production consumers remain separate.
+
 - Shared-height U/V queries (#185): [typed adoption](../../src/gpu/meteorology/shared_uv.rs), [status guard](../../src/shaders/shared_height_query_status.wgsl), [handoff contract](../shared-height-query.md), [public query proof](../../tests/shared_height_query.rs).
 
 - Stable canonical host API: [meteorology facade](../../src/meteorology/mod.rs); provider ingestion [GRIB](../../src/io/grib2.rs), [NetCDF](../../src/io/netcdf.rs); [stable runtime-geometry facade](../../src/meteorology/vertical.rs) and [geometry owners](#vertical-geometry), [provider vertical transform](../../src/io/vertical_transform.rs).

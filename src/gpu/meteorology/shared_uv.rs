@@ -27,6 +27,9 @@ pub struct SharedHeightQueryIdentity {
     pub target_height_sha256: String,
     /// Per-member native upload hashes, aligned with selected source snapshots.
     pub source_input_sha256: Vec<String>,
+    /// Exact corrected-interface lineage for a complete prepared vector, in source order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub corrected_w: Vec<super::shared_w::SharedHeightWQueryIdentity>,
 }
 
 impl CanonicalGpuField<'_> {
@@ -96,6 +99,7 @@ impl CanonicalGpuField<'_> {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             members.push(SourceMember {
+                prepared_w: None,
                 prepared_uv: Some(Arc::clone(resource)),
                 resident_values: None,
                 snapshot: (*snapshot).clone(),
@@ -138,7 +142,21 @@ impl CanonicalGpuField<'_> {
     ) -> Option<SharedHeightQueryIdentity> {
         let first = self.members[*indices.first()?].prepared_uv.as_ref()?;
         Some(SharedHeightQueryIdentity {
-            preparation: "shared_height_uv_184".into(),
+            preparation: if self.members[0].prepared_w.is_some() {
+                "shared_height_uvw_190"
+            } else {
+                "shared_height_uv_184"
+            }
+            .into(),
+            corrected_w: indices
+                .iter()
+                .filter_map(|i| {
+                    self.members[*i]
+                        .prepared_w
+                        .as_ref()
+                        .map(|w| super::shared_w::SharedHeightWQueryIdentity::from_prepared(w))
+                })
+                .collect(),
             target_identity_sha256: first.target().identity().identity_sha256.clone(),
             target_height_sha256: first.target().identity().height_sha256.clone(),
             source_input_sha256: indices
@@ -159,6 +177,9 @@ impl CanonicalGpuField<'_> {
 
 impl SourceMember<'_> {
     pub(super) fn prepared_values(&self) -> Option<&wgpu::Buffer> {
+        if self.field.id == FieldId::VerticalVelocity {
+            return self.prepared_w.as_ref().map(|p| p.w());
+        }
         self.prepared_uv.as_ref().map(|p| {
             if self.field.id == FieldId::WindU {
                 p.u()
@@ -296,23 +317,39 @@ impl PreparationStatusKernel {
         if let Some(prepared) = &member.prepared_uv {
             // Check every source column in a separate pass before any scientific consumer.
             // This also catches a failed column outside the particle's current stencil.
-            self.0.encode(
-                ctx,
-                &[
-                    prepared.target().status(),
-                    prepared.status(),
-                    status,
+            let columns = u32::try_from(
+                prepared.source_identity().grid.nx * prepared.source_identity().grid.ny,
+            )
+            .expect("#184 validated column count fits u32");
+            let dependencies = if let Some(w) = &member.prepared_w {
+                vec![
+                    (prepared.u(), prepared.status()),
+                    (prepared.v(), prepared.status()),
+                    (w.w(), w.status()),
+                ]
+            } else {
+                vec![(
                     member
                         .prepared_values()
                         .expect("validated prepared U/V member"),
-                    &resident::uniform(ctx, &[0; 4]),
-                ],
-                u32::try_from(
-                    prepared.source_identity().grid.nx * prepared.source_identity().grid.ny,
-                )
-                .expect("#184 validated column count fits u32"),
-                encoder,
-            );
+                    prepared.status(),
+                )]
+            };
+            // Every component of a complete vector requires all three dependencies.
+            for (values, preparation) in dependencies {
+                self.0.encode(
+                    ctx,
+                    &[
+                        prepared.target().status(),
+                        preparation,
+                        status,
+                        values,
+                        &resident::uniform(ctx, &[0; 4]),
+                    ],
+                    columns,
+                    encoder,
+                );
+            }
         }
     }
 }

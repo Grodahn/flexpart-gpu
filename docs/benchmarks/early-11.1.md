@@ -5,6 +5,10 @@ defines two **non-comparable** diagnostic workloads. No speedup is calculated.
 This measures the real canonical production path without changing physics.
 Provenance marker: **GPT6.1 Sol**.
 
+The [21 October 2026 measured report](early-11.1-stage-a-20261021.md) and
+[frozen per-run receipts](../../fixtures/benchmarks/results/stage-a-20261021.json)
+retain five successful hardware/reference repetitions at both counts.
+
 ## Path audit and scientific boundary
 
 | Regime | Executed path | Scientific scope |
@@ -83,7 +87,10 @@ Candidate wall time includes production encoding/submission, profiling waits,
 per-step D2H and invariant audit. Driver initialization, canonical meteorology
 reconstruction/upload, cold first step, warm-up and final artifact write/hash are
 separate. Existing step timers are host wall intervals: submit-to-poll is not a
-GPU timestamp or an isolated transport kernel measurement. Status readbacks and
+GPU timestamp or an isolated transport kernel measurement. The raw
+`submit_to_poll_ms` field is the blocking poll duration after submission; encoding
+can already overlap GPU work, so it is not a full device execution interval.
+Status readbacks and
 per-step particles are explicit host consumers. Transfer descriptions and the
 three particle-buffer memory lower bound are not measured bandwidth/VRAM peaks.
 Unexposed GPU timestamp, peak VRAM and host peak memory are null.

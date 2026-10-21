@@ -11,7 +11,7 @@
 This project ships a Criterion benchmark suite in `benches/advection.rs` that covers:
 
 - per-stage GPU kernels (advection, Hanna, Langevin, dry/wet deposition, concentration gridding),
-- an end-to-end forward time-loop benchmark (`ForwardTimeLoopDriver::run_timestep`),
+- a legacy diagnostic forward time-loop benchmark (`ForwardTimeLoopDriver::run_legacy_diagnostic_timestep`),
 - CPU reference baselines for the same stages and an end-to-end CPU step benchmark.
 
 ## Scenarios
@@ -90,7 +90,8 @@ everything.
 
 ### Run A — GPU fire-and-forget (no readback)
 
-Measures pure GPU pipeline throughput at 1M and 10M particles.
+Measures legacy diagnostic driver throughput at 1M and 10M particles, including
+host preparation, encoding and submission overhead.
 
 ```bash
 FLEXPART_BENCH_MAX_PARTICLES=10000000 \
@@ -199,9 +200,10 @@ If no GPU adapter is available, GPU groups emit a placeholder entry; CPU baselin
 
 In addition to the Criterion micro-benchmarks above, the project includes a
 **Fortran FLEXPART vs GPU end-to-end comparison** using the `fortran-validation`
-binary and the `compare-fortran.sh` orchestration script. Both engines run on an
-identical synthetic scenario; comparison scripts produce statistical metrics and
-particle position comparisons.
+binary and the `compare-fortran.sh` orchestration script. These legacy diagnostics
+use synthetic scenarios; comparison scripts produce statistical metrics and
+particle position comparisons. Their results require an input/revision audit and
+do not establish canonical production or pinned 11.1 equivalence.
 
 ### Historical legacy diagnostic snapshots (March 2026)
 
@@ -234,12 +236,12 @@ Latest replicated 10M report:
 Measures GPU end-to-end time at 1M particles, no Fortran needed:
 
 ```bash
-# Production mode (readback off) — measures pure GPU pipeline
+# Legacy diagnostic deferred-readback mode
 OUTPUT_PATH=/dev/null PARTICLES=1000000 SYNC_READBACK=0 \
   /usr/bin/time -f 'REAL_SECONDS=%e' \
   cargo run --release --bin fortran-validation
 
-# Validation mode (readback on) — includes GPU→CPU transfer at each step
+# Legacy diagnostic validation mode — includes GPU→CPU transfer at each step
 OUTPUT_PATH=/dev/null PARTICLES=1000000 SYNC_READBACK=1 \
   /usr/bin/time -f 'REAL_SECONDS=%e' \
   cargo run --release --bin fortran-validation
@@ -380,7 +382,7 @@ done
 |----------|---------|-------------|
 | `PARTICLES` | `10000` | Number of particles to release |
 | `OUTPUT_PATH` | `target/validation/gpu_concentration.json` | Output JSON path |
-| `SYNC_READBACK` | `1` | `0` = fire-and-forget (production), `1` = full readback each step (validation) |
+| `SYNC_READBACK` | `1` | Legacy diagnostic: `0` = deferred readback, `1` = full readback each step. |
 
 ### Environment variables for `bench-timeloop`
 
@@ -396,7 +398,8 @@ done
 
 Detailed benchmark results are in `docs/benchmarks/`:
 
-- [`benchmark-fortran-vs-gpu-current.md`](benchmarks/benchmark-fortran-vs-gpu-current.md) — canonical replicated baseline for Fortran serial vs GPU production at 1M.
-- [`benchmark-fortran-vs-gpu-10m-production-20260307.md`](benchmarks/benchmark-fortran-vs-gpu-10m-production-20260307.md) — replicated Fortran serial vs GPU production campaign at 10M.
+- [`early-11.1-stage-a-20261021.md`](benchmarks/early-11.1-stage-a-20261021.md) — measured canonical hardware and pinned 11.1 diagnostic timings, explicitly non-comparable.
+- [`benchmark-fortran-vs-gpu-current.md`](benchmarks/benchmark-fortran-vs-gpu-current.md) — historical replicated legacy diagnostic baseline at 1M.
+- [`benchmark-fortran-vs-gpu-10m-production-20260307.md`](benchmarks/benchmark-fortran-vs-gpu-10m-production-20260307.md) — historical replicated legacy diagnostic campaign at 10M.
 - [`benchmark-1m-fortran-vs-gpu0.md`](benchmarks/benchmark-1m-fortran-vs-gpu0.md) — scientific comparison at 1M particles (clean aligned gridding, COM, correlation, known differences).
 - [`benchmark-scientific-validation.md`](benchmarks/benchmark-scientific-validation.md) — physics-focused validation report: advection, vertical/horizontal diffusion, vertical profile analysis, aligned physics inventory.

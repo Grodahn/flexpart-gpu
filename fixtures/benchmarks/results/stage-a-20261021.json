@@ -1,0 +1,3354 @@
+{
+  "schema": "flexpart-gpu.early-benchmark-frozen.v1",
+  "series": "stage-a-pre-197-pre-198",
+  "scientific_verdict": "NON_COMPARABLE",
+  "speedup": null,
+  "state": "PASS",
+  "candidate": {
+    "revision": "3c4c17c6ce75e9a7f3e821494045378cfab43b80",
+    "manifest_sha256": "aea59500c64c60cdf794e884e0f95cfb3f50f359c30367900eef4925acfa214c",
+    "environment": {
+      "FLEXPART_GPU_PROFILE": "1",
+      "FLEXPART_GPU_PBL_CPU": "0",
+      "FLEXPART_GPU_VALIDATION": "0",
+      "FLEXPART_GPU_COMPACTION": "0",
+      "FLEXPART_GPU_SOFTWARE": "0",
+      "FLEXPART_WG_AUTOTUNE_DISABLE_CACHE": "1"
+    },
+    "host": "Windows-11-10.0.26200-SP0",
+    "cpu": "Intel64 Family 6 Model 142 Stepping 10, GenuineIntel",
+    "logical_cpus": 8,
+    "build": {
+      "argv": [
+        "cargo",
+        "build",
+        "--release",
+        "--bin",
+        "bench-canonical"
+      ],
+      "log": "C:\\dev\\flexpart-gpu\\target\\bench-early-199\\target\\early-benchmark\\stage-a-final\\candidate-build.log",
+      "returncode": 0,
+      "wall_seconds": 1.201669000000038,
+      "log_sha256": "93e639f11c7a685960de9ac5b159cca320104c31b5700beaa7643087df386e84"
+    },
+    "binary_sha256": "22f8abb42e6efcfe95147dd7ddaa9cd38c66abb780d6f671cc622d591e5915db",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-pc-windows-msvc\nrelease: 1.98.1\nLLVM version: 22.1.8\n",
+    "reference_manifest_sha256": "f74dc7136bbf507d2585d91dbb6a180dadf0b8fb5b6f38bd07f4cee83d14b5d7",
+    "source_tree": "26068fd128f43e1f9dad9519831b63f2b6f34452",
+    "provenance_marker": "GPT6.1 Sol",
+    "oracle_build": {
+      "metadata_sha256": "903365682c5385c68e1dfaef77a6c5d1bc5de84798c53a10d256334d21a50598",
+      "log_sha256": "0eb23205f8e6e1a51f594ceaf620fb5a7236ecd60679d52838e49fe74c395d45",
+      "record": {
+        "schema": "flexpart-gpu.oracle-build-cache.v2",
+        "identity": {
+          "oracle_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+          "make_arguments": "FC=gfortran eta=no arch=x86-64 -j4",
+          "inputs_sha256": {
+            "dockerfile": "826c41ed9f772ab3c14f7c350a1f4c7cc645c08dedc0efad12b2b7857528ab9a",
+            "compose": "a5461af8c2b45c389d31d02371463562068308ba8e89737f1010fa5ce0b28bd4",
+            "oracle_manifest": "f74dc7136bbf507d2585d91dbb6a180dadf0b8fb5b6f38bd07f4cee83d14b5d7",
+            "oracle_makefile": "6e3c2e6d34e5f1fb1fd5e9b784299eab4f3bcb7d7710239d0372f2a9c11ab1f0",
+            "src/advance_mod.f90": "7c11a52ad5e0a4b4de36282d72fd4cbebe47e110a30c3609fda3a3ac266d2d68",
+            "src/binary_output_mod.f90": "cefe477e1c25020eaa2ffca93b93f104a4958f6aa2429a7f28703dba72d0dc12",
+            "src/cbl_mod.f90": "ce6e5eca324db120d31ef74bc5c0dbdbd6cd5e0f51990323b48d956c6a647d29",
+            "src/chemistry_mod.f90": "92c4dffc1ecaee7a0501b05e66d8fda0daf3eb2ba110200ae3420d5cd2233734",
+            "src/class_gribfile_mod.f90": "6d154e10d71ea18313118d22a4ecd898a03c4a4b507dec022bb8831e83e0cf76",
+            "src/cmapf_mod.f90": "467ede9c13153416ffdffceb2c78d409653319077c335890c394e6562f75d9aa",
+            "src/com_mod.f90": "a25dce18fc3d4f3bbbf1b8c64e9b2629fb4e170540d350e555118ab9dd00bab3",
+            "src/conv_mod.f90": "a7437152b6216ff39d213344c6a58f43d5dd9d26db8195409b7d51e333dfe696",
+            "src/coord_ecmwf_mod.f90": "3622737291692ef00886596a832e93500533f3ab188eb5473f1b70613f706e6f",
+            "src/date_mod.f90": "e1e10ae8ca275ca4360708e3788fe8c1eefd0d95d27fba1e4d6cc1b43ef8bb8d",
+            "src/drydepo_mod.f90": "779d21d2790c2118373c66f9394d00596612ced63ebd2efe50fde5d9e26ff585",
+            "src/emissions_mod.f90": "0e33b777f0922b62b6341db6782821a0a2e2f23b4fff419b1a2db51ada2dd566",
+            "src/erf_mod.f90": "98a61f4502fc9c03c07798726a038a78b6af34344fd32535518df190e273a0fc",
+            "src/FLEXPART.f90": "fd2730365de4b63575b4d041bda8d10e09491378144dfd1745ce9825a8339adc",
+            "src/flux_mod.f90": "b9577374ece7bc45935682192df8569e6c667c40b2d865faa9b4b37551c9fe10",
+            "src/getfields_mod.f90": "c3b4ce1adae8ab5e12ae51b2e2c4170925d326cbc6240d3531265eddd92433aa",
+            "src/gributils/test/testdrive.f90": "7ee36209d62aa4c2cbf5526e5c12e1d1616673eaaa4fcda678e5bd4630ac45d0",
+            "src/initdomain_mod.f90": "92298d5acad69f8cc516a003628ac853fb9e65378c89887917cf00a8923cddff",
+            "src/initialise_mod.f90": "a4d60f9c65ceb7f7063b84f6ba893a4c31e022d8b09adda708e9c7f0a0f68b98",
+            "src/interpol_mod.f90": "cc7ab1a55267971ca540d88d3992c613897e0a219da5b66fe2358b5eaeb9bf63",
+            "src/makefile_gfortran": "6e3c2e6d34e5f1fb1fd5e9b784299eab4f3bcb7d7710239d0372f2a9c11ab1f0",
+            "src/makefile_intel": "a8b3f7ffbac19eaad8a4cbfc204703e2963a4b1d9e65f2e01e05e5e1e7c3a77f",
+            "src/mean_mod.f90": "8e2fa83e70a524d1db9eae10192d7fb78f982df3b71970edbeb16da5ef1be6e9",
+            "src/netcdf_output_mod.f90": "b0078137e7d73328a289f106e097e9af8459d98fd5678ada880c5c53f399618b",
+            "src/outgrid_mod.f90": "19e444c6c0619e13f7d8aabf40047588c24860ab83c9a0b584c1469964609605",
+            "src/output_mod.f90": "391c40cc389a3df1ae5176bb67d42c7eab3705bb015fe55313b3efa825d3daac",
+            "src/par_mod.f90": "3164314b5d7212ff5136b5605634fe3c34426aef1320c9fb499ded31f021a9db",
+            "src/particle_mod.f90": "c44f670e0b42e2065ecda9e3747b3818f12dd4957cfdaaa777a6570e529aa899",
+            "src/pbl_profile_mod.f90": "a48e114c7cecf6ab42688a87dc572ff35a4727a5f661f8e4c17ead659399bcbd",
+            "src/plume_mod.f90": "8af5b3cf900d9502a25027251c4757f05dc498f73e41e802e077d8691bf2a711",
+            "src/point_mod.f90": "6cc06a4f0b06e970613edf5de361a1a22fc3e0d4894ce12e65b04c2f84cfe49f",
+            "src/qvsat_mod.f90": "c5854076f296e4a5c131a51c6bb8918f57cdd410c9f3cac554be59dc2397fffb",
+            "src/random_mod.f90": "782bd3abfdb3b370335664d722e9620dc86d59e2866eefd981a37a641f802b7a",
+            "src/readoptions_mod.f90": "2d28cacdcc65bf22f5c3ec9e4934d07611e3039f5e051ffb2e0b0d7573d3daff",
+            "src/receptor_mod.f90": "a7a071feedfa9d795769f6ce84816ca2e7a7cb5c988814da0f7fc2977b6aa394",
+            "src/receptor_netcdf_mod.f90": "2a8bf12dd3e14b353a15e85063dd444eccc038be99023e093588e3ea26980130",
+            "src/restart_mod.f90": "278a4393cb6eb1ea6082a3115ce46cfbe9886c86f28b7bf28831955176942d01",
+            "src/settling_mod.f90": "0d9dba082515315cae3ab8a707b5436e5993e18c42c68a9015d34eebbb9400dc",
+            "src/sort_mod.f90": "5e623f9889bc276e96da6a6ea57db156a34d9ec92dbd76405ad0ab4c869a87fa",
+            "src/timemanager_mod.f90": "93c35cd77de162046c6099e3e3fa4230a65d0f2a5e29bdffb4f108a109f2bd34",
+            "src/totals_mod.f90": "7d889e3534b1ca58da2551e7500ccea1ee07bd4bbf5125f53399c5b906e2ae90",
+            "src/turbulence_mod.f90": "7b19233cac6d7add940e610f485aa3fbdcf4fe4f55af15ce6bec2a629d5b6984",
+            "src/txt_output_mod.f90": "7a4ca2dc8c38065b31b1918089946e71e45d066fd6a352dfcf07e262d69de06f",
+            "src/unc_mod.f90": "88cfdb1250ba7dd0a528f78ce38f8413c477c80f85828a1d6aef8fbf259e3e2c",
+            "src/verttransform_mod.f90": "7d7ba231f960779dc63f19073103c489441da116cec12c6b8875dc06a5b7422c",
+            "src/wetdepo_mod.f90": "217e4a74ea62ee489f6e7c97b87b874add387a766dcf5a3044da400d41e6c291",
+            "src/windfields_mod.f90": "440ec62b9a7b8f4534e913b2af2a41aabdf44072b3fe77edbc213866e698e7d1",
+            "src/xmass_mod.f90": "a8847a04d43020d081968ee8f1cdcdbbd322df602c4a6839056c9792bda2c041",
+            "cache_owner": "1c8264164c80fdd0ff42dea91a1f57a16e5e9cfff643d0eeb0c19a5cf93eaf7f"
+          },
+          "toolchain_sha256": "107098ec77db268b92ee47524776d40fb3a10e85f05314302bcad06430607f70",
+          "docker_image_id": "sha256:df8b65783487ada74b485f3173b760e220b39bc2f40a2ce9668ebe3895e3a137",
+          "cache_key": "496751df6df0c70467de9cab1434e818310ce516f1093456b8694e52b0359070"
+        },
+        "docker_image_id": "sha256:df8b65783487ada74b485f3173b760e220b39bc2f40a2ce9668ebe3895e3a137",
+        "oracle_executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+        "artifacts_sha256": {
+          "advance_mod.mod": "6aa0255adbcd9c3e51144123541f0a861de54612b6c429f16443e1eb2b98518b",
+          "advance_mod.o": "8fbc2d77ddb73b76e2cd911fce717ecabcf960b6f5a875d798dcb8bb85e26ddd",
+          "binary_output_mod.mod": "dbbb84941fa0e4cc9a787a6861eebaf627593a6cf1a5b4d4963e5b21481f0996",
+          "binary_output_mod.o": "aff0af51053c1757371d2b42f0b58ee3853c7c6b45351f5d2a18de4fa716c087",
+          "cbl_mod.mod": "ec010519d16a0eefcdc77779cacf8c465d250f73b1ceec38eb6f162ae7dedb76",
+          "cbl_mod.o": "6369601f5c381d1c283daedbc1ba8f53ac5a6ece1ad0b31fd035f1c6642ab8c7",
+          "chemistry_mod.mod": "9ce5a147c688d82dec481efcb995fd117e94da9ecc34b29991267abafc98e338",
+          "chemistry_mod.o": "a32f0553a9b6fa23ecdcd7aff806e8061cbc064946ae194ba076529aa8d4a988",
+          "class_gribfile_mod.mod": "52557ecaa0ddb4fc39e75547c55ebc23f3047589619fe11a662a700ed1f03834",
+          "class_gribfile_mod.o": "53792765bb2217d9ac6e9c99aa60d7999bda729a975a5595aec89f9bfb5a2631",
+          "cmapf_mod.mod": "4235a55735fcd0363cc345e959f13568abd038175dc5b83dc8a4deed23cf8bdf",
+          "cmapf_mod.o": "a79d954406c20dedce976988b9740f1d0cf4824e5d3e7d7dccc38eb4b5230c92",
+          "com_mod.mod": "b472e137d8ecae08cbd650a0321784ae99ebd1feea8da8d5d5cbf9ca5e7081ec",
+          "com_mod.o": "1ef1b5ce24937f282ae66e3fc5d4c31335d80590217b144a3f32bee015830e10",
+          "conv_mod.mod": "0a900eee711d94556517758980fa21b88e496998cf285b928afc9b2f7e87ccbe",
+          "conv_mod.o": "57189d330e8417c2d80317ede4969b137c5fafa6b4b912bd8273d839d70bf1aa",
+          "date_mod.mod": "4f5df65cd027b67740ccf324ce9d57a9bdd1aafdb791ca83bdb5a9e68e0f979b",
+          "date_mod.o": "25022ffeabae67011fc96dd9d970921ce2d41b2d01d149c6e8c377294e6d9b5a",
+          "drydepo_mod.mod": "6b07643fb2c8acbf9bffb07af31dc823d6d4d4c869bf688203d0b84c3c7ca80e",
+          "drydepo_mod.o": "69d1e0bbc0e16d879f28c85f305546f47ce91bb2551208937fb0f8a3e030935a",
+          "emissions_mod.mod": "8cddc4ff98ea5bf1a79fbce38021e0f238515eb39616aaad9c988531c159d52e",
+          "emissions_mod.o": "4f46a30af81629a329b757c5f7ac0bb7b0b1e55421dc0a21f4354b867ce7294e",
+          "erf_mod.mod": "4cea042798e78eac471e5449dca483ac798264f2d28698342fff4701dda05c36",
+          "erf_mod.o": "fc0bfd704da188d7ba53c771fc364186d1fb5bf1da9eef0ebbf8d0abeffc64ef",
+          "FLEXPART.o": "1f5f1f1437d035a926198812a77157efa2a7743afa6be4877a63720855ad8b66",
+          "flux_mod.mod": "7f8f4c814d2f66469117026d56e51280cac5dbceae2e759e855ac3197976fe52",
+          "flux_mod.o": "7290352b62e01cc45c715aa3e76f15fee54c6b56e6546fc95a7168d393a52288",
+          "getfields_mod.mod": "467187214c41d72142d9f4655e21b166f340773be925f6b1ee61b5ce9ed89ddf",
+          "getfields_mod.o": "d53cbefb033853a50afdf0240abb20c3302972b34285cfe94f34a71612252bd1",
+          "initdomain_mod.mod": "e8a3d09731870bc004271f37c52e38abf44ca7e0fbc96c03ca9b7dbbdfb96387",
+          "initdomain_mod.o": "ba3d56b261551255361920b67837732438352e4f8d639e947e964bf11bca8e1f",
+          "initialise_mod.mod": "bc7720001ae1a355a570c68dee6e3de4b5fec74ff02e0a656df8a22e1c049783",
+          "initialise_mod.o": "875bd928098ad1f8c4fd472148d657617ac78f040cfda1eb1c7d49fb92b77343",
+          "interpol_mod.mod": "7e27658d309d845f0d18078217048b4bb098ead82412b5fa10fa7b945a4c9da8",
+          "interpol_mod.o": "cd68b5c7ccb31634a93fbcbfaf472fe9e7062720dd7d2f1aba3f92422d93be62",
+          "mean_mod.mod": "34fb0941bacac27736d30feff09f9d9b073d588e10e43d0609fe84b4fb3dfdf0",
+          "mean_mod.o": "19c43374080f5a368ba90bbc6921fa66b838ce3329e650eb51aad7cf3e25d7e2",
+          "netcdf_output_mod.mod": "1458ff45c313bfc5929b48343b5ac01f8086d3773bf0823a837bee0f632c34a9",
+          "netcdf_output_mod.o": "cd36d773ab1678f357f96a211a5196d1dd33356b44d418c1f1987b92bde98242",
+          "outgrid_mod.mod": "9f5d4c5802b664984d2f856442ef7cc055aafea71d18dced10dd22c03658484b",
+          "outgrid_mod.o": "11556660180ca942c1ce01b2fabeefbf549e9a8a16aa88646faf7899fb953c65",
+          "output_mod.mod": "4c3a69e0b280c027cdd084f2283e96d518d00b341d65ac63d5388bf7566fb774",
+          "output_mod.o": "138cef2bbf1a860a9779dd4817d0ddf2706c63414a0e0588cbf547d378bea826",
+          "par_mod.mod": "aa5d0e57970841b7e159007f11793a524591fd881dbf56cac740d04f6cab424e",
+          "par_mod.o": "00f941155f6dd16c90c6e7d16f8306cd9328f6e873ee132316fc4a6cf249c3c8",
+          "particle_mod.mod": "cce9381b1cb20186e74117e5269b559d07fefcf6822f6af1859673836f6d1d0a",
+          "particle_mod.o": "9204b23a238df6113520af0560842ca773033c36cdd5633f751772357b4f93c4",
+          "pbl_profile_mod.mod": "2d1190244121b49b33a59d8d1780fac0661d04696e6fa199a0af7a46437487c2",
+          "pbl_profile_mod.o": "def98e872cc90cfe2561c45af5ecc6f0fd408d19072e1d64c62afd37d611ccee",
+          "plume_mod.mod": "57c1eb94e278a6c22a3d1f456101a39f35d6d9e1b61ec4d99d85cd7b755388d5",
+          "plume_mod.o": "1d1d9b23035fa6b1627ef10c6fcd838f7869cfd708c6243b5c55a35d7fdcfccb",
+          "point_mod.mod": "400f851ab404df6a720f07646bdc4dbfd9b2eaea98fc86463436292b95b2b350",
+          "point_mod.o": "4a0694709e3e3ae7f5f263e1e1297f64dc47addd2a52d2dfff51688b6c2cbfde",
+          "qvsat_mod.mod": "de21d8547558a59374be8a985a59a1e35362a68fb9a962c4f2a76576942156f2",
+          "qvsat_mod.o": "da0f7df0a140d0aaba166d021b7d043b80efd365e687b4bccdb0f963f4710975",
+          "random_mod.mod": "130c0348ff433e284db40ffcd5fc8445deba3f469b186fbe5412375c6c7c8254",
+          "random_mod.o": "8f9c3940bc17066d76fe4b9a6a5180e3b645d88b379d4e9ec6c767a2c1fbb664",
+          "readoptions_mod.mod": "54cc77b1af72d2df6f5f8ef0b826199e6dea8578c4fb3ace7968a76c774a275c",
+          "readoptions_mod.o": "45d3933f8b3ebf2241866c5a6d8904b0742dbf96ba8aaa9376ceffae477c91cb",
+          "receptor_mod.mod": "348c6100130ef39787be0d86c8df6c2700bd26262e450afcdae8f6a2077a7f74",
+          "receptor_mod.o": "20f781fe7a6b877b8201f9a9ea650e4b6f8ab0fabbe3cc8f92b5bd8b10577688",
+          "receptor_netcdf_mod.mod": "983c0de432ae0966416cfc25144bea9c7f9b20e676db2905c9a6f4518337eeec",
+          "receptor_netcdf_mod.o": "e2c47d02fe32e04013cee0b38490e1f9d95ac1feb47684d9bcef47989a3d7f30",
+          "restart_mod.mod": "17839c01ae79b663d367d369c90205867b261021024c92a97f9bcb9a1865bed0",
+          "restart_mod.o": "7bc458c0853c4a42be5b78b6441f5458fee89fa056885cc4f3d8e631610d4371",
+          "settling_mod.mod": "ee1202c3b9113a319216392e15d65a126015ba08527aede15191a155fcf8273a",
+          "settling_mod.o": "b39155576f12a54d4a1cd2336cd9274f8aafcc805a36ba525de0a585548a3051",
+          "sort_mod.mod": "35308fafea687b54e2e333f20e4181fb78ae4c9d277d5ad674c780b4597e5734",
+          "sort_mod.o": "7b6353ca71801f024a4ca7bc47e6cc386c91130d2face471927ae90ddababf19",
+          "timemanager_mod.mod": "a32d4edae1262e7e7dd078b10c6161cf296c7777a88645c9c3b1be72443aa4cb",
+          "timemanager_mod.o": "a026791ed3988c555c7839e999d01118853ea188b7c3bd61195447be6c5c6d06",
+          "totals_mod.mod": "473aa90bb5ecdd154ff40a2cb1802bc84233a3c888326c5e6029557508ed02d6",
+          "totals_mod.o": "85dd2a968e45e3900940494c71bf0d303a129bcda96c39dc056804bcc78e783c",
+          "turbulence_mod.mod": "9d6b0f17cbb8efbb3547896482f521969fde0087aa3ea1c8ae0457858fbb6288",
+          "turbulence_mod.o": "e81f52932ece6790e34813d105235e8661670e721cdb6b62b0a9fb7a52434270",
+          "txt_output_mod.mod": "b29235cd0438a11988fccdb6d5271b29597a62c0f9cbc90c10b02785986e6e52",
+          "txt_output_mod.o": "005ceec16f32332b046c24367e07fd8b6b1303733f123f37535f4cadecd7faa8",
+          "unc_mod.mod": "e2befaf997d6e33ebdae7b852f4cd7c3fa93b1d155706e6b97006016435312c1",
+          "unc_mod.o": "0020b663c5edff064a3543b474337a06f6b2669cc759c36d1d88fa16044a7d83",
+          "verttransform_mod.mod": "fbc039d2572da4022f356a2d3ae071e91b4af216aed77c0f2cf9e4edd0a9d18e",
+          "verttransform_mod.o": "8982cfd03a7e232a32eeee45a905cd1afc2662236dce7dce66db440293e7ff90",
+          "wetdepo_mod.mod": "24a22fc0adbc65f79ea1a7ac068675f05b877180dda4ae9081e51ba8d22852bc",
+          "wetdepo_mod.o": "2d4f203cba178db3f67c49e3126e73cb87539ebdffdbde80561fe4900a4127cf",
+          "windfields_mod.mod": "e8e0437f085255dbdea688a0b3ccc582755881a3e061cc8b808e43445af5d09c",
+          "windfields_mod.o": "156efe7bbb4fb3632b6162ef872a90f502f249f65b8056f46ff7171e279f2c9d",
+          "xmass_mod.mod": "12aeea80e432378c8c2ad00429e3cb04f7d0b3a094e3b7fcb44da3cbe117ebec",
+          "xmass_mod.o": "64b72f78a5ba090a1b773b320a17d8d176ec2bf24c63d44276234a8dc1dbdbf7"
+        },
+        "build_log_sha256": "0eb23205f8e6e1a51f594ceaf620fb5a7236ecd60679d52838e49fe74c395d45"
+      }
+    }
+  },
+  "cpu": {
+    "Name": "Intel(R) Core(TM) i7-8650U CPU @ 1.90GHz",
+    "NumberOfCores": 4,
+    "NumberOfLogicalProcessors": 8
+  },
+  "windows_display_driver": {
+    "Name": "Intel(R) UHD Graphics 620",
+    "DriverVersion": "31.0.101.2115",
+    "DriverDate": "2022-11-16T01:00:00+01:00",
+    "AdapterRAM": 1073741824
+  },
+  "adapter": {
+    "adapter_class": "hardware_gpu",
+    "backend": "vulkan",
+    "device_id": 22807,
+    "device_type": "integrated_gpu",
+    "driver": "Intel Corporation",
+    "driver_info": "Intel driver",
+    "name": "Intel(R) UHD Graphics 620",
+    "software_fallback_requested": false,
+    "vendor_id": 32902
+  },
+  "full_report_sha256": "d33c8e94dca9af64c9df75f58c2bc9a97409372edfaa5c8f206c97f3b340b32b",
+  "full_markdown_sha256": "7585574958011b100cffc485a141d856972932648a2b249118ab1b0582ee8624",
+  "artifact_location": "target/early-benchmark/stage-a-final (local retained raw logs, inputs and outputs; reproduce with scripts/benchmark_early.py)",
+  "aggregates": [
+    {
+      "particles": 100000,
+      "regime": "canonical-production",
+      "requested": 5,
+      "passed": 5,
+      "wall_seconds": {
+        "count": 5,
+        "mean": 2.43638406,
+        "median": 2.0815197,
+        "min": 1.7392940000000001,
+        "max": 3.5395428,
+        "stddev": 0.7660402388593324
+      },
+      "state": "PASS",
+      "particle_steps_per_second": {
+        "count": 5,
+        "mean": 529468.8913654451,
+        "median": 576501.8702441298,
+        "min": 339026.8370253921,
+        "max": 689935.1116027538,
+        "stddev": 148763.49264517587
+      }
+    },
+    {
+      "particles": 100000,
+      "regime": "pinned-11.1-fortran",
+      "requested": 5,
+      "passed": 5,
+      "wall_seconds": {
+        "count": 5,
+        "mean": 21.125873883399994,
+        "median": 17.402596708999965,
+        "min": 12.719887107999966,
+        "max": 44.07957780800001,
+        "stddev": 13.015931037289278
+      },
+      "state": "PASS"
+    },
+    {
+      "particles": 1000000,
+      "regime": "canonical-production",
+      "requested": 5,
+      "passed": 5,
+      "wall_seconds": {
+        "count": 5,
+        "mean": 18.75976572,
+        "median": 16.759232,
+        "min": 15.2910467,
+        "max": 26.3775028,
+        "stddev": 4.618102616255537
+      },
+      "state": "PASS",
+      "particle_steps_per_second": {
+        "count": 5,
+        "mean": 666487.2658328613,
+        "median": 716023.2640731985,
+        "min": 454933.133397298,
+        "max": 784772.9612911325,
+        "stddev": 137561.91123936034
+      }
+    },
+    {
+      "particles": 1000000,
+      "regime": "pinned-11.1-fortran",
+      "requested": 5,
+      "passed": 5,
+      "wall_seconds": {
+        "count": 5,
+        "mean": 86.939877193,
+        "median": 80.25014091600008,
+        "min": 67.648855314,
+        "max": 127.71941385299999,
+        "stddev": 24.175274044540046
+      },
+      "state": "PASS"
+    }
+  ],
+  "runs": [
+    {
+      "regime": "canonical-production",
+      "particles": 100000,
+      "repetition": 1,
+      "cache_label": "first-process",
+      "state": "PASS",
+      "process_wall_seconds": 8.063014299999963,
+      "log_sha256": "8ce615fe3b3445e1dee01565c822e11acc52f2a43fefb28218a786397f1acdb6",
+      "measured_steps": 12,
+      "dt_seconds": 300,
+      "measured_start_epoch_seconds": 1704067800,
+      "measured_end_epoch_seconds": 1704071400,
+      "warmup_steps": 2,
+      "warmup_wall_seconds": 3.018657,
+      "cold_first_step_seconds": 2.7472562,
+      "driver_init_seconds": 0.4019551,
+      "meteorology_source_seconds": 0.011915,
+      "canonical_prepare_upload_seconds": 0.0299719,
+      "measured_wall_seconds": 3.5395428,
+      "invariant_audit_seconds": 0.029390099999999995,
+      "particle_steps_per_second": 339026.8370253921,
+      "simulated_time_wall_ratio": 1017.0805110761763,
+      "invariants": {
+        "active_particles": 100000,
+        "finite": true,
+        "mass_kg": 100000.0,
+        "max_height_m": 666.666015625,
+        "min_height_m": 0.01563573256134987,
+        "no_boundary_contact": true,
+        "top_m": 5720.36328125
+      },
+      "particle_output_sha256": "9bee24e8d3f413f98dfed0271811a39ad40537ee5be1d89af6fa86fa112a7d18",
+      "particle_output_bytes": 9600000,
+      "output_write_and_hash_seconds": 0.1263435,
+      "particle_buffer_bytes_lower_bound": 28800000,
+      "canonical_identity": {
+        "field_ids": [
+          "wind_u",
+          "wind_v",
+          "vertical_velocity"
+        ],
+        "geometry_identity": [
+          "snapshot=34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1",
+          "snapshot=10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1"
+        ],
+        "geometry_provenance": [
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          },
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          }
+        ],
+        "motion_provenance": [
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          },
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          }
+        ],
+        "source_snapshot_sha256": [
+          "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+          "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27"
+        ],
+        "source_times": [
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704067200
+          },
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704153600
+          }
+        ]
+      },
+      "report_sha256": "dd0be6e24d5d2b882c5d5048d33b1e2a12b27524f2e4bbdea533d6dd3e376ac9",
+      "phase_totals_ms": {
+        "deposition_upload_ms": 0.0,
+        "encode_submit_ms": 997.4078,
+        "forcing_ms": 0.0029999999999999996,
+        "pbl_preparation_upload_ms": 1.6633,
+        "previous_wait_ms": 0.0,
+        "reported_total_ms": 3478.4517,
+        "submit_to_poll_ms": 1574.3816,
+        "surface_interpolation_ms": 3.2626
+      }
+    },
+    {
+      "regime": "pinned-11.1-fortran",
+      "particles": 100000,
+      "repetition": 1,
+      "cache_label": "first-process",
+      "state": "PASS",
+      "process_wall_seconds": 47.39904569999999,
+      "log_sha256": "ebf8be4769d25938f76d057accaf338bd18eb562b783dba5c8f226bb9fbca48e",
+      "timing": {
+        "model_wall_seconds": 44.07957780800001,
+        "returncode": 0,
+        "child_peak_rss_kib": 112852,
+        "output_included": true,
+        "container_logical_cpus": 8,
+        "openmp_environment": {
+          "OMP_SCHEDULE": "static",
+          "OMP_PROC_BIND": "FALSE",
+          "OMP_WAIT_POLICY": "PASSIVE",
+          "OMP_NUM_THREADS": "1",
+          "OMP_THREAD_LIMIT": "1",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_NESTED": "FALSE",
+          "OMP_MAX_ACTIVE_LEVELS": "1"
+        },
+        "transport_only_seconds": null,
+        "decode_seconds": null
+      },
+      "reference_reported_timers": {
+        "seconds": {
+          "Read wind fields": 0.45199585,
+          "Timemanager": 41.2039795,
+          "first timestep": 3.42102051,
+          "Write particle files": 0.504974365,
+          "Total running time": 43.9849854
+        },
+        "basis": "pinned SYSTEM_CLOCK, default-real diagnostic precision",
+        "source": "FLEXPART.f90:112-142; timemanager_mod.f90:209-210,381-400,714-715",
+        "scope": "overlapping; particle file timer excludes other concentration serialization; not transport-only"
+      },
+      "particle_count_observations": [
+        {
+          "time_seconds": 0,
+          "spawned": 0,
+          "alive": 0,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 300,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 600,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 900,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1200,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1500,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1800,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2100,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2400,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2700,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3000,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3300,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3600,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        }
+      ],
+      "executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+      "image": "sha256:df8b65783487ada74b485f3173b760e220b39bc2f40a2ce9668ebe3895e3a137",
+      "consumed": {
+        "options": {
+          "AGECLASSES": "b9e83c99c411618cce02df4696ca2263bbc1a7e2989e3494587bb7a4f92ebca6",
+          "COMMAND": "52020499ccd55c331da52bf28041f49a303945ebe26b3af386c0162da78d7e87",
+          "IGBP_int1.dat": "0931bb9989bf96b2cb4361118d807e7df0d0429fdec19ada4cbd9a15d9e0d124",
+          "INPUT_DERIVATION.json": "6bda211ba64baa4557e0f187ed11921764101419745da1f8fefe279dc7fe7dbf",
+          "METEO.txt": "ef34b73778b50c50e59e1bb9cadc15ff8bf37ec1c9e857cadf7d668a718f120b",
+          "METEO_ARGS.txt": "32a0fb8c3199b0df46321c4516c519237e45af458c5758e3fe36ddeb9b2291ec",
+          "OUTGRID": "52ea7d44dc5e8e7692334e5b56d7d5877c41e0240e632b9b6a359da03f946538",
+          "PARTOPTIONS": "daade94ca7d871cdf6c633147244866bc1bec944381ab58154b32fb775270fb0",
+          "RECEPTORS": "19cd067864b9796f61abef40d06da2d99fe30dce4515bbc174710249f11f4d05",
+          "RELEASES": "9533cd51e01b373fcc4b1258805cffa6613139b73194f78137a9cd8a22d96e23",
+          "sfcdata.t": "f64072e7f7dcf0fa0bafda7662c6dbaee29f36da0f1f62f64e53778c2d2607d7",
+          "sfcdepo.t": "8a361624d3986b66208a1842f55a48a6fdf97c249fe5a04b3bbf48f853e2d818",
+          "SPECIES/SPECIES_024": "aabf59fdd1f51192a4843272b1b5b5d67a9d15cef05663d5fb4fca94a904f723"
+        },
+        "pathnames": "7f645b06a13f1b1b7d08077a66f43efc98b3e8d3c2495392d93bcde3cde88d2d",
+        "meteorology": {
+          "AVAILABLE": "7d8a3ddcd94d8e6cee9bf11a46b64f47c37adb8977dbdfdcc9e199bf15124687",
+          "EN2024010100": "2869f1320e1688272a1befb9c1199dda8a61948edd137c5a71e95c92964c5fd5",
+          "EN2024010103": "f08f6a2c64507cbf0d4793d4ce7d9cbe48ca770f2efe242aebfabd1b03d36f3d"
+        },
+        "executable": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf"
+      },
+      "raw_output_sha256": {
+        "COMMAND.namelist": "d4a7472635c43bd03c82d2c31015a4187d132b0c15c1576a1aaeeba2dc656430",
+        "dates": "ffe80f4cacf16ce048e9c249a4bc63b348e55109b94d3011f19f600a6be33020",
+        "factor_drygrid": "e8131a49645c7554f4e5012bf21c7e99d235169f6822f4778331499a1d7779ca",
+        "grid_conc_20240101003000_001": "be72a719aa9f0b97d7c0722263becd0c33551c7a863f0a11d686b9076d9f92c0",
+        "grid_conc_20240101010000_001": "ff0bb6389f8d5285b0ba8b0cc02aee8d769eb5617c622204ad8bceb052c15d84",
+        "header": "65a6089d83902bc4416dd4c48d8ec3c33705cebc03d2bdafcf2b184feb74696c",
+        "header_txt": "274793890ad76f5333ddd148452409f7623ee64e347c56b4a4f601d347c21e42",
+        "header_txt_releases": "8faf81852cce0d55c9f9ed510ebe3333e143d95f2fcbac8ab640c7116a94fcbe",
+        "OUTGRID.namelist": "0a8bebaf0cb5316e4198ec00ba2e0a5db0e49f74f8b8eae027e1f942273922ef",
+        "PARTOPTIONS.namelist": "314e24a63e66d82720d9afe52f18800b07cc883f0952c3dfcba3334df443a2d3",
+        "partoutput_20240101000000_init.nc": "ffafbce67f8f1003e440ebadf800562d348061616e52c3dcdb77f41c5067f534",
+        "RELEASES.namelist": "84aefd762bee98b62ade7859e1eb03dc593e03cc07f33ea1a67a65d49d24534c",
+        "SPECIES_024.namelist": "55c674f0193c9d3857d7685b103f549548103b410e3d7243b161b11db7c3967c",
+        "totals.nc": "9dde603d70271d0aba472dd82012839d569edeaa309fc5f6c9fd93552b22a953"
+      },
+      "decoded_sha256": "812ca57f677eaa638e9e9ba115616b41ba0168cb172e9b82b0f3b01fc9e636f9",
+      "case_sha256": "d73b11442923b9c8b726b06e8fecc931ec1728821b9a734323927370911c4ad2",
+      "meteorology_generation_seconds": 6.9419149999999945,
+      "decode_seconds": 0.5334866000000602,
+      "decoded_center_of_mass": {
+        "lon_deg": 10.375000067097988,
+        "lat_deg": 50.05000004544854,
+        "z_m": 175.00000000000003
+      },
+      "decoded_release_mass_g": 100000000.0
+    },
+    {
+      "regime": "pinned-11.1-fortran",
+      "particles": 100000,
+      "repetition": 2,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 19.668635100000074,
+      "log_sha256": "e886961601779e2f790f0eee88f58b16043a2f79a1055b20c89c987d9bd18c73",
+      "timing": {
+        "model_wall_seconds": 17.402596708999965,
+        "returncode": 0,
+        "child_peak_rss_kib": 112856,
+        "output_included": true,
+        "container_logical_cpus": 8,
+        "openmp_environment": {
+          "OMP_WAIT_POLICY": "PASSIVE",
+          "OMP_NUM_THREADS": "1",
+          "OMP_THREAD_LIMIT": "1",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_NESTED": "FALSE",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_SCHEDULE": "static",
+          "OMP_PROC_BIND": "FALSE"
+        },
+        "transport_only_seconds": null,
+        "decode_seconds": null
+      },
+      "reference_reported_timers": {
+        "seconds": {
+          "Read wind fields": 0.105010986,
+          "Timemanager": 16.6520081,
+          "first timestep": 1.12799072,
+          "Write particle files": 0.191894531,
+          "Total running time": 17.3690186
+        },
+        "basis": "pinned SYSTEM_CLOCK, default-real diagnostic precision",
+        "source": "FLEXPART.f90:112-142; timemanager_mod.f90:209-210,381-400,714-715",
+        "scope": "overlapping; particle file timer excludes other concentration serialization; not transport-only"
+      },
+      "particle_count_observations": [
+        {
+          "time_seconds": 0,
+          "spawned": 0,
+          "alive": 0,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 300,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 600,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 900,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1200,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1500,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1800,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2100,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2400,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2700,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3000,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3300,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3600,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        }
+      ],
+      "executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+      "image": "sha256:df8b65783487ada74b485f3173b760e220b39bc2f40a2ce9668ebe3895e3a137",
+      "consumed": {
+        "options": {
+          "AGECLASSES": "b9e83c99c411618cce02df4696ca2263bbc1a7e2989e3494587bb7a4f92ebca6",
+          "COMMAND": "52020499ccd55c331da52bf28041f49a303945ebe26b3af386c0162da78d7e87",
+          "IGBP_int1.dat": "0931bb9989bf96b2cb4361118d807e7df0d0429fdec19ada4cbd9a15d9e0d124",
+          "INPUT_DERIVATION.json": "6bda211ba64baa4557e0f187ed11921764101419745da1f8fefe279dc7fe7dbf",
+          "METEO.txt": "ef34b73778b50c50e59e1bb9cadc15ff8bf37ec1c9e857cadf7d668a718f120b",
+          "METEO_ARGS.txt": "32a0fb8c3199b0df46321c4516c519237e45af458c5758e3fe36ddeb9b2291ec",
+          "OUTGRID": "52ea7d44dc5e8e7692334e5b56d7d5877c41e0240e632b9b6a359da03f946538",
+          "PARTOPTIONS": "daade94ca7d871cdf6c633147244866bc1bec944381ab58154b32fb775270fb0",
+          "RECEPTORS": "19cd067864b9796f61abef40d06da2d99fe30dce4515bbc174710249f11f4d05",
+          "RELEASES": "9533cd51e01b373fcc4b1258805cffa6613139b73194f78137a9cd8a22d96e23",
+          "sfcdata.t": "f64072e7f7dcf0fa0bafda7662c6dbaee29f36da0f1f62f64e53778c2d2607d7",
+          "sfcdepo.t": "8a361624d3986b66208a1842f55a48a6fdf97c249fe5a04b3bbf48f853e2d818",
+          "SPECIES/SPECIES_024": "aabf59fdd1f51192a4843272b1b5b5d67a9d15cef05663d5fb4fca94a904f723"
+        },
+        "pathnames": "7f645b06a13f1b1b7d08077a66f43efc98b3e8d3c2495392d93bcde3cde88d2d",
+        "meteorology": {
+          "AVAILABLE": "7d8a3ddcd94d8e6cee9bf11a46b64f47c37adb8977dbdfdcc9e199bf15124687",
+          "EN2024010100": "2869f1320e1688272a1befb9c1199dda8a61948edd137c5a71e95c92964c5fd5",
+          "EN2024010103": "f08f6a2c64507cbf0d4793d4ce7d9cbe48ca770f2efe242aebfabd1b03d36f3d"
+        },
+        "executable": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf"
+      },
+      "raw_output_sha256": {
+        "COMMAND.namelist": "d4a7472635c43bd03c82d2c31015a4187d132b0c15c1576a1aaeeba2dc656430",
+        "dates": "ffe80f4cacf16ce048e9c249a4bc63b348e55109b94d3011f19f600a6be33020",
+        "factor_drygrid": "e8131a49645c7554f4e5012bf21c7e99d235169f6822f4778331499a1d7779ca",
+        "grid_conc_20240101003000_001": "be72a719aa9f0b97d7c0722263becd0c33551c7a863f0a11d686b9076d9f92c0",
+        "grid_conc_20240101010000_001": "ff0bb6389f8d5285b0ba8b0cc02aee8d769eb5617c622204ad8bceb052c15d84",
+        "header": "65a6089d83902bc4416dd4c48d8ec3c33705cebc03d2bdafcf2b184feb74696c",
+        "header_txt": "274793890ad76f5333ddd148452409f7623ee64e347c56b4a4f601d347c21e42",
+        "header_txt_releases": "8faf81852cce0d55c9f9ed510ebe3333e143d95f2fcbac8ab640c7116a94fcbe",
+        "OUTGRID.namelist": "0a8bebaf0cb5316e4198ec00ba2e0a5db0e49f74f8b8eae027e1f942273922ef",
+        "PARTOPTIONS.namelist": "314e24a63e66d82720d9afe52f18800b07cc883f0952c3dfcba3334df443a2d3",
+        "partoutput_20240101000000_init.nc": "f0087421f1b85f9c0546b67edf82f61457ec7994a4fb3fec2977b2cc315cf275",
+        "RELEASES.namelist": "84aefd762bee98b62ade7859e1eb03dc593e03cc07f33ea1a67a65d49d24534c",
+        "SPECIES_024.namelist": "55c674f0193c9d3857d7685b103f549548103b410e3d7243b161b11db7c3967c",
+        "totals.nc": "01025c723a44ed8e04abc9e3a7c25946222104f1ab4dd2f35e10fda222d511cb"
+      },
+      "decoded_sha256": "a9b928bfe6fdb88f3062377bd67876a7c9075cdb2241478e2fb215962cda79c8",
+      "case_sha256": "d73b11442923b9c8b726b06e8fecc931ec1728821b9a734323927370911c4ad2",
+      "meteorology_generation_seconds": 6.9419149999999945,
+      "decode_seconds": 0.7061361000000943,
+      "decoded_center_of_mass": {
+        "lon_deg": 10.375000067097988,
+        "lat_deg": 50.05000004544854,
+        "z_m": 175.00000000000003
+      },
+      "decoded_release_mass_g": 100000000.0
+    },
+    {
+      "regime": "canonical-production",
+      "particles": 100000,
+      "repetition": 2,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 7.637818500000094,
+      "log_sha256": "a69e83a4ab0113af8453ab70566e744e47655de3f139d74e50e0d2cf4d05d146",
+      "measured_steps": 12,
+      "dt_seconds": 300,
+      "measured_start_epoch_seconds": 1704068100,
+      "measured_end_epoch_seconds": 1704071700,
+      "warmup_steps": 3,
+      "warmup_wall_seconds": 3.1261774,
+      "cold_first_step_seconds": 2.7426357,
+      "driver_init_seconds": 0.5068532,
+      "meteorology_source_seconds": 0.0059561,
+      "canonical_prepare_upload_seconds": 0.0312115,
+      "measured_wall_seconds": 2.9192783,
+      "invariant_audit_seconds": 0.0343936,
+      "particle_steps_per_second": 411060.5008093952,
+      "simulated_time_wall_ratio": 1233.1815024281857,
+      "invariants": {
+        "active_particles": 100000,
+        "finite": true,
+        "mass_kg": 100000.0,
+        "max_height_m": 699.094482421875,
+        "min_height_m": 0.010715071111917496,
+        "no_boundary_contact": true,
+        "top_m": 5720.36328125
+      },
+      "particle_output_sha256": "42b236a948c7e8f2b694c1832994ec511c808c07f7fe522be5387dcea35c64c9",
+      "particle_output_bytes": 9600000,
+      "output_write_and_hash_seconds": 0.2545786,
+      "particle_buffer_bytes_lower_bound": 28800000,
+      "canonical_identity": {
+        "field_ids": [
+          "wind_u",
+          "wind_v",
+          "vertical_velocity"
+        ],
+        "geometry_identity": [
+          "snapshot=34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1",
+          "snapshot=10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1"
+        ],
+        "geometry_provenance": [
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          },
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          }
+        ],
+        "motion_provenance": [
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          },
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          }
+        ],
+        "source_snapshot_sha256": [
+          "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+          "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27"
+        ],
+        "source_times": [
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704067200
+          },
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704153600
+          }
+        ]
+      },
+      "report_sha256": "6e2e9189cfb176bfb893fba0f5c9ff5deb8c5d214e2843bfadfdb45bf361547c",
+      "phase_totals_ms": {
+        "deposition_upload_ms": 0.0,
+        "encode_submit_ms": 914.8894,
+        "forcing_ms": 0.0029,
+        "pbl_preparation_upload_ms": 1.3473,
+        "previous_wait_ms": 0.0,
+        "reported_total_ms": 2872.4938,
+        "submit_to_poll_ms": 1241.5905,
+        "surface_interpolation_ms": 1.7992
+      }
+    },
+    {
+      "regime": "canonical-production",
+      "particles": 100000,
+      "repetition": 3,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 6.270341600000165,
+      "log_sha256": "36502b21f2cf254ea9356a3cb4abd810afcac38003bb366f7a4327608a792132",
+      "measured_steps": 12,
+      "dt_seconds": 300,
+      "measured_start_epoch_seconds": 1704068400,
+      "measured_end_epoch_seconds": 1704072000,
+      "warmup_steps": 4,
+      "warmup_wall_seconds": 3.041865,
+      "cold_first_step_seconds": 2.5587008,
+      "driver_init_seconds": 0.4173221,
+      "meteorology_source_seconds": 0.0122873,
+      "canonical_prepare_upload_seconds": 0.0306212,
+      "measured_wall_seconds": 2.0815197,
+      "invariant_audit_seconds": 0.022714500000000002,
+      "particle_steps_per_second": 576501.8702441298,
+      "simulated_time_wall_ratio": 1729.5056107323896,
+      "invariants": {
+        "active_particles": 100000,
+        "finite": true,
+        "mass_kg": 100000.0,
+        "max_height_m": 730.7373046875,
+        "min_height_m": 0.01076173409819603,
+        "no_boundary_contact": true,
+        "top_m": 5720.36328125
+      },
+      "particle_output_sha256": "a529af1434d003083f060e4d942241ae95fb05aab6b0237675d1c98ddba8479d",
+      "particle_output_bytes": 9600000,
+      "output_write_and_hash_seconds": 0.1230807,
+      "particle_buffer_bytes_lower_bound": 28800000,
+      "canonical_identity": {
+        "field_ids": [
+          "wind_u",
+          "wind_v",
+          "vertical_velocity"
+        ],
+        "geometry_identity": [
+          "snapshot=34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1",
+          "snapshot=10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1"
+        ],
+        "geometry_provenance": [
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          },
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          }
+        ],
+        "motion_provenance": [
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          },
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          }
+        ],
+        "source_snapshot_sha256": [
+          "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+          "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27"
+        ],
+        "source_times": [
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704067200
+          },
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704153600
+          }
+        ]
+      },
+      "report_sha256": "54a6b8181ac45e421ec3349d7f2121ddadc5dbcb0bfe3debbfd3ed89059b84bf",
+      "phase_totals_ms": {
+        "deposition_upload_ms": 0.0,
+        "encode_submit_ms": 479.1844,
+        "forcing_ms": 0.0026,
+        "pbl_preparation_upload_ms": 2.0456,
+        "previous_wait_ms": 0.0,
+        "reported_total_ms": 2051.8135,
+        "submit_to_poll_ms": 1113.5554,
+        "surface_interpolation_ms": 2.089
+      }
+    },
+    {
+      "regime": "pinned-11.1-fortran",
+      "particles": 100000,
+      "repetition": 3,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 19.249129200000198,
+      "log_sha256": "374653e4061c79085127b5157d5f11fcd43aaa9f4f9ded47421084a74b396b4f",
+      "timing": {
+        "model_wall_seconds": 17.672947421999993,
+        "returncode": 0,
+        "child_peak_rss_kib": 113232,
+        "output_included": true,
+        "container_logical_cpus": 8,
+        "openmp_environment": {
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_SCHEDULE": "static",
+          "OMP_PROC_BIND": "FALSE",
+          "OMP_WAIT_POLICY": "PASSIVE",
+          "OMP_NUM_THREADS": "1",
+          "OMP_THREAD_LIMIT": "1",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_NESTED": "FALSE"
+        },
+        "transport_only_seconds": null,
+        "decode_seconds": null
+      },
+      "reference_reported_timers": {
+        "seconds": {
+          "Read wind fields": 0.212005615,
+          "Timemanager": 16.4030151,
+          "first timestep": 1.3500061,
+          "Write particle files": 0.179077148,
+          "Total running time": 17.6260071
+        },
+        "basis": "pinned SYSTEM_CLOCK, default-real diagnostic precision",
+        "source": "FLEXPART.f90:112-142; timemanager_mod.f90:209-210,381-400,714-715",
+        "scope": "overlapping; particle file timer excludes other concentration serialization; not transport-only"
+      },
+      "particle_count_observations": [
+        {
+          "time_seconds": 0,
+          "spawned": 0,
+          "alive": 0,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 300,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 600,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 900,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1200,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1500,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1800,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2100,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2400,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2700,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3000,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3300,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3600,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        }
+      ],
+      "executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+      "image": "sha256:df8b65783487ada74b485f3173b760e220b39bc2f40a2ce9668ebe3895e3a137",
+      "consumed": {
+        "options": {
+          "AGECLASSES": "b9e83c99c411618cce02df4696ca2263bbc1a7e2989e3494587bb7a4f92ebca6",
+          "COMMAND": "52020499ccd55c331da52bf28041f49a303945ebe26b3af386c0162da78d7e87",
+          "IGBP_int1.dat": "0931bb9989bf96b2cb4361118d807e7df0d0429fdec19ada4cbd9a15d9e0d124",
+          "INPUT_DERIVATION.json": "6bda211ba64baa4557e0f187ed11921764101419745da1f8fefe279dc7fe7dbf",
+          "METEO.txt": "ef34b73778b50c50e59e1bb9cadc15ff8bf37ec1c9e857cadf7d668a718f120b",
+          "METEO_ARGS.txt": "32a0fb8c3199b0df46321c4516c519237e45af458c5758e3fe36ddeb9b2291ec",
+          "OUTGRID": "52ea7d44dc5e8e7692334e5b56d7d5877c41e0240e632b9b6a359da03f946538",
+          "PARTOPTIONS": "daade94ca7d871cdf6c633147244866bc1bec944381ab58154b32fb775270fb0",
+          "RECEPTORS": "19cd067864b9796f61abef40d06da2d99fe30dce4515bbc174710249f11f4d05",
+          "RELEASES": "9533cd51e01b373fcc4b1258805cffa6613139b73194f78137a9cd8a22d96e23",
+          "sfcdata.t": "f64072e7f7dcf0fa0bafda7662c6dbaee29f36da0f1f62f64e53778c2d2607d7",
+          "sfcdepo.t": "8a361624d3986b66208a1842f55a48a6fdf97c249fe5a04b3bbf48f853e2d818",
+          "SPECIES/SPECIES_024": "aabf59fdd1f51192a4843272b1b5b5d67a9d15cef05663d5fb4fca94a904f723"
+        },
+        "pathnames": "7f645b06a13f1b1b7d08077a66f43efc98b3e8d3c2495392d93bcde3cde88d2d",
+        "meteorology": {
+          "AVAILABLE": "7d8a3ddcd94d8e6cee9bf11a46b64f47c37adb8977dbdfdcc9e199bf15124687",
+          "EN2024010100": "2869f1320e1688272a1befb9c1199dda8a61948edd137c5a71e95c92964c5fd5",
+          "EN2024010103": "f08f6a2c64507cbf0d4793d4ce7d9cbe48ca770f2efe242aebfabd1b03d36f3d"
+        },
+        "executable": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf"
+      },
+      "raw_output_sha256": {
+        "COMMAND.namelist": "d4a7472635c43bd03c82d2c31015a4187d132b0c15c1576a1aaeeba2dc656430",
+        "dates": "ffe80f4cacf16ce048e9c249a4bc63b348e55109b94d3011f19f600a6be33020",
+        "factor_drygrid": "e8131a49645c7554f4e5012bf21c7e99d235169f6822f4778331499a1d7779ca",
+        "grid_conc_20240101003000_001": "be72a719aa9f0b97d7c0722263becd0c33551c7a863f0a11d686b9076d9f92c0",
+        "grid_conc_20240101010000_001": "ff0bb6389f8d5285b0ba8b0cc02aee8d769eb5617c622204ad8bceb052c15d84",
+        "header": "65a6089d83902bc4416dd4c48d8ec3c33705cebc03d2bdafcf2b184feb74696c",
+        "header_txt": "274793890ad76f5333ddd148452409f7623ee64e347c56b4a4f601d347c21e42",
+        "header_txt_releases": "8faf81852cce0d55c9f9ed510ebe3333e143d95f2fcbac8ab640c7116a94fcbe",
+        "OUTGRID.namelist": "0a8bebaf0cb5316e4198ec00ba2e0a5db0e49f74f8b8eae027e1f942273922ef",
+        "PARTOPTIONS.namelist": "314e24a63e66d82720d9afe52f18800b07cc883f0952c3dfcba3334df443a2d3",
+        "partoutput_20240101000000_init.nc": "97a9ba39c22a3a82f6dc8afb6c1bac8907e0e188489b592d247383b365414c2d",
+        "RELEASES.namelist": "84aefd762bee98b62ade7859e1eb03dc593e03cc07f33ea1a67a65d49d24534c",
+        "SPECIES_024.namelist": "55c674f0193c9d3857d7685b103f549548103b410e3d7243b161b11db7c3967c",
+        "totals.nc": "6c0b457de9a598ec21385568a35caa29658250a7f50077815fc041648c345dd6"
+      },
+      "decoded_sha256": "d4ec18086ff5f7c949ed8671382f5c936e2aba5ec9336ccb7989766c7f06d330",
+      "case_sha256": "d73b11442923b9c8b726b06e8fecc931ec1728821b9a734323927370911c4ad2",
+      "meteorology_generation_seconds": 6.9419149999999945,
+      "decode_seconds": 0.6326176000000032,
+      "decoded_center_of_mass": {
+        "lon_deg": 10.375000067097988,
+        "lat_deg": 50.05000004544854,
+        "z_m": 175.00000000000003
+      },
+      "decoded_release_mass_g": 100000000.0
+    },
+    {
+      "regime": "pinned-11.1-fortran",
+      "particles": 100000,
+      "repetition": 4,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 14.715934800000014,
+      "log_sha256": "8d0597901d1a8d89154e5be8c7f81a00eef05693aa5670650fe19d62c0eda530",
+      "timing": {
+        "model_wall_seconds": 12.719887107999966,
+        "returncode": 0,
+        "child_peak_rss_kib": 113248,
+        "output_included": true,
+        "container_logical_cpus": 8,
+        "openmp_environment": {
+          "OMP_SCHEDULE": "static",
+          "OMP_PROC_BIND": "FALSE",
+          "OMP_WAIT_POLICY": "PASSIVE",
+          "OMP_NUM_THREADS": "1",
+          "OMP_THREAD_LIMIT": "1",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_NESTED": "FALSE",
+          "OMP_MAX_ACTIVE_LEVELS": "1"
+        },
+        "transport_only_seconds": null,
+        "decode_seconds": null
+      },
+      "reference_reported_timers": {
+        "seconds": {
+          "Read wind fields": 0.113983154,
+          "Timemanager": 12.2140198,
+          "first timestep": 0.75201416,
+          "Write particle files": 0.142974854,
+          "Total running time": 12.6890259
+        },
+        "basis": "pinned SYSTEM_CLOCK, default-real diagnostic precision",
+        "source": "FLEXPART.f90:112-142; timemanager_mod.f90:209-210,381-400,714-715",
+        "scope": "overlapping; particle file timer excludes other concentration serialization; not transport-only"
+      },
+      "particle_count_observations": [
+        {
+          "time_seconds": 0,
+          "spawned": 0,
+          "alive": 0,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 300,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 600,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 900,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1200,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1500,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1800,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2100,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2400,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2700,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3000,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3300,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3600,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        }
+      ],
+      "executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+      "image": "sha256:df8b65783487ada74b485f3173b760e220b39bc2f40a2ce9668ebe3895e3a137",
+      "consumed": {
+        "options": {
+          "AGECLASSES": "b9e83c99c411618cce02df4696ca2263bbc1a7e2989e3494587bb7a4f92ebca6",
+          "COMMAND": "52020499ccd55c331da52bf28041f49a303945ebe26b3af386c0162da78d7e87",
+          "IGBP_int1.dat": "0931bb9989bf96b2cb4361118d807e7df0d0429fdec19ada4cbd9a15d9e0d124",
+          "INPUT_DERIVATION.json": "6bda211ba64baa4557e0f187ed11921764101419745da1f8fefe279dc7fe7dbf",
+          "METEO.txt": "ef34b73778b50c50e59e1bb9cadc15ff8bf37ec1c9e857cadf7d668a718f120b",
+          "METEO_ARGS.txt": "32a0fb8c3199b0df46321c4516c519237e45af458c5758e3fe36ddeb9b2291ec",
+          "OUTGRID": "52ea7d44dc5e8e7692334e5b56d7d5877c41e0240e632b9b6a359da03f946538",
+          "PARTOPTIONS": "daade94ca7d871cdf6c633147244866bc1bec944381ab58154b32fb775270fb0",
+          "RECEPTORS": "19cd067864b9796f61abef40d06da2d99fe30dce4515bbc174710249f11f4d05",
+          "RELEASES": "9533cd51e01b373fcc4b1258805cffa6613139b73194f78137a9cd8a22d96e23",
+          "sfcdata.t": "f64072e7f7dcf0fa0bafda7662c6dbaee29f36da0f1f62f64e53778c2d2607d7",
+          "sfcdepo.t": "8a361624d3986b66208a1842f55a48a6fdf97c249fe5a04b3bbf48f853e2d818",
+          "SPECIES/SPECIES_024": "aabf59fdd1f51192a4843272b1b5b5d67a9d15cef05663d5fb4fca94a904f723"
+        },
+        "pathnames": "7f645b06a13f1b1b7d08077a66f43efc98b3e8d3c2495392d93bcde3cde88d2d",
+        "meteorology": {
+          "AVAILABLE": "7d8a3ddcd94d8e6cee9bf11a46b64f47c37adb8977dbdfdcc9e199bf15124687",
+          "EN2024010100": "2869f1320e1688272a1befb9c1199dda8a61948edd137c5a71e95c92964c5fd5",
+          "EN2024010103": "f08f6a2c64507cbf0d4793d4ce7d9cbe48ca770f2efe242aebfabd1b03d36f3d"
+        },
+        "executable": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf"
+      },
+      "raw_output_sha256": {
+        "COMMAND.namelist": "d4a7472635c43bd03c82d2c31015a4187d132b0c15c1576a1aaeeba2dc656430",
+        "dates": "ffe80f4cacf16ce048e9c249a4bc63b348e55109b94d3011f19f600a6be33020",
+        "factor_drygrid": "e8131a49645c7554f4e5012bf21c7e99d235169f6822f4778331499a1d7779ca",
+        "grid_conc_20240101003000_001": "be72a719aa9f0b97d7c0722263becd0c33551c7a863f0a11d686b9076d9f92c0",
+        "grid_conc_20240101010000_001": "ff0bb6389f8d5285b0ba8b0cc02aee8d769eb5617c622204ad8bceb052c15d84",
+        "header": "65a6089d83902bc4416dd4c48d8ec3c33705cebc03d2bdafcf2b184feb74696c",
+        "header_txt": "274793890ad76f5333ddd148452409f7623ee64e347c56b4a4f601d347c21e42",
+        "header_txt_releases": "8faf81852cce0d55c9f9ed510ebe3333e143d95f2fcbac8ab640c7116a94fcbe",
+        "OUTGRID.namelist": "0a8bebaf0cb5316e4198ec00ba2e0a5db0e49f74f8b8eae027e1f942273922ef",
+        "PARTOPTIONS.namelist": "314e24a63e66d82720d9afe52f18800b07cc883f0952c3dfcba3334df443a2d3",
+        "partoutput_20240101000000_init.nc": "254ecade184d46adfa49f61dbdeba15af746fd09de1c8e23cfa411cd566261bd",
+        "RELEASES.namelist": "84aefd762bee98b62ade7859e1eb03dc593e03cc07f33ea1a67a65d49d24534c",
+        "SPECIES_024.namelist": "55c674f0193c9d3857d7685b103f549548103b410e3d7243b161b11db7c3967c",
+        "totals.nc": "7daeb7658e7ef99a33ff280be8195e90a45b9b6315ec3a0a949444e28a1c6740"
+      },
+      "decoded_sha256": "5d96eceb4c92c4ba82b949f68374fe238944937581a9f17e4fe5f536e7d549ae",
+      "case_sha256": "d73b11442923b9c8b726b06e8fecc931ec1728821b9a734323927370911c4ad2",
+      "meteorology_generation_seconds": 6.9419149999999945,
+      "decode_seconds": 0.5295466000000033,
+      "decoded_center_of_mass": {
+        "lon_deg": 10.375000067097988,
+        "lat_deg": 50.05000004544854,
+        "z_m": 175.00000000000003
+      },
+      "decoded_release_mass_g": 100000000.0
+    },
+    {
+      "regime": "canonical-production",
+      "particles": 100000,
+      "repetition": 4,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 5.931807700000036,
+      "log_sha256": "800f400eed163fa2238a3895d8b4926d5f5c4876cf6eaae2bc5b354d6d310862",
+      "measured_steps": 12,
+      "dt_seconds": 300,
+      "measured_start_epoch_seconds": 1704069900,
+      "measured_end_epoch_seconds": 1704073500,
+      "warmup_steps": 9,
+      "warmup_wall_seconds": 3.1284655,
+      "cold_first_step_seconds": 1.7869488,
+      "driver_init_seconds": 0.2783552,
+      "meteorology_source_seconds": 0.0078031,
+      "canonical_prepare_upload_seconds": 0.0155607,
+      "measured_wall_seconds": 1.9022855,
+      "invariant_audit_seconds": 0.0222773,
+      "particle_steps_per_second": 630820.1371455546,
+      "simulated_time_wall_ratio": 1892.460411436664,
+      "invariants": {
+        "active_particles": 100000,
+        "finite": true,
+        "mass_kg": 100000.0,
+        "max_height_m": 794.0350341796875,
+        "min_height_m": 0.011238951236009598,
+        "no_boundary_contact": true,
+        "top_m": 5720.36328125
+      },
+      "particle_output_sha256": "178d020bac842d65dad938583dab50a3e5789e4337f6b88cce1b70335bcc0e1a",
+      "particle_output_bytes": 9600000,
+      "output_write_and_hash_seconds": 0.1031907,
+      "particle_buffer_bytes_lower_bound": 28800000,
+      "canonical_identity": {
+        "field_ids": [
+          "wind_u",
+          "wind_v",
+          "vertical_velocity"
+        ],
+        "geometry_identity": [
+          "snapshot=34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1",
+          "snapshot=10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1"
+        ],
+        "geometry_provenance": [
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          },
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          }
+        ],
+        "motion_provenance": [
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          },
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          }
+        ],
+        "source_snapshot_sha256": [
+          "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+          "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27"
+        ],
+        "source_times": [
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704067200
+          },
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704153600
+          }
+        ]
+      },
+      "report_sha256": "6dbc7e461cd1442b92bd68729b5edeb3aea0530881a42e7751918e8e40be6504",
+      "phase_totals_ms": {
+        "deposition_upload_ms": 0.0,
+        "encode_submit_ms": 423.4773,
+        "forcing_ms": 0.0021999999999999997,
+        "pbl_preparation_upload_ms": 1.2565,
+        "previous_wait_ms": 0.0,
+        "reported_total_ms": 1872.8854999999999,
+        "submit_to_poll_ms": 994.3957,
+        "surface_interpolation_ms": 1.8174
+      }
+    },
+    {
+      "regime": "canonical-production",
+      "particles": 100000,
+      "repetition": 5,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 5.607231199999887,
+      "log_sha256": "9773903f107e2cd60c714234e449761ba5b4f6d763fd0dd799617e0322ac3159",
+      "measured_steps": 12,
+      "dt_seconds": 300,
+      "measured_start_epoch_seconds": 1704070200,
+      "measured_end_epoch_seconds": 1704073800,
+      "warmup_steps": 10,
+      "warmup_wall_seconds": 3.0432794,
+      "cold_first_step_seconds": 1.5878297,
+      "driver_init_seconds": 0.2469119,
+      "meteorology_source_seconds": 0.0073278,
+      "canonical_prepare_upload_seconds": 0.0122004,
+      "measured_wall_seconds": 1.7392940000000001,
+      "invariant_audit_seconds": 0.020168499999999995,
+      "particle_steps_per_second": 689935.1116027538,
+      "simulated_time_wall_ratio": 2069.8053348082613,
+      "invariants": {
+        "active_particles": 100000,
+        "finite": true,
+        "mass_kg": 100000.0,
+        "max_height_m": 815.0906982421875,
+        "min_height_m": 0.010092560201883316,
+        "no_boundary_contact": true,
+        "top_m": 5720.36328125
+      },
+      "particle_output_sha256": "3fcb87b636d5d54ce662f80704f3b1264a552afd41869259e177154dc0b11f34",
+      "particle_output_bytes": 9600000,
+      "output_write_and_hash_seconds": 0.078261,
+      "particle_buffer_bytes_lower_bound": 28800000,
+      "canonical_identity": {
+        "field_ids": [
+          "wind_u",
+          "wind_v",
+          "vertical_velocity"
+        ],
+        "geometry_identity": [
+          "snapshot=34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1",
+          "snapshot=10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1"
+        ],
+        "geometry_provenance": [
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          },
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          }
+        ],
+        "motion_provenance": [
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          },
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          }
+        ],
+        "source_snapshot_sha256": [
+          "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+          "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27"
+        ],
+        "source_times": [
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704067200
+          },
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704153600
+          }
+        ]
+      },
+      "report_sha256": "da321d4c3f96fc214c3d29d7f3de47c4d2ba11e4985da65ef021bb59756f3090",
+      "phase_totals_ms": {
+        "deposition_upload_ms": 0.0,
+        "encode_submit_ms": 420.50939999999997,
+        "forcing_ms": 0.0018,
+        "pbl_preparation_upload_ms": 1.2848,
+        "previous_wait_ms": 0.0,
+        "reported_total_ms": 1712.1537,
+        "submit_to_poll_ms": 993.0506,
+        "surface_interpolation_ms": 1.8935
+      }
+    },
+    {
+      "regime": "pinned-11.1-fortran",
+      "particles": 100000,
+      "repetition": 5,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 15.422502699999995,
+      "log_sha256": "6aebb70b8b1a63c94b68847b455efe57c2526d7d76ab994bcf87becffa607943",
+      "timing": {
+        "model_wall_seconds": 13.754360370000029,
+        "returncode": 0,
+        "child_peak_rss_kib": 112936,
+        "output_included": true,
+        "container_logical_cpus": 8,
+        "openmp_environment": {
+          "OMP_PROC_BIND": "FALSE",
+          "OMP_WAIT_POLICY": "PASSIVE",
+          "OMP_NUM_THREADS": "1",
+          "OMP_THREAD_LIMIT": "1",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_NESTED": "FALSE",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_SCHEDULE": "static"
+        },
+        "transport_only_seconds": null,
+        "decode_seconds": null
+      },
+      "reference_reported_timers": {
+        "seconds": {
+          "Read wind fields": 0.139007568,
+          "Timemanager": 13.1199951,
+          "first timestep": 1.0249939,
+          "Write particle files": 0.12902832,
+          "Total running time": 13.7070007
+        },
+        "basis": "pinned SYSTEM_CLOCK, default-real diagnostic precision",
+        "source": "FLEXPART.f90:112-142; timemanager_mod.f90:209-210,381-400,714-715",
+        "scope": "overlapping; particle file timer excludes other concentration serialization; not transport-only"
+      },
+      "particle_count_observations": [
+        {
+          "time_seconds": 0,
+          "spawned": 0,
+          "alive": 0,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 300,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 600,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 900,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1200,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1500,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1800,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2100,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2400,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2700,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3000,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3300,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3600,
+          "spawned": 100000,
+          "alive": 100000,
+          "terminated": 0
+        }
+      ],
+      "executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+      "image": "sha256:df8b65783487ada74b485f3173b760e220b39bc2f40a2ce9668ebe3895e3a137",
+      "consumed": {
+        "options": {
+          "AGECLASSES": "b9e83c99c411618cce02df4696ca2263bbc1a7e2989e3494587bb7a4f92ebca6",
+          "COMMAND": "52020499ccd55c331da52bf28041f49a303945ebe26b3af386c0162da78d7e87",
+          "IGBP_int1.dat": "0931bb9989bf96b2cb4361118d807e7df0d0429fdec19ada4cbd9a15d9e0d124",
+          "INPUT_DERIVATION.json": "6bda211ba64baa4557e0f187ed11921764101419745da1f8fefe279dc7fe7dbf",
+          "METEO.txt": "ef34b73778b50c50e59e1bb9cadc15ff8bf37ec1c9e857cadf7d668a718f120b",
+          "METEO_ARGS.txt": "32a0fb8c3199b0df46321c4516c519237e45af458c5758e3fe36ddeb9b2291ec",
+          "OUTGRID": "52ea7d44dc5e8e7692334e5b56d7d5877c41e0240e632b9b6a359da03f946538",
+          "PARTOPTIONS": "daade94ca7d871cdf6c633147244866bc1bec944381ab58154b32fb775270fb0",
+          "RECEPTORS": "19cd067864b9796f61abef40d06da2d99fe30dce4515bbc174710249f11f4d05",
+          "RELEASES": "9533cd51e01b373fcc4b1258805cffa6613139b73194f78137a9cd8a22d96e23",
+          "sfcdata.t": "f64072e7f7dcf0fa0bafda7662c6dbaee29f36da0f1f62f64e53778c2d2607d7",
+          "sfcdepo.t": "8a361624d3986b66208a1842f55a48a6fdf97c249fe5a04b3bbf48f853e2d818",
+          "SPECIES/SPECIES_024": "aabf59fdd1f51192a4843272b1b5b5d67a9d15cef05663d5fb4fca94a904f723"
+        },
+        "pathnames": "7f645b06a13f1b1b7d08077a66f43efc98b3e8d3c2495392d93bcde3cde88d2d",
+        "meteorology": {
+          "AVAILABLE": "7d8a3ddcd94d8e6cee9bf11a46b64f47c37adb8977dbdfdcc9e199bf15124687",
+          "EN2024010100": "2869f1320e1688272a1befb9c1199dda8a61948edd137c5a71e95c92964c5fd5",
+          "EN2024010103": "f08f6a2c64507cbf0d4793d4ce7d9cbe48ca770f2efe242aebfabd1b03d36f3d"
+        },
+        "executable": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf"
+      },
+      "raw_output_sha256": {
+        "COMMAND.namelist": "d4a7472635c43bd03c82d2c31015a4187d132b0c15c1576a1aaeeba2dc656430",
+        "dates": "ffe80f4cacf16ce048e9c249a4bc63b348e55109b94d3011f19f600a6be33020",
+        "factor_drygrid": "e8131a49645c7554f4e5012bf21c7e99d235169f6822f4778331499a1d7779ca",
+        "grid_conc_20240101003000_001": "be72a719aa9f0b97d7c0722263becd0c33551c7a863f0a11d686b9076d9f92c0",
+        "grid_conc_20240101010000_001": "ff0bb6389f8d5285b0ba8b0cc02aee8d769eb5617c622204ad8bceb052c15d84",
+        "header": "65a6089d83902bc4416dd4c48d8ec3c33705cebc03d2bdafcf2b184feb74696c",
+        "header_txt": "274793890ad76f5333ddd148452409f7623ee64e347c56b4a4f601d347c21e42",
+        "header_txt_releases": "8faf81852cce0d55c9f9ed510ebe3333e143d95f2fcbac8ab640c7116a94fcbe",
+        "OUTGRID.namelist": "0a8bebaf0cb5316e4198ec00ba2e0a5db0e49f74f8b8eae027e1f942273922ef",
+        "PARTOPTIONS.namelist": "314e24a63e66d82720d9afe52f18800b07cc883f0952c3dfcba3334df443a2d3",
+        "partoutput_20240101000000_init.nc": "bdfdbf8429e274a54387c019a3a17eb69b33097b90f874e35658788c6b0a8fc3",
+        "RELEASES.namelist": "84aefd762bee98b62ade7859e1eb03dc593e03cc07f33ea1a67a65d49d24534c",
+        "SPECIES_024.namelist": "55c674f0193c9d3857d7685b103f549548103b410e3d7243b161b11db7c3967c",
+        "totals.nc": "dc0c612856f736fdb1450958a3561bad6dfa5dc1f2d126d6a288f252df9a5333"
+      },
+      "decoded_sha256": "bf91d635749b4c1c15586af629df7bdd02a202ca3d4dd193944976ac7771be54",
+      "case_sha256": "d73b11442923b9c8b726b06e8fecc931ec1728821b9a734323927370911c4ad2",
+      "meteorology_generation_seconds": 6.9419149999999945,
+      "decode_seconds": 0.5673472000000856,
+      "decoded_center_of_mass": {
+        "lon_deg": 10.375000067097988,
+        "lat_deg": 50.05000004544854,
+        "z_m": 175.00000000000003
+      },
+      "decoded_release_mass_g": 100000000.0
+    },
+    {
+      "regime": "canonical-production",
+      "particles": 1000000,
+      "repetition": 1,
+      "cache_label": "first-process",
+      "state": "PASS",
+      "process_wall_seconds": 34.27903130000004,
+      "log_sha256": "c8464a130e90bd9aef1e7f573d7ea9de1ea8607223a786584687d3e77ac2500d",
+      "measured_steps": 12,
+      "dt_seconds": 300,
+      "measured_start_epoch_seconds": 1704067800,
+      "measured_end_epoch_seconds": 1704071400,
+      "warmup_steps": 2,
+      "warmup_wall_seconds": 16.1940212,
+      "cold_first_step_seconds": 14.6664444,
+      "driver_init_seconds": 0.3694442,
+      "meteorology_source_seconds": 0.0050323,
+      "canonical_prepare_upload_seconds": 0.0159955,
+      "measured_wall_seconds": 15.5718266,
+      "invariant_audit_seconds": 0.1446018,
+      "particle_steps_per_second": 770622.5035924816,
+      "simulated_time_wall_ratio": 231.18675107774447,
+      "invariants": {
+        "active_particles": 1000000,
+        "finite": true,
+        "mass_kg": 1000000.0,
+        "max_height_m": 777.85400390625,
+        "min_height_m": 0.010004112496972084,
+        "no_boundary_contact": true,
+        "top_m": 5720.36328125
+      },
+      "particle_output_sha256": "a820e006deedc07584579e51ba62e759b0dd4772cdc2f82be7f1e5de5368aac0",
+      "particle_output_bytes": 96000000,
+      "output_write_and_hash_seconds": 0.8079939,
+      "particle_buffer_bytes_lower_bound": 288000000,
+      "canonical_identity": {
+        "field_ids": [
+          "wind_u",
+          "wind_v",
+          "vertical_velocity"
+        ],
+        "geometry_identity": [
+          "snapshot=34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1",
+          "snapshot=10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1"
+        ],
+        "geometry_provenance": [
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          },
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          }
+        ],
+        "motion_provenance": [
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          },
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          }
+        ],
+        "source_snapshot_sha256": [
+          "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+          "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27"
+        ],
+        "source_times": [
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704067200
+          },
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704153600
+          }
+        ]
+      },
+      "report_sha256": "0a6011131c695facdb072edff1894453aad86f057874088bc28c1183c819c5f1",
+      "phase_totals_ms": {
+        "deposition_upload_ms": 0.0,
+        "encode_submit_ms": 2410.0697,
+        "forcing_ms": 0.0023,
+        "pbl_preparation_upload_ms": 0.8104,
+        "previous_wait_ms": 0.0,
+        "reported_total_ms": 15417.4716,
+        "submit_to_poll_ms": 11068.734,
+        "surface_interpolation_ms": 1.1396
+      }
+    },
+    {
+      "regime": "pinned-11.1-fortran",
+      "particles": 1000000,
+      "repetition": 1,
+      "cache_label": "first-process",
+      "state": "PASS",
+      "process_wall_seconds": 72.03435960000002,
+      "log_sha256": "06c2b401bc5daf82ca2ecccb1eca78684fcc7058b0773eac7ed19baecfc94b95",
+      "timing": {
+        "model_wall_seconds": 70.92634633799997,
+        "returncode": 0,
+        "child_peak_rss_kib": 408420,
+        "output_included": true,
+        "container_logical_cpus": 8,
+        "openmp_environment": {
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_SCHEDULE": "static",
+          "OMP_PROC_BIND": "FALSE",
+          "OMP_WAIT_POLICY": "PASSIVE",
+          "OMP_NUM_THREADS": "1",
+          "OMP_THREAD_LIMIT": "1",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_NESTED": "FALSE"
+        },
+        "transport_only_seconds": null,
+        "decode_seconds": null
+      },
+      "reference_reported_timers": {
+        "seconds": {
+          "Read wind fields": 0.0910339355,
+          "Timemanager": 70.4159851,
+          "first timestep": 6.15200806,
+          "Write particle files": 0.545959473,
+          "Total running time": 70.8999939
+        },
+        "basis": "pinned SYSTEM_CLOCK, default-real diagnostic precision",
+        "source": "FLEXPART.f90:112-142; timemanager_mod.f90:209-210,381-400,714-715",
+        "scope": "overlapping; particle file timer excludes other concentration serialization; not transport-only"
+      },
+      "particle_count_observations": [
+        {
+          "time_seconds": 0,
+          "spawned": 0,
+          "alive": 0,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 300,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 600,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 900,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1200,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1500,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1800,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2100,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2400,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2700,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3000,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3300,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3600,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        }
+      ],
+      "executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+      "image": "sha256:df8b65783487ada74b485f3173b760e220b39bc2f40a2ce9668ebe3895e3a137",
+      "consumed": {
+        "options": {
+          "AGECLASSES": "b9e83c99c411618cce02df4696ca2263bbc1a7e2989e3494587bb7a4f92ebca6",
+          "COMMAND": "52020499ccd55c331da52bf28041f49a303945ebe26b3af386c0162da78d7e87",
+          "IGBP_int1.dat": "0931bb9989bf96b2cb4361118d807e7df0d0429fdec19ada4cbd9a15d9e0d124",
+          "INPUT_DERIVATION.json": "c0f6a29fc782891b25f160d69da6c87b3822c9dc8c60d6c97265322b62a7bb6b",
+          "METEO.txt": "ef34b73778b50c50e59e1bb9cadc15ff8bf37ec1c9e857cadf7d668a718f120b",
+          "METEO_ARGS.txt": "32a0fb8c3199b0df46321c4516c519237e45af458c5758e3fe36ddeb9b2291ec",
+          "OUTGRID": "52ea7d44dc5e8e7692334e5b56d7d5877c41e0240e632b9b6a359da03f946538",
+          "PARTOPTIONS": "daade94ca7d871cdf6c633147244866bc1bec944381ab58154b32fb775270fb0",
+          "RECEPTORS": "19cd067864b9796f61abef40d06da2d99fe30dce4515bbc174710249f11f4d05",
+          "RELEASES": "bbf0bee56346df8c39841f9a7d31a533fdedbbfec453f04acac998da5ecf18dd",
+          "sfcdata.t": "f64072e7f7dcf0fa0bafda7662c6dbaee29f36da0f1f62f64e53778c2d2607d7",
+          "sfcdepo.t": "8a361624d3986b66208a1842f55a48a6fdf97c249fe5a04b3bbf48f853e2d818",
+          "SPECIES/SPECIES_024": "aabf59fdd1f51192a4843272b1b5b5d67a9d15cef05663d5fb4fca94a904f723"
+        },
+        "pathnames": "b23b16e0fc64289f017f24b6f7faeff7c1cf02d4174b13740ab176e28e6ef6af",
+        "meteorology": {
+          "AVAILABLE": "7d8a3ddcd94d8e6cee9bf11a46b64f47c37adb8977dbdfdcc9e199bf15124687",
+          "EN2024010100": "2869f1320e1688272a1befb9c1199dda8a61948edd137c5a71e95c92964c5fd5",
+          "EN2024010103": "f08f6a2c64507cbf0d4793d4ce7d9cbe48ca770f2efe242aebfabd1b03d36f3d"
+        },
+        "executable": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf"
+      },
+      "raw_output_sha256": {
+        "COMMAND.namelist": "d4a7472635c43bd03c82d2c31015a4187d132b0c15c1576a1aaeeba2dc656430",
+        "dates": "ffe80f4cacf16ce048e9c249a4bc63b348e55109b94d3011f19f600a6be33020",
+        "factor_drygrid": "e8131a49645c7554f4e5012bf21c7e99d235169f6822f4778331499a1d7779ca",
+        "grid_conc_20240101003000_001": "91aa2583369cd8259ce5505f6765909598c1a4371c904fa7718fb9f3c2003649",
+        "grid_conc_20240101010000_001": "02fddeecf8e85187302fea764f36eb2af4fb233fb8a82abbd582be57ff4a73e7",
+        "header": "9fa3d141dc5f29f00273a59d687b4c47b15e33df9de9cd1f6ad05eb264465853",
+        "header_txt": "274793890ad76f5333ddd148452409f7623ee64e347c56b4a4f601d347c21e42",
+        "header_txt_releases": "9c5f10e0fb56a8e055bedd1d0a27141462d998fb5e4c307622af3a2b5b4c5800",
+        "OUTGRID.namelist": "0a8bebaf0cb5316e4198ec00ba2e0a5db0e49f74f8b8eae027e1f942273922ef",
+        "PARTOPTIONS.namelist": "314e24a63e66d82720d9afe52f18800b07cc883f0952c3dfcba3334df443a2d3",
+        "partoutput_20240101000000_init.nc": "1ee663853e6ff30d21b891d8526043d1baceca769bcb50fc3d27b49bd4c9d01c",
+        "RELEASES.namelist": "7a438a4e95c36e18fbdeb5e4c0d710ae0310ba9fa44460c6cd426761e41861c3",
+        "SPECIES_024.namelist": "55c674f0193c9d3857d7685b103f549548103b410e3d7243b161b11db7c3967c",
+        "totals.nc": "71b95377b4d9d8c00856822d1641951489afbeeb0a3fe07c6e2766bab10b4b6d"
+      },
+      "decoded_sha256": "e68b107823bb42ce55f0f0c5b957b5141da0d17b631fe4a285d4c85f35ab15de",
+      "case_sha256": "d4481ed1fbb3de0e6c5ef7bade1d310424e70d27c358105f0b46ed758b88af8d",
+      "meteorology_generation_seconds": 7.560602199999948,
+      "decode_seconds": 0.27853239999990365,
+      "decoded_center_of_mass": {
+        "lon_deg": 10.375000064430413,
+        "lat_deg": 50.050000045448535,
+        "z_m": 174.99999999999997
+      },
+      "decoded_release_mass_g": 1000000000.0
+    },
+    {
+      "regime": "pinned-11.1-fortran",
+      "particles": 1000000,
+      "repetition": 2,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 68.65824070000008,
+      "log_sha256": "fe50291e3a9d798053b2a825672a32528ee85abfa8b0731636f3eee613e44ca2",
+      "timing": {
+        "model_wall_seconds": 67.648855314,
+        "returncode": 0,
+        "child_peak_rss_kib": 408488,
+        "output_included": true,
+        "container_logical_cpus": 8,
+        "openmp_environment": {
+          "OMP_PROC_BIND": "FALSE",
+          "OMP_WAIT_POLICY": "PASSIVE",
+          "OMP_NUM_THREADS": "1",
+          "OMP_THREAD_LIMIT": "1",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_NESTED": "FALSE",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_SCHEDULE": "static"
+        },
+        "transport_only_seconds": null,
+        "decode_seconds": null
+      },
+      "reference_reported_timers": {
+        "seconds": {
+          "Read wind fields": 0.0650634766,
+          "Timemanager": 67.3080444,
+          "first timestep": 2.88098145,
+          "Write particle files": 0.510192871,
+          "Total running time": 67.6230469
+        },
+        "basis": "pinned SYSTEM_CLOCK, default-real diagnostic precision",
+        "source": "FLEXPART.f90:112-142; timemanager_mod.f90:209-210,381-400,714-715",
+        "scope": "overlapping; particle file timer excludes other concentration serialization; not transport-only"
+      },
+      "particle_count_observations": [
+        {
+          "time_seconds": 0,
+          "spawned": 0,
+          "alive": 0,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 300,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 600,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 900,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1200,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1500,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1800,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2100,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2400,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2700,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3000,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3300,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3600,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        }
+      ],
+      "executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+      "image": "sha256:df8b65783487ada74b485f3173b760e220b39bc2f40a2ce9668ebe3895e3a137",
+      "consumed": {
+        "options": {
+          "AGECLASSES": "b9e83c99c411618cce02df4696ca2263bbc1a7e2989e3494587bb7a4f92ebca6",
+          "COMMAND": "52020499ccd55c331da52bf28041f49a303945ebe26b3af386c0162da78d7e87",
+          "IGBP_int1.dat": "0931bb9989bf96b2cb4361118d807e7df0d0429fdec19ada4cbd9a15d9e0d124",
+          "INPUT_DERIVATION.json": "c0f6a29fc782891b25f160d69da6c87b3822c9dc8c60d6c97265322b62a7bb6b",
+          "METEO.txt": "ef34b73778b50c50e59e1bb9cadc15ff8bf37ec1c9e857cadf7d668a718f120b",
+          "METEO_ARGS.txt": "32a0fb8c3199b0df46321c4516c519237e45af458c5758e3fe36ddeb9b2291ec",
+          "OUTGRID": "52ea7d44dc5e8e7692334e5b56d7d5877c41e0240e632b9b6a359da03f946538",
+          "PARTOPTIONS": "daade94ca7d871cdf6c633147244866bc1bec944381ab58154b32fb775270fb0",
+          "RECEPTORS": "19cd067864b9796f61abef40d06da2d99fe30dce4515bbc174710249f11f4d05",
+          "RELEASES": "bbf0bee56346df8c39841f9a7d31a533fdedbbfec453f04acac998da5ecf18dd",
+          "sfcdata.t": "f64072e7f7dcf0fa0bafda7662c6dbaee29f36da0f1f62f64e53778c2d2607d7",
+          "sfcdepo.t": "8a361624d3986b66208a1842f55a48a6fdf97c249fe5a04b3bbf48f853e2d818",
+          "SPECIES/SPECIES_024": "aabf59fdd1f51192a4843272b1b5b5d67a9d15cef05663d5fb4fca94a904f723"
+        },
+        "pathnames": "b23b16e0fc64289f017f24b6f7faeff7c1cf02d4174b13740ab176e28e6ef6af",
+        "meteorology": {
+          "AVAILABLE": "7d8a3ddcd94d8e6cee9bf11a46b64f47c37adb8977dbdfdcc9e199bf15124687",
+          "EN2024010100": "2869f1320e1688272a1befb9c1199dda8a61948edd137c5a71e95c92964c5fd5",
+          "EN2024010103": "f08f6a2c64507cbf0d4793d4ce7d9cbe48ca770f2efe242aebfabd1b03d36f3d"
+        },
+        "executable": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf"
+      },
+      "raw_output_sha256": {
+        "COMMAND.namelist": "d4a7472635c43bd03c82d2c31015a4187d132b0c15c1576a1aaeeba2dc656430",
+        "dates": "ffe80f4cacf16ce048e9c249a4bc63b348e55109b94d3011f19f600a6be33020",
+        "factor_drygrid": "e8131a49645c7554f4e5012bf21c7e99d235169f6822f4778331499a1d7779ca",
+        "grid_conc_20240101003000_001": "91aa2583369cd8259ce5505f6765909598c1a4371c904fa7718fb9f3c2003649",
+        "grid_conc_20240101010000_001": "02fddeecf8e85187302fea764f36eb2af4fb233fb8a82abbd582be57ff4a73e7",
+        "header": "9fa3d141dc5f29f00273a59d687b4c47b15e33df9de9cd1f6ad05eb264465853",
+        "header_txt": "274793890ad76f5333ddd148452409f7623ee64e347c56b4a4f601d347c21e42",
+        "header_txt_releases": "9c5f10e0fb56a8e055bedd1d0a27141462d998fb5e4c307622af3a2b5b4c5800",
+        "OUTGRID.namelist": "0a8bebaf0cb5316e4198ec00ba2e0a5db0e49f74f8b8eae027e1f942273922ef",
+        "PARTOPTIONS.namelist": "314e24a63e66d82720d9afe52f18800b07cc883f0952c3dfcba3334df443a2d3",
+        "partoutput_20240101000000_init.nc": "9b290e6e10bd34c28b5e1cdf0ba82d7e16ddfd5a2c9c647074d0fa73f65df5c3",
+        "RELEASES.namelist": "7a438a4e95c36e18fbdeb5e4c0d710ae0310ba9fa44460c6cd426761e41861c3",
+        "SPECIES_024.namelist": "55c674f0193c9d3857d7685b103f549548103b410e3d7243b161b11db7c3967c",
+        "totals.nc": "1b895c0db3cca97695480dac5551ab65759dc102ac9bcbb41bdcd18240f3d2e0"
+      },
+      "decoded_sha256": "eacd46ae0b122545ee91bd270f6339e4f32d9e8473382176b931e2c5156e577a",
+      "case_sha256": "d4481ed1fbb3de0e6c5ef7bade1d310424e70d27c358105f0b46ed758b88af8d",
+      "meteorology_generation_seconds": 7.560602199999948,
+      "decode_seconds": 0.47178660000008676,
+      "decoded_center_of_mass": {
+        "lon_deg": 10.375000064430413,
+        "lat_deg": 50.050000045448535,
+        "z_m": 174.99999999999997
+      },
+      "decoded_release_mass_g": 1000000000.0
+    },
+    {
+      "regime": "canonical-production",
+      "particles": 1000000,
+      "repetition": 2,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 32.985521299999846,
+      "log_sha256": "40639b6a0eecd68b52728e6b825d3ded6ef52c705934ecbfdc952d6c12b062d1",
+      "measured_steps": 12,
+      "dt_seconds": 300,
+      "measured_start_epoch_seconds": 1704067800,
+      "measured_end_epoch_seconds": 1704071400,
+      "warmup_steps": 2,
+      "warmup_wall_seconds": 15.5089134,
+      "cold_first_step_seconds": 14.094733,
+      "driver_init_seconds": 0.3101188,
+      "meteorology_source_seconds": 0.004985,
+      "canonical_prepare_upload_seconds": 0.0121658,
+      "measured_wall_seconds": 15.2910467,
+      "invariant_audit_seconds": 0.1638772,
+      "particle_steps_per_second": 784772.9612911325,
+      "simulated_time_wall_ratio": 235.43188838733974,
+      "invariants": {
+        "active_particles": 1000000,
+        "finite": true,
+        "mass_kg": 1000000.0,
+        "max_height_m": 777.85400390625,
+        "min_height_m": 0.010004112496972084,
+        "no_boundary_contact": true,
+        "top_m": 5720.36328125
+      },
+      "particle_output_sha256": "a820e006deedc07584579e51ba62e759b0dd4772cdc2f82be7f1e5de5368aac0",
+      "particle_output_bytes": 96000000,
+      "output_write_and_hash_seconds": 0.6920276,
+      "particle_buffer_bytes_lower_bound": 288000000,
+      "canonical_identity": {
+        "field_ids": [
+          "wind_u",
+          "wind_v",
+          "vertical_velocity"
+        ],
+        "geometry_identity": [
+          "snapshot=34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1",
+          "snapshot=10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1"
+        ],
+        "geometry_provenance": [
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          },
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          }
+        ],
+        "motion_provenance": [
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          },
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          }
+        ],
+        "source_snapshot_sha256": [
+          "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+          "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27"
+        ],
+        "source_times": [
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704067200
+          },
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704153600
+          }
+        ]
+      },
+      "report_sha256": "a31f60a7685bc947a171833e188b1ec9016314b96e10deb74d9cbb82bd2afcfa",
+      "phase_totals_ms": {
+        "deposition_upload_ms": 0.0,
+        "encode_submit_ms": 2367.6486,
+        "forcing_ms": 0.0018999999999999998,
+        "pbl_preparation_upload_ms": 0.9357,
+        "previous_wait_ms": 0.0,
+        "reported_total_ms": 15121.2884,
+        "submit_to_poll_ms": 10899.3355,
+        "surface_interpolation_ms": 1.6046
+      }
+    },
+    {
+      "regime": "canonical-production",
+      "particles": 1000000,
+      "repetition": 3,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 37.25668070000006,
+      "log_sha256": "e916e988ec651ea4adce415771a51b2e21d1084759badfa9b660395f05442f40",
+      "measured_steps": 12,
+      "dt_seconds": 300,
+      "measured_start_epoch_seconds": 1704067800,
+      "measured_end_epoch_seconds": 1704071400,
+      "warmup_steps": 2,
+      "warmup_wall_seconds": 13.488823,
+      "cold_first_step_seconds": 11.8453678,
+      "driver_init_seconds": 0.2503499,
+      "meteorology_source_seconds": 0.0038601,
+      "canonical_prepare_upload_seconds": 0.0106282,
+      "measured_wall_seconds": 19.7992205,
+      "invariant_audit_seconds": 0.23164500000000002,
+      "particle_steps_per_second": 606084.4668101958,
+      "simulated_time_wall_ratio": 181.82534004305876,
+      "invariants": {
+        "active_particles": 1000000,
+        "finite": true,
+        "mass_kg": 1000000.0,
+        "max_height_m": 777.85400390625,
+        "min_height_m": 0.010004112496972084,
+        "no_boundary_contact": true,
+        "top_m": 5720.36328125
+      },
+      "particle_output_sha256": "a820e006deedc07584579e51ba62e759b0dd4772cdc2f82be7f1e5de5368aac0",
+      "particle_output_bytes": 96000000,
+      "output_write_and_hash_seconds": 1.0373006,
+      "particle_buffer_bytes_lower_bound": 288000000,
+      "canonical_identity": {
+        "field_ids": [
+          "wind_u",
+          "wind_v",
+          "vertical_velocity"
+        ],
+        "geometry_identity": [
+          "snapshot=34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1",
+          "snapshot=10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1"
+        ],
+        "geometry_provenance": [
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          },
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          }
+        ],
+        "motion_provenance": [
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          },
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          }
+        ],
+        "source_snapshot_sha256": [
+          "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+          "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27"
+        ],
+        "source_times": [
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704067200
+          },
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704153600
+          }
+        ]
+      },
+      "report_sha256": "9fa70db76901001a0c55ffa3b8000b6ae52e9ce4868c059b8858a6d527792e63",
+      "phase_totals_ms": {
+        "deposition_upload_ms": 0.0,
+        "encode_submit_ms": 3740.1123000000002,
+        "forcing_ms": 0.0021999999999999997,
+        "pbl_preparation_upload_ms": 1.1380000000000001,
+        "previous_wait_ms": 0.0,
+        "reported_total_ms": 19560.3562,
+        "submit_to_poll_ms": 13716.9737,
+        "surface_interpolation_ms": 1.8402
+      }
+    },
+    {
+      "regime": "pinned-11.1-fortran",
+      "particles": 1000000,
+      "repetition": 3,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 137.4335755999998,
+      "log_sha256": "9c6e446d467cb5c42840ab3b71548d54b1fac48eee0003c40140c976a80bb693",
+      "timing": {
+        "model_wall_seconds": 127.71941385299999,
+        "returncode": 0,
+        "child_peak_rss_kib": 408616,
+        "output_included": true,
+        "container_logical_cpus": 8,
+        "openmp_environment": {
+          "OMP_WAIT_POLICY": "PASSIVE",
+          "OMP_NUM_THREADS": "1",
+          "OMP_THREAD_LIMIT": "1",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_NESTED": "FALSE",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_SCHEDULE": "static",
+          "OMP_PROC_BIND": "FALSE"
+        },
+        "transport_only_seconds": null,
+        "decode_seconds": null
+      },
+      "reference_reported_timers": {
+        "seconds": {
+          "Read wind fields": 0.279968262,
+          "Timemanager": 124.013,
+          "first timestep": 9.99395752,
+          "Write particle files": 0.936096191,
+          "Total running time": 127.568054
+        },
+        "basis": "pinned SYSTEM_CLOCK, default-real diagnostic precision",
+        "source": "FLEXPART.f90:112-142; timemanager_mod.f90:209-210,381-400,714-715",
+        "scope": "overlapping; particle file timer excludes other concentration serialization; not transport-only"
+      },
+      "particle_count_observations": [
+        {
+          "time_seconds": 0,
+          "spawned": 0,
+          "alive": 0,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 300,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 600,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 900,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1200,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1500,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1800,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2100,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2400,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2700,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3000,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3300,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3600,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        }
+      ],
+      "executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+      "image": "sha256:df8b65783487ada74b485f3173b760e220b39bc2f40a2ce9668ebe3895e3a137",
+      "consumed": {
+        "options": {
+          "AGECLASSES": "b9e83c99c411618cce02df4696ca2263bbc1a7e2989e3494587bb7a4f92ebca6",
+          "COMMAND": "52020499ccd55c331da52bf28041f49a303945ebe26b3af386c0162da78d7e87",
+          "IGBP_int1.dat": "0931bb9989bf96b2cb4361118d807e7df0d0429fdec19ada4cbd9a15d9e0d124",
+          "INPUT_DERIVATION.json": "c0f6a29fc782891b25f160d69da6c87b3822c9dc8c60d6c97265322b62a7bb6b",
+          "METEO.txt": "ef34b73778b50c50e59e1bb9cadc15ff8bf37ec1c9e857cadf7d668a718f120b",
+          "METEO_ARGS.txt": "32a0fb8c3199b0df46321c4516c519237e45af458c5758e3fe36ddeb9b2291ec",
+          "OUTGRID": "52ea7d44dc5e8e7692334e5b56d7d5877c41e0240e632b9b6a359da03f946538",
+          "PARTOPTIONS": "daade94ca7d871cdf6c633147244866bc1bec944381ab58154b32fb775270fb0",
+          "RECEPTORS": "19cd067864b9796f61abef40d06da2d99fe30dce4515bbc174710249f11f4d05",
+          "RELEASES": "bbf0bee56346df8c39841f9a7d31a533fdedbbfec453f04acac998da5ecf18dd",
+          "sfcdata.t": "f64072e7f7dcf0fa0bafda7662c6dbaee29f36da0f1f62f64e53778c2d2607d7",
+          "sfcdepo.t": "8a361624d3986b66208a1842f55a48a6fdf97c249fe5a04b3bbf48f853e2d818",
+          "SPECIES/SPECIES_024": "aabf59fdd1f51192a4843272b1b5b5d67a9d15cef05663d5fb4fca94a904f723"
+        },
+        "pathnames": "b23b16e0fc64289f017f24b6f7faeff7c1cf02d4174b13740ab176e28e6ef6af",
+        "meteorology": {
+          "AVAILABLE": "7d8a3ddcd94d8e6cee9bf11a46b64f47c37adb8977dbdfdcc9e199bf15124687",
+          "EN2024010100": "2869f1320e1688272a1befb9c1199dda8a61948edd137c5a71e95c92964c5fd5",
+          "EN2024010103": "f08f6a2c64507cbf0d4793d4ce7d9cbe48ca770f2efe242aebfabd1b03d36f3d"
+        },
+        "executable": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf"
+      },
+      "raw_output_sha256": {
+        "COMMAND.namelist": "d4a7472635c43bd03c82d2c31015a4187d132b0c15c1576a1aaeeba2dc656430",
+        "dates": "ffe80f4cacf16ce048e9c249a4bc63b348e55109b94d3011f19f600a6be33020",
+        "factor_drygrid": "e8131a49645c7554f4e5012bf21c7e99d235169f6822f4778331499a1d7779ca",
+        "grid_conc_20240101003000_001": "91aa2583369cd8259ce5505f6765909598c1a4371c904fa7718fb9f3c2003649",
+        "grid_conc_20240101010000_001": "02fddeecf8e85187302fea764f36eb2af4fb233fb8a82abbd582be57ff4a73e7",
+        "header": "9fa3d141dc5f29f00273a59d687b4c47b15e33df9de9cd1f6ad05eb264465853",
+        "header_txt": "274793890ad76f5333ddd148452409f7623ee64e347c56b4a4f601d347c21e42",
+        "header_txt_releases": "9c5f10e0fb56a8e055bedd1d0a27141462d998fb5e4c307622af3a2b5b4c5800",
+        "OUTGRID.namelist": "0a8bebaf0cb5316e4198ec00ba2e0a5db0e49f74f8b8eae027e1f942273922ef",
+        "PARTOPTIONS.namelist": "314e24a63e66d82720d9afe52f18800b07cc883f0952c3dfcba3334df443a2d3",
+        "partoutput_20240101000000_init.nc": "bb8783c4001fa60be24b0952cc34a6d8c70fcf2e6015838a2b5e00fdac0076e9",
+        "RELEASES.namelist": "7a438a4e95c36e18fbdeb5e4c0d710ae0310ba9fa44460c6cd426761e41861c3",
+        "SPECIES_024.namelist": "55c674f0193c9d3857d7685b103f549548103b410e3d7243b161b11db7c3967c",
+        "totals.nc": "184d16f755d7d25caedb10b38a04aef43c7672d0423a5f245c591e5d5a547191"
+      },
+      "decoded_sha256": "c7a276b2cb15c393b23577f136c44673fbb701ca087d945d2792576c4be70906",
+      "case_sha256": "d4481ed1fbb3de0e6c5ef7bade1d310424e70d27c358105f0b46ed758b88af8d",
+      "meteorology_generation_seconds": 7.560602199999948,
+      "decode_seconds": 0.542399499999874,
+      "decoded_center_of_mass": {
+        "lon_deg": 10.375000064430413,
+        "lat_deg": 50.050000045448535,
+        "z_m": 174.99999999999997
+      },
+      "decoded_release_mass_g": 1000000000.0
+    },
+    {
+      "regime": "pinned-11.1-fortran",
+      "particles": 1000000,
+      "repetition": 4,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 81.4851690999999,
+      "log_sha256": "cc14bde4dfd9a07ec867a35424550fcf473a0dad99baf324000920efc08a2df3",
+      "timing": {
+        "model_wall_seconds": 80.25014091600008,
+        "returncode": 0,
+        "child_peak_rss_kib": 408260,
+        "output_included": true,
+        "container_logical_cpus": 8,
+        "openmp_environment": {
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_NESTED": "FALSE",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_SCHEDULE": "static",
+          "OMP_PROC_BIND": "FALSE",
+          "OMP_WAIT_POLICY": "PASSIVE",
+          "OMP_NUM_THREADS": "1",
+          "OMP_THREAD_LIMIT": "1"
+        },
+        "transport_only_seconds": null,
+        "decode_seconds": null
+      },
+      "reference_reported_timers": {
+        "seconds": {
+          "Read wind fields": 0.0800170898,
+          "Timemanager": 79.809021,
+          "first timestep": 3.89599609,
+          "Write particle files": 0.575012207,
+          "Total running time": 80.2230225
+        },
+        "basis": "pinned SYSTEM_CLOCK, default-real diagnostic precision",
+        "source": "FLEXPART.f90:112-142; timemanager_mod.f90:209-210,381-400,714-715",
+        "scope": "overlapping; particle file timer excludes other concentration serialization; not transport-only"
+      },
+      "particle_count_observations": [
+        {
+          "time_seconds": 0,
+          "spawned": 0,
+          "alive": 0,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 300,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 600,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 900,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1200,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1500,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1800,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2100,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2400,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2700,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3000,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3300,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3600,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        }
+      ],
+      "executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+      "image": "sha256:df8b65783487ada74b485f3173b760e220b39bc2f40a2ce9668ebe3895e3a137",
+      "consumed": {
+        "options": {
+          "AGECLASSES": "b9e83c99c411618cce02df4696ca2263bbc1a7e2989e3494587bb7a4f92ebca6",
+          "COMMAND": "52020499ccd55c331da52bf28041f49a303945ebe26b3af386c0162da78d7e87",
+          "IGBP_int1.dat": "0931bb9989bf96b2cb4361118d807e7df0d0429fdec19ada4cbd9a15d9e0d124",
+          "INPUT_DERIVATION.json": "c0f6a29fc782891b25f160d69da6c87b3822c9dc8c60d6c97265322b62a7bb6b",
+          "METEO.txt": "ef34b73778b50c50e59e1bb9cadc15ff8bf37ec1c9e857cadf7d668a718f120b",
+          "METEO_ARGS.txt": "32a0fb8c3199b0df46321c4516c519237e45af458c5758e3fe36ddeb9b2291ec",
+          "OUTGRID": "52ea7d44dc5e8e7692334e5b56d7d5877c41e0240e632b9b6a359da03f946538",
+          "PARTOPTIONS": "daade94ca7d871cdf6c633147244866bc1bec944381ab58154b32fb775270fb0",
+          "RECEPTORS": "19cd067864b9796f61abef40d06da2d99fe30dce4515bbc174710249f11f4d05",
+          "RELEASES": "bbf0bee56346df8c39841f9a7d31a533fdedbbfec453f04acac998da5ecf18dd",
+          "sfcdata.t": "f64072e7f7dcf0fa0bafda7662c6dbaee29f36da0f1f62f64e53778c2d2607d7",
+          "sfcdepo.t": "8a361624d3986b66208a1842f55a48a6fdf97c249fe5a04b3bbf48f853e2d818",
+          "SPECIES/SPECIES_024": "aabf59fdd1f51192a4843272b1b5b5d67a9d15cef05663d5fb4fca94a904f723"
+        },
+        "pathnames": "b23b16e0fc64289f017f24b6f7faeff7c1cf02d4174b13740ab176e28e6ef6af",
+        "meteorology": {
+          "AVAILABLE": "7d8a3ddcd94d8e6cee9bf11a46b64f47c37adb8977dbdfdcc9e199bf15124687",
+          "EN2024010100": "2869f1320e1688272a1befb9c1199dda8a61948edd137c5a71e95c92964c5fd5",
+          "EN2024010103": "f08f6a2c64507cbf0d4793d4ce7d9cbe48ca770f2efe242aebfabd1b03d36f3d"
+        },
+        "executable": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf"
+      },
+      "raw_output_sha256": {
+        "COMMAND.namelist": "d4a7472635c43bd03c82d2c31015a4187d132b0c15c1576a1aaeeba2dc656430",
+        "dates": "ffe80f4cacf16ce048e9c249a4bc63b348e55109b94d3011f19f600a6be33020",
+        "factor_drygrid": "e8131a49645c7554f4e5012bf21c7e99d235169f6822f4778331499a1d7779ca",
+        "grid_conc_20240101003000_001": "91aa2583369cd8259ce5505f6765909598c1a4371c904fa7718fb9f3c2003649",
+        "grid_conc_20240101010000_001": "02fddeecf8e85187302fea764f36eb2af4fb233fb8a82abbd582be57ff4a73e7",
+        "header": "9fa3d141dc5f29f00273a59d687b4c47b15e33df9de9cd1f6ad05eb264465853",
+        "header_txt": "274793890ad76f5333ddd148452409f7623ee64e347c56b4a4f601d347c21e42",
+        "header_txt_releases": "9c5f10e0fb56a8e055bedd1d0a27141462d998fb5e4c307622af3a2b5b4c5800",
+        "OUTGRID.namelist": "0a8bebaf0cb5316e4198ec00ba2e0a5db0e49f74f8b8eae027e1f942273922ef",
+        "PARTOPTIONS.namelist": "314e24a63e66d82720d9afe52f18800b07cc883f0952c3dfcba3334df443a2d3",
+        "partoutput_20240101000000_init.nc": "07a91d6229e07793451e0ab0811f6e3fc0e951cc86aee7a2e1db39feab1116a7",
+        "RELEASES.namelist": "7a438a4e95c36e18fbdeb5e4c0d710ae0310ba9fa44460c6cd426761e41861c3",
+        "SPECIES_024.namelist": "55c674f0193c9d3857d7685b103f549548103b410e3d7243b161b11db7c3967c",
+        "totals.nc": "83b5d3c56f06474726977a2d5e910bca8791aee96819eb070f3f9da654634882"
+      },
+      "decoded_sha256": "a8439f20dd6ba6c43ad23d224c373f4e19eae5c21a6c38582ee4fe6927c3be66",
+      "case_sha256": "d4481ed1fbb3de0e6c5ef7bade1d310424e70d27c358105f0b46ed758b88af8d",
+      "meteorology_generation_seconds": 7.560602199999948,
+      "decode_seconds": 0.4567159000000629,
+      "decoded_center_of_mass": {
+        "lon_deg": 10.375000064430413,
+        "lat_deg": 50.050000045448535,
+        "z_m": 174.99999999999997
+      },
+      "decoded_release_mass_g": 1000000000.0
+    },
+    {
+      "regime": "canonical-production",
+      "particles": 1000000,
+      "repetition": 4,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 34.960596099999975,
+      "log_sha256": "12d9580f13ca297c5527f6404b4b8153cf1423fef6c24f30a3625e6b3d34900d",
+      "measured_steps": 12,
+      "dt_seconds": 300,
+      "measured_start_epoch_seconds": 1704067800,
+      "measured_end_epoch_seconds": 1704071400,
+      "warmup_steps": 2,
+      "warmup_wall_seconds": 15.965576800000001,
+      "cold_first_step_seconds": 14.3815441,
+      "driver_init_seconds": 0.3769304,
+      "meteorology_source_seconds": 0.0072916,
+      "canonical_prepare_upload_seconds": 0.0158949,
+      "measured_wall_seconds": 16.759232,
+      "invariant_audit_seconds": 0.148621,
+      "particle_steps_per_second": 716023.2640731985,
+      "simulated_time_wall_ratio": 214.80697922195955,
+      "invariants": {
+        "active_particles": 1000000,
+        "finite": true,
+        "mass_kg": 1000000.0,
+        "max_height_m": 777.85400390625,
+        "min_height_m": 0.010004112496972084,
+        "no_boundary_contact": true,
+        "top_m": 5720.36328125
+      },
+      "particle_output_sha256": "a820e006deedc07584579e51ba62e759b0dd4772cdc2f82be7f1e5de5368aac0",
+      "particle_output_bytes": 96000000,
+      "output_write_and_hash_seconds": 0.6913226,
+      "particle_buffer_bytes_lower_bound": 288000000,
+      "canonical_identity": {
+        "field_ids": [
+          "wind_u",
+          "wind_v",
+          "vertical_velocity"
+        ],
+        "geometry_identity": [
+          "snapshot=34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1",
+          "snapshot=10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1"
+        ],
+        "geometry_provenance": [
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          },
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          }
+        ],
+        "motion_provenance": [
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          },
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          }
+        ],
+        "source_snapshot_sha256": [
+          "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+          "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27"
+        ],
+        "source_times": [
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704067200
+          },
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704153600
+          }
+        ]
+      },
+      "report_sha256": "7267dfdaeb963dfa5e40c6051e71abd34c8cd7d3c7707f0165cc4071587a665c",
+      "phase_totals_ms": {
+        "deposition_upload_ms": 0.0,
+        "encode_submit_ms": 2806.9183,
+        "forcing_ms": 0.0025,
+        "pbl_preparation_upload_ms": 0.837,
+        "previous_wait_ms": 0.0,
+        "reported_total_ms": 16603.4712,
+        "submit_to_poll_ms": 11759.1426,
+        "surface_interpolation_ms": 0.706
+      }
+    },
+    {
+      "regime": "canonical-production",
+      "particles": 1000000,
+      "repetition": 5,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 46.043606299999965,
+      "log_sha256": "20b249233695149e848f1f68fb5171a3bf935d203ec1304cf4e6d0f2f3a723fe",
+      "measured_steps": 12,
+      "dt_seconds": 300,
+      "measured_start_epoch_seconds": 1704067800,
+      "measured_end_epoch_seconds": 1704071400,
+      "warmup_steps": 2,
+      "warmup_wall_seconds": 16.3893635,
+      "cold_first_step_seconds": 14.4902631,
+      "driver_init_seconds": 0.2943374,
+      "meteorology_source_seconds": 0.0064855,
+      "canonical_prepare_upload_seconds": 0.0196046,
+      "measured_wall_seconds": 26.3775028,
+      "invariant_audit_seconds": 0.273681,
+      "particle_steps_per_second": 454933.133397298,
+      "simulated_time_wall_ratio": 136.4799400191894,
+      "invariants": {
+        "active_particles": 1000000,
+        "finite": true,
+        "mass_kg": 1000000.0,
+        "max_height_m": 777.85400390625,
+        "min_height_m": 0.010004112496972084,
+        "no_boundary_contact": true,
+        "top_m": 5720.36328125
+      },
+      "particle_output_sha256": "a820e006deedc07584579e51ba62e759b0dd4772cdc2f82be7f1e5de5368aac0",
+      "particle_output_bytes": 96000000,
+      "output_write_and_hash_seconds": 1.3273474,
+      "particle_buffer_bytes_lower_bound": 288000000,
+      "canonical_identity": {
+        "field_ids": [
+          "wind_u",
+          "wind_v",
+          "vertical_velocity"
+        ],
+        "geometry_identity": [
+          "snapshot=34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1",
+          "snapshot=10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27:ordering=Increasing:levels=3:nx=32:ny=32:pressure=hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1:height=flexpart11_verttransform_ecmwf_heights_v1:wheight=flexpart11_wzlev_from_uvzlev_v1"
+        ],
+        "geometry_provenance": [
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          },
+          {
+            "height_algorithm_id": "flexpart11_verttransform_ecmwf_heights_v1",
+            "height_reconstruction": "FLEXPART-11.1 verttransform_ecmwf_heights hypsometric integration from surface virtual temperature (T2m/dewpoint) through model-level T/q",
+            "height_reference": "agl_integrated_from_local_surface; asl=agl+orography_asl",
+            "pressure_algorithm_id": "hybrid_interface_ab_local_ps_fulllevel_adjacent_mean_v1",
+            "pressure_reconstruction": "p_interface=a_interface+b_interface*local_surface_pressure; p_level=mean(adjacent_interfaces)",
+            "source_level_count": 3,
+            "source_schema_id": "flexpart-gpu.canonical-meteorology",
+            "source_schema_version": 1,
+            "source_snapshot_sha256": "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27",
+            "source_vertical_ordering": "increasing",
+            "terrain_reference": "above_mean_sea_level",
+            "w_height_algorithm_id": "flexpart11_wzlev_from_uvzlev_v1"
+          }
+        ],
+        "motion_provenance": [
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          },
+          {
+            "algorithm_id": "geometric_identity_v1",
+            "conversion": "identity: already geometric m/s positive upward",
+            "output_vertical_staggering": "level_center",
+            "source_id": "BENCH-EARLY-11.1-v1",
+            "source_kind": "geometric_velocity",
+            "source_native_motion_sha256": "09daf7ba1d6ce71cbaa8058468b1d3a7120d192f0638137778bf1b3fa52af6b7",
+            "source_sign": "positive_upward",
+            "source_unit": "meter_per_second",
+            "source_vertical_staggering": "level_center"
+          }
+        ],
+        "source_snapshot_sha256": [
+          "34efe004b60d096f1da05732f758c1886433128065f0c063c127f74f84f9c832",
+          "10b971cad27cb91ed57bd2cd6710333ba494036cc20304ee8ec85191ecb30d27"
+        ],
+        "source_times": [
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704067200
+          },
+          {
+            "calendar": "gregorian",
+            "epoch_seconds": 1704153600
+          }
+        ]
+      },
+      "report_sha256": "4b6fbd2839912c64adaabcac0238091a20b2ae12e3e556c3de9d7a73a2d0487f",
+      "phase_totals_ms": {
+        "deposition_upload_ms": 0.0,
+        "encode_submit_ms": 6223.1661,
+        "forcing_ms": 0.002,
+        "pbl_preparation_upload_ms": 1.2605,
+        "previous_wait_ms": 0.0,
+        "reported_total_ms": 26093.8559,
+        "submit_to_poll_ms": 16935.5816,
+        "surface_interpolation_ms": 4.7756
+      }
+    },
+    {
+      "regime": "pinned-11.1-fortran",
+      "particles": 1000000,
+      "repetition": 5,
+      "cache_label": "repeated-process",
+      "state": "PASS",
+      "process_wall_seconds": 89.59303050000017,
+      "log_sha256": "3ce68f84b64e437c01aa78b33d4fbf1c9dd4637a0ab5d644af8b97d4c9a30556",
+      "timing": {
+        "model_wall_seconds": 88.15462954399993,
+        "returncode": 0,
+        "child_peak_rss_kib": 408568,
+        "output_included": true,
+        "container_logical_cpus": 8,
+        "openmp_environment": {
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_SCHEDULE": "static",
+          "OMP_PROC_BIND": "FALSE",
+          "OMP_WAIT_POLICY": "PASSIVE",
+          "OMP_NUM_THREADS": "1",
+          "OMP_THREAD_LIMIT": "1",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_NESTED": "FALSE"
+        },
+        "transport_only_seconds": null,
+        "decode_seconds": null
+      },
+      "reference_reported_timers": {
+        "seconds": {
+          "Read wind fields": 0.101013184,
+          "Timemanager": 87.6300049,
+          "first timestep": 4.98400879,
+          "Write particle files": 0.596191406,
+          "Total running time": 88.1230469
+        },
+        "basis": "pinned SYSTEM_CLOCK, default-real diagnostic precision",
+        "source": "FLEXPART.f90:112-142; timemanager_mod.f90:209-210,381-400,714-715",
+        "scope": "overlapping; particle file timer excludes other concentration serialization; not transport-only"
+      },
+      "particle_count_observations": [
+        {
+          "time_seconds": 0,
+          "spawned": 0,
+          "alive": 0,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 300,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 600,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 900,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1200,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1500,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 1800,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2100,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2400,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 2700,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3000,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3300,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        },
+        {
+          "time_seconds": 3600,
+          "spawned": 1000000,
+          "alive": 1000000,
+          "terminated": 0
+        }
+      ],
+      "executable_sha256": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf",
+      "image": "sha256:df8b65783487ada74b485f3173b760e220b39bc2f40a2ce9668ebe3895e3a137",
+      "consumed": {
+        "options": {
+          "AGECLASSES": "b9e83c99c411618cce02df4696ca2263bbc1a7e2989e3494587bb7a4f92ebca6",
+          "COMMAND": "52020499ccd55c331da52bf28041f49a303945ebe26b3af386c0162da78d7e87",
+          "IGBP_int1.dat": "0931bb9989bf96b2cb4361118d807e7df0d0429fdec19ada4cbd9a15d9e0d124",
+          "INPUT_DERIVATION.json": "c0f6a29fc782891b25f160d69da6c87b3822c9dc8c60d6c97265322b62a7bb6b",
+          "METEO.txt": "ef34b73778b50c50e59e1bb9cadc15ff8bf37ec1c9e857cadf7d668a718f120b",
+          "METEO_ARGS.txt": "32a0fb8c3199b0df46321c4516c519237e45af458c5758e3fe36ddeb9b2291ec",
+          "OUTGRID": "52ea7d44dc5e8e7692334e5b56d7d5877c41e0240e632b9b6a359da03f946538",
+          "PARTOPTIONS": "daade94ca7d871cdf6c633147244866bc1bec944381ab58154b32fb775270fb0",
+          "RECEPTORS": "19cd067864b9796f61abef40d06da2d99fe30dce4515bbc174710249f11f4d05",
+          "RELEASES": "bbf0bee56346df8c39841f9a7d31a533fdedbbfec453f04acac998da5ecf18dd",
+          "sfcdata.t": "f64072e7f7dcf0fa0bafda7662c6dbaee29f36da0f1f62f64e53778c2d2607d7",
+          "sfcdepo.t": "8a361624d3986b66208a1842f55a48a6fdf97c249fe5a04b3bbf48f853e2d818",
+          "SPECIES/SPECIES_024": "aabf59fdd1f51192a4843272b1b5b5d67a9d15cef05663d5fb4fca94a904f723"
+        },
+        "pathnames": "b23b16e0fc64289f017f24b6f7faeff7c1cf02d4174b13740ab176e28e6ef6af",
+        "meteorology": {
+          "AVAILABLE": "7d8a3ddcd94d8e6cee9bf11a46b64f47c37adb8977dbdfdcc9e199bf15124687",
+          "EN2024010100": "2869f1320e1688272a1befb9c1199dda8a61948edd137c5a71e95c92964c5fd5",
+          "EN2024010103": "f08f6a2c64507cbf0d4793d4ce7d9cbe48ca770f2efe242aebfabd1b03d36f3d"
+        },
+        "executable": "4b79cdf8dbcd1d7ac5362e27cc00dac1aa7717b88f6d8cbe0b79580d41e242cf"
+      },
+      "raw_output_sha256": {
+        "COMMAND.namelist": "d4a7472635c43bd03c82d2c31015a4187d132b0c15c1576a1aaeeba2dc656430",
+        "dates": "ffe80f4cacf16ce048e9c249a4bc63b348e55109b94d3011f19f600a6be33020",
+        "factor_drygrid": "e8131a49645c7554f4e5012bf21c7e99d235169f6822f4778331499a1d7779ca",
+        "grid_conc_20240101003000_001": "91aa2583369cd8259ce5505f6765909598c1a4371c904fa7718fb9f3c2003649",
+        "grid_conc_20240101010000_001": "02fddeecf8e85187302fea764f36eb2af4fb233fb8a82abbd582be57ff4a73e7",
+        "header": "9fa3d141dc5f29f00273a59d687b4c47b15e33df9de9cd1f6ad05eb264465853",
+        "header_txt": "274793890ad76f5333ddd148452409f7623ee64e347c56b4a4f601d347c21e42",
+        "header_txt_releases": "9c5f10e0fb56a8e055bedd1d0a27141462d998fb5e4c307622af3a2b5b4c5800",
+        "OUTGRID.namelist": "0a8bebaf0cb5316e4198ec00ba2e0a5db0e49f74f8b8eae027e1f942273922ef",
+        "PARTOPTIONS.namelist": "314e24a63e66d82720d9afe52f18800b07cc883f0952c3dfcba3334df443a2d3",
+        "partoutput_20240101000000_init.nc": "872e16f751f26a83a93accd4e71d9676131c7c21bf4758792e0934fa077e8c00",
+        "RELEASES.namelist": "7a438a4e95c36e18fbdeb5e4c0d710ae0310ba9fa44460c6cd426761e41861c3",
+        "SPECIES_024.namelist": "55c674f0193c9d3857d7685b103f549548103b410e3d7243b161b11db7c3967c",
+        "totals.nc": "252c3e971694c047f2a8156ae8a505e8d8a81d7a1db8e0af2c157bea7925439b"
+      },
+      "decoded_sha256": "f6837e7204cd3592eb71a86bd812eb36876b80816bd25e48435d90b409e61c1f",
+      "case_sha256": "d4481ed1fbb3de0e6c5ef7bade1d310424e70d27c358105f0b46ed758b88af8d",
+      "meteorology_generation_seconds": 7.560602199999948,
+      "decode_seconds": 0.3474143000000822,
+      "decoded_center_of_mass": {
+        "lon_deg": 10.375000064430413,
+        "lat_deg": 50.050000045448535,
+        "z_m": 174.99999999999997
+      },
+      "decoded_release_mass_g": 1000000000.0
+    }
+  ],
+  "checks": {
+    "final-fmt.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "final-clippy.log": {
+      "sha256": "d8eb639a66e6a6d8af0f83584914a147d17c4e36608d1a9a7bdd083d8f9ee375",
+      "bytes": 211674
+    },
+    "binary-clippy.log": {
+      "sha256": "c9330d660dd13cc9e03359025d7ce8975e033f56763a3eef6e73279c533321a4",
+      "bytes": 204459
+    },
+    "binary-test.log": {
+      "sha256": "130fc3c20e036761ec69544f98824561822112a77beb1c42c2d6232a6fac19c9",
+      "bytes": 1593
+    },
+    "final-test.log": {
+      "sha256": "c51cc2f2e3abdd7377b8f84c7846c1ba096fe7d9210a2d0aa913e5d6a63ac18c",
+      "bytes": 53591
+    },
+    "final-test-serial.log": {
+      "sha256": "9d9e79c693c62ecd645885659293b31759b197244ef24d6f786ed2aacd11eaf6",
+      "bytes": 72112
+    },
+    "production-normal.log": {
+      "sha256": "ba49d455660adab6c87c8e848e9bef443c509ac558f144f8a6e56f3667dc5566",
+      "bytes": 1780
+    },
+    "production-validation.log": {
+      "sha256": "90451e34432a4678a65087d35ecc29d41ef34290a48f4eb9d5641693987368bb",
+      "bytes": 1780
+    },
+    "production-compaction.log": {
+      "sha256": "df0339d77b894ce976a25f77362250efa75d44562a151e624f764c3ff123f63a",
+      "bytes": 1780
+    },
+    "cargo_serial": {
+      "passed": 730,
+      "failed": 0,
+      "ignored": 0,
+      "targets": 42
+    },
+    "parallel_software_failure": "Original cargo test crashed with 0xc0000005 in unchanged accumulation_gpu on Windows WARP; same target and full suite pass serially."
+  },
+  "blockers": [
+    "Canonical production always executes Hanna/Langevin; the existing advection-only Fortran case disables turbulence. No canonical turbulence-off option exists.",
+    "Canonical three-level native regional meteorology and Fortran synthetic 12-level global meteorology differ; canonical horizontal velocity conversion is fixed at release latitude.",
+    "Instantaneous canonical particle output and time-averaged Fortran concentration output have no accepted paired production comparison here.",
+    "Stage A excludes upper-boundary crossings; #197 and #198 remain separate production adoption work."
+  ],
+  "limitations": [
+    "No paired scientific comparison or full FLEXPART parity verdict.",
+    "GPU strict per-step readback/profile timings include synchronization and auditing.",
+    "GPU warm measurement follows >=3 s same-driver warmup and continues its trajectories; Fortran repetitions restart from release.",
+    "Cold refers to fresh process/device, not flushed OS/disk/driver caches.",
+    "Fortran model wall includes ingestion/output; Docker wrapper and decoder separate.",
+    "No isolated transport timer, GPU timestamp, measured VRAM peak or Fortran particle-step counter.",
+    "Five repetitions show substantial cold/repeated-process variation; these local diagnostic timings do not establish stable hardware throughput.",
+    "Warm-up length is wall-controlled and differs across runs; exact epochs/steps/counters are retained and repeated processes need not have identical final particles.",
+    "No cross-engine speedup, scientific parity or paired output comparison is claimed."
+  ],
+  "provenance_marker": "GPT6.1 Sol",
+  "reference_concentration_repeatability": {
+    "100000": true,
+    "1000000": true,
+    "scope": "grid_conc_* byte equality across five repetitions at each count; not candidate parity"
+  }
+}

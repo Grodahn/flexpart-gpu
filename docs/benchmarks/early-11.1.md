@@ -55,11 +55,16 @@ python scripts/test_benchmark_early.py
 The output directory must be new and under this checkout's `target/`. The launcher
 builds the release binary once and delegates Fortran build verification to
 `oracle_build_cache.py`; repeated runs reuse only verified build artifacts.
+Cargo's machine-readable artifact receipt selects the executable even when a
+target directory or target triple is configured. The launcher freezes the exact
+manifest bytes in `scenario.json` and uses that copy for every candidate run.
 `generate_fortran_fixtures.py` derives each count's options and the kg-to-g mass
 conversion, and `generate_synthetic_grib.py` prepares meteorology. No upstream
 source or particle cap is patched. Immutable Docker image, compiler/packages,
 build flags, binary and object hashes are retained. The pristine checkout and
 binary are verified again after actual Fortran execution.
+Prepared inputs must match their generation hashes before each reference run;
+consumed options, pathnames and meteorology must remain unchanged during it.
 
 Five independent processes per engine/count alternate order. Each GPU process
 warms the same driver for at least three wall seconds and two timesteps; 12
@@ -82,6 +87,8 @@ null speedup. Each sample retains raw logs, phase JSON, full candidate particle
 bytes and SHA-256, generated Fortran options/meteorology hashes, runtime guard,
 raw concentration output and the existing decoded oracle summary. Missing
 build/device/output/decoder evidence yields nonzero failure, with results retained.
+Candidate receipts must also contain the configured warm-up and measured epochs,
+complete finite phase timings, mass/height invariants and matching raw byte length.
 
 Candidate wall time includes production encoding/submission, profiling waits,
 per-step D2H and invariant audit. Driver initialization, canonical meteorology

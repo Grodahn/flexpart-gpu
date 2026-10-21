@@ -1,6 +1,7 @@
 """Fail-closed reporting and input derivation regressions for issue #199."""
 import copy
 import json
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -23,21 +24,108 @@ class BenchmarkTests(unittest.TestCase):
                 bench.validate_manifest(changed)
 
     def test_hardware_and_complete_evidence_required(self):
-        data = {"regime":"canonical-production", "calculation_path":"wgsl_device",
+        phases = dict.fromkeys(["surface_interpolation_ms", "pbl_preparation_upload_ms", "forcing_ms",
+            "deposition_upload_ms", "previous_wait_ms", "encode_submit_ms", "submit_to_poll_ms", "reported_total_ms"], 0.0)
+        data = {"schema":"flexpart-gpu.canonical-benchmark-run.v1",
+                "regime":"canonical-production", "calculation_path":"wgsl_device",
                 "adapter":{"adapter_class":"hardware_gpu"}, "particles":100000,
-                "measured_steps":1,"manifest_sha256":"abc", "canonical_identity":{"source":"x"},
-                "invariants":{"active_particles":100000,"no_boundary_contact":True},
-                "steps":[{}],"particle_output_sha256":"def", "measured_wall_seconds":1,
+                "measured_steps":12,"dt_seconds":300,"manifest_sha256":"abc", "canonical_identity":{"source":"x"},
+                "configuration":self.manifest["candidate"],"warmup_steps":2,"warmup_wall_seconds":3,
+                "measured_start_epoch_seconds":1704067800,"measured_end_epoch_seconds":1704071400,
+                "invariants":{"active_particles":100000,"no_boundary_contact":True,"finite":True,
+                              "mass_kg":100000,"min_height_m":10,"max_height_m":100,"top_m":1000},
+                "steps":[{"wall_seconds":1,"phases":phases} for _ in range(12)],
+                "particle_output_sha256":"def","particle_output_bytes":6400000, "measured_wall_seconds":12,
                 "particle_steps_per_second":100000}
-        bench.validate_candidate(data, 100000, "abc", 1)
+        bench.validate_candidate(data, 100000, "abc", self.manifest)
         for field in list(data):
             changed = copy.deepcopy(data)
             changed.pop(field)
             with self.assertRaises((ValueError, KeyError)):
-                bench.validate_candidate(changed, 100000, "abc", 1)
+                bench.validate_candidate(changed, 100000, "abc", self.manifest)
+        for field, value in [("warmup_wall_seconds", 0), ("warmup_steps", 0),
+                             ("measured_end_epoch_seconds", 1704067800), ("dt_seconds", 1),
+                             ("particle_output_bytes", 0), ("configuration", {})]:
+            changed = copy.deepcopy(data)
+            changed[field] = value
+            with self.assertRaises(ValueError):
+                bench.validate_candidate(changed, 100000, "abc", self.manifest)
+        for section, field, value in [("invariants", "mass_kg", 0), ("invariants", "finite", False),
+                                       ("invariants", "min_height_m", float("nan")),
+                                       ("invariants", "top_m", 100)]:
+            changed = copy.deepcopy(data)
+            changed[section][field] = value
+            with self.assertRaises(ValueError):
+                bench.validate_candidate(changed, 100000, "abc", self.manifest)
+        for value in [None, {}, {**phases, "submit_to_poll_ms":float("nan")}]:
+            changed = copy.deepcopy(data)
+            changed["steps"][0]["phases"] = value
+            with self.assertRaises((ValueError, KeyError, TypeError)):
+                bench.validate_candidate(changed, 100000, "abc", self.manifest)
         data["adapter"]["adapter_class"] = "software_wgsl"
         with self.assertRaises(ValueError):
-            bench.validate_candidate(data, 100000, "abc", 1)
+            bench.validate_candidate(data, 100000, "abc", self.manifest)
+
+    def test_cargo_receipt_selects_configured_binary_and_rejects_missing_artifacts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            binary = root / "custom-target" / "bench-canonical.exe"
+            binary.parent.mkdir()
+            binary.write_bytes(b"current binary")
+            log = root / "build.log"
+            artifact = {"reason":"compiler-artifact", "target":{"name":"bench-canonical"},
+                        "executable":str(binary)}
+            log.write_text(json.dumps(artifact) + "\nFinished release build\n")
+            record = {"returncode":0,"log":str(log)}
+            self.assertEqual(bench.build_binary(record), binary.resolve())
+            for payload in ["", json.dumps({**artifact, "executable":None}),
+                            json.dumps({**artifact, "executable":str(root / "missing")})]:
+                log.write_text(payload)
+                with self.assertRaises(ValueError):
+                    bench.build_binary(record)
+
+    def test_manifest_snapshot_survives_external_source_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, frozen = root / "external.json", root / "scenario.json"
+            source.write_text(json.dumps(self.manifest))
+            manifest, identity = bench.freeze_manifest(source, frozen)
+            source.write_text("{}")
+            self.assertEqual(manifest, self.manifest)
+            self.assertEqual(json.loads(frozen.read_text()), self.manifest)
+            self.assertEqual(bench.sha(frozen), identity)
+
+    def test_reference_meteorology_mutation_before_or_during_execution_fails(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fixture, meteo = root / "inputs/options", root / "inputs/meteo"
+            fixture.mkdir(parents=True)
+            meteo.mkdir()
+            weather = meteo / "GRIB"
+            weather.write_text("original")
+            executable = root / "src/FLEXPART"
+            executable.parent.mkdir()
+            executable.write_bytes(b"oracle")
+            inputs = {"fixture":fixture,"meteo":meteo,"input_sha256":bench.tree_hashes(fixture.parent),
+                      "case":{"integration":{"total_s":300}}}
+            prepared = {"inputs":{100000:inputs},"build":{"oracle_executable_sha256":bench.sha(executable)},"docker":[]}
+
+            def mutate(args, log):
+                weather.write_text("changed")
+                Path(log).write_text("CONGRATULATIONS\nTime: 300 seconds. Total spawned: 100000 alive: 100000 terminated: 0\n")
+                return {"returncode":0,"log":str(log)}
+
+            for during in [False, True]:
+                weather.write_text("original" if during else "changed")
+                folder = root / str(during)
+                folder.mkdir()
+                with patch.object(bench.oracle, "require_pristine"), \
+                     patch.object(bench, "container_path", return_value="/inputs"), \
+                     patch.object(bench, "command", side_effect=mutate) as command:
+                    record = bench.fortran_run(prepared, root, 100000, folder)
+                self.assertEqual(record["state"], "FAIL")
+                self.assertIn("inputs changed", record["error"])
+                self.assertEqual(command.call_count, int(during))
 
     def test_missing_and_failed_samples_never_pass_aggregate(self):
         rows = bench.aggregate([], [100000])

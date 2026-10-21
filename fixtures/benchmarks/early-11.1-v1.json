@@ -42,7 +42,7 @@
     "overrides": "particle count and inventory only; one kg per particle",
     "reference_manifest": "reference/flexpart-11.1.json",
     "physics": "pristine full executable, LTURBULENCE=0, LCONVECTION=0, SPECIES_024",
-    "timing_scope": "Docker invocation including runtime guard and full FLEXPART ingestion/integration/output; build/generation/decode separate"
+    "timing_scope": "model_wall_seconds times the full FLEXPART executable inside Docker, including ingestion/integration/output; host Docker invocation including runtime guard, build/generation/decode recorded separately"
   },
   "scientific_verdict": "NON_COMPARABLE",
   "blockers": [

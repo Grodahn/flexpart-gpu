@@ -1,5 +1,8 @@
 # Scientific validation: FLEXPART-GPU vs FLEXPART Fortran 10.4
 
+> Historical 10.4 diagnostic evidence, not pinned 11.1 or current canonical
+> production performance. See [the #199 audit](early-11.1.md).
+
 Date: 2026-03-06
 Project: `flexpart-gpu`
 Architecture: Fused Hanna+Langevin production path

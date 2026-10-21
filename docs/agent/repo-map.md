@@ -13,6 +13,12 @@ for a task already covered here. Update this map in the same change when a mappe
 path moves. Markdown links are the machine-readable path surface, audited by
 [the navigation checker](../../scripts/check_agent_navigation.py).
 
+## Early performance baseline
+
+- Owner: [launcher](../../scripts/benchmark_early.py), [canonical production binary](../../src/bin/bench-canonical.rs), [versioned Stage A manifest](../../fixtures/benchmarks/early-11.1-v1.json), [methodology and path audit](../benchmarks/early-11.1.md).
+- Verification: [fail-closed harness tests](../../scripts/test_benchmark_early.py), [focused entry](test-map.md#early-performance-baseline). Reuses the existing oracle build cache, corpus fixture generator and decoder; no production physics change.
+- Handoff: [simulation](#simulation), [GPU contract](../GPU_CONTRACT.md), [reference environment](../reference-environment.md). Legacy timings remain separately identified.
+
 ## GPU runtime
 
 - Production: [GpuContext](../../src/gpu/mod.rs), [adapter selection](../../src/gpu/adapter.rs).

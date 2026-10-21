@@ -1,5 +1,13 @@
 # FLEXPART-GPU Benchmark Suite
 
+> **Current-path warning (#199):** the Criterion timestep group, `fortran-validation`,
+> `bench-timeloop` and `compare-fortran.sh` below execute **legacy-diagnostic**
+> advection (`canonical: None`, `run_legacy_diagnostic_timestep`). Their historical
+> 8–10x figures do not measure current canonical production or prove pinned 11.1
+> workload equivalence. For **canonical-production** and **pinned-11.1-fortran**
+> measurements, use [the early 11.1 benchmark](benchmarks/early-11.1.md).
+> Historical recipes and report titles below retain their original terminology.
+
 This project ships a Criterion benchmark suite in `benches/advection.rs` that covers:
 
 - per-stage GPU kernels (advection, Hanna, Langevin, dry/wet deposition, concentration gridding),
@@ -195,9 +203,9 @@ binary and the `compare-fortran.sh` orchestration script. Both engines run on an
 identical synthetic scenario; comparison scripts produce statistical metrics and
 particle position comparisons.
 
-### Latest measured snapshots (prod GPU vs Fortran)
+### Historical legacy diagnostic snapshots (March 2026)
 
-Canonical 1M report:
+Historical 1M report (not the canonical production architecture):
 
 - [`benchmark-fortran-vs-gpu-current.md`](benchmarks/benchmark-fortran-vs-gpu-current.md)
 - Conservative speedup (all reps): **8.32x**

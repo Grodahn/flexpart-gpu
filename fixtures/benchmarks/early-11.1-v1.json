@@ -1,0 +1,42 @@
+{
+  "schema": "flexpart-gpu.early-benchmark.v1",
+  "series": "stage-a-pre-197-pre-198",
+  "baseline_commit": "a3e0e4896584e9e856df867756eb4f4db22f2b33",
+  "particle_counts": [100000, 1000000],
+  "repetitions": 5,
+  "warmup_seconds": 3.0,
+  "candidate": {
+    "steps": 60,
+    "dt_seconds": 60,
+    "source_snapshot": "fixtures/vertical/synthetic-column-v1.json",
+    "nx": 32,
+    "ny": 32,
+    "u_m_s": 1.0,
+    "v_m_s": 0.0,
+    "w_m_s": 0.0,
+    "release_lon_deg": 10.0,
+    "release_lat_deg": 54.0,
+    "release_z_m": 100.0,
+    "mass_kg_per_particle": 1.0,
+    "physics": "canonical resident advection + GPU PBL + fused Hanna/Langevin; zero deposition/decay forcing; no convection",
+    "boundary_policy": "invariant native top; zero mean W; per-step device readback rejects top and horizontal edge contact",
+    "output": "per-step host particle synchronization; final raw particle buffer; no concentration serialization",
+    "philox_key": [3737844653, 305419896],
+    "initial_philox_counter": [0, 0, 0, 0]
+  },
+  "fortran": {
+    "case": "fixtures/corpus/cases/ADV-ANA-001.json",
+    "overrides": "particle count and inventory only; one kg per particle",
+    "reference_manifest": "reference/flexpart-11.1.json",
+    "physics": "pristine full executable, LTURBULENCE=0, LCONVECTION=0, SPECIES_024",
+    "timing_scope": "Docker invocation including runtime guard and full FLEXPART ingestion/integration/output; build/generation/decode separate"
+  },
+  "scientific_verdict": "NON_COMPARABLE",
+  "blockers": [
+    "Canonical production always executes Hanna/Langevin; the existing advection-only Fortran case disables turbulence. No canonical turbulence-off option exists.",
+    "Canonical three-level native regional meteorology and Fortran synthetic 12-level global meteorology, winds/grid, release and effective timesteps differ.",
+    "Instantaneous canonical particle output and time-averaged Fortran concentration output have no accepted paired production comparison here.",
+    "Stage A excludes upper-boundary crossings; #197 and #198 remain separate production adoption work."
+  ],
+  "provenance_marker": "GPT6.1 Sol"
+}

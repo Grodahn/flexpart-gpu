@@ -12,13 +12,13 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shlex
 import shutil
 import statistics
 import subprocess
 import sys
 import time
-import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -80,6 +80,8 @@ def distribution(values):
 
 
 def require_candidate(manifest):
+    # Host-only dependency: the frozen oracle worker runs Python 3.10.
+    import tomllib
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO, text=True).strip()
     if subprocess.check_output(["git", "status", "--porcelain"], cwd=REPO, text=True).strip():
         raise ValueError("benchmark candidate must be committed and clean")
@@ -211,8 +213,10 @@ def fortran_run(prepared, checkout, count, folder):
                            "--fortran-worker", container_path(run)], folder / "fortran.log")
         record["process"] = process
         checked(process)
-        if "CONGRATULATIONS" not in (folder / "fortran.log").read_text(errors="replace"):
+        text = (folder / "fortran.log").read_text(errors="replace")
+        if "CONGRATULATIONS" not in text:
             raise ValueError("Fortran completion marker missing")
+        counts = fortran_counts(text, count, inputs["case"]["integration"]["total_s"])
         oracle.require_pristine(checkout, REPO)
         if sha(checkout / "src/FLEXPART") != executable_hash or consumed["options"] != tree_hashes(run / "options"):
             raise ValueError("reference binary/consumed options changed during execution")
@@ -222,6 +226,7 @@ def fortran_run(prepared, checkout, count, folder):
         timing = json.loads((run / "timing.json").read_text())
         distribution([timing["model_wall_seconds"]])
         record.update(state="PASS", timing=timing, consumed=consumed,
+            particle_count_observations=counts,
             raw_output_sha256=tree_hashes(run / "output"), decoded_sha256=sha(run / "oracle-summary.json"),
             decoded=json.loads((run / "oracle-summary.json").read_text()),
             reference_revision=prepared["reference"]["pinned_commit"],
@@ -230,7 +235,23 @@ def fortran_run(prepared, checkout, count, folder):
             throughput_limitation="actual adaptive particle integration count is not exposed; no assumed particle-step denominator")
     except (OSError, ValueError, KeyError, RuntimeError, subprocess.CalledProcessError) as exc:
         record["error"] = str(exc)
+    finally:
+        try:
+            oracle.require_pristine(checkout, REPO)
+        except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+            record.update(state="FAIL", cleanliness_error=str(exc))
     return record
+
+
+def fortran_counts(text, expected, total_seconds):
+    """Audit actual spawned/live/terminated counters, without assuming substeps."""
+    rows = [dict(zip(("time_seconds", "spawned", "alive", "terminated"), map(int, values)))
+            for values in re.findall(r"Time:\s*(-?\d+) seconds\. Total spawned:\s*(\d+) alive:\s*(\d+) terminated:\s*(\d+)", text)]
+    positive = [row for row in rows if row["time_seconds"] > 0]
+    if (not positive or positive[-1]["time_seconds"] < total_seconds
+            or any(row["spawned"] != expected or row["alive"] != expected or row["terminated"] != 0 for row in positive)):
+        raise ValueError("Fortran actual release/count/fate evidence missing or mismatched")
+    return rows
 
 
 def worker(run):
@@ -297,8 +318,12 @@ def main():
     prepare_error = None
     try:
         prepared = prepare_fortran(args.checkout.resolve(), output, manifest)
+        provenance["oracle_build"] = {"metadata_sha256":sha(output / "oracle-build.json"),
+                                      "log_sha256":sha(output / "oracle-build.log"),
+                                      "record":prepared["build"]}
     except (OSError, ValueError, RuntimeError, SystemExit, subprocess.CalledProcessError) as exc:
         prepare_error = str(exc)
+        print(json.dumps({"oracle_preparation_error":prepare_error}), flush=True)
     records = []
     for count in manifest["particle_counts"]:
         for repetition in range(manifest["repetitions"]):
@@ -318,6 +343,8 @@ def main():
                 write(folder / f"{engine}-run.json", record)
                 print(json.dumps({k:record[k] for k in ["regime","particles","repetition","state"]}), flush=True)
     aggregates = aggregate(records, manifest["particle_counts"])
+    if require_candidate(manifest) != revision or (build["returncode"] == 0 and sha(binary) != provenance["binary_sha256"]):
+        raise ValueError("candidate source or executable changed during campaign; retained runs are invalid")
     report = {"schema":"flexpart-gpu.early-benchmark-report.v1", "provenance":provenance,
         "series":manifest["series"],"scientific_verdict":"NON_COMPARABLE", "speedup":None,
         "blockers":manifest["blockers"], "oracle_preparation_error":prepare_error,

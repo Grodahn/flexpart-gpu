@@ -4,7 +4,7 @@
 use anyhow::{ensure, Context, Result};
 use flexpart_gpu::{
     config::ReleaseConfig,
-    coords::GridDomain,
+    coords::{dx_meters_at_latitude, GridDomain},
     gpu::{GpuAdapterClass, GpuAdapterEvidence},
     meteorology::{
         vertical::{
@@ -30,8 +30,7 @@ use std::{path::Path, sync::Arc, time::Instant};
 const START_SECONDS: i64 = 1_704_067_200;
 const COVERAGE_SECONDS: i64 = 86_400;
 const MAX_WARMUP_STEPS: usize = 1_000;
-// Fixed diagnostic conversion, explicitly independent of the Fortran workload.
-const GRID_CELLS_PER_METER: f32 = 1.0 / 27_800.0;
+const PARTICLE_MASS_KG: f32 = 1.0;
 
 #[derive(Deserialize)]
 struct Scenario {
@@ -40,15 +39,52 @@ struct Scenario {
     source_snapshot: String,
     nx: usize,
     ny: usize,
+    xlon0_deg: f64,
+    ylat0_deg: f64,
+    dx_deg: f32,
+    dy_deg: f32,
     u_m_s: f32,
     v_m_s: f32,
     w_m_s: f32,
     release_lon_deg: f64,
-    release_lat_deg: f64,
+    release_lat_deg: f32,
     release_z_m: f64,
     mass_kg_per_particle: f64,
+    surface: SurfaceInput,
     philox_key: [u32; 2],
     initial_philox_counter: [u32; 4],
+}
+
+#[derive(Deserialize)]
+struct SurfaceInput {
+    surface_pressure_pa: f32,
+    temperature_2m_k: f32,
+    dewpoint_2m_k: f32,
+    mixing_height_m: f32,
+    friction_velocity_m_s: f32,
+    tropopause_height_m: f32,
+    all_other_fields: f32,
+}
+
+fn benchmark_surface(s: &Scenario) -> Result<SurfaceFields> {
+    ensure!(
+        s.surface.all_other_fields == 0.0,
+        "unconfigured surface fields must be zero"
+    );
+    let mut surface = SurfaceFields::zeros(s.nx, s.ny);
+    surface
+        .surface_pressure_pa
+        .fill(s.surface.surface_pressure_pa);
+    surface.temperature_2m_k.fill(s.surface.temperature_2m_k);
+    surface.dewpoint_2m_k.fill(s.surface.dewpoint_2m_k);
+    surface.mixing_height_m.fill(s.surface.mixing_height_m);
+    surface
+        .friction_velocity_ms
+        .fill(s.surface.friction_velocity_m_s);
+    surface
+        .tropopause_height_m
+        .fill(s.surface.tropopause_height_m);
+    Ok(surface)
 }
 
 fn source(s: &Scenario, seconds: i64) -> Result<(Snapshot, VerticalTransformResult)> {
@@ -56,6 +92,10 @@ fn source(s: &Scenario, seconds: i64) -> Result<(Snapshot, VerticalTransformResu
     ensure!(snapshot.horizontal_grid.nx == 1 && snapshot.horizontal_grid.ny == 1);
     snapshot.horizontal_grid.nx = s.nx;
     snapshot.horizontal_grid.ny = s.ny;
+    snapshot.horizontal_grid.xlon0_deg = s.xlon0_deg;
+    snapshot.horizontal_grid.ylat0_deg = s.ylat0_deg;
+    snapshot.horizontal_grid.dx_deg = f64::from(s.dx_deg);
+    snapshot.horizontal_grid.dy_deg = f64::from(s.dy_deg);
     let cells = s.nx.checked_mul(s.ny).context("grid overflow")?;
     for field in &mut snapshot.fields {
         field.shape[0] = s.nx;
@@ -108,6 +148,8 @@ fn validate_particles(
     s: &Scenario,
 ) -> Result<Value> {
     ensure!(particles.len() == count, "particle capacity differs");
+    let max_x = f64::from(u32::try_from(s.nx - 1)?);
+    let max_y = f64::from(u32::try_from(s.ny - 1)?);
     let mut z_min = f32::INFINITY;
     let mut z_max = f32::NEG_INFINITY;
     let mut mass = 0.0_f64;
@@ -124,15 +166,12 @@ fn validate_particles(
             "unsupported vertical boundary contact"
         );
         ensure!(
-            p.grid_x() > 0.0
-                && p.grid_x() < (s.nx - 1) as f64
-                && p.grid_y() > 0.0
-                && p.grid_y() < (s.ny - 1) as f64,
+            p.grid_x() > 0.0 && p.grid_x() < max_x && p.grid_y() > 0.0 && p.grid_y() < max_y,
             "horizontal boundary contact"
         );
         // No process changes mass in this diagnostic; exact equality adds no tolerance.
         ensure!(
-            p.mass == [s.mass_kg_per_particle as f32, 0.0, 0.0, 0.0],
+            p.mass.map(f32::to_bits) == [PARTICLE_MASS_KG, 0.0, 0.0, 0.0].map(f32::to_bits),
             "mass changed"
         );
         mass += f64::from(p.mass[0]);
@@ -145,53 +184,33 @@ fn validate_particles(
     )
 }
 
-async fn run(manifest: &Path, count: usize, output: &Path) -> Result<()> {
-    let total = Instant::now();
-    let manifest_bytes = std::fs::read(manifest)?;
-    let document: Value = serde_json::from_slice(&manifest_bytes)?;
-    let s: Scenario = serde_json::from_value(document["candidate"].clone())?;
-    let warmup_seconds = document["warmup_seconds"]
-        .as_f64()
-        .context("warmup_seconds")?;
-    ensure!(count > 0 && s.steps > 0 && s.nx > 1 && s.ny > 1 && s.dt_seconds > 0);
-    ensure!(warmup_seconds.is_finite() && warmup_seconds >= 2.0);
-    ensure!(
-        s.w_m_s == 0.0,
-        "Stage A requires zero mean W to audit both transport stages"
-    );
-    let prep = Instant::now();
-    let (s0, r0) = source(&s, START_SECONDS)?;
-    let (s1, r1) = source(&s, START_SECONDS + COVERAGE_SECONDS)?;
-    let view = r0.runtime_view()?;
-    let top = (0..3)
-        .map(|k| view.level(0, 0, k).map(|p| p.height_agl_m))
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .fold(f32::NEG_INFINITY, f32::max);
-    let source_seconds = prep.elapsed().as_secs_f64();
-    let grid = &s0.horizontal_grid;
+async fn create_driver(
+    s: &Scenario,
+    snapshot: &Snapshot,
+    count: usize,
+) -> Result<ForwardTimeLoopDriver> {
+    let grid = &snapshot.horizontal_grid;
     let release = ReleaseConfig {
         name: "BENCH-EARLY-11.1".into(),
         start_time: "20240101000000".into(),
         end_time: "20240101000000".into(),
         lon: s.release_lon_deg,
-        lat: s.release_lat_deg,
+        lat: f64::from(s.release_lat_deg),
         z_min: s.release_z_m,
         z_max: s.release_z_m,
-        mass_kg: s.mass_kg_per_particle * count as f64,
-        particle_count: count as u64,
+        mass_kg: s.mass_kg_per_particle * f64::from(u32::try_from(count)?),
+        particle_count: u64::try_from(count)?,
         species_masses_kg: None,
-        raw: Default::default(),
+        raw: std::collections::BTreeMap::default(),
     };
-    let init = Instant::now();
-    let mut driver = ForwardTimeLoopDriver::new(
+    Ok(ForwardTimeLoopDriver::new(
         ForwardTimeLoopConfig {
             start_timestamp: "20240101000000".into(),
             end_timestamp: "20240101235900".into(),
             timestep_seconds: s.dt_seconds,
             velocity_to_grid_scale: VelocityToGridScale {
-                x_grid_per_meter: GRID_CELLS_PER_METER,
-                y_grid_per_meter: GRID_CELLS_PER_METER,
+                x_grid_per_meter: 1.0 / (dx_meters_at_latitude(s.release_lat_deg) * s.dx_deg),
+                y_grid_per_meter: 1.0 / (dx_meters_at_latitude(0.0) * s.dy_deg),
                 ..VelocityToGridScale::IDENTITY
             },
             sync_particle_store_each_step: true,
@@ -211,7 +230,123 @@ async fn run(manifest: &Path, count: usize, output: &Path) -> Result<()> {
         },
         count,
     )
-    .await?;
+    .await?)
+}
+
+async fn warmup_driver(
+    driver: &mut ForwardTimeLoopDriver,
+    met: &MetTimeBracket<'_>,
+    forcing: &ForwardStepForcing,
+    s: &Scenario,
+    count: usize,
+    top: f32,
+    warmup_seconds: f64,
+) -> Result<(usize, Option<f64>, f64)> {
+    let warm = Instant::now();
+    let mut warmup_steps = 0;
+    let mut cold_step_seconds = None;
+    while warm.elapsed().as_secs_f64() < warmup_seconds || warmup_steps < 2 {
+        ensure!(
+            warmup_steps < MAX_WARMUP_STEPS,
+            "warmup exceeds coverage budget"
+        );
+        let step = Instant::now();
+        driver.run_timestep(met, forcing).await?;
+        cold_step_seconds.get_or_insert(step.elapsed().as_secs_f64());
+        validate_particles(driver.particle_store().as_slice(), count, top, s)?;
+        warmup_steps += 1;
+    }
+    let warmup_wall_seconds = warm.elapsed().as_secs_f64();
+    Ok((warmup_steps, cold_step_seconds, warmup_wall_seconds))
+}
+
+struct MeasuredRun {
+    timings: Vec<Value>,
+    invariants: Value,
+    measured_seconds: f64,
+    audit_seconds: f64,
+    measured_start_epoch_seconds: i64,
+}
+
+async fn measure_driver(
+    driver: &mut ForwardTimeLoopDriver,
+    met: &MetTimeBracket<'_>,
+    forcing: &ForwardStepForcing,
+    s: &Scenario,
+    count: usize,
+    top: f32,
+) -> Result<MeasuredRun> {
+    let measured_start_epoch_seconds = driver.current_time_seconds();
+    let measurement = Instant::now();
+    let mut timings = Vec::new();
+    let mut audit_seconds = 0.0;
+    let mut invariants = Value::Null;
+    for _ in 0..s.steps {
+        let step = Instant::now();
+        let report = driver.run_timestep(met, forcing).await?;
+        let seconds = step.elapsed().as_secs_f64();
+        let audit = Instant::now();
+        invariants = validate_particles(driver.particle_store().as_slice(), count, top, s)?;
+        audit_seconds += audit.elapsed().as_secs_f64();
+        let phases = report.timing.map(|t| {
+            json!({"surface_interpolation_ms":t.surf_interp_ms,
+            "pbl_preparation_upload_ms":t.pbl_ms + t.pbl_upload_ms,
+            "forcing_ms":t.forcing_ms,"deposition_upload_ms":t.dep_upload_ms,
+            "previous_wait_ms":t.wait_prev_gpu_ms,"encode_submit_ms":t.gpu_encode_ms,
+            "submit_to_poll_ms":t.gpu_exec_ms,"reported_total_ms":t.total_ms})
+        });
+        timings.push(json!({"wall_seconds":seconds,"phases":phases}));
+    }
+    driver.finalize().await?;
+    let measured_seconds = measurement.elapsed().as_secs_f64();
+    Ok(MeasuredRun {
+        timings,
+        invariants,
+        measured_seconds,
+        audit_seconds,
+        measured_start_epoch_seconds,
+    })
+}
+
+fn canonical_top(
+    view: flexpart_gpu::meteorology::vertical::VerticalRuntimeView<'_>,
+) -> Result<f32> {
+    Ok((0..view.dimensions().2)
+        .map(|k| view.level(0, 0, k).map(|p| p.height_agl_m))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .fold(f32::NEG_INFINITY, f32::max))
+}
+
+async fn run(manifest: &Path, count: usize, output: &Path) -> Result<()> {
+    let total = Instant::now();
+    let count_f64 = f64::from(u32::try_from(count)?);
+    let manifest_bytes = std::fs::read(manifest)?;
+    let document: Value = serde_json::from_slice(&manifest_bytes)?;
+    let s: Scenario = serde_json::from_value(document["candidate"].clone())?;
+    let warmup_seconds = document["warmup_seconds"]
+        .as_f64()
+        .context("warmup_seconds")?;
+    ensure!(count > 0 && s.steps > 0 && s.nx > 1 && s.ny > 1 && s.dt_seconds > 0);
+    ensure!(warmup_seconds.is_finite() && warmup_seconds >= 2.0);
+    ensure!(
+        s.w_m_s == 0.0,
+        "Stage A requires zero mean W to audit both transport stages"
+    );
+    ensure!(
+        s.mass_kg_per_particle.to_bits() == f64::from(PARTICLE_MASS_KG).to_bits(),
+        "Stage A requires one kg per particle"
+    );
+    let steps_f64 = f64::from(u32::try_from(s.steps)?);
+    let dt_f64 = f64::from(i32::try_from(s.dt_seconds)?);
+    let prep = Instant::now();
+    let (s0, r0) = source(&s, START_SECONDS)?;
+    let (s1, r1) = source(&s, START_SECONDS + COVERAGE_SECONDS)?;
+    let view = r0.runtime_view()?;
+    let top = canonical_top(view)?;
+    let source_seconds = prep.elapsed().as_secs_f64();
+    let init = Instant::now();
+    let mut driver = create_driver(&s, &s0, count).await?;
     let init_seconds = init.elapsed().as_secs_f64();
     let upload = Instant::now();
     let mut slot = CanonicalMeteorologySlot::default();
@@ -230,13 +365,7 @@ async fn run(manifest: &Path, count: usize, output: &Path) -> Result<()> {
     drop(prepared);
     let upload_seconds = upload.elapsed().as_secs_f64();
     let wind = WindField3D::zeros(s.nx, s.ny, 3);
-    let mut surface = SurfaceFields::zeros(s.nx, s.ny);
-    surface.surface_pressure_pa.fill(100_000.0);
-    surface.temperature_2m_k.fill(290.0);
-    surface.dewpoint_2m_k.fill(285.0);
-    surface.mixing_height_m.fill(1_000.0);
-    surface.friction_velocity_ms.fill(0.1);
-    surface.tropopause_height_m.fill(10_000.0);
+    let surface = benchmark_surface(&s)?;
     let met = MetTimeBracket {
         canonical: Some(&owners),
         wind_t0: &wind,
@@ -247,44 +376,15 @@ async fn run(manifest: &Path, count: usize, output: &Path) -> Result<()> {
         time_t1_seconds: START_SECONDS + COVERAGE_SECONDS,
     };
     let forcing = ForwardStepForcing::default();
-    let warm = Instant::now();
-    let mut warmup_steps = 0;
-    let mut cold_step_seconds = None;
-    while warm.elapsed().as_secs_f64() < warmup_seconds || warmup_steps < 2 {
-        ensure!(
-            warmup_steps < MAX_WARMUP_STEPS,
-            "warmup exceeds coverage budget"
-        );
-        let step = Instant::now();
-        driver.run_timestep(&met, &forcing).await?;
-        cold_step_seconds.get_or_insert(step.elapsed().as_secs_f64());
-        validate_particles(driver.particle_store().as_slice(), count, top, &s)?;
-        warmup_steps += 1;
-    }
-    let warmup_wall_seconds = warm.elapsed().as_secs_f64();
-    let measured_start_epoch_seconds = driver.current_time_seconds();
-    let measurement = Instant::now();
-    let mut timings = Vec::new();
-    let mut audit_seconds = 0.0;
-    let mut invariants = Value::Null;
-    for _ in 0..s.steps {
-        let step = Instant::now();
-        let report = driver.run_timestep(&met, &forcing).await?;
-        let seconds = step.elapsed().as_secs_f64();
-        let audit = Instant::now();
-        invariants = validate_particles(driver.particle_store().as_slice(), count, top, &s)?;
-        audit_seconds += audit.elapsed().as_secs_f64();
-        let phases = report.timing.map(|t| {
-            json!({"surface_interpolation_ms":t.surf_interp_ms,
-            "pbl_preparation_upload_ms":t.pbl_ms + t.pbl_upload_ms,
-            "forcing_ms":t.forcing_ms,"deposition_upload_ms":t.dep_upload_ms,
-            "previous_wait_ms":t.wait_prev_gpu_ms,"encode_submit_ms":t.gpu_encode_ms,
-            "submit_to_poll_ms":t.gpu_exec_ms,"reported_total_ms":t.total_ms})
-        });
-        timings.push(json!({"wall_seconds":seconds,"phases":phases}));
-    }
-    driver.finalize().await?;
-    let measured_seconds = measurement.elapsed().as_secs_f64();
+    let (warmup_steps, cold_step_seconds, warmup_wall_seconds) =
+        warmup_driver(&mut driver, &met, &forcing, &s, count, top, warmup_seconds).await?;
+    let MeasuredRun {
+        timings,
+        invariants,
+        measured_seconds,
+        audit_seconds,
+        measured_start_epoch_seconds,
+    } = measure_driver(&mut driver, &met, &forcing, &s, count, top).await?;
     let output_start = Instant::now();
     let particle_path = output.with_extension("particles.bin");
     let bytes = bytemuck::cast_slice(driver.particle_store().as_slice());
@@ -300,9 +400,10 @@ async fn run(manifest: &Path, count: usize, output: &Path) -> Result<()> {
         "cold_first_step_seconds":cold_step_seconds,"driver_init_seconds":init_seconds,
         "meteorology_source_seconds":source_seconds,"canonical_prepare_upload_seconds":upload_seconds,
         "canonical_identity":identity,"normalized_sources":[s0,s1],
+        "configuration":document["candidate"],"horizontal_scale":"existing dx_meters_at_latitude at fixed release latitude and equator for x/y",
         "measured_wall_seconds":measured_seconds,"invariant_audit_seconds":audit_seconds,
-        "particle_steps_per_second":count as f64 * s.steps as f64 / measured_seconds,
-        "simulated_time_wall_ratio":s.steps as f64 * s.dt_seconds as f64 / measured_seconds,
+        "particle_steps_per_second":count_f64 * steps_f64 / measured_seconds,
+        "simulated_time_wall_ratio":steps_f64 * dt_f64 / measured_seconds,
         "steps":timings,"invariants":invariants,"particle_output_sha256":particle_hash,
         "particle_output_bytes":bytes.len(),"output_write_and_hash_seconds":output_seconds,
         "host_transfers":"release and canonical uploads; full particle D2H each step; resident status readbacks; no intermediate wind D2H",

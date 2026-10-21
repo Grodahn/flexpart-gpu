@@ -22,10 +22,9 @@ scientific production acceptance and matched meteorology. That work belongs to
 the scientific owners; this harness does not invent tolerances or a paired verdict.
 
 Other finite mismatches: regional 32x32x3 native canonical inputs versus the
-existing 32x32x12 global synthetic Fortran GRIB profile; 1 versus 10 m/s U;
-release at 10 E / 54 N versus 10 E / 50 N; fixed 60 s candidate steps versus
-300 s Fortran synchronization; instantaneous particle state versus time-averaged
-concentration. Both release exactly 100k or 1M particles, one kg each, at 100 m AGL,
+existing 32x32x12 global synthetic Fortran GRIB profile; fixed release-latitude canonical horizontal velocity conversion; instantaneous particle state versus time-averaged
+concentration. Both request 100k or 1M particles, one kg each, at 10 E / 50 N and 100 m AGL,
+with uniform 10 m/s U, zero V/W and a 300 s synchronization interval,
 but matching those quantities alone does not establish scientific equivalence.
 
 Stage A uses invariant native tops and zero mean W. Every synchronized particle
@@ -59,7 +58,7 @@ build flags, binary and object hashes are retained. The pristine checkout and
 binary are verified again after actual Fortran execution.
 
 Five independent processes per engine/count alternate order. Each GPU process
-warms the same driver for at least three wall seconds and two timesteps; 60
+warms the same driver for at least three wall seconds and two timesteps; 12
 subsequent steps represent one simulated hour. Warm-up trajectories continue into
 measurement, so exact epoch/step counts are recorded and this is explicitly not
 the Fortran release-to-end interval. Fortran repetition one is the process-cold

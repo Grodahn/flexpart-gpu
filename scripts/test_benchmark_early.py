@@ -56,6 +56,15 @@ class BenchmarkTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 bench.distribution([value])
 
+    def test_fortran_actual_count_and_full_duration_required(self):
+        text = "Time: 300 seconds. Total spawned: 100000 alive: 100000 terminated: 0\n"
+        self.assertEqual(bench.fortran_counts(text, 100000, 300)[0]["alive"], 100000)
+        for invalid, count, duration in [("", 100000, 300), (text, 1000000, 300),
+                                         (text, 100000, 3600),
+                                         (text.replace("terminated: 0", "terminated: 1"), 100000, 300)]:
+            with self.assertRaises(ValueError):
+                bench.fortran_counts(invalid, count, duration)
+
     def test_future_production_changes_rejected(self):
         with patch.object(bench.subprocess, "check_output", side_effect=["a"*40, "", "src/shaders/advection_corrector.wgsl"]), \
              patch.object(bench.subprocess, "run"):

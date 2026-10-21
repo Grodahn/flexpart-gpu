@@ -10,6 +10,7 @@ import argparse
 import copy
 import hashlib
 import json
+import math
 import os
 import platform
 import re
@@ -181,10 +182,11 @@ def prepare_fortran(checkout, output, manifest):
         fixtures.write_case_fixtures(normalized, root)
         fixture = root / case["case_id"]
         meteo = root / "meteo"
-        checked(command(docker + ["python3", "/workspace/flexpart-gpu/scripts/generate_synthetic_grib.py",
+        generation = checked(command(docker + ["python3", "/workspace/flexpart-gpu/scripts/generate_synthetic_grib.py",
             "--output-dir", container_path(meteo), *shlex.split((fixture / "METEO_ARGS.txt").read_text())],
             output / f"meteorology-{count}.log"))
         inputs[count] = {"case":case, "fixture":fixture, "meteo":meteo,
+                         "generation":generation, "case_sha256":sha(case_path),
                          "input_sha256":tree_hashes(root)}
     return {"build":build, "status":build_status, "reference":reference, "docker":docker, "inputs":inputs}
 
@@ -220,13 +222,15 @@ def fortran_run(prepared, checkout, count, folder):
         oracle.require_pristine(checkout, REPO)
         if sha(checkout / "src/FLEXPART") != executable_hash or consumed["options"] != tree_hashes(run / "options"):
             raise ValueError("reference binary/consumed options changed during execution")
-        checked(command([sys.executable, REPO / "scripts/corpus/decode_oracle_output.py",
+        record["decode_process"] = checked(command([sys.executable, REPO / "scripts/corpus/decode_oracle_output.py",
             "--raw-dir", run / "output", "--releases", run / "options/RELEASES",
             "--output", run / "oracle-summary.json"], folder / "decode.log"))
         timing = json.loads((run / "timing.json").read_text())
         distribution([timing["model_wall_seconds"]])
         record.update(state="PASS", timing=timing, consumed=consumed,
             particle_count_observations=counts,
+            reference_reported_timers=reference_timers(text),
+            meteorology_generation=inputs["generation"], case_sha256=inputs["case_sha256"],
             raw_output_sha256=tree_hashes(run / "output"), decoded_sha256=sha(run / "oracle-summary.json"),
             decoded=json.loads((run / "oracle-summary.json").read_text()),
             reference_revision=prepared["reference"]["pinned_commit"],
@@ -252,6 +256,22 @@ def fortran_counts(text, expected, total_seconds):
             or any(row["spawned"] != expected or row["alive"] != expected or row["terminated"] != 0 for row in positive)):
         raise ValueError("Fortran actual release/count/fate evidence missing or mismatched")
     return rows
+
+
+def reference_timers(text):
+    """Retain pinned SYSTEM_CLOCK diagnostics; these overlapping scopes do not add."""
+    timers = {}
+    for label in ["Read wind fields", "Timemanager", "first timestep", "Write particle files", "Total running time"]:
+        found = re.search(re.escape(label) + r":\s*([+\-\d.EeDd]+)\s*seconds", text)
+        if not found:
+            raise ValueError(f"missing reference diagnostic timer: {label}")
+        value = float(found[1].replace("D", "E").replace("d", "e"))
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"invalid reference diagnostic timer: {label}")
+        timers[label] = value
+    return {"seconds":timers,"basis":"pinned SYSTEM_CLOCK, default-real diagnostic precision",
+            "source":"FLEXPART.f90:112-142; timemanager_mod.f90:209-210,381-400,714-715",
+            "scope":"overlapping; particle file timer excludes other concentration serialization; not transport-only"}
 
 
 def worker(run):

@@ -71,6 +71,14 @@ class BenchmarkTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "production sources changed"):
                 bench.require_candidate(self.manifest)
 
+    def test_reference_timer_diagnostics_require_finite_complete_fields(self):
+        text = "\n".join(label + ": 1.25D+00 seconds" for label in
+            ["Read wind fields", "Timemanager", "first timestep", "Write particle files", "Total running time"])
+        self.assertEqual(bench.reference_timers(text)["seconds"]["Timemanager"], 1.25)
+        for invalid in ["", text.replace("Timemanager: 1.25D+00", "Timemanager: -1")]:
+            with self.assertRaises(ValueError):
+                bench.reference_timers(invalid)
+
     def test_existing_generator_preserves_count_mass_and_physics(self):
         case = json.loads((bench.REPO / self.manifest["fortran"]["case"]).read_text())
         tracer = bench.REPO / "fixtures/corpus/fortran/ADV-ANA-001/SPECIES/SPECIES_024"

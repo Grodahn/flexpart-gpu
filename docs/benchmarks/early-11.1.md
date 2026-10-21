@@ -91,7 +91,10 @@ Unexposed GPU timestamp, peak VRAM and host peak memory are null.
 Fortran model wall time is measured inside the container around the genuine full
 executable, including meteorology decode and output; host Docker invocation wall
 is separate. Generation/build/decode logs are separate. Linux child peak RSS is
-available; actual particle integration-call count is not, so Fortran particle-steps/s
+available, and the pinned executable's `SYSTEM_CLOCK` diagnostic timers for wind
+reading, time manager, first timestep and particle-file writing are retained.
+Those scopes overlap and are not a disjoint phase sum; particle-file time excludes
+other concentration serialization. Actual particle integration-call count is not, so Fortran particle-steps/s
 is null instead of assuming the adaptive timestep denominator. No transport-only,
 transfer-only or serialization-only Fortran timer is claimed.
 

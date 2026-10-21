@@ -31,6 +31,16 @@ class EvidenceTests(unittest.TestCase):
     def test_complete_device_evidence(self):
         device(self.path)
 
+    def test_substituted_source_inventory(self):
+        def substitute(report):
+            import hashlib
+            report['source_hashes'].pop('src/gpu/advection_resident.rs')
+            report['source_hashes']['Cargo.toml']=hashlib.sha256(Path('Cargo.toml').read_bytes()).hexdigest()
+        self.reject(substitute)
+
+    def test_missing_candidate_executable(self):
+        self.reject(lambda r:r.pop('candidate_executable_sha256'))
+
     def test_missing_driver_step(self):
         self.reject(lambda r:r['rows'].pop())
 

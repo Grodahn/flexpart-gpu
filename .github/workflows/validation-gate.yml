@@ -203,6 +203,18 @@ jobs:
           python3 scripts/interpolation/check_shared_height_vector.py target/ci-gate/shared-height-vector/report.json --software
           python3 scripts/interpolation/test_check_shared_height_vector.py
 
+      - name: Replay real production-driver samples through genuine #186 routines (#197)
+        working-directory: flexpart-gpu
+        env:
+          FLEXPART_GPU_INTERIOR_W_ORACLE: target/ci-gate/interior-w-first/report.json
+          FLEXPART_GPU_VALIDATION: "0"
+          FLEXPART_GPU_COMPACTION: "0"
+        run: |
+          set -euo pipefail
+          cargo test --lib gpu::meteorology::advection_production_tests::test_shared_vector -- --nocapture --test-threads=1 > target/ci-gate/shared-advection.log 2>&1
+          python3 scripts/transport/shared_advection_evidence.py replay --report target/ci-gate/shared-advection/validation-0-compaction-0/report.json --oracle-run target/ci-gate/interior-w-first --software
+          python3 scripts/transport/shared_advection_evidence.py check --report target/ci-gate/shared-advection/validation-0-compaction-0/report.json --oracle-run target/ci-gate/interior-w-first --software
+
       - name: Record dependency cache checksums
         working-directory: flexpart-gpu
         run: python3 scripts/cargo_cache_integrity.py record

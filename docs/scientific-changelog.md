@@ -14,7 +14,22 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ---
 
-### 2026-10-20 — Adopt prepared shared-height U/V/W queries (#190)
+#
+### 2026-10-21 - Adopt complete prepared winds in both production drivers (#197)
+**Impact**: numerics (consumer handoff and explicit supported-route rejection)
+**Files**: `src/simulation/timeloop/meteorology.rs`, forward/backward drivers,
+`src/gpu/advection_resident.rs`, predictor/corrector shaders
+**Validation**: real driver device/oracle matrix in [shared advection](shared-advection.md).
+
+Forward and backward Petterssen stages require #190's same-source/same-target
+#184/#188 prepared U/V/W vector. Normalization, correction and sampling equations
+are unchanged. Production rejects the retired center-W handoff, varying native
+tops and initial/predicted/corrected upper-boundary crossings. These restrictions
+preserve the scoped no-boundary-crossing envelope; #198 still owns the known
+`pushpartdown` and adjusted-predictor sequencing difference from pinned
+`advance_mod.f90:287-333,664-779,872-900`. No upper-boundary parity is claimed.
+
+## 2026-10-20 — Adopt prepared shared-height U/V/W queries (#190)
 **Impact**: numerics (validated prepared full-vector route only)
 **Files**: `src/gpu/meteorology.rs`, `src/gpu/meteorology/shared_uv.rs`,
 `src/gpu/meteorology/shared_w.rs`

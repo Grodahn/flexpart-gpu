@@ -55,6 +55,8 @@ def audit(root=Path("target/ci-gate/resident-advection-production")):
         assert len(row["sampled_values"]) == 6 * 130 and len(row["queries"]) == 2 * 130
         assert [m["field_id"] for m in row["metadata"]] == ["wind_u", "wind_v", "vertical_velocity"] * 2
         assert all(m["active_count"] == row["active_count"] and m["geometry_identity"] and m["geometry_provenance"] for m in row["metadata"])
+        assert all(m['shared_height']['preparation'] == 'shared_height_uvw_190'
+                   and len(m['shared_height']['corrected_w']) == 2 for m in row['metadata'])
         for stage in range(6):
             for lane in range(row["active_count"]):
                 if row["status"][stage * 131 + 1 + lane] == 2:

@@ -70,7 +70,8 @@ settling flag sets sticky `nstop`; other cases assign the f32 expression
 sampling and after correction, which is applied to the adjusted predictor.
 The preceding schematic trapezoidal formula is equivalent only when boundary
 actions do not intervene. The current GPU top clamp does not establish this
-behavior. Existing changing-top rejection remains until the follow-up is proved.
+behavior. Production #197 retains changing-native-top rejection and rejects initial,
+predicted or corrected positions at/above the top until #198 is proved.
 
 The proof retains 24 boundary and 72 public-advance cases, exact raw/decoded
 observations and two distinct fresh-build provenance inventories. It introduces
@@ -96,7 +97,10 @@ canonical path uses the existing #89 selection independently for both stages;
 legacy diagnostics retain their old one-alpha behavior. Existing repository
 horizontal clamping and vertical/turbulence coupling are preserved for supported
 geometry; they are not a claim of all FLEXPART boundary/stochastic behavior.
-Changing canonical top heights are fail-closed pending #180.
+Changing native top heights and upper-boundary crossings fail closed pending #198.
+Both production drivers consume #190's complete prepared shared-height U/V/W
+vector; their source preparation, identity and evidence contract is in
+[shared advection](../shared-advection.md).
 
 ## References
 

@@ -631,9 +631,13 @@ fn test_canonical_forward_backward_preparation_reuse_transition_and_resident_exe
     };
     let forcing = ForwardStepForcing::default();
     legacy.canonical = Some(&lineage_retained);
-    pollster::block_on(forward.run_timestep(&legacy, &forcing)).unwrap();
+    assert!(pollster::block_on(forward.run_timestep(&legacy, &forcing)).is_err());
+    legacy.canonical = None;
+    pollster::block_on(forward.run_legacy_diagnostic_timestep(&legacy, &forcing)).unwrap();
     legacy.canonical = Some(&reverse_retained);
-    pollster::block_on(backward.run_timestep(&legacy, &forcing)).unwrap();
+    assert!(pollster::block_on(backward.run_timestep(&legacy, &forcing)).is_err());
+    legacy.canonical = None;
+    pollster::block_on(backward.run_legacy_diagnostic_timestep(&legacy, &forcing)).unwrap();
     let next_forward = forward
         .prepare_canonical_meteorology(
             bracket([&changed, &upper], [&lineage_runtime, &r1]),

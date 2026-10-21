@@ -13,6 +13,12 @@ use crate::meteorology::HorizontalGrid;
 use crate::physics::VelocityToGridScale;
 use wgpu::util::DeviceExt;
 
+#[cfg(test)]
+thread_local! {
+    // Validation-only producer corruption proves one failed lane blocks valid peers.
+    pub(crate) static TEST_QUERY_FAULT: std::cell::Cell<Option<(usize, usize)>> = const { std::cell::Cell::new(None) };
+}
+
 /// Consumer stages reuse the existing resident layout/pipeline helper.
 pub(crate) struct ResidentAdvectionKernels {
     predictor: QueryPass,
@@ -68,6 +74,8 @@ impl ResidentAdvectionKernels {
 /// The six independent status regions cannot clear each other's fatal word.
 #[derive(Clone)]
 pub(crate) struct ResidentAdvectionStep {
+    // Deferred checkpoints retain the complete run target and all source uploads.
+    _prepared_sources: Vec<std::sync::Arc<super::shared_height_w::PreparedSharedHeightW>>,
     pub(crate) status: wgpu::Buffer,
     pub(crate) values: wgpu::Buffer,
     #[cfg(test)]
@@ -144,6 +152,7 @@ impl ResidentAdvectionStep {
             top.to_bits(),
         ];
         let result = Self {
+            _prepared_sources: fields[0].prepared_advection_sources(),
             #[cfg(test)]
             queries: allocation(16 * u64::from(capacity), "Petterssen final query evidence")?,
             status: allocation(
@@ -181,6 +190,8 @@ impl ResidentAdvectionStep {
         encoder: &mut wgpu::CommandEncoder,
     ) -> Result<Self, MeteorologyCompositionError> {
         let mut result = Self::prepare(ctx, original, staged, fields, grid, signed_dt, scale)?;
+        #[cfg(test)]
+        let query_fault = TEST_QUERY_FAULT.with(std::cell::Cell::take);
         let capacity = result.capacity;
         let active = u32::try_from(original.particle_count())
             .map_err(|_| MeteorologyCompositionError::Incompatible("advection prefix overflow"))?;
@@ -211,6 +222,17 @@ impl ResidentAdvectionStep {
                             &result.params,
                         ],
                         capacity,
+                        encoder,
+                    );
+                }
+                #[cfg(test)]
+                if query_fault == Some((component, time_stage)) {
+                    let fault = QueryPass::new(ctx, "validation invalid query lane",
+                        "@group(0) @binding(0) var<storage,read_write> words:array<u32>; @group(0) @binding(1) var<uniform> unused:vec4<u32>; @compute @workgroup_size(1) fn main(){words[2]=0x7fc00000u;}", &[false]);
+                    fault.encode(
+                        ctx,
+                        &[batch.write_target().lanes, &result.params],
+                        1,
                         encoder,
                     );
                 }

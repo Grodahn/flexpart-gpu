@@ -154,9 +154,16 @@ impl BackwardTimeLoopDriver {
         )
     }
 
-    /// Prepare validated canonical U/V/center-W for the current backward step and -dt.
+    /// Lend this run's device for explicit #184/#188 source preparation in caller encoders.
+    #[must_use]
+    pub fn meteorology_context(&self) -> &crate::gpu::GpuContext {
+        &self.gpu_context
+    }
+
+    /// Adopt canonical meteorology for the current backward step and -dt.
     ///
-    /// This is the explicit canonical preparation boundary for #112. It neither
+    /// Use `CanonicalMeteorologyBracket::from_shared_height_vector` for production.
+    /// This boundary retains the complete prepared owners. It neither
     /// advances particles nor calls the legacy advection operator. Keep `slot`
     /// across steps and retain returned resource owners through their last consumer.
     /// # Errors
@@ -337,6 +344,7 @@ impl BackwardTimeLoopDriver {
             );
         }
         if let Some(canonical) = met.canonical {
+            canonical.validate_production(&self.gpu_context)?;
             let grid = canonical.bracket().horizontal_grid();
             let release = &self.release_grid;
             if grid.nx != release.nx

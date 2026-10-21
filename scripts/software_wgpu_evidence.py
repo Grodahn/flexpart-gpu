@@ -38,6 +38,17 @@ VECTOR_STEP = '''name: Prove complete shared-height U/V/W canonical queries (#19
 '''
 
 
+SHARED_ADVECTION_STEP = '''name: Audit complete prepared-vector production drivers (#197)
+        id: shared-advection-197
+        run: |
+          set -euo pipefail
+          for mode in validation-0-compaction-0 validation-1-compaction-0 validation-0-compaction-1; do
+            python3 scripts/transport/shared_advection_evidence.py device --report "target/ci-gate/shared-advection/$mode/report.json" --software
+          done
+          python3 scripts/transport/test_shared_advection_evidence.py
+'''
+
+
 def require(condition, message):
     """Fail closed on incomplete execution or provenance."""
     if not condition:
@@ -58,6 +69,10 @@ def contract():
                            'sha256': hashlib.sha256(coverage.normalized(VECTOR_STEP).encode()).hexdigest()})
     result['artifacts']['gpu-meteorology'].extend([
         'target/ci-gate/shared-height-vector.log', 'target/ci-gate/shared-height-vector/*.json'])
+    result['steps'].append({'name': 'Audit complete prepared-vector production drivers (#197)',
+                           'block': SHARED_ADVECTION_STEP, 'owners': ['gpu-transport-physics'],
+                           'sha256': hashlib.sha256(coverage.normalized(SHARED_ADVECTION_STEP).encode()).hexdigest()})
+    result['artifacts']['gpu-transport-physics'].append('target/ci-gate/shared-advection/**/*.json')
     return result
 
 
@@ -303,6 +318,11 @@ def audit_payload(root, domain):
             require(all(m in text for m in required), 'required completion marker absent: '+filename)
         require(logs['target/ci-gate/sw-wgpu-advection.log'] == 1, 'advection executed count')
         revalidate_resident_advection(root)
+        for mode in ('validation-0-compaction-0', 'validation-1-compaction-0', 'validation-0-compaction-1'):
+            result = subprocess.run([sys.executable, str(ROOT / 'scripts/transport/shared_advection_evidence.py'),
+                                     'device', '--report', str((root / 'target/ci-gate/shared-advection' / mode / 'report.json').resolve()), '--software'],
+                                    cwd=root, capture_output=True, text=True)
+            require(result.returncode == 0, 'shared production drivers: '+result.stderr[-2000:])
     require(files == files_for(root, domain), 'required evidence changed during validation')
     return execution
 

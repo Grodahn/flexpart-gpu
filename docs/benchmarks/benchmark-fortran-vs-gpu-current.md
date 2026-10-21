@@ -1,5 +1,9 @@
 # Benchmark baseline: Fortran serial vs GPU production (current)
 
+> Historical March 2026 legacy diagnostic measurement. The title's "production"
+> does not identify the current canonical #112/#173 path, and these figures do not
+> establish pinned FLEXPART 11.1 equivalence. See [the #199 audit](early-11.1.md).
+
 Date: 2026-03-06  
 Project: `flexpart-gpu`
 

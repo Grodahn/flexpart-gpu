@@ -126,6 +126,48 @@ def control_input(parent, report):
     return ('\n'.join(result) + '\n').encode(), requests
 
 
+def verify_control_sources(inputs, decoded):
+    """Bind every native scientific input to the independent genuine control."""
+    for i, source in enumerate([json.loads(s) for s in inputs['snapshot_json']]):
+        grid = source['horizontal_grid']
+        require(grid['nx'] == grid['ny'] == 3 and grid['longitude_domain'] == 'minus180_to180', 'canonical control domain')
+        require(list(map(f32, [grid[k] for k in ('dx_deg','dy_deg','xlon0_deg','ylat0_deg')])) ==
+                list(map(f32, decoded['grid_dx_dy_lon0_lat0_deg'])), 'canonical control grid')
+        coordinate = source['vertical_coordinate']
+        require(coordinate['kind'] == 'hybrid_sigma_pressure' and coordinate['reference'] == 'model_native'
+                and coordinate['ordering'] == 'increasing', 'canonical control vertical coordinate')
+        require(list(map(f32, coordinate['hybrid_a_interface_pa'])) ==
+                [f32(ab[0]) for ab in reversed(decoded['half_level_a_pa_b'])] and
+                list(map(f32, coordinate['hybrid_b_interface'])) ==
+                [f32(ab[1]) for ab in reversed(decoded['half_level_a_pa_b'])], 'canonical control hybrid coefficients')
+        fields = {f['id']: f for f in source['fields']}
+        surface_fields = ('surface_pressure','temperature2m','dewpoint2m','wind_u10m','wind_v10m','orography')
+        center_fields = ('temperature','specific_humidity','wind_u','wind_v')
+        require(len(fields) == len(source['fields']) == 10 and set(fields) == set(surface_fields + center_fields), 'canonical control fields')
+        for field, record in fields.items():
+            require(record['shape'] == ([3,3] if field in surface_fields else [3,3,3]) and
+                    record['axis_order'] == (['x','y'] if field in surface_fields else ['x','y','z']) and
+                    record['storage_order'] == 'x_fastest' and
+                    len(record['values']) == (9 if field in surface_fields else 27), 'canonical control layout')
+            require(record['time']['calendar'] == 'gregorian' and
+                    record['time']['kind'] == ('static' if field == 'orography' else 'instantaneous') and
+                    record['time']['valid_time_epoch_seconds'] == i * 3600, 'canonical control source time')
+        motion = json.loads(inputs['native_motion_json'][i])
+        require(motion['kind'] == 'pressure_velocity_omega' and motion['unit'] == 'pascal_per_second' and
+                motion['sign'] == 'positive_pressure_increasing' and motion['vertical_staggering'] == 'level_interface'
+                and len(motion['values']) == 36, 'native control motion convention')
+        for c in [c for c in decoded['columns'] if c['memory'] == i+1]:
+            column = c['y'] * 3 + c['x']
+            surface = c['surface_pa_t_k_td_k'] + c['center_t_q_u_v_interface_omega'][0][2:4] + [decoded['terrain_m_asl_y_x'][c['y']][c['x']]]
+            for field, value in zip(surface_fields, surface):
+                require(f32(fields[field]['values'][column]) == f32(value), 'canonical control surface ' + field)
+            for z in range(3):
+                for lane, field in enumerate(center_fields):
+                    require(f32(fields[field]['values'][z*9+column]) == f32(c['center_t_q_u_v_interface_omega'][3-z][lane]), 'canonical control center')
+            for z in range(4):
+                require(f32(motion['values'][z*9+column]) == f32(c['center_t_q_u_v_interface_omega'][3-z][4]), 'native omega control')
+
+
 def replay(path, parent, software=False, hardware=False, execute=True):
     """Execute/revalidate #186's existing linked binary without a new sampler or build."""
     report, inputs = device(path, software, hardware)
@@ -170,18 +212,7 @@ def replay(path, parent, software=False, hardware=False, execute=True):
     temp = directory / 'source-control.txt'
     temp.write_bytes(b'\n'.join(raw.splitlines()[:99]) + b'\n' + b'\n'.join((parent / 'input.txt').read_bytes().splitlines()[99:]) + b'\n')
     decoded = decode_input(temp)
-    for i, source in enumerate([json.loads(s) for s in inputs['snapshot_json']]):
-        fields = {f['id']: f for f in source['fields']}
-        for c in [c for c in decoded['columns'] if c['memory'] == i+1]:
-            column = c['y'] * 3 + c['x']
-            for field, value in zip(('surface_pressure','temperature2m','dewpoint2m'), c['surface_pa_t_k_td_k']):
-                require(f32(fields[field]['values'][column]) == f32(value), 'canonical control surface')
-            for z in range(3):
-                for lane, field in enumerate(('temperature','specific_humidity','wind_u','wind_v')):
-                    require(f32(fields[field]['values'][z*9+column]) == f32(c['center_t_q_u_v_interface_omega'][3-z][lane]), 'canonical control center')
-            motion = json.loads(inputs['native_motion_json'][i])
-            for z in range(4):
-                require(f32(motion['values'][z*9+column]) == f32(c['center_t_q_u_v_interface_omega'][3-z][4]), 'native omega control')
+    verify_control_sources(inputs, decoded)
     rows = [line.split() for line in output_path.read_text().splitlines() if line.startswith('QUERY full ')]
     require(len(rows) == len(requests) == 32, 'complete genuine query replay')
     comparisons = []

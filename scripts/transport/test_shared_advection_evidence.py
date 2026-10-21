@@ -6,7 +6,8 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
-from shared_advection_evidence import device
+from shared_advection_evidence import device, control_input, verify_control_sources
+from prepare_interior_w_oracle import decode_input
 
 class EvidenceTests(unittest.TestCase):
     @classmethod
@@ -74,6 +75,51 @@ class EvidenceTests(unittest.TestCase):
         path.write_text(json.dumps(evidence))
         with self.assertRaises(ValueError):
             device(self.path)
+
+    def control(self):
+        inputs = json.loads(self.path.with_name('inputs.json').read_text())
+        parent = Path('fixtures/interpolation/interior-w-v1')
+        raw, _ = control_input(parent, self.report)
+        path = self.path.with_name('control.txt')
+        path.write_bytes(b'\n'.join(raw.splitlines()[:99]) + b'\n' +
+                         b'\n'.join((parent/'input.txt').read_bytes().splitlines()[99:]) + b'\n')
+        return inputs, decode_input(path)
+
+    def test_complete_independent_control_inputs(self):
+        verify_control_sources(*self.control())
+
+    def test_changed_surface_winds_or_terrain(self):
+        for field in ('wind_u10m','wind_v10m','orography'):
+            with self.subTest(field=field):
+                inputs, decoded = self.control()
+                snapshot = json.loads(inputs['snapshot_json'][1])
+                next(f for f in snapshot['fields'] if f['id'] == field)['values'][4] += 1
+                inputs['snapshot_json'][1] = json.dumps(snapshot)
+                with self.assertRaisesRegex(ValueError, 'canonical control surface'):
+                    verify_control_sources(inputs, decoded)
+
+    def test_changed_grid_hybrid_or_time(self):
+        changes = (
+            lambda s:s['horizontal_grid'].__setitem__('dx_deg',0.5),
+            lambda s:s['vertical_coordinate']['hybrid_b_interface'].__setitem__(1,0.5),
+            lambda s:s['fields'][0]['time'].__setitem__('valid_time_epoch_seconds',0),
+            lambda s:s['fields'][0].__setitem__('storage_order','z_fastest'),
+        )
+        for change in changes:
+            inputs, decoded = self.control()
+            snapshot = json.loads(inputs['snapshot_json'][1])
+            change(snapshot)
+            inputs['snapshot_json'][1] = json.dumps(snapshot)
+            with self.assertRaises(ValueError):
+                verify_control_sources(inputs, decoded)
+
+    def test_changed_native_motion_convention(self):
+        inputs, decoded = self.control()
+        motion = json.loads(inputs['native_motion_json'][0])
+        motion['sign'] = 'positive_upward'
+        inputs['native_motion_json'][0] = json.dumps(motion)
+        with self.assertRaisesRegex(ValueError, 'native control motion convention'):
+            verify_control_sources(inputs, decoded)
 
 if __name__=='__main__':
     unittest.main()

@@ -64,7 +64,10 @@ python scripts/transport/shared_advection_evidence.py check --report target/ci-g
 The auditor verifies #186's exact pin, clean checkout, linked objects and source
 hashes. An invariant-top control tiles its first initial thermodynamic profile
 across members/columns while retaining the original U/V and native omega lanes.
-It validates candidate input equivalence field by field. The existing #186 Fortran
+It validates candidate input equivalence field by field, including surface U/V,
+terrain, grid coordinates, hybrid coefficients, layouts, source times and native
+motion conventions. Mutation tests reject changes to those independent inputs.
+The existing #186 Fortran
 harness gains only an audited input-plumbing branch for absolute query heights;
 all initialization, transformation and public sampling calls are retained. The
 existing linker/cache helper links that harness against the exact unchanged

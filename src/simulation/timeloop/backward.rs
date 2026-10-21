@@ -68,6 +68,7 @@ pub struct BackwardTimeLoopDriver {
     particle_buffers: ParticleBuffers,
     staged_particles: ParticleBuffers,
     resident_advection_kernels: ResidentAdvectionKernels,
+    canonical_run_target: super::meteorology::CanonicalRunTarget,
     #[cfg(test)]
     latest_advection: Option<ResidentAdvectionStep>,
     /// Dual-time wind buffers (O-02): t0 and t1 uploaded once per met bracket.
@@ -181,6 +182,7 @@ impl BackwardTimeLoopDriver {
             bracket,
             self.current_time_seconds,
             -self.config.timestep_seconds,
+            &self.canonical_run_target,
         )?)
     }
 
@@ -247,6 +249,7 @@ impl BackwardTimeLoopDriver {
             particle_buffers,
             staged_particles,
             resident_advection_kernels,
+            canonical_run_target: super::meteorology::CanonicalRunTarget::new(),
             #[cfg(test)]
             latest_advection: None,
             dual_wind_buffers: None,

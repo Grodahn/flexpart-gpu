@@ -17,7 +17,7 @@ from check_shared_height_gpu import require
 from check_shared_height_w_gpu import equivalent
 
 
-SOURCE_FILES = {'src/simulation/timeloop/meteorology.rs', 'src/gpu/meteorology/shared_w.rs', 'src/gpu/meteorology/resident.rs', 'src/gpu/shared_height.rs', 'src/simulation/timeloop/backward.rs', 'src/gpu/shared_height_w.rs', 'src/gpu/meteorology.rs', 'tests/support/interior_w.rs', 'src/simulation/timeloop/forward/timestep.rs', 'src/gpu/meteorology/shared_uv.rs', 'src/gpu/advection_resident.rs', 'src/simulation/timeloop/forward/operators.rs', 'src/gpu/meteorology/advection_production_tests.rs'}
+SOURCE_FILES = {'src/simulation/timeloop/forward.rs', 'src/simulation/timeloop/meteorology.rs', 'src/gpu/meteorology/shared_w.rs', 'src/gpu/meteorology/resident.rs', 'src/gpu/shared_height.rs', 'src/simulation/timeloop/backward.rs', 'src/gpu/shared_height_w.rs', 'src/gpu/meteorology.rs', 'tests/support/interior_w.rs', 'src/simulation/timeloop/forward/timestep.rs', 'src/gpu/meteorology/shared_uv.rs', 'src/gpu/advection_resident.rs', 'src/simulation/timeloop/forward/operators.rs', 'src/gpu/meteorology/advection_production_tests.rs'}
 SHADERS = {'advection_step_guard', 'shared_height_w_remap', 'vertical_sample', 'resident_sample_status', 'advection_predictor_query', 'resident_status_reset', 'shared_height_uv', 'advection_step_commit', 'temporal_interpolation', 'advection_corrector', 'resident_query_adapter', 'particle_query', 'horizontal_interpolation', 'shared_height_query_status', 'interior_w_slope'}
 
 

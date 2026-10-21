@@ -1010,6 +1010,7 @@ fn test_shared_vector_real_drivers_oracle_replay_and_reuse() {
         "src/gpu/shared_height.rs",
         "src/gpu/shared_height_w.rs",
         "src/simulation/timeloop/meteorology.rs",
+        "src/simulation/timeloop/forward.rs",
         "src/simulation/timeloop/forward/operators.rs",
         "src/simulation/timeloop/forward/timestep.rs",
         "src/simulation/timeloop/backward.rs",
@@ -1268,15 +1269,30 @@ fn test_shared_vector_driver_preparation_failures_and_top_rejection() {
                     [&runtimes[0], &runtimes[1]],
                 );
                 assert!(if let Some(d) = &forward {
-                    d.prepare_canonical_meteorology(new_target, &mut slot)
+                    d.prepare_canonical_meteorology(new_target.clone(), &mut slot)
                         .is_err()
                 } else {
                     reverse
                         .as_ref()
                         .unwrap()
-                        .prepare_canonical_meteorology(new_target, &mut slot)
+                        .prepare_canonical_meteorology(new_target.clone(), &mut slot)
                         .is_err()
                 });
+                let mut fresh_slot = CanonicalMeteorologySlot::default();
+                assert!(
+                    if let Some(driver) = &forward {
+                        driver
+                            .prepare_canonical_meteorology(new_target, &mut fresh_slot)
+                            .is_err()
+                    } else {
+                        reverse
+                            .as_ref()
+                            .unwrap()
+                            .prepare_canonical_meteorology(new_target, &mut fresh_slot)
+                            .is_err()
+                    },
+                    "a new slot must not reinitialize the run target"
+                );
                 let missing =
                     crate::meteorology::vertical::reconstruct_vertical_geometry(&snapshots[0])
                         .unwrap();

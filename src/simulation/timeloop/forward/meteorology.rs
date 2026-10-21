@@ -56,6 +56,7 @@ impl ForwardTimeLoopDriver {
             bracket,
             self.current_time_seconds,
             self.config.timestep_seconds,
+            &self.canonical_run_target,
         )?)
     }
 

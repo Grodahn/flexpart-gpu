@@ -346,6 +346,36 @@ impl<'step, 'source> PreparedCanonicalMeteorology<'step, 'source> {
     }
 }
 
+/// Run-owned target token survives replacement of every caller bracket slot.
+pub(super) type CanonicalRunTarget = std::sync::OnceLock<Arc<PreparedSharedHeightUv>>;
+
+impl CanonicalMeteorologyBracket<'_> {
+    fn require_run_target(
+        &self,
+        target: &CanonicalRunTarget,
+    ) -> Result<(), MeteorologyCompositionError> {
+        if let (Some(retained), Some(vector)) = (target.get(), &self.prepared_vector) {
+            if !retained.shares_target(&vector.uv[0]) {
+                return Err(MeteorologyCompositionError::Incompatible(
+                    "driver run target cannot change across bracket slots",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn retain_run_target(
+        &self,
+        target: &CanonicalRunTarget,
+    ) -> Result<(), MeteorologyCompositionError> {
+        if let Some(vector) = &self.prepared_vector {
+            target.get_or_init(|| Arc::clone(&vector.uv[0]));
+            self.require_run_target(target)?;
+        }
+        Ok(())
+    }
+}
+
 impl<'source> CanonicalMeteorologySlot<'source> {
     pub(super) fn prepare<'step>(
         &mut self,
@@ -353,8 +383,10 @@ impl<'source> CanonicalMeteorologySlot<'source> {
         bracket: CanonicalMeteorologyBracket<'source>,
         current_epoch_seconds: i64,
         signed_timestep_seconds: i64,
+        run_target: &CanonicalRunTarget,
     ) -> Result<PreparedCanonicalMeteorology<'step, 'source>, MeteorologyCompositionError> {
         let times = bracket.resolve_step_times(current_epoch_seconds, signed_timestep_seconds)?;
+        bracket.require_run_target(run_target)?;
         if let Some(previous) = &self.resources {
             if previous.bracket.prepared_vector.is_some() && bracket.prepared_vector.is_none() {
                 return Err(MeteorologyCompositionError::Incompatible(
@@ -389,6 +421,7 @@ impl<'source> CanonicalMeteorologySlot<'source> {
                 }
             }
             if previous.bracket.identity == bracket.identity && same_preparations {
+                bracket.retain_run_target(run_target)?;
                 return Ok(PreparedCanonicalMeteorology {
                     context,
                     resources: Arc::clone(previous),
@@ -418,6 +451,7 @@ impl<'source> CanonicalMeteorologySlot<'source> {
         for field in &resources.fields {
             field.validate_resident_source()?;
         }
+        resources.bracket.retain_run_target(run_target)?;
         self.resources = Some(Arc::clone(&resources));
         Ok(PreparedCanonicalMeteorology {
             context,

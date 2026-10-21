@@ -16,6 +16,10 @@ order. Adoption does not submit, wait or read status. Each of the six production
 queries checks the actual target and every U/V/W column status on device, so an
 unsubmitted, incomplete or failed preparation cannot publish scientific state.
 
+Each driver retains its first successfully adopted target independently of every
+caller slot; even replacing the slot cannot reinitialize the target. The target
+is bound only after complete host validation.
+
 The caller retains `CanonicalMeteorologySlot` across steps. It owns an Arc of
 three canonical fields and the complete prepared source dependencies. Unchanged
 source identities and identical prepared owners reuse the Arc without uploads.

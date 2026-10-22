@@ -19,6 +19,9 @@ owns `pushpartdown`, adjusted-predictor correction and admission of varying nati
 Existing lower/horizontal boundary handling and unrelated physics remain unchanged.
 Restart/fallback, global/nested/polar/ETA/ASL, missing sources and unsupported
 normalization remain fail-closed. Operational providers remain #32.
+The historical #199 Stage A benchmark still supplies native center W and rejects
+on this route; its fixture migration is separate from production vector adoption.
+Retained benchmark measurements remain tied to their original candidate revisions.
 
 ## Reproduction and evidence
 

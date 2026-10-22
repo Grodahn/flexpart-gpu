@@ -9,6 +9,12 @@ The [21 October 2026 measured report](early-11.1-stage-a-20261021.md) and
 [frozen per-run receipts](../../fixtures/benchmarks/results/stage-a-20261021.json)
 retain five successful hardware/reference repetitions at both counts.
 
+After #197, production drivers require the complete prepared shared-height U/V/W
+handoff. The Stage A fixture below still supplies the historical #173 native
+center-W handoff and therefore fails closed on the migrated drivers. Its retained
+measurements describe their recorded candidate revisions; rerunning this benchmark
+requires a separately validated fixture migration to the #190 vector contract.
+
 ## Path audit and scientific boundary
 
 | Regime | Executed path | Scientific scope |

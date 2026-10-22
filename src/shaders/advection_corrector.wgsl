@@ -45,7 +45,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     let dx = u * params.x_scale * params.dt;
     let dy = v * params.y_scale * params.dt;
     let dz = w * params.dt;
-    if (!finite(u) || !finite(v) || !finite(w) || !finite(dx) || !finite(dy) || !finite(dz)) {
+    // #198 owns boundary placement and adjusted-predictor sequencing.
+    if (!finite(u) || !finite(v) || !finite(w) || !finite(dx) || !finite(dy) || !finite(dz) || p.pos_z + dz >= params.top_m) {
         atomicStore(&status[6u * (params.capacity + 1u)], 1u);
         return;
     }

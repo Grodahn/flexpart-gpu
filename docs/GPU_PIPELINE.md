@@ -34,7 +34,7 @@ The pipeline is **not** a claim that pristine FLEXPART is one linear call stack.
 
 ## Current implemented production path
 
-The #91 audit established the time loop's GPU composition style. #112 now routes both default advection drivers through #173 canonical U/V/normalized-center-W owners and #171 resident queries. Other meteorology consumers retain their existing inputs under #113–#115; operational provider decoding remains #32.
+The #91 audit established the time loop's GPU composition style. #112/#197 route both default advection drivers through #190 complete shared-height U/V/W owners and #171 resident queries; #198 retains unsupported upper-boundary adoption. Other meteorology consumers retain their existing inputs under #113–#115; operational provider decoding remains #32.
 
 Current high-level flow:
 
@@ -49,7 +49,7 @@ flowchart TD
 
     subgraph GPU[GPU / wgpu + WGSL]
         PB[(Persistent particle buffers)]
-        WB[(Canonical U/V/center-W + runtime geometry)]
+        WB[(Prepared shared U/V/W + retained run target)]
         PBLB[(PBL buffers)]
         PBL[PBL diagnostics]
         ADV[Resident Petterssen\nprivate timestep state]
@@ -266,7 +266,7 @@ Processes that do not require meteorological sampling, such as a purely paramete
 
 | Concern | Current repository behavior | Target boundary |
 | --- | --- | --- |
-| Meteorology input | Advection requires #173 canonical inputs; surface/other consumers remain legacy under their own tickets | Provider-independent #29 Snapshot + #30 runtime geometry as source contract |
+| Meteorology input | Advection requires #197 complete prepared U/V/W; surface/other consumers remain legacy under their own tickets | Provider-independent #29 Snapshot + #30 runtime geometry as source contract |
 | Temporal wind use | Advection resolves separate current and signed advanced-time #89 selections | Generalized #89 semantics through #76 for canonical instantaneous fields |
 | Horizontal/vertical sampling | Production advection composes #87/#88 through #76/#171; specialized legacy samplers remain diagnostic | Canonical #87/#88 semantics reused through #76 |
 | Accumulated precipitation | Canonical CPU semantics exist from #75 | #90 GPU transformation, then #76 consumes explicit rates/amounts |

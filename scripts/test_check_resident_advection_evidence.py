@@ -81,6 +81,14 @@ class ResidentAdvectionEvidenceTests(unittest.TestCase):
             row["status"][4 * 131 + 2] = 8
         self.reject(replace)
 
+    def test_preparation_failure_rejects_finite_peer_components(self):
+        supplemental = copy.deepcopy(self.supplement)
+        failed = next(r for r in supplemental['rows'] if r['variant'] == 'deferred-fatal')
+        failed['status'][4] = 0
+        (self.root/'interior-deferred-boundary.json').write_text(json.dumps(supplemental),encoding='utf-8')
+        with self.assertRaises(AssertionError), contextlib.redirect_stdout(io.StringIO()):
+            audit(self.root)
+
     def test_missing_deferred_evidence_rejected(self):
         (self.root / "interior-deferred-boundary.json").unlink()
         with self.assertRaises(FileNotFoundError), contextlib.redirect_stdout(io.StringIO()):

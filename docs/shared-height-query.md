@@ -75,3 +75,7 @@ The production driver handoff still requires a complete validated U/V/W vector.
 #188 W preparation and #190 W adoption remain prerequisites for the later
 #112–#115 consumer work. No production driver or #184 remapping equation changes
 belong to this handoff; #180 transport-top physics remains separate.
+
+The complete vector is now adopted by production advection through
+[#197](shared-advection.md), under its invariant-native-top/no-upper-crossing
+restriction. #198 still owns transport-top behavior; #113-#115 remain separate.

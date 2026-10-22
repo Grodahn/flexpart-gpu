@@ -5,7 +5,8 @@ existing #76 `prepare_sample` and #171 `prepare_resident` APIs. It accepts exact
 Snapshots, #30 runtime views, #184 prepared U/V and #188 corrected W. No scientific
 calculation occurs during adoption. The genuine pinned FLEXPART 11.1 authority is
 [#186](research/interior-w-186.md), full correction only, under interpolation
-contract section 11. Production consumers and #180 remain separate.
+contract section 11. Production advection now adopts this vector through [#197](shared-advection.md);
+#198 retains upper-boundary adoption.
 
 The constructor checks complete source counts, chronology, source/geometry/time,
 horizontal grid, context, the identical run target owner and the exact U/V owner

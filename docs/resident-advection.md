@@ -1,11 +1,11 @@
-# Canonical production advection (#112)
+# Canonical production advection (#112 / #197)
 
 The default `ForwardTimeLoopDriver::run_timestep` and
 `BackwardTimeLoopDriver::run_timestep` require `MetTimeBracket::canonical`.
-Prepare that owner through the completed #173 driver method and retained
+Prepare that owner through the shared-vector driver preparation method and retained
 `CanonicalMeteorologySlot`, clone the returned resource Arc, drop the temporary
-driver borrow, and lend the owner to the timestep. The source contains exact
-U/V/normalized-center-W identities and #30 geometry. No source is reconstructed
+driver borrow, and lend the owner to the timestep. The source retains #184 U/V, #188 corrected interface W, the run-owned shared
+AGL target and their exact #190/#30 identities. No source is reconstructed
 from legacy wind fields. The canonical grid must match the particle coordinate
 grid. Current and signed advanced times must both satisfy #89 coverage.
 
@@ -48,7 +48,7 @@ acceptance. No particle query or sampled wind travels GPU -> CPU -> GPU.
 
 | Call path / fields | Source and disposition | Owner / limits |
 | --- | --- | --- |
-| Forward `run_timestep` -> `submit_operators`, fused and validation modes, with/without compaction: U/V/W | **Migrated** to #173 owners and resident Petterssen; no production dual-wind upload | #112; canonical cell-center U/V and normalized center W only |
+| Forward `run_timestep` -> `submit_operators`, fused and validation modes, with/without compaction: U/V/W | **Migrated** to #190 complete prepared-vector owners and resident Petterssen; no production dual-wind upload | #197; complete same-source/same-target prepared U/V/W only |
 | Backward `run_timestep`: U/V/W | **Migrated**, negative advection dt; required real-driver evidence | #112; existing backward source-attribution checkpoint |
 | Default `run_to_end` in either driver | **Migrated** through the canonical timestep; inclusive last step also requires advanced-time coverage | #112 / #89 |
 | `etex-run` real-file production caller | **Blocked**: legacy inputs supply no validated canonical bracket; default API rejects explicitly | #32; no legacy fallback |
@@ -64,22 +64,28 @@ is ignored by advection; its existing surface fields remain the PBL input.
 
 ## Supported boundary and unresolved inputs
 
-Transport retains horizontal domain clamping and the existing zero-AGL through
-highest-model-center vertical clamp. Its top is obtained from exact canonical
-#30 physical columns, never from legacy level counts or placeholder heights.
-The currently supported top is invariant across columns and source members.
-Different tops reject explicitly pending
-[#180](https://github.com/Grodahn/flexpart-gpu/issues/180), which owns the missing
-transport boundary decision. Fractional nonuniform stencils remain #118; interface
-W remains unsupported; operational provider decoding remains #32. No tolerances
-or pinned oracle definitions are changed. This is not full FLEXPART parity.
+Transport retains horizontal and lower-AGL clamping. The interim supported top
+is invariant across all native columns and source members and equals the retained
+run target endpoint. Production preflight rejects changing native tops. Device
+predictor/corrector stages reject initial, predicted and corrected heights at or
+above the top before scientific publication. They do not apply the inclusive
+FLEXPART `pushpartdown` placement or adjusted-predictor correction.
+[#198](https://github.com/Grodahn/flexpart-gpu/issues/198) owns that behavior and
+admission of varying native tops. #190's original nonuniform fractional query
+fixture remains a query-layer proof, not an admitted production route.
+
+Production requires the complete typed vector; the older #173 center-W handoff
+is diagnostic-only. Unready target/U/V/W dependencies reject the entire vector,
+including faults outside the current stencil. PBL/deposition/convection and
+operational provider decoding retain their existing owners. No tolerances or
+oracle definitions change, and no full FLEXPART parity is claimed.
 
 ## Verification and retained evidence
 
 `cargo test --lib gpu::meteorology::advection_production_tests -- --nocapture --test-threads=1`
 requires actual WGSL execution through both real production drivers. It covers
 constant/spatially varying U, distinct positions/times, signed backward motion,
-active prefixes 1/3/130, predictor-only V/W and initial-U device-source poisoning,
+active prefixes 1/3/130, predictor-only V/W and initial-U query-lane corruption,
 cross-workgroup atomic preservation with one failing lane among otherwise valid
 lanes, nontrivial inactive tails, interior-time
 forward sampling, deferred failure rejection before a subsequent release/output,
@@ -96,6 +102,8 @@ are test-only final evidence after the owning production submission, never input
 to the transport calculation. Existing #87/#88/#89 oracle gates and #173/#171
 integration tests remain authoritative for the reused sampler. New displacement
 checks are analytical production integration evidence, using the existing #88
-finite comparison policy at unit timestep/scale. The existing paired ADV-ANA-001
+finite comparison policy at unit timestep/scale. The [#197 genuine replay and preparation/boundary failure matrix](shared-advection.md)
+adds complete-vector production proof and both software/hardware evidence.
+The existing paired ADV-ANA-001
 runner retains its legacy diagnostic candidate and
 `DIAGNOSTIC_NO_PARITY_VERDICT`; it does not establish canonical production parity.

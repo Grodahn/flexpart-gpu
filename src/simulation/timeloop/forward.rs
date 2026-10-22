@@ -47,6 +47,7 @@ pub struct ForwardTimeLoopDriver {
     particle_buffers: ParticleBuffers,
     staged_particles: ParticleBuffers,
     resident_advection_kernels: ResidentAdvectionKernels,
+    canonical_run_target: super::meteorology::CanonicalRunTarget,
     #[cfg(test)]
     latest_advection: Option<ResidentAdvectionStep>,
     pending_advection: Option<ResidentAdvectionStep>,
@@ -223,6 +224,7 @@ impl ForwardTimeLoopDriver {
             particle_buffers,
             staged_particles,
             resident_advection_kernels,
+            canonical_run_target: super::meteorology::CanonicalRunTarget::new(),
             #[cfg(test)]
             latest_advection: None,
             pending_advection: None,

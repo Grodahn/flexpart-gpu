@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 
 
-def audit_status(words, capacity, active_count, successful):
+def audit_status(words, capacity, active_count, successful, preparation_failure=False):
     """Reject incomplete/invalid lane ABI and inactive-tail writes in retained status."""
     assert len(words) == 6 * (capacity + 1) + 1
     assert type(words[-1]) is int and words[-1] == 0
@@ -18,7 +18,7 @@ def audit_status(words, capacity, active_count, successful):
         assert type(fatal) is int and fatal in (0, 1)
         assert all(type(reason) is int and reason in (0, 2, 3, 4, 5, 6, 7, 8, 9) for reason in lanes)
         assert all(reason == 0 for reason in lanes[active_count:])
-        assert bool(fatal) == any(reason >= 3 for reason in lanes)
+        assert bool(fatal) == any(reason >= 3 for reason in lanes) or (preparation_failure and fatal == 1)
         if successful:
             assert fatal == 0 and lanes[:active_count] == [2] * active_count
 
@@ -55,6 +55,8 @@ def audit(root=Path("target/ci-gate/resident-advection-production")):
         assert len(row["sampled_values"]) == 6 * 130 and len(row["queries"]) == 2 * 130
         assert [m["field_id"] for m in row["metadata"]] == ["wind_u", "wind_v", "vertical_velocity"] * 2
         assert all(m["active_count"] == row["active_count"] and m["geometry_identity"] and m["geometry_provenance"] for m in row["metadata"])
+        assert all(m['shared_height']['preparation'] == 'shared_height_uvw_190'
+                   and len(m['shared_height']['corrected_w']) == 2 for m in row['metadata'])
         for stage in range(6):
             for lane in range(row["active_count"]):
                 if row["status"][stage * 131 + 1 + lane] == 2:
@@ -85,7 +87,14 @@ def audit(root=Path("target/ci-gate/resident-advection-production")):
     assert interior["metadata"][0]["time"]["instantaneous"]["epoch_seconds"] == 1704067201
     assert interior["metadata"][3]["time"]["instantaneous"]["epoch_seconds"] == 1704067202
     audit_status(interior["status"], 3, 1, True)
-    audit_status(variants["deferred-fatal"]["status"], 3, 1, False)
+    failed = variants["deferred-fatal"]
+    # #190 rejects every component when any source preparation fails, including
+    # finite peer components and inactive predictor queries.
+    assert failed["status"][1] >= 3
+    assert failed["status"][:24:4] == [1] * 6
+    assert all(m["shared_height"]["preparation"] == "shared_height_uvw_190"
+               and len(m["shared_height"]["corrected_w"]) == 2 for m in failed["metadata"])
+    audit_status(failed["status"], 3, 1, False, preparation_failure=True)
     assert variants["deferred-fatal"]["status"][0] != 0
     assert variants["deferred-fatal"]["atomic_preservation"] is True
     assert variants["changing-top"]["rejected"] is True

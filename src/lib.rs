@@ -1,6 +1,9 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
+#[cfg(test)]
+extern crate self as flexpart_gpu;
+
 pub mod config;
 pub mod coords;
 pub mod gpu;

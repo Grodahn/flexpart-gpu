@@ -73,6 +73,7 @@ impl ForwardTimeLoopDriver {
             );
         }
         if let Some(canonical) = met.canonical {
+            canonical.validate_production(&self.gpu_context)?;
             let grid = canonical.bracket().horizontal_grid();
             let release = &self.release_grid;
             if grid.nx != release.nx

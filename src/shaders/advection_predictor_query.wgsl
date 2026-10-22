@@ -43,7 +43,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     let dx = u * params.x_scale * params.dt;
     let dy = v * params.y_scale * params.dt;
     let dz = w * params.dt;
-    if (!finite(dx) || !finite(dy) || !finite(dz)) {
+    // #198 owns pushpartdown. Reject its inclusive boundary before sampling or publication.
+    if (!finite(dx) || !finite(dy) || !finite(dz) || p.pos_z >= params.top_m || p.pos_z + dz >= params.top_m) {
         queries[lane] = Query(p.cell_x, p.cell_y, bitcast<f32>(0x7fc00000u), p.pos_y, p.pos_z, 1u, 0u, 0u);
         return;
     }

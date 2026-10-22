@@ -92,8 +92,9 @@ migrations remain #112–#115; within-stencil differing profiles remain #118;
 precipitation time and surface-flux eligibility remain #119/#120. ASL conversion,
 interface-W extension and #117 cleanup are outside this change.
 
-[#173 driver preparation](canonical-timeloop-meteorology.md) supplies validated
-source pairs and U/V/normalized center-W owners at both actual driver boundaries.
-It resolves current/predicted times and retains bracket resources for #112;
-[production advection](resident-advection.md) now consumes those owners through
-both real timestep operators, retaining separate explicit legacy diagnostics.
+[#173/#197 driver preparation](canonical-timeloop-meteorology.md) supplies complete
+#190 prepared shared-height U/V/W owners at both actual driver boundaries.
+It resolves current/signed advanced times and retains source/target dependencies;
+[production advection](resident-advection.md) consumes those owners through both
+real timestep operators. Native center-W preparation remains diagnostic-only.
+#198 retains varying-native-top and upper-boundary admission.

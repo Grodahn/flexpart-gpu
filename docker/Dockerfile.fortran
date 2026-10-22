@@ -14,12 +14,16 @@ FROM ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d0150636
 # Keep all pockets at the same timestamp (including security updates).
 ARG UBUNTU_SNAPSHOT=20260910T000000Z
 
-# The digest-pinned base image has no CA bundle. Bootstrap that exact package
-# version from the signed Ubuntu archive before selecting the HTTPS snapshot.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-  ca-certificates=20260601~22.04.1 \
-  && sed -i -E "s#^deb http#deb [snapshot=${UBUNTU_SNAPSHOT}] http#" /etc/apt/sources.list \
-  && rm -rf /var/lib/apt/lists/*
+# The digest-pinned base image has no CA bundle. Select the timestamped
+# Ubuntu snapshot BEFORE resolving any packages, including ca-certificates.
+# Jammy's HTTP APT sources verify signed archive metadata; TLS certificates
+# are not needed for the initial snapshot-pinned apt-get update.
+RUN set -eux; \
+  sed -i -E "s#^deb http#deb [snapshot=${UBUNTU_SNAPSHOT}] http#" /etc/apt/sources.list; \
+  grep -q "snapshot=${UBUNTU_SNAPSHOT}" /etc/apt/sources.list; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends ca-certificates=20260601~22.04.1; \
+  rm -rf /var/lib/apt/lists/*
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8

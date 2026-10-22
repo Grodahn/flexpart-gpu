@@ -39,6 +39,12 @@ records adapter identity; required forward markers prove driver execution.
 Domain profiles are bounded diagnostics, not all scientific gates for a domain.
 Keep the final checks and owner-specific pinned-oracle gates described below.
 
+## Early performance baseline
+
+- Focused: `python scripts/test_benchmark_early.py`; [tests](../../scripts/test_benchmark_early.py) reject missing hardware/identity/samples, scaled matrices, invalid elapsed values and Stage A production changes, and exercise existing Fortran count/mass input derivation.
+- Device instrumentation: `cargo test --bin bench-canonical`; preserves the [canonical driver regression gate](../resident-advection.md#verification-and-retained-evidence).
+- Actual performance: `python scripts/benchmark_early.py --checkout <pristine-flexpart> --output target/early-benchmark/<new-series-run>`; [methodology](../benchmarks/early-11.1.md), [manifest](../../fixtures/benchmarks/early-11.1-v1.json). Requires hardware GPU and pristine pinned Fortran; missing runs fail closed. `NON_COMPARABLE` never authorizes a speedup.
+
 ## GPU runtime
 
 - Fast host falsification: `cargo test --lib gpu::evidence::tests`.

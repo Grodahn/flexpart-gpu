@@ -14,10 +14,21 @@ FROM ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d0150636
 # Keep all pockets at the same timestamp (including security updates).
 ARG UBUNTU_SNAPSHOT=20260910T000000Z
 
-# The digest-pinned base image has no CA bundle. Select the timestamped
-# Ubuntu snapshot BEFORE resolving any packages, including ca-certificates.
-# Jammy's HTTP APT sources verify signed archive metadata; TLS certificates
-# are not needed for the initial snapshot-pinned apt-get update.
+# The Ubuntu snapshot service redirects to HTTPS, so the digest-pinned
+# base (which has no CA bundle) needs a narrowly scoped certificate bootstrap.
+# Use ONLY Jammy's signed, immutable release pocket for that first install:
+# no rolling updates/security pockets, no unverified TLS or moving package version.
+RUN set -eux; \
+  printf '%s\n' 'deb http://archive.ubuntu.com/ubuntu jammy main' > /tmp/ca-bootstrap.list; \
+  apt-get update -o Dir::Etc::sourcelist=/tmp/ca-bootstrap.list -o Dir::Etc::sourceparts=-; \
+  apt-get install -y --no-install-recommends \
+    -o Dir::Etc::sourcelist=/tmp/ca-bootstrap.list -o Dir::Etc::sourceparts=- \
+    ca-certificates=20211016; \
+  rm /tmp/ca-bootstrap.list; \
+  rm -rf /var/lib/apt/lists/*
+
+# All subsequent package resolution, including the current pinned CA bundle,
+# uses the same timestamped Ubuntu snapshot for every release/update pocket.
 RUN set -eux; \
   sed -i -E "s#^deb http#deb [snapshot=${UBUNTU_SNAPSHOT}] http#" /etc/apt/sources.list; \
   grep -q "snapshot=${UBUNTU_SNAPSHOT}" /etc/apt/sources.list; \

@@ -6,7 +6,7 @@ use super::meteorology::resident::{
 };
 use super::meteorology::{
     CanonicalGpuField, MeteorologyCompositionError, MeteorologyCompositionKernels,
-    MeteorologyTimeSelection,
+    MeteorologyTimeSelection, SharedHeightTransportBoundary,
 };
 use super::{GpuContext, ParticleBuffers};
 use crate::meteorology::HorizontalGrid;
@@ -37,13 +37,13 @@ impl ResidentAdvectionKernels {
                 ctx,
                 "Petterssen predictor query",
                 include_str!("../shaders/advection_predictor_query.wgsl"),
-                &[true, true, true, false],
+                &[true, true, true, false, true, true],
             ),
             corrector: QueryPass::new(
                 ctx,
                 "Petterssen private corrector",
                 include_str!("../shaders/advection_corrector.wgsl"),
-                &[true, true, false, false],
+                &[true, true, false, false, true, true, true],
             ),
             guard: QueryPass::new(
                 ctx,
@@ -80,6 +80,10 @@ pub(crate) struct ResidentAdvectionStep {
     pub(crate) values: wgpu::Buffer,
     #[cfg(test)]
     pub(crate) queries: wgpu::Buffer,
+    #[cfg(test)]
+    pub(crate) corrected_particles: wgpu::Buffer,
+    boundary: SharedHeightTransportBoundary,
+    predictor_queries: wgpu::Buffer,
     params: wgpu::Buffer,
     capacity: u32,
     pub(crate) metadata: Vec<ResidentSampleMetadata>,
@@ -119,7 +123,7 @@ impl ResidentAdvectionStep {
             .map_err(|_| invalid("advection capacity overflow"))?;
         let active = u32::try_from(original.particle_count())
             .map_err(|_| invalid("advection prefix overflow"))?;
-        let top = fields[0].resident_advection_top_m()?;
+        let boundary = SharedHeightTransportBoundary::new(ctx, fields, grid)?;
         let allocation = |words: u64, label| -> Result<wgpu::Buffer, MeteorologyCompositionError> {
             let bytes = words
                 .checked_mul(4)
@@ -149,12 +153,22 @@ impl ResidentAdvectionStep {
             signed_dt.to_bits(),
             scale.x_grid_per_meter.to_bits(),
             scale.y_grid_per_meter.to_bits(),
-            top.to_bits(),
+            boundary.levels,
         ];
         let result = Self {
+            predictor_queries: allocation(
+                8 * u64::from(capacity),
+                "Petterssen adjusted predictor",
+            )?,
+            boundary,
             _prepared_sources: fields[0].prepared_advection_sources(),
             #[cfg(test)]
             queries: allocation(16 * u64::from(capacity), "Petterssen final query evidence")?,
+            #[cfg(test)]
+            corrected_particles: allocation(
+                24 * u64::from(capacity),
+                "Petterssen pre-physics evidence",
+            )?,
             status: allocation(
                 6 * (u64::from(capacity) + 1) + 1,
                 "Petterssen six-stage status",
@@ -219,6 +233,8 @@ impl ResidentAdvectionStep {
                             &result.values,
                             &result.status,
                             target.lanes,
+                            result.boundary.target.heights(),
+                            result.boundary.target.status(),
                             &result.params,
                         ],
                         capacity,
@@ -234,6 +250,15 @@ impl ResidentAdvectionStep {
                         &[batch.write_target().lanes, &result.params],
                         1,
                         encoder,
+                    );
+                }
+                if time_stage == 1 && component == 0 {
+                    encoder.copy_buffer_to_buffer(
+                        batch.write_target().lanes,
+                        0,
+                        &result.predictor_queries,
+                        0,
+                        u64::from(capacity) * 32,
                     );
                 }
                 #[cfg(test)]
@@ -272,10 +297,21 @@ impl ResidentAdvectionStep {
                 &result.values,
                 &result.status,
                 &staged.particle_buffer,
+                result.boundary.target.heights(),
+                result.boundary.target.status(),
+                &result.predictor_queries,
                 &result.params,
             ],
             capacity,
             encoder,
+        );
+        #[cfg(test)]
+        encoder.copy_buffer_to_buffer(
+            &staged.particle_buffer,
+            0,
+            &result.corrected_particles,
+            0,
+            staged.particle_buffer.size(),
         );
         // A separate dispatch observes failures from every workgroup before downstream physics.
         kernels.guard.encode(

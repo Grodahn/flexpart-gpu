@@ -70,6 +70,9 @@ impl ParticleForcingField {
 /// unused lanes with zeros.
 #[derive(Debug, Clone)]
 pub struct ForwardStepForcing {
+    /// Requested original `lsettling` route. Production rejects it until #203 and #35/#37
+    /// provide validated settling velocities and sticky per-particle stop ownership.
+    pub settling_enabled: bool,
     /// Dry deposition velocity `vdep` [m/s] per species.
     pub dry_deposition_velocity_m_s: Vec<ParticleForcingField>,
     /// Wet scavenging coefficient `lambda` [1/s] per species.
@@ -89,6 +92,7 @@ pub struct ForwardStepForcing {
 impl Default for ForwardStepForcing {
     fn default() -> Self {
         Self {
+            settling_enabled: false,
             dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.0)],
             wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(0.0)],
             wet_precipitating_fraction: ParticleForcingField::Uniform(0.0),

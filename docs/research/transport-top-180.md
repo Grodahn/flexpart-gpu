@@ -191,3 +191,24 @@ here; preserve their rejections/owners. If this handoff would require a new
 physics semantic, runtime consumer, source or tolerance, stop and record the
 dependency. These research fixtures establish neither GPU boundary parity nor
 full FLEXPART/production/operational parity.
+
+## Production adoption status (#198)
+
+The [bounded implementation](../transport-top.md) consumes the existing device
+target/status and validated complete #197 vector in both real drivers. It applies
+the inclusive ordinary placement before advanced sampling and after correction
+of the adjusted predictor. Different native column/member heights are admitted;
+no local transport ceiling is introduced. Research source/fixtures above remain
+unchanged.
+
+Settling requests remain explicitly rejected pending
+[#203](https://github.com/Grodahn/flexpart-gpu/issues/203). The actual production
+experiment reuses this driver's explicit **already shared-grid** wind controls;
+prepared-field numerical validation remains the independent #186/#197 replay.
+Advection snapshots precede unchanged downstream turbulence. Exact f32 placement
+and original-state f32 projection checks are separate from f64 trajectory parity.
+The non-crossing spatial/time-varying scenario 8 exposes accumulation precision
+differences; [#204](https://github.com/Grodahn/flexpart-gpu/issues/204) owns that
+comparison/precision decision. Its trajectory results are diagnostics, never a
+numerical pass under an invented tolerance. The f64-only `top-0.0001` probes remain
+excluded from GPU predicate equivalence. No complete FLEXPART parity is claimed.

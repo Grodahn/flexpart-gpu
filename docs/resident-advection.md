@@ -14,7 +14,7 @@ grid. Current and signed advanced times must both satisfy #89 coverage.
 Both actual driver encoders use `gpu::advection_resident`:
 
 `scientific particles -> current #171 queries -> U/V/W #87/#88/#89 samples ->
-private predictor queries -> advanced-time U/V/W samples -> private corrected
+private boundary-adjusted predictor queries -> advanced-time U/V/W samples -> private corrected
 particles -> status eligibility -> existing downstream physics/compaction ->
 guarded scientific-state publication`.
 
@@ -64,15 +64,22 @@ is ignored by advection; its existing surface fields remain the PBL input.
 
 ## Supported boundary and unresolved inputs
 
-Transport retains horizontal and lower-AGL clamping. The interim supported top
-is invariant across all native columns and source members and equals the retained
-run target endpoint. Production preflight rejects changing native tops. Device
-predictor/corrector stages reject initial, predicted and corrected heights at or
-above the top before scientific publication. They do not apply the inclusive
-FLEXPART `pushpartdown` placement or adjusted-predictor correction.
-[#198](https://github.com/Grodahn/flexpart-gpu/issues/198) owns that behavior and
-admission of varying native tops. #190's original nonuniform fractional query
-fixture remains a query-layer proof, not an admitted production route.
+Transport retains existing horizontal and lower-AGL handling. The run-owned
+`SharedHeightTransportBoundary` retains #184's target; predictor/corrector shaders
+read its device endpoint and status directly. `nxmax` is the validated regional
+mother-grid `nxfield`. At `z >= top`, ordinary particles receive the original f32
+`top - 100*(nxmax/3.e5)` placement. Correction adds half the wind difference to the
+already adjusted predictor; a second upper action follows. Native tops can differ
+across columns and times after complete #190 preparation. A nonfinite endpoint or
+an f32 margin unable to place strictly below it fails atomically.
+
+The finite proof and reproduction commands are in [transport-top adoption](transport-top.md).
+The real-driver test records the private **advection-stage** result before the
+unchanged downstream turbulence; it does not claim whole-timestep trajectory parity.
+Requested `ForwardStepForcing::settling_enabled` fails before release/encoding in
+both production drivers. #203 owns the missing validated flag/velocity and sticky
+scientific-stop handoff. A scientific stop must never become a fatal meteorology
+batch. No stop state is fabricated by this ordinary-particle implementation.
 
 Production requires the complete typed vector; the older #173 center-W handoff
 is diagnostic-only. Unready target/U/V/W dependencies reject the entire vector,
@@ -89,7 +96,7 @@ active prefixes 1/3/130, predictor-only V/W and initial-U query-lane corruption,
 cross-workgroup atomic preservation with one failing lane among otherwise valid
 lanes, nontrivial inactive tails, interior-time
 forward sampling, deferred failure rejection before a subsequent release/output,
-and fail-closed changing-top geometry. Deliberately
+and admission of differing native member heights. Deliberately
 contradictory legacy wind proves it is not sampled by the canonical branch.
 Run it separately with `FLEXPART_GPU_VALIDATION=1` and
 `FLEXPART_GPU_COMPACTION=1`; CI retains all configurations.
@@ -102,7 +109,7 @@ are test-only final evidence after the owning production submission, never input
 to the transport calculation. Existing #87/#88/#89 oracle gates and #173/#171
 integration tests remain authoritative for the reused sampler. New displacement
 checks are analytical production integration evidence, using the existing #88
-finite comparison policy at unit timestep/scale. The [#197 genuine replay and preparation/boundary failure matrix](shared-advection.md)
+finite comparison policy at unit timestep/scale. The [#197 genuine replay and preparation failure matrix](shared-advection.md)
 adds complete-vector production proof and both software/hardware evidence.
 The existing paired ADV-ANA-001
 runner retains its legacy diagnostic candidate and

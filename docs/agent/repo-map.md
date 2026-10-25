@@ -81,7 +81,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## Simulation
 
-- Complete prepared production advection (#197): [source/target handoff and evidence](../shared-advection.md), using #184/#188/#190 in both real drivers. [Resident driver matrix](../../src/gpu/meteorology/advection_production_tests.rs) and [genuine #186 replay](../../scripts/transport/shared_advection_evidence.py). #198 retains changing-native-top and upper-boundary admission.
+- Complete prepared production advection (#197): [source/target handoff and evidence](../shared-advection.md), using #184/#188/#190 in both real drivers. [Resident driver matrix](../../src/gpu/meteorology/advection_production_tests.rs) and [genuine #186 replay](../../scripts/transport/shared_advection_evidence.py). #198 adds [original transport-top adoption](../transport-top.md) for ordinary particles.
 - Canonical input preparation (#173 / #197): shared [typed bracket and source slot](../../src/simulation/timeloop/meteorology.rs), actual forward/backward `prepare_canonical_meteorology` entries in the preparation owners below, and [lifetime/#112 handoff](../canonical-timeloop-meteorology.md). This prepares existing #76/#171 owners consumed by the [canonical production advection operators](../resident-advection.md).
 - Stable production entry: [simulation-driver facade](../../src/simulation/timeloop.rs); [forward state/lifecycle](../../src/simulation/timeloop/forward.rs), [timestep phases/advance](../../src/simulation/timeloop/forward/timestep.rs), [ordered GPU operators/submission](../../src/simulation/timeloop/forward/operators.rs), [backward attribution](../../src/simulation/timeloop/backward.rs).
 - Preparation: [bracket handoff](../../src/simulation/timeloop/meteorology.rs), [prefetch/bracket/PBL inputs](../../src/simulation/timeloop/forward/meteorology.rs), [forcing shapes/cache](../../src/simulation/timeloop/forcing.rs), [forcing validation/uploads](../../src/simulation/timeloop/forward/forcing.rs).
@@ -94,6 +94,8 @@ path moves. Markdown links are the machine-readable path surface, audited by
 - Dependencies: meteorology/release -> transport/PBL/deposition/decay -> output. Preserve explicit host output boundaries; do not introduce intermediate readback to connect device stages.
 
 ## Transport-advection
+
+- Upper transport boundary (#198): [typed device handoff](../../src/gpu/meteorology/transport_boundary.rs), [real-driver matrix](../../src/gpu/meteorology/transport_top_tests.rs), [independent evidence auditor](../../scripts/transport/check_transport_top.py), [supported envelope and precision limits](../transport-top.md). Reuses #184/#197/#190; settling #203 and trajectory precision #204 remain separate.
 
 - Production: [forward operator sequence](../../src/simulation/timeloop/forward/operators.rs), [coordinate/velocity units](../../src/coords/mod.rs).
 - Canonical production: [resident Petterssen](../../src/gpu/advection_resident.rs); [migration inventory](../resident-advection.md).

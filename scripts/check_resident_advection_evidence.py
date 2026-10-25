@@ -97,7 +97,8 @@ def audit(root=Path("target/ci-gate/resident-advection-production")):
     audit_status(failed["status"], 3, 1, False, preparation_failure=True)
     assert variants["deferred-fatal"]["status"][0] != 0
     assert variants["deferred-fatal"]["atomic_preservation"] is True
-    assert variants["changing-top"]["rejected"] is True
+    assert variants["changing-top"]["rejected"] is False
+    audit_status(variants["changing-top"]["status"], 3, 1, True)
     print("RESIDENT-ADVECTION-112 evidence audit passed: 48 required real-driver cases")
 
 

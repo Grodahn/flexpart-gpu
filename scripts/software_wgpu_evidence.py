@@ -49,6 +49,9 @@ SHARED_ADVECTION_STEP = '''name: Audit complete prepared-vector production drive
 '''
 
 
+TRANSPORT_TOP_STEP = 'name: Audit original transport-top action in production drivers (#198)\n        id: transport-top-198\n        run: |\n          set -euo pipefail\n          for mode in validation-0-compaction-0 validation-1-compaction-0 validation-0-compaction-1; do\n            python3 scripts/transport/check_transport_top.py --report "target/ci-gate/transport-top/$mode/report.json" --software\n            cargo run --quiet --example check_gpu_evidence -- "target/ci-gate/transport-top/$mode/fixture-comparison.json"\n          done\n          python3 scripts/transport/test_check_transport_top.py\n'
+
+
 def require(condition, message):
     """Fail closed on incomplete execution or provenance."""
     if not condition:
@@ -73,6 +76,10 @@ def contract():
                            'block': SHARED_ADVECTION_STEP, 'owners': ['gpu-transport-physics'],
                            'sha256': hashlib.sha256(coverage.normalized(SHARED_ADVECTION_STEP).encode()).hexdigest()})
     result['artifacts']['gpu-transport-physics'].append('target/ci-gate/shared-advection/**/*.json')
+    result['steps'].append({'name': 'Audit original transport-top action in production drivers (#198)',
+                           'block': TRANSPORT_TOP_STEP, 'owners': ['gpu-transport-physics'],
+                           'sha256': hashlib.sha256(coverage.normalized(TRANSPORT_TOP_STEP).encode()).hexdigest()})
+    result['artifacts']['gpu-transport-physics'].append('target/ci-gate/transport-top/**/*.json')
     return result
 
 
@@ -323,6 +330,10 @@ def audit_payload(root, domain):
                                      'device', '--report', str((root / 'target/ci-gate/shared-advection' / mode / 'report.json').resolve()), '--software'],
                                     cwd=root, capture_output=True, text=True)
             require(result.returncode == 0, 'shared production drivers: '+result.stderr[-2000:])
+            top = subprocess.run([sys.executable, str(ROOT / 'scripts/transport/check_transport_top.py'),
+                                  '--report', str((root / 'target/ci-gate/transport-top' / mode / 'report.json').resolve()), '--software'],
+                                 cwd=root, capture_output=True, text=True)
+            require(top.returncode == 0, 'transport top drivers: '+top.stderr[-2000:])
     require(files == files_for(root, domain), 'required evidence changed during validation')
     return execution
 

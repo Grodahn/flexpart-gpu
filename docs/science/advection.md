@@ -15,17 +15,19 @@ Given a particle at position **x₀** with timestep `dt`:
 2. **Predictor** (Euler forward):
    `x_pred = x₀ + dt · (u₀, v₀, w₀)`
 
-3. **Interpolate** wind at predicted position:
-   `(u₁, v₁, w₁) = wind(x_pred, t + dt)`
+3. **Upper transport action** on the predictor: for the supported regional AGL
+   route, apply original `pushpartdown` before querying the advanced wind.
 
-4. **Corrected wind**:
-   `u_corr = 0.5 · (u₀ + u₁)`
+4. **Interpolate** at that adjusted predictor and the signed advanced time:
+   `(u1, v1, w1) = wind(x_pred_adjusted, t + dt)`.
 
-5. **Final position**:
-   `x₁ = x₀ + dt · u_corr`
+5. **Correct vertical transport** using the adjusted predictor:
+   `z1 = z_pred_adjusted + ((w1 - w0) * 0.5) * dt`, then apply the upper action again.
+   Existing horizontal and lower boundary handling remain separately unchanged.
 
-This is equivalent to an explicit trapezoidal rule and removes the first-order
-bias of a pure Euler step in spatially varying wind fields.
+Without an intervening boundary action this is the Petterssen trapezoidal method.
+The boundary-adjusted result cannot generally be reconstructed from the original
+position plus the averaged vertical wind.
 
 ### Velocity-to-Grid Scaling
 
@@ -61,17 +63,16 @@ execute pristine FLEXPART 11.1 `advance` and `pushpartdown`, including the compi
 Petterssen correction. In the accepted regional `eta=no` route, `height(nz)` is
 the endpoint of the run-lifetime shared AGL target initialized on the initial
 mother member. It is unchanged by the particle's native column or source time.
-Reuse #184's existing target and #185's query resources for future adoption;
-complete matching prepared U/V/W adoption remains a prerequisite.
+Production #198 reuses #184's device target through the complete #197/#190 vector.
 
 The original inclusive test is `z >= height(nz)`. Backward transport with the
 settling flag sets sticky `nstop`; other cases assign the f32 expression
 `height(nz) - 100*(nxmax/3.e5)`. Boundary action occurs before advanced-time
 sampling and after correction, which is applied to the adjusted predictor.
 The preceding schematic trapezoidal formula is equivalent only when boundary
-actions do not intervene. The current GPU top clamp does not establish this
-behavior. Production #197 retains changing-native-top rejection and rejects initial,
-predicted or corrected positions at/above the top until #198 is proved.
+actions do not intervene. Production #198 implements the ordinary placement and
+ordering. Requested settling remains rejected pending #203; the original scientific
+stop is not a fatal meteorology condition. See [evidence scope](../transport-top.md).
 
 The proof retains 24 boundary and 72 public-advance cases, exact raw/decoded
 observations and two distinct fresh-build provenance inventories. It introduces
@@ -97,7 +98,9 @@ canonical path uses the existing #89 selection independently for both stages;
 legacy diagnostics retain their old one-alpha behavior. Existing repository
 horizontal clamping and vertical/turbulence coupling are preserved for supported
 geometry; they are not a claim of all FLEXPART boundary/stochastic behavior.
-Changing native top heights and upper-boundary crossings fail closed pending #198.
+Different native column/member tops are admitted through complete preparation;
+replacing the run target remains rejected. Scenario-8 trajectory precision has no
+approved comparison policy (#204); no trajectory tolerance is introduced.
 Both production drivers consume #190's complete prepared shared-height U/V/W
 vector; their source preparation, identity and evidence contract is in
 [shared advection](../shared-advection.md).

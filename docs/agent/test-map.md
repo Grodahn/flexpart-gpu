@@ -141,7 +141,9 @@ Start at the [stable facade](../../src/meteorology/vertical.rs) and select its
 
 ## Transport-advection
 
-- Shared-vector production adoption (#197): `cargo test --lib gpu::meteorology::advection_production_tests -- --nocapture --test-threads=1`; repeat software/hardware and validation/compaction configurations. [Exact commands and supported envelope](../shared-advection.md); [device and genuine replay auditor](../../scripts/transport/shared_advection_evidence.py). Missing device, source or complete status is a failure. #198 retains upper-boundary admission.
+- Original upper transport action (#198): `cargo test --lib gpu::meteorology::advection_production_tests::transport_top_tests -- --nocapture --test-threads=1`, then `python scripts/transport/check_transport_top.py --report target/ci-gate/transport-top/validation-0-compaction-0/report.json --oracle-run <fresh-top-run> --software` and `python scripts/transport/test_check_transport_top.py`. Repeat real software/hardware adapters and validation/compaction configurations; [scope, raw evidence and precision exclusions](../transport-top.md).
+
+- Shared-vector production adoption (#197): `cargo test --lib gpu::meteorology::advection_production_tests -- --nocapture --test-threads=1`; repeat software/hardware and validation/compaction configurations. [Exact commands and supported envelope](../shared-advection.md); [device and genuine replay auditor](../../scripts/transport/shared_advection_evidence.py). Missing device, source or complete status is a failure. #198 adds the separately verified ordinary upper-boundary action.
 
 - Direct top-boundary research (#180): `python scripts/transport/test_top_boundary_oracle.py`; reproduce two fresh builds with [the launcher](../../scripts/transport/run_top_boundary_oracle.py) and audit with [the paired verifier](../../scripts/transport/compare_top_boundary_builds.py). [Exact commands, scope and precision limitation](../research/transport-top-180.md#reproduction-and-audit); [CI](../../.github/workflows/transport-top-oracle.yml). This is direct pinned-routine evidence, not GPU parity.
 

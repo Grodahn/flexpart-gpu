@@ -817,6 +817,15 @@ jobs:
             python3 scripts/transport/shared_advection_evidence.py device --report "target/ci-gate/shared-advection/$mode/report.json" --software
           done
           python3 scripts/transport/test_shared_advection_evidence.py
+      - name: Audit original transport-top action in production drivers (#198)
+        id: transport-top-198
+        run: |
+          set -euo pipefail
+          for mode in validation-0-compaction-0 validation-1-compaction-0 validation-0-compaction-1; do
+            python3 scripts/transport/check_transport_top.py --report "target/ci-gate/transport-top/$mode/report.json" --software
+            cargo run --quiet --example check_gpu_evidence -- "target/ci-gate/transport-top/$mode/fixture-comparison.json"
+          done
+          python3 scripts/transport/test_check_transport_top.py
       - name: Record dependency cache checksums
         id: original-24
         run: python3 scripts/cargo_cache_integrity.py record

@@ -7,21 +7,21 @@ source lifetimes, exact reuse and queue ordering. The [resident advection contra
 retains private predictor/corrector state, six independent statuses, active prefixes,
 compaction and guarded all-or-nothing scientific publication.
 
-## Interim supported envelope
+## Supported envelope after #198
 
 Production accepts the regional mother-grid AGL route, supported initial (0,0)
 pressure selection, exact normalized-interface-omega provenance and complete
-same-source/same-target U/V/W preparations. Native top heights must be identical
-across every column/member and equal the retained target endpoint. Initial,
-predicted and corrected positions at/above the upper limit reject atomically.
-No pinned upper-boundary action is implemented here: [#198](https://github.com/Grodahn/flexpart-gpu/issues/198)
-owns `pushpartdown`, adjusted-predictor correction and admission of varying native tops.
-Existing lower/horizontal boundary handling and unrelated physics remain unchanged.
-Restart/fallback, global/nested/polar/ETA/ASL, missing sources and unsupported
-normalization remain fail-closed. Operational providers remain #32.
-The historical #199 Stage A benchmark still supplies native center W and rejects
-on this route; its fixture migration is separate from production vector adoption.
-Retained benchmark measurements remain tied to their original candidate revisions.
+same-source/same-target U/V/W preparations. Native column and source-member tops
+may differ. Transport always uses the retained **device** shared target endpoint,
+not a native maximum. The inclusive upper action and adjusted-predictor correction
+are documented in [transport-top adoption](transport-top.md).
+
+Restart/fallback, global/nested/polar/ETA/ASL and incomplete/mixed preparations
+remain rejected. Requested settling rejects explicitly pending
+[#203](https://github.com/Grodahn/flexpart-gpu/issues/203); general settling remains
+#35/#37. Adaptive PBL and wider precision are not newly supported. Existing
+lower/horizontal handling and unrelated physics are unchanged. Operational
+providers remain #32 and historical benchmark migration remains #199.
 
 ## Reproduction and evidence
 
@@ -45,13 +45,13 @@ Missing or skipped adapters, missing status or incomplete rows cannot pass.
 The inherited #112 analytical matrix covers both real drivers, active prefixes
 1/3/130, inactive tails, distinct current/predicted positions and signed times,
 one failed lane with otherwise valid peers across workgroups, deferred checkpoints,
-and variable-top rejection. Query-lane fault injection is test-only; a failed
+and varying-native-top admission. Query-lane fault injection is test-only; a failed
 prepared source instead invalidates the complete vector, including remote columns.
 The #197 matrix adds both real drivers with nonzero normalized interface W,
 two interior heights, endpoints/interior temporal brackets and two successive
-steps using the identical resource owners. Its 26 negative steps cover unexecuted/
+steps using the identical resource owners. Its 22 negative steps cover unexecuted/
 failed targets, pending/invalid U/V, incomplete/failed/unknown W statuses, nonfinite
-vector values and initial/predictor/corrector top rejection. Fatal steps compare
+vector values and invalid/unrepresentable device transport endpoints. Fatal steps compare
 all original particle bytes, including inactive tails. Adoption also rejects
 mixed W sources, replaced run targets, missing motion and foreign contexts;
 failed preparation leaves the original slot reusable.
@@ -81,7 +81,7 @@ actual device query coordinate/height/time exactly, without a coordinate toleran
 All 96 scalar current/advanced U/V/W values are compared under the existing
 #80/#190 policy `abs(a-b) <= 1e-6 + 1e-5*max(abs(a),abs(b))` m/s. The original
 nonuniform #186 fractional-stencil queries remain the unchanged #190 query-layer
-proof; their varying-top production route stays rejected. Displacement evidence
+proof; their varying-native-top production route is now admitted with #198; this replay remains a wind-sampling proof. Displacement evidence
 uses the existing owned analytical policy in the #112 matrix. No new trajectory
 tolerance or full FLEXPART production parity claim is introduced.
 

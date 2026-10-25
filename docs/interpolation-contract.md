@@ -335,6 +335,13 @@ Therefore the #71 oracle contract is:
 
 ## 5. 2-D layer / accumulated-field sampling (`interpol_rain`)
 
+**#119 implementation prerequisite:** the original memory-member arithmetic
+below is established, but its mapping from #90 physical rate intervals is not.
+The [source/interval audit](research/precipitation-time-119.md) records the
+unproven timestamp association in the accumulation fixture and the required
+[#202 decision](https://github.com/Grodahn/flexpart-gpu/issues/202). The frozen
+golden alone does not authorize that mapping or production precipitation coverage.
+
 `interpol_rain` (`interpol_mod.f90:1209-1582`) samples seven surface/layer quantities
 with the same horizontal bilinear seed `(ix,jy,ixp,jyp,p1..p4)` and the same two
 in-memory members:

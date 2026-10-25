@@ -75,6 +75,13 @@ references entirely is the explicit derivation-only report mode.
 
 ## Evidence
 
+The [#119 source/interval audit](research/precipitation-time-119.md) distinguishes
+the synthetic rate-grid handoff below from original preprocessing provenance.
+The fixture derives physical intervals `[0,1800]` and `[1800,3600]`, then assigns
+their rates to FLEXPART memory times `[0,3600]`. That timestamp association is
+not independently validated by the original rain oracle; #202 must resolve it
+before #119 can compose these rates into final precipitation time sampling.
+
 - `fixtures/accumulation/contract-v1.json` — canonical fixture: per-cell
   accumulated inputs, expected interval amounts and mm/h rates, the declared
   reset scenario, and the fail-closed scenarios. Digest pinned in

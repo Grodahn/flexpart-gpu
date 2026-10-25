@@ -109,6 +109,8 @@ The following paths require their own contracts and remain explicit rejections:
   and equal-profile queries are supported.
 - [#119](https://github.com/Grodahn/flexpart-gpu/issues/119): precipitation
   rate-grid time sampling, including `interpol_rain`'s frozen `dt/3` behavior.
+  Its [source-member/interval prerequisite](research/precipitation-time-119.md)
+  is unresolved and tracked by [#202](https://github.com/Grodahn/flexpart-gpu/issues/202).
   Explicit interval products are not reported as final wet-deposition forcing.
 - [#120](https://github.com/Grodahn/flexpart-gpu/issues/120): instantaneous
   surface-flux eligibility. Canonical schema permits it, but #74/#89's temporal

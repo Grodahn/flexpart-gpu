@@ -30,6 +30,8 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## Meteorology
 
+- Precipitation time sampling (#119): [pinned source/interval audit and stop](../research/precipitation-time-119.md). #202 owns the unresolved prepared-member/physical-interval mapping; #90 products remain explicit intervals, not final wet-deposition forcing.
+
 - Shared-height W preparation (#188): [owner](../../src/gpu/shared_height_w.rs), [interface remap](../../src/shaders/shared_height_w_remap.wgsl), [interior slopes](../../src/shaders/interior_w_slope.wgsl), [handoff](../shared-height-w-preparation.md), [device proof](../../tests/shared_height_w_gpu.rs). Reuses #184; #190 owns adoption.
 
 - Shared-height U/V preparation (#184): [owner](../../src/gpu/shared_height.rs), [kernel](../../src/shaders/shared_height_uv.wgsl), [lifecycle](../shared-height-preparation.md), [device proof](../../tests/shared_height_gpu.rs). Preparation only; #185 owns adoption.

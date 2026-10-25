@@ -142,6 +142,7 @@ fn main() {
 
     let forcing = match forcing_mode {
         ForcingMode::PerParticle => ForwardStepForcing {
+            settling_enabled: false,
             dry_deposition_velocity_m_s: vec![ParticleForcingField::PerParticle(
                 deterministic_scalar_field(particle_count, 0.001, 0.00001, 23),
             )],

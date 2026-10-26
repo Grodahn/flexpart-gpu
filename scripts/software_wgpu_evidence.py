@@ -52,6 +52,9 @@ SHARED_ADVECTION_STEP = '''name: Audit complete prepared-vector production drive
 TRANSPORT_TOP_STEP = 'name: Audit original transport-top action in production drivers (#198)\n        id: transport-top-198\n        run: |\n          set -euo pipefail\n          for mode in validation-0-compaction-0 validation-1-compaction-0 validation-0-compaction-1; do\n            python3 scripts/transport/check_transport_top.py --report "target/ci-gate/transport-top/$mode/report.json" --software\n            cargo run --quiet --example check_gpu_evidence -- "target/ci-gate/transport-top/$mode/fixture-comparison.json"\n          done\n          python3 scripts/transport/test_check_transport_top.py\n'
 
 
+TRANSPORT_TOP_TECHNICAL_STEP = '      - name: Compare production transport-top action with fresh pinned advance (#198)\n        working-directory: flexpart-gpu\n        env:\n          FLEXPART_GPU_VALIDATION: "0"\n          FLEXPART_GPU_COMPACTION: "0"\n        run: |\n          set -euo pipefail\n          python3 scripts/transport/run_top_boundary_oracle.py --checkout ../flexpart --output-dir target/ci-gate/top-production\n          cargo test --lib gpu::meteorology::advection_production_tests::transport_top_tests -- --nocapture --test-threads=1 > target/ci-gate/transport-top.log 2>&1\n          python3 scripts/transport/check_transport_top.py --report target/ci-gate/transport-top/validation-0-compaction-0/report.json --oracle-run target/ci-gate/top-production --software\n          cargo run --quiet --example check_gpu_evidence -- target/ci-gate/transport-top/validation-0-compaction-0/fresh-comparison.json\n          python3 scripts/transport/test_check_transport_top.py\n\n'
+
+
 def require(condition, message):
     """Fail closed on incomplete execution or provenance."""
     if not condition:
@@ -403,6 +406,14 @@ def aggregate(root, results, env):
     return {'state': 'PASS', 'identity': expected, 'domains': execution}
 
 
+def audit_independent_workflow(path, text, expected):
+    """Allow only the exact additive #198 gate; preserve every frozen pre-existing byte."""
+    if path == '.github/workflows/validation-gate.yml':
+        require(text.count(TRANSPORT_TOP_TECHNICAL_STEP) == 1, 'missing/changed transport-top technical gate')
+        text = text.replace(TRANSPORT_TOP_TECHNICAL_STEP, '', 1)
+    require(hashlib.sha256(text.encode()).hexdigest() == expected, 'independent workflow changed: '+path)
+
+
 def prepare_sources(bundle):
     """Expose current source and frozen fixtures to the original validators."""
     for directory in ('src', 'tests', 'fixtures'):
@@ -425,8 +436,7 @@ def main():
         if args.action == 'audit':
             monolithic_view((ROOT / '.github/workflows/software-wgpu.yml').read_text(), strict=True)
             for path, expected in contract()['independent_workflow_sha256'].items():
-                require(hashlib.sha256((ROOT / path).read_text().encode()).hexdigest() == expected,
-                        'independent workflow changed: '+path)
+                audit_independent_workflow(path, (ROOT / path).read_text(), expected)
             report = {'state': 'PASS', 'domains': list(contract()['artifacts'])}
         elif args.action == 'seal':
             seal(os.environ['DOMAIN'], os.environ)

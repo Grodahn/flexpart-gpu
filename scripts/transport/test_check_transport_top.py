@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from check_transport_top import check, digest
 
@@ -49,6 +50,11 @@ class TransportTopEvidence(unittest.TestCase):
         self.assertEqual(result['trajectory_diagnostic_rows'], 8)
         self.assertEqual(result['rejected_settling_rows'], 8)
         self.assertIn('PARITY_NOT_ESTABLISHED', result['scientific_verdict'])
+
+    def test_explicit_ci_head_revision_accepts_merge_checkout(self):
+        with patch.dict(os.environ, {'FLEXPART_GPU_CANDIDATE_REVISION': self.report['candidate_revision']}), \
+             patch('check_transport_top.subprocess.check_output', return_value='c'*40+'\n'):
+            self.assertEqual(check(self.path)['state'], 'PASS')
 
     def test_missing_case(self):
         self.mutate(lambda report: report['rows'].pop())

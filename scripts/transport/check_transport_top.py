@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import struct
 import subprocess
@@ -84,7 +85,7 @@ def source_inputs(inputs, geometry, direction):
 def check(path, software=False, hardware=False, oracle_run=None):
     report = json.loads(path.read_text())
     require(report['schema'] == 'flexpart-gpu.transport-top.v1' and report['execution'] == 'wgsl_device', 'device schema/execution')
-    revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    revision = os.environ.get('FLEXPART_GPU_CANDIDATE_REVISION') or subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     require(report['candidate_revision'] == revision, 'stale candidate revision')
     require(report['oracle_fixture_sha256'] == digest(FIXTURE.read_bytes()), 'changed oracle fixture')
     require(set(report['source_hashes']) == SOURCE_FILES and set(report['shader_hashes']) == SHADERS, 'incomplete source/shader inventory')

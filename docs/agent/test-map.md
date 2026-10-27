@@ -57,6 +57,7 @@ Keep the final checks and owner-specific pinned-oracle gates described below.
 - Precipitation member mapping (#202): `cargo test --test precipitation_member_mapping` locks the decision and its decoded evidence offline. It is research evidence only, not a GPU or production check. Regenerating the original evidence follows [the decision note](../research/precipitation-interval-mapping-202.md#phase-4--executed-example).
 
 - Precipitation members (#207): `cargo test --lib precipitation_members`, then `cargo test --test precipitation_members_gpu -- --test-threads=1` on software (`FLEXPART_GPU_SOFTWARE=1`) and hardware adapters; reports in `target/ci-gate/precipitation-members/`. Oracle regeneration and the #75 blocker are in [the contract](../precipitation-members.md#evidence).
+- GRIB2 CP units (#211): `cargo test --test grib2_cp_units` locks the decision and its decoded producer/reader evidence offline. Research evidence only, not a GPU or production check; regeneration follows [the decision note](../research/grib2-cp-units-211.md#reproduction).
 
 - Shared-height W preparation: `cargo test --test shared_height_w_gpu`; then `python scripts/interpolation/check_shared_height_w_gpu.py target/ci-gate/interior-w-gpu/comparison.json --hardware` for the hardware proof. Required software CI uses `--software`; direct oracle/reproducibility and unsupported routes are defined in [the preparation handoff](../shared-height-w-preparation.md).
 

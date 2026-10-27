@@ -96,6 +96,15 @@ fn bracket<'a>(
     s: [&'a Snapshot; 2],
     r: [&'a VerticalTransformResult; 2],
 ) -> CanonicalMeteorologyBracket<'a> {
+    bracket_with_initial(ctx, s, r, 0)
+}
+
+fn bracket_with_initial<'a>(
+    ctx: &GpuContext,
+    s: [&'a Snapshot; 2],
+    r: [&'a VerticalTransformResult; 2],
+    initial: usize,
+) -> CanonicalMeteorologyBracket<'a> {
     let views = r.map(|r| r.runtime_view().unwrap());
     let prep = pollster::block_on(SharedHeightPreparer::new(ctx)).unwrap();
     let wp = pollster::block_on(SharedHeightWPreparer::new(ctx)).unwrap();
@@ -104,7 +113,7 @@ fn bracket<'a>(
     let target = prep
         .initialize(
             ctx,
-            &sources[0],
+            &sources[initial],
             SharedHeightInitialization::RegionalMother,
             &mut enc,
         )
@@ -682,15 +691,6 @@ fn test_forward_interior_time_deferred_failure_and_top_boundary() {
         };
         let forcing = ForwardStepForcing::default();
         let result = pollster::block_on(driver.run_timestep(&met, &forcing));
-        if variant == "changing-top" {
-            assert!(
-                result.is_err(),
-                "undefined changing-top transport must fail closed"
-            );
-            assert!(owners.fields()[0].resident_advection_top_m().is_err());
-            evidence.push(json!({"variant":variant,"adapter":adapter,"rejected":true,"input_file":input_file,"input_sha256":input_sha256}));
-            continue;
-        }
         let initial = driver.particle_store().as_slice().to_vec();
         let (particles, status, metadata, values, queries) =
             pollster::block_on(driver.test_advection_state());
@@ -760,7 +760,7 @@ fn test_forward_interior_time_deferred_failure_and_top_boundary() {
             assert!(status.iter().step_by(4).take(6).all(|v| *v == 0));
         }
         evidence.push(json!({"variant":variant,"adapter":adapter,"status":status,"metadata":metadata,
-            "sampled_values":values,"queries":queries,"atomic_preservation":variant=="deferred-fatal","input_file":input_file,"input_sha256":input_sha256}));
+            "sampled_values":values,"queries":queries,"atomic_preservation":variant=="deferred-fatal","rejected":false,"input_file":input_file,"input_sha256":input_sha256}));
     }
     let revision = std::process::Command::new("git")
         .args(["rev-parse", "HEAD"])
@@ -771,7 +771,7 @@ fn test_forward_interior_time_deferred_failure_and_top_boundary() {
         serde_json::to_vec_pretty(&json!({"candidate_revision":String::from_utf8(revision.stdout).unwrap().trim(),"rows":evidence})).unwrap(),
     )
     .unwrap();
-    eprintln!("RESIDENT-ADVECTION-112-DEFERRED: interior sampling, atomic deferred failure, next release/output rejection and changing-top guard passed");
+    eprintln!("RESIDENT-ADVECTION-112-DEFERRED: interior sampling, atomic deferred failure, next release/output rejection and varying-native-top admission passed");
 }
 
 // Reuse the exact #186 input decoder used by the #188/#190 device proofs.
@@ -1007,6 +1007,8 @@ fn test_shared_vector_real_drivers_oracle_replay_and_reuse() {
         "src/gpu/meteorology/resident.rs",
         "src/gpu/meteorology/shared_uv.rs",
         "src/gpu/meteorology/shared_w.rs",
+        "src/gpu/meteorology/transport_boundary.rs",
+        "src/simulation/timeloop/forcing.rs",
         "src/gpu/shared_height.rs",
         "src/gpu/shared_height_w.rs",
         "src/simulation/timeloop/meteorology.rs",
@@ -1066,16 +1068,20 @@ fn test_shared_vector_real_drivers_oracle_replay_and_reuse() {
 }
 
 fn overwrite_words(ctx: &GpuContext, buffer: &wgpu::Buffer, bits: u32, count: u32) {
+    overwrite_at(ctx, buffer, bits, count, 0);
+}
+
+fn overwrite_at(ctx: &GpuContext, buffer: &wgpu::Buffer, bits: u32, count: u32, offset: u32) {
     let pass=resident::QueryPass::new(ctx,"validation prepared-resource fault",
-        "@group(0) @binding(0) var<storage,read_write> words:array<u32>; @group(0) @binding(1) var<uniform> p:vec4<u32>; @compute @workgroup_size(64) fn main(@builtin(global_invocation_id) id:vec3<u32>){if(id.x<p.y){words[id.x]=p.x;}}", &[false]);
-    let params = resident::uniform(ctx, &[bits, count, 0, 0]);
+        "@group(0) @binding(0) var<storage,read_write> words:array<u32>; @group(0) @binding(1) var<uniform> p:vec4<u32>; @compute @workgroup_size(64) fn main(@builtin(global_invocation_id) id:vec3<u32>){if(id.x<p.y){words[p.z+id.x]=p.x;}}", &[false]);
+    let params = resident::uniform(ctx, &[bits, count, offset, 0]);
     let mut encoder = ctx.device.create_command_encoder(&Default::default());
     pass.encode(ctx, &[buffer, &params], count, &mut encoder);
     ctx.queue.submit(Some(encoder.finish()));
 }
 
 #[test]
-fn test_shared_vector_driver_preparation_failures_and_top_rejection() {
+fn test_shared_vector_driver_preparation_failures() {
     let root = shared_advection_root();
     let root = std::path::Path::new(&root);
     std::fs::create_dir_all(root).unwrap();
@@ -1128,6 +1134,8 @@ fn test_shared_vector_driver_preparation_failures_and_top_rejection() {
         for variant in [
             "target-unexecuted",
             "target-failed",
+            "target-top-nonfinite",
+            "target-margin-unrepresentable",
             "uv-pending",
             "uv-invalid-status",
             "w-unexecuted",
@@ -1135,10 +1143,6 @@ fn test_shared_vector_driver_preparation_failures_and_top_rejection() {
             "w-failed",
             "w-invalid-status",
             "nonfinite-vector",
-            "at-top",
-            "above-top",
-            "predictor-crossing",
-            "corrector-crossing",
         ] {
             let start = if backward {
                 "20240101000001"
@@ -1340,6 +1344,12 @@ fn test_shared_vector_driver_preparation_failures_and_top_rejection() {
             match variant {
                 "target-unexecuted" => overwrite_words(ctx, uv.target().status(), 0, 1),
                 "target-failed" => overwrite_words(ctx, uv.target().status(), 3, 1),
+                "target-top-nonfinite" => {
+                    overwrite_at(ctx, uv.target().heights(), f32::NAN.to_bits(), 1, 3)
+                }
+                "target-margin-unrepresentable" => {
+                    overwrite_at(ctx, uv.target().heights(), (1e20_f32).to_bits(), 1, 3)
+                }
                 "uv-pending" => overwrite_words(ctx, uv.status(), 1, 1),
                 "uv-invalid-status" => overwrite_words(ctx, uv.status(), 99, 1),
                 "w-unexecuted" => overwrite_words(ctx, corrected_w.status(), 0, 1),
@@ -1411,7 +1421,7 @@ fn test_shared_vector_driver_preparation_failures_and_top_rejection() {
         .output()
         .unwrap();
     std::fs::write(root.join("negative.json"),serde_json::to_vec_pretty(&json!({"candidate_revision":String::from_utf8(revision.stdout).unwrap().trim(),"rows":evidence})).unwrap()).unwrap();
-    eprintln!("SHARED-ADVECTION-197-NEGATIVE: both real drivers reject failed/incomplete preparation and unsupported top crossings atomically");
+    eprintln!("SHARED-ADVECTION-197-NEGATIVE: both real drivers reject failed/incomplete preparation atomically");
 }
 
 fn shared_advection_root() -> String {
@@ -1423,3 +1433,6 @@ fn shared_advection_root() -> String {
         )
     })
 }
+
+#[path = "transport_top_tests.rs"]
+mod transport_top_tests;

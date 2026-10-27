@@ -630,6 +630,21 @@ fn test_canonical_forward_backward_preparation_reuse_transition_and_resident_exe
         time_t1_seconds: START_SECONDS + 4,
     };
     let forcing = ForwardStepForcing::default();
+    // A requested settling route must fail closed on the legacy diagnostic path too.
+    let settling = ForwardStepForcing {
+        settling_enabled: true,
+        ..ForwardStepForcing::default()
+    };
+    for error in [
+        pollster::block_on(forward.run_legacy_diagnostic_timestep(&legacy, &settling))
+            .unwrap_err()
+            .to_string(),
+        pollster::block_on(backward.run_legacy_diagnostic_timestep(&legacy, &settling))
+            .unwrap_err()
+            .to_string(),
+    ] {
+        assert!(error.contains("sticky particle-stop state"), "{error}");
+    }
     legacy.canonical = Some(&lineage_retained);
     assert!(pollster::block_on(forward.run_timestep(&legacy, &forcing)).is_err());
     legacy.canonical = None;

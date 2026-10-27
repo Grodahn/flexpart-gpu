@@ -17,7 +17,7 @@ from check_shared_height_gpu import require
 from check_shared_height_w_gpu import equivalent
 
 
-SOURCE_FILES = {'src/simulation/timeloop/forward.rs', 'src/simulation/timeloop/meteorology.rs', 'src/gpu/meteorology/shared_w.rs', 'src/gpu/meteorology/resident.rs', 'src/gpu/shared_height.rs', 'src/simulation/timeloop/backward.rs', 'src/gpu/shared_height_w.rs', 'src/gpu/meteorology.rs', 'tests/support/interior_w.rs', 'src/simulation/timeloop/forward/timestep.rs', 'src/gpu/meteorology/shared_uv.rs', 'src/gpu/advection_resident.rs', 'src/simulation/timeloop/forward/operators.rs', 'src/gpu/meteorology/advection_production_tests.rs'}
+SOURCE_FILES = {'src/gpu/meteorology/transport_boundary.rs', 'src/simulation/timeloop/forcing.rs', 'src/simulation/timeloop/forward.rs', 'src/simulation/timeloop/meteorology.rs', 'src/gpu/meteorology/shared_w.rs', 'src/gpu/meteorology/resident.rs', 'src/gpu/shared_height.rs', 'src/simulation/timeloop/backward.rs', 'src/gpu/shared_height_w.rs', 'src/gpu/meteorology.rs', 'tests/support/interior_w.rs', 'src/simulation/timeloop/forward/timestep.rs', 'src/gpu/meteorology/shared_uv.rs', 'src/gpu/advection_resident.rs', 'src/simulation/timeloop/forward/operators.rs', 'src/gpu/meteorology/advection_production_tests.rs'}
 SHADERS = {'advection_step_guard', 'shared_height_w_remap', 'vertical_sample', 'resident_sample_status', 'advection_predictor_query', 'resident_status_reset', 'shared_height_uv', 'advection_step_commit', 'temporal_interpolation', 'advection_corrector', 'resident_query_adapter', 'particle_query', 'horizontal_interpolation', 'shared_height_query_status', 'interior_w_slope'}
 
 
@@ -87,8 +87,8 @@ def device(path, software=False, hardware=False):
                 require(q['active'] == 1 and 0 <= q['height_agl_m'] < heights[-1], 'unsupported top route')
     negatives = json.loads(path.with_name('negative.json').read_text())
     require(negatives['candidate_revision'] == revision, 'stale negative evidence')
-    variants = {'target-unexecuted','target-failed','uv-pending','uv-invalid-status','w-unexecuted','w-remapped-only','w-failed','w-invalid-status','nonfinite-vector','at-top','above-top','predictor-crossing','corrector-crossing'}
-    require(len(negatives['rows']) == 26 and {(r['backward'],r['variant']) for r in negatives['rows']} == {(b,v) for b in (False,True) for v in variants}, 'complete negative driver coverage')
+    variants = {'target-unexecuted','target-failed','target-top-nonfinite','target-margin-unrepresentable','uv-pending','uv-invalid-status','w-unexecuted','w-remapped-only','w-failed','w-invalid-status','nonfinite-vector'}
+    require(len(negatives['rows']) == 22 and {(r['backward'],r['variant']) for r in negatives['rows']} == {(b,v) for b in (False,True) for v in variants}, 'complete negative driver coverage')
     for row in negatives['rows']:
         require(all((row['initial_bytes'][i] & 1) == expected for i, expected in ((20,1),(116,1),(212,0))), 'negative active/inactive particle state')
         require(row['initial_bytes'] == row['final_bytes'] and len(row['final_bytes']) == 288, 'fatal scientific-state atomicity')

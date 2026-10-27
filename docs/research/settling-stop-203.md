@@ -68,7 +68,7 @@ symbol still exists. In summary:
 | Liveness | `FLAG_ACTIVE` | None. It is the existing representation of `alive`. |
 | Per-particle stop | none | Missing a step-private stop word in `ResidentAdvectionStep`. → #214 |
 | Fatal status | six sample regions plus arithmetic word, `require_success` | Must stay fatal-only. The producer gets its own fatal region. |
-| Predictor/corrector | `advection_predictor_query.wgsl`, `advection_corrector.wgsl` (#198; PR #210 open) | No flag predicate and no retained-z path. → #214 |
+| Predictor/corrector | `advection_predictor_query.wgsl`, `advection_corrector.wgsl` (#198, exact hand-off from #210) | No flag predicate and no retained-z path. → #214 |
 | Eligibility | `advection_step_guard.wgsl` | Must terminate stopped lanes on success. → #214 |
 | Compaction | `encode_compaction_with_reorder`, forward only; host count after the checkpoint | None in the envelope. Backward compaction stays unsupported. |
 | Publication | `advection_step_commit.wgsl` raw-word copy | None. Stopped lanes are published by the same copy. |
@@ -117,7 +117,7 @@ pub(crate) struct PetterssenSettlingVelocities<'a> {
   in the caller's encoder. That is #37's coupling. The #35 kernel already records into a caller
   encoder.
 - The single device flag `stop_route = enabled && direction == backward` goes into the private
-  Petterssen `Params` uniform. Under PR #210 a pad word is available. `Particle`, the resident
+  Petterssen `Params` uniform. Since #210 it carries spare pad words; the corrector already consumes the predictor's private raw height. `Particle`, the resident
   query lane and the raw-word commit layout are unchanged.
 - The stop storage is one step-private `u32` per lane in `ResidentAdvectionStep`: bit 0 for a
   predictor stop, bit 1 for a corrector stop. The original `nstop` equals `stop != 0`. The buffer
@@ -155,7 +155,7 @@ canonical bracket (#112) ──> samplers ──> status regions        correcto
 | 3 | Predictor | current wind (+vs) | Unchanged sampling; `ZeroByCarrier` adds nothing. |
 | 4 | First action | inclusive test; stop iff backward with flag | `stop_route`: set bit 0 and keep the raw z. Otherwise ordinary f32 placement as in #198. |
 | 5 | Preserve predictor | stored position feeds the correction | Raw (stopped) or placed height in the private predictor record, which is the advanced query height. |
-| 6 | Corrector | always runs when the gates pass; vs recomputed at the predictor | Correct from the record. A stopped lane is still sampled and corrected. |
+| 6 | Corrector | always runs when the gates pass; vs recomputed at the predictor | Correct from the private raw-height record (#210). A stopped lane is still sampled and corrected. |
 | 7 | Second action | inclusive test; never clears | `stop_route`: OR bit 1 and keep z. Otherwise ordinary placement. |
 | 8 | Stage result | — | Corrected bytes in staged state; stop words private. |
 | 9 | Fatal observation | — | Existing guard: any fatal region inactivates **all** private lanes. Stop words are not status. |

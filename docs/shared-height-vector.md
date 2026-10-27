@@ -6,7 +6,7 @@ Snapshots, #30 runtime views, #184 prepared U/V and #188 corrected W. No scienti
 calculation occurs during adoption. The genuine pinned FLEXPART 11.1 authority is
 [#186](research/interior-w-186.md), full correction only, under interpolation
 contract section 11. Production advection now adopts this vector through [#197](shared-advection.md);
-#198 retains upper-boundary adoption.
+#198 adds the [ordinary upper transport action](transport-top.md).
 
 The constructor checks complete source counts, chronology, source/geometry/time,
 horizontal grid, context, the identical run target owner and the exact U/V owner

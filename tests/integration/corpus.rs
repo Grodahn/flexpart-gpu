@@ -446,6 +446,7 @@ fn corpus_production_driver_supports_dry_and_wet_forcing_shapes() {
     // The corpus DRY-007/WET-008 driver runs only need uniform forcing lanes,
     // which the production driver already skips correctly when zero.
     let dry_only = ForwardStepForcing {
+        settling_enabled: false,
         dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.02)],
         wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(0.0)],
         wet_precipitating_fraction: ParticleForcingField::Uniform(0.0),
@@ -453,6 +454,7 @@ fn corpus_production_driver_supports_dry_and_wet_forcing_shapes() {
         rho_grad_over_rho: 0.0,
     };
     let wet_only = ForwardStepForcing {
+        settling_enabled: false,
         dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.0)],
         wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(0.005)],
         wet_precipitating_fraction: ParticleForcingField::Uniform(1.0),

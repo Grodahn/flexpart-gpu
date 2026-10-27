@@ -613,6 +613,7 @@ impl EtexValidationHarness {
         };
 
         let step_forcing = ForwardStepForcing {
+            settling_enabled: false,
             dry_deposition_velocity_m_s: vec![crate::simulation::ParticleForcingField::Uniform(
                 forcing.dry_deposition_velocity_m_s,
             )],

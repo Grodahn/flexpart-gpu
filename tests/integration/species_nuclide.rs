@@ -405,6 +405,7 @@ fn timeloop_applies_per_species_wet_and_decay_with_explicit_pbl() {
     // Dry deposition disabled (zero lanes); wet + decay act on every particle
     // regardless of position, so per-slot masses follow closed forms exactly.
     let forcing = ForwardStepForcing {
+        settling_enabled: false,
         dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.0)],
         wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(TL_WET_LANES[0])],
         wet_precipitating_fraction: ParticleForcingField::Uniform(1.0),

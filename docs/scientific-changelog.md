@@ -31,6 +31,20 @@ at each memory time and interpolates those (`getfields_mod.f90:976-1067`,
 FLEXPART's operation order. Consumers (#113/#114) must request exact source
 timestamps to reproduce it.
 
+### 2026-10-25 - Adopt original ordinary-particle transport top in production (#198)
+**Impact**: physics/numerics (upper transport boundary and Petterssen stage order)
+**Files**: resident advection, typed transport boundary, predictor/corrector WGSL,
+forward/backward production preflight and explicit settling-request rejection.
+**Validation**: [finite real-driver/original-oracle evidence](transport-top.md).
+
+Pinned `advance_mod.f90:287-333,664-779,872-900` supplies the inclusive predicate,
+f32 regional placement and correction of the already adjusted predictor. Both
+production paths bind #184's device endpoint/status and #197's complete vector.
+Native column/member tops may differ. Existing horizontal/lower and downstream
+physics remain unchanged. No CPU scientific fallback or wind sampler is added.
+Settling remains rejected (#203). Non-crossing scenario-8 trajectory precision
+has no approved policy (#204); no tolerance or complete trajectory parity is claimed.
+
 ### 2026-10-21 - Adopt complete prepared winds in both production drivers (#197)
 **Impact**: numerics (consumer handoff and explicit supported-route rejection)
 **Files**: `src/simulation/timeloop/meteorology.rs`, forward/backward drivers,

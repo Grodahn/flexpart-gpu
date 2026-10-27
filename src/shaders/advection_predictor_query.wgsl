@@ -1,5 +1,8 @@
 // Petterssen (1940): x_predict = x_current + dt * (canonical mean wind + horizontal turbulence).
 // Sampling belongs exclusively to #87/#88/#89. Particle scientific state is read-only.
+// Original regional eps uses nxmax / 3.e5; the vertical placement scales eps by 100 metres.
+const EPS_NX_DIVISOR: f32 = 3.e5;
+const TOP_MARGIN_SCALE_M: f32 = 100.0;
 struct Particle {
     pos_x: f32, pos_y: f32, pos_z: f32, cell_x: i32, cell_y: i32, flags: u32,
     mass: array<f32, 4>, vel_u: f32, vel_v: f32, vel_w: f32,
@@ -11,13 +14,15 @@ struct Query {
     height_agl_m: f32, is_active: u32, pad0: u32, pad1: u32,
 };
 struct Params { capacity: u32, active_count: u32, nx: u32, ny: u32,
-    dt: f32, x_scale: f32, y_scale: f32, top_m: f32 };
+    dt: f32, x_scale: f32, y_scale: f32, target_levels: u32 };
 @group(0) @binding(0) var<storage, read> particles: array<Particle>;
 @group(0) @binding(1) var<storage, read> velocities: array<f32>;
 @group(0) @binding(2) var<storage, read> status: array<u32>;
 @group(0) @binding(3) var<storage, read_write> queries: array<Query>;
-@group(0) @binding(4) var<uniform> params: Params;
-fn finite(v: f32) -> bool { return abs(v) <= 3.402823466e38; }
+@group(0) @binding(4) var<storage, read> target_heights: array<f32>;
+@group(0) @binding(5) var<storage, read> target_status: array<u32>;
+@group(0) @binding(6) var<uniform> params: Params;
+fn finite(v: f32) -> bool { return (bitcast<u32>(v) & 0x7f800000u) != 0x7f800000u; }
 // Split-cell arithmetic never reconstructs a signed cell as a floating-point position.
 fn moved(cell: i32, fraction: f32, delta: f32, n: u32) -> vec2<f32> {
     let local = fraction + delta;
@@ -43,13 +48,19 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     let dx = u * params.x_scale * params.dt;
     let dy = v * params.y_scale * params.dt;
     let dz = w * params.dt;
-    // #198 owns pushpartdown. Reject its inclusive boundary before sampling or publication.
-    if (!finite(dx) || !finite(dy) || !finite(dz) || p.pos_z >= params.top_m || p.pos_z + dz >= params.top_m) {
+    let top = target_heights[params.target_levels - 1u];
+    let predicted_z = p.pos_z + dz;
+    // advance_mod.f90:872-900: eps and the placement expression are evaluated in f32.
+    let eps = f32(params.nx) / EPS_NX_DIVISOR;
+    let margin_m = TOP_MARGIN_SCALE_M * eps;
+    let placed_z = top - margin_m;
+    if (!finite(dx) || !finite(dy) || !finite(predicted_z) || target_status[0] != 2u
+        || !finite(top) || !finite(placed_z) || placed_z <= 0.0 || placed_z >= top) {
         queries[lane] = Query(p.cell_x, p.cell_y, bitcast<f32>(0x7fc00000u), p.pos_y, p.pos_z, 1u, 0u, 0u);
         return;
     }
     let x = moved(p.cell_x, p.pos_x, dx, params.nx);
     let y = moved(p.cell_y, p.pos_y, dy, params.ny);
     queries[lane] = Query(p.cell_x + i32(x.x), p.cell_y + i32(y.x), x.y, y.y,
-        clamp(p.pos_z + dz, 0.0, params.top_m), 1u, 0u, 0u);
+        max(select(predicted_z, placed_z, predicted_z >= top), 0.0), 1u, 0u, 0u);
 }

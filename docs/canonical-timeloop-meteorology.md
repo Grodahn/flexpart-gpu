@@ -33,8 +33,8 @@ native uploads, context and target) through deferred submission checkpoints.
 Both current and signed advanced times resolve through #89 before production
 work. Forward adds dt; backward subtracts it. Both times must be covered, even
 when the legacy diagnostic bounds option permits clamping. Production preflight
-checks the exact driver context, coordinate grid and the provisional invariant-top
-geometry before releases. See [resident advection](resident-advection.md).
+checks the exact driver context, coordinate grid and retained shared-target
+transport boundary before releases. See [resident advection](resident-advection.md).
 
 `CanonicalMeteorologyBracket::new` retains the #173 native/normalized-center-W
 representation for explicit diagnostic sampling only. Production timesteps reject
@@ -51,10 +51,11 @@ reuse, failures and supported displacement. The #186 genuine linked binary
 replays exact driver queries on an invariant-top control; the unchanged #190
 query target covers the original nonuniform fractional-stencil cases.
 
-The supported interim production route is regional mother-grid AGL,
-#184's accepted initial (0,0) pressure selection, normalized interface omega,
-complete prepared U/V/W and invariant native tops equal to the retained target.
-Initial, predicted or corrected heights at/above that top fail closed pending
-[#198](https://github.com/Grodahn/flexpart-gpu/issues/198). Restart/fallback,
-global/nested/polar/ETA/ASL, changing native tops and operational provider decoding
-remain unsupported. No full FLEXPART production parity is claimed.
+The supported production route is regional mother-grid AGL, #184's accepted
+initial (0,0) pressure selection, normalized interface omega and complete prepared
+U/V/W. Native column/member heights may differ. [#198's ordinary transport action](transport-top.md)
+uses the device run-target endpoint before advanced sampling and after correction.
+Restart/fallback, global/nested/polar/ETA/ASL, requested settling (#203), wider
+precision/adaptive-PBL routes and operational provider decoding remain unsupported.
+No full FLEXPART production parity is claimed; scenario-8 trajectory precision
+remains without an approved comparison policy (#204).

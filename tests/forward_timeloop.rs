@@ -441,6 +441,7 @@ fn check_transport_deposition_prefix(particle_count: usize, wet_coefficient_s_in
     let upward = uniform_wind_field(&wind_grid, 0.0, 0.0, 10.0);
     let surface = synthetic_surface_fields(64, 64);
     let forcing = ForwardStepForcing {
+        settling_enabled: false,
         dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.8)],
         wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(
             wet_coefficient_s_inv,

@@ -142,6 +142,7 @@ fn main() {
 
     let forcing = match forcing_mode {
         ForcingMode::PerParticle => ForwardStepForcing {
+            settling_enabled: false,
             dry_deposition_velocity_m_s: vec![ParticleForcingField::PerParticle(
                 deterministic_scalar_field(particle_count, 0.001, 0.00001, 23),
             )],
@@ -157,6 +158,7 @@ fn main() {
             rho_grad_over_rho: 2.5e-4,
         },
         ForcingMode::Uniform => ForwardStepForcing {
+            settling_enabled: false,
             dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.001)],
             wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(0.0005)],
             wet_precipitating_fraction: ParticleForcingField::Uniform(0.5),

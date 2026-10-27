@@ -274,6 +274,30 @@ impl ForwardTimeLoopDriver {
     }
 
     #[cfg(test)]
+    pub(crate) async fn test_raw_particles(&self) -> Vec<crate::particles::Particle> {
+        self.particle_buffers
+            .download_particles(&self.gpu_context)
+            .await
+            .expect("test particle snapshot")
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_corrected_advection(&self) -> Vec<crate::particles::Particle> {
+        let step = self
+            .latest_advection
+            .as_ref()
+            .expect("production advection encoded");
+        crate::gpu::download_buffer_typed(
+            &self.gpu_context,
+            &step.corrected_particles,
+            self.particle_buffers.capacity(),
+            "test pre-physics corrected state",
+        )
+        .await
+        .expect("corrected readback")
+    }
+
+    #[cfg(test)]
     pub(crate) async fn test_advection_state(
         &self,
     ) -> (

@@ -459,6 +459,7 @@ fn forcing_for_case(
                 )
             });
     ForwardStepForcing {
+        settling_enabled: false,
         dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(dry)],
         wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(wet_lambda)],
         wet_precipitating_fraction: ParticleForcingField::Uniform(wet_frac),

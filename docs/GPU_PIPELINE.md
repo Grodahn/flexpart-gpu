@@ -34,7 +34,7 @@ The pipeline is **not** a claim that pristine FLEXPART is one linear call stack.
 
 ## Current implemented production path
 
-The #91 audit established the time loop's GPU composition style. #112/#197 route both default advection drivers through #190 complete shared-height U/V/W owners and #171 resident queries; #198 retains unsupported upper-boundary adoption. Other meteorology consumers retain their existing inputs under #113–#115; operational provider decoding remains #32.
+The #91 audit established the time loop's GPU composition style. #112/#197 route both default advection drivers through #190 complete shared-height U/V/W owners and #171 resident queries; #198 binds the run target for the original ordinary upper transport action. Other meteorology consumers retain their existing inputs under #113–#115; operational provider decoding remains #32.
 
 Current high-level flow:
 

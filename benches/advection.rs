@@ -1097,6 +1097,7 @@ fn bench_forward_timeloop_e2e(c: &mut Criterion, runtime: BenchRuntimeConfig) {
         };
 
         let forcing = ForwardStepForcing {
+            settling_enabled: false,
             dry_deposition_velocity_m_s: vec![ParticleForcingField::PerParticle(
                 deterministic_scalar_field(effective_particles, 0.001, 0.00001, 23),
             )],

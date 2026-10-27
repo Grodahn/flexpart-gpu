@@ -1,8 +1,7 @@
 // advance_mod.f90:664-779: correct the boundary-adjusted predictor by half the wind difference.
 // Only private timestep state is written; publication follows all status checks and downstream physics.
-// Original regional eps uses nxmax / 3.e5; the vertical placement scales eps by 100 metres.
-const EPS_NX_DIVISOR: f32 = 3.e5;
-const TOP_MARGIN_SCALE_M: f32 = 100.0;
+// advance_mod.f90:879,893: params.top_margin_m is the original f32 100*(nxmax/3.e5), evaluated
+// once on the host because WGSL division is not correctly rounded and may be contracted.
 struct Particle {
     pos_x: f32, pos_y: f32, pos_z: f32, cell_x: i32, cell_y: i32, flags: u32,
     mass: array<f32, 4>, vel_u: f32, vel_v: f32, vel_w: f32,
@@ -10,16 +9,15 @@ struct Particle {
     time_mem: i32, time_split: i32, release_point: i32, class_id: i32, cbt: i32, pad0: u32,
 };
 struct Params { capacity: u32, active_count: u32, nx: u32, ny: u32,
-    dt: f32, x_scale: f32, y_scale: f32, target_levels: u32 };
+    dt: f32, x_scale: f32, y_scale: f32, target_levels: u32,
+    top_margin_m: f32, pad0: u32, pad1: u32, pad2: u32 };
 @group(0) @binding(0) var<storage, read> original: array<Particle>;
 @group(0) @binding(1) var<storage, read> velocities: array<f32>;
 @group(0) @binding(2) var<storage, read_write> status: array<atomic<u32>>;
 @group(0) @binding(3) var<storage, read_write> staged: array<Particle>;
-struct Query { cell_x: i32, cell_y: i32, fraction_x: f32, fraction_y: f32,
-    height_agl_m: f32, is_active: u32, pad0: u32, pad1: u32 };
 @group(0) @binding(4) var<storage, read> target_heights: array<f32>;
 @group(0) @binding(5) var<storage, read> target_status: array<u32>;
-@group(0) @binding(6) var<storage, read> predictor: array<Query>;
+@group(0) @binding(6) var<storage, read> predictor_z: array<f32>;
 @group(0) @binding(7) var<uniform> params: Params;
 fn failed() -> bool {
     for (var stage = 0u; stage < 6u; stage++) {
@@ -53,16 +51,15 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     let dx = u * params.x_scale * params.dt;
     let dy = v * params.y_scale * params.dt;
     let top = target_heights[params.target_levels - 1u];
-    let raw_predictor_z = p.pos_z + w0 * params.dt;
+    let placed_z = top - params.top_margin_m;
+    // Consume the predictor's own height so both stages share one boundary decision.
+    let raw_predictor_z = predictor_z[lane];
     // Retain the existing lower boundary; only the upper action changes the correction base.
-    let base_z = select(raw_predictor_z, predictor[lane].height_agl_m, raw_predictor_z >= top);
+    let base_z = select(raw_predictor_z, placed_z, raw_predictor_z >= top);
     let correction_m = ((w1 - w0) * 0.5) * params.dt;
     let corrected_z = base_z + correction_m;
-    let eps = f32(params.nx) / EPS_NX_DIVISOR;
-    let margin_m = TOP_MARGIN_SCALE_M * eps;
-    let placed_z = top - margin_m;
     if (!finite(u) || !finite(v) || !finite(w) || !finite(dx) || !finite(dy) || !finite(corrected_z)
-        || target_status[0] != 2u || predictor[lane].is_active != 1u
+        || target_status[0] != 2u || !finite(raw_predictor_z)
         || !finite(top) || !finite(placed_z) || placed_z <= 0.0 || placed_z >= top) {
         atomicStore(&status[6u * (params.capacity + 1u)], 1u);
         return;

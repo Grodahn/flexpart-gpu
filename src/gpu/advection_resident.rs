@@ -37,7 +37,7 @@ impl ResidentAdvectionKernels {
                 ctx,
                 "Petterssen predictor query",
                 include_str!("../shaders/advection_predictor_query.wgsl"),
-                &[true, true, true, false, true, true],
+                &[true, true, true, false, true, true, false],
             ),
             corrector: QueryPass::new(
                 ctx,
@@ -83,7 +83,7 @@ pub(crate) struct ResidentAdvectionStep {
     #[cfg(test)]
     pub(crate) corrected_particles: wgpu::Buffer,
     boundary: SharedHeightTransportBoundary,
-    predictor_queries: wgpu::Buffer,
+    predictor_heights: wgpu::Buffer,
     params: wgpu::Buffer,
     capacity: u32,
     pub(crate) metadata: Vec<ResidentSampleMetadata>,
@@ -154,12 +154,13 @@ impl ResidentAdvectionStep {
             scale.x_grid_per_meter.to_bits(),
             scale.y_grid_per_meter.to_bits(),
             boundary.levels,
+            boundary.top_margin_m.to_bits(),
+            0,
+            0,
+            0,
         ];
         let result = Self {
-            predictor_queries: allocation(
-                8 * u64::from(capacity),
-                "Petterssen adjusted predictor",
-            )?,
+            predictor_heights: allocation(u64::from(capacity), "Petterssen raw predictor height")?,
             boundary,
             _prepared_sources: fields[0].prepared_advection_sources(),
             #[cfg(test)]
@@ -235,6 +236,7 @@ impl ResidentAdvectionStep {
                             target.lanes,
                             result.boundary.target.heights(),
                             result.boundary.target.status(),
+                            &result.predictor_heights,
                             &result.params,
                         ],
                         capacity,
@@ -250,15 +252,6 @@ impl ResidentAdvectionStep {
                         &[batch.write_target().lanes, &result.params],
                         1,
                         encoder,
-                    );
-                }
-                if time_stage == 1 && component == 0 {
-                    encoder.copy_buffer_to_buffer(
-                        batch.write_target().lanes,
-                        0,
-                        &result.predictor_queries,
-                        0,
-                        u64::from(capacity) * 32,
                     );
                 }
                 #[cfg(test)]
@@ -299,7 +292,7 @@ impl ResidentAdvectionStep {
                 &staged.particle_buffer,
                 result.boundary.target.heights(),
                 result.boundary.target.status(),
-                &result.predictor_queries,
+                &result.predictor_heights,
                 &result.params,
             ],
             capacity,

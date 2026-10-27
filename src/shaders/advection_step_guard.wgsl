@@ -6,7 +6,8 @@ struct Particle {
     time_mem: i32, time_split: i32, release_point: i32, class_id: i32, cbt: i32, pad0: u32,
 };
 struct Params { capacity: u32, active_count: u32, nx: u32, ny: u32,
-    dt: f32, x_scale: f32, y_scale: f32, target_levels: u32 };
+    dt: f32, x_scale: f32, y_scale: f32, target_levels: u32,
+    top_margin_m: f32, pad0: u32, pad1: u32, pad2: u32 };
 @group(0) @binding(0) var<storage, read_write> staged: array<Particle>;
 @group(0) @binding(1) var<storage, read> status: array<u32>;
 @group(0) @binding(2) var<uniform> params: Params;

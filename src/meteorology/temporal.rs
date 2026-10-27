@@ -23,10 +23,16 @@
 //! come from the canonical `FieldTime` and are validated, never guessed.
 //!
 //! This ticket owns temporal interpolation of [`TemporalPolicy::Instantaneous`]
-//! fields only. Accumulated (`PrecipitationAmount`), surface flux
-//! (`SurfaceFluxRate`) and static fields are rejected; #75 owns accumulated/
+//! fields. #120 additionally admits the four explicitly enumerated
+//! [`INSTANTANEOUS_SURFACE_FLUX_FIELDS`], and only for snapshots stored with
+//! [`TemporalKind::Instantaneous`]: pinned `flex_extract` 7.1.2 `dapoly` delivers
+//! them to FLEXPART 11.1 as point values at the GRIB validity time
+//! (`EcFlexpart.py:1123-1143,1180-1211`, `disaggregation.py:62-103`), and
+//! `readwind_ecmwf` stores them unscaled per memory slot
+//! (`windfields_mod.f90:2351-2386`). Interval-mean fluxes, accumulated
+//! (`PrecipitationAmount`) and static fields are rejected; #75 owns accumulated/
 //! interval/reset semantics. Horizontal (#72), vertical (#73), canonical 4D (#76)
-//! and consumer migration (#77) are out of scope.
+//! and consumer migration (#77, #113, #114) are out of scope.
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -68,6 +74,51 @@ impl RequestedSampleTime {
             calendar,
             epoch_seconds,
         }
+    }
+}
+
+/// Canonical `SurfaceFluxRate` fields whose `Instantaneous` representation is
+/// approved for #74/#89 sampling by the #120 source audit.
+///
+/// Each field is a point value at its validity time in the pinned FLEXPART
+/// 11.1 input chain. FLEXPART itself consumes them only at exact memory times
+/// (`getfields_mod.f90:976-1067`, `calcpar`) and interpolates derived
+/// `ustar/oli/wstar/hmix/vdep` in time; consumers reproducing that order must
+/// request exact source timestamps (see `docs/temporal-interpolation.md`).
+pub const INSTANTANEOUS_SURFACE_FLUX_FIELDS: [FieldId; 4] = [
+    FieldId::SensibleHeatFlux,
+    FieldId::SurfaceSolarRadiation,
+    FieldId::SurfaceStressEastward,
+    FieldId::SurfaceStressNorthward,
+];
+
+/// Scientific basis under which a field may enter the instantaneous resolver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstantaneousSamplingBasis {
+    /// Field whose canonical policy is [`TemporalPolicy::Instantaneous`] (#74).
+    InstantaneousState,
+    /// Explicitly approved point-in-time surface flux (#120); never an
+    /// interval mean, total or accumulation.
+    PointInTimeSurfaceFlux,
+}
+
+/// Return the approved instantaneous-sampling basis of `field_id`, if any.
+///
+/// Eligibility is decided per field identity, never for a whole temporal
+/// policy class. Snapshot representations are checked separately.
+#[must_use]
+pub fn instantaneous_sampling_basis(field_id: FieldId) -> Option<InstantaneousSamplingBasis> {
+    match field_id.spec().temporal_policy {
+        TemporalPolicy::Instantaneous => Some(InstantaneousSamplingBasis::InstantaneousState),
+        TemporalPolicy::SurfaceFluxRate
+            if INSTANTANEOUS_SURFACE_FLUX_FIELDS.contains(&field_id) =>
+        {
+            Some(InstantaneousSamplingBasis::PointInTimeSurfaceFlux)
+        }
+        TemporalPolicy::Static
+        | TemporalPolicy::PrecipitationAmount
+        | TemporalPolicy::SurfaceFluxRate => None,
     }
 }
 
@@ -143,9 +194,9 @@ pub struct TemporalSample {
 /// Fail-closed errors for canonical temporal sampling (#74).
 #[derive(Debug, Error, PartialEq)]
 pub enum TemporalError {
-    /// The field's canonical temporal policy is not instantaneous.
+    /// The field has no approved instantaneous-sampling basis.
     #[error(
-        "field {field_id:?} uses temporal policy {temporal_policy:?}; #74 samples instantaneous fields only"
+        "field {field_id:?} uses temporal policy {temporal_policy:?} without an approved instantaneous-sampling basis (#74/#120)"
     )]
     UnsupportedTemporalPolicy {
         field_id: FieldId,
@@ -167,6 +218,13 @@ pub enum TemporalError {
         snapshot_index: usize,
         field_id: FieldId,
         kind: TemporalKind,
+    },
+    /// An instantaneous snapshot carries interval or accumulation metadata,
+    /// so its represented time is ambiguous.
+    #[error("snapshot {snapshot_index} field {field_id:?} is instantaneous but declares interval or accumulation metadata")]
+    AmbiguousInstantaneousMetadata {
+        snapshot_index: usize,
+        field_id: FieldId,
     },
     /// The same field uses different calendars across the series.
     #[error("inconsistent calendar across temporal series: {calendar_a:?} then {calendar_b:?}")]
@@ -253,11 +311,10 @@ fn extract_series<'a>(
     field_id: FieldId,
     snapshots: &[&'a Snapshot],
 ) -> Result<Vec<SeriesEntry<'a>>, TemporalError> {
-    let temporal_policy = field_id.spec().temporal_policy;
-    if temporal_policy != TemporalPolicy::Instantaneous {
+    if instantaneous_sampling_basis(field_id).is_none() {
         return Err(TemporalError::UnsupportedTemporalPolicy {
             field_id,
-            temporal_policy,
+            temporal_policy: field_id.spec().temporal_policy,
         });
     }
     if snapshots.len() < 2 {
@@ -282,6 +339,15 @@ fn extract_series<'a>(
                 snapshot_index,
                 field_id,
                 kind: field.time.kind,
+            });
+        }
+        if field.time.interval_start_epoch_seconds.is_some()
+            || field.time.interval_end_epoch_seconds.is_some()
+            || field.time.accumulation.is_some()
+        {
+            return Err(TemporalError::AmbiguousInstantaneousMetadata {
+                snapshot_index,
+                field_id,
             });
         }
         match series_calendar {
@@ -357,6 +423,8 @@ fn extract_series<'a>(
 pub struct TemporalBracket {
     /// Canonical field identity that was resolved.
     pub field_id: FieldId,
+    /// Approved scientific basis that admitted `field_id` to this resolver.
+    pub sampling_basis: InstantaneousSamplingBasis,
     /// Request that produced the resolution.
     pub request: RequestedSampleTime,
     /// How the requested time relates to the source series.
@@ -382,8 +450,10 @@ pub struct TemporalBracket {
 /// Preserves #74 semantics exactly: ordered snapshots, exact-source behavior,
 /// first/last endpoints, frozen #71/#74 weights, and fail-closed rejection of
 /// duplicate/non-monotonic/missing/inconsistent timestamps and unsupported
-/// extrapolation. Accumulated-field handling remains out of scope and fails
-/// closed via [`TemporalError::UnsupportedTemporalPolicy`].
+/// extrapolation. Fields without an [`instantaneous_sampling_basis`] (static,
+/// accumulated precipitation) fail closed via
+/// [`TemporalError::UnsupportedTemporalPolicy`]; interval-mean surface-flux
+/// snapshots fail via [`TemporalError::NonInstantaneousSnapshot`].
 ///
 /// # Errors
 /// Returns [`TemporalError`] for the same fail-closed cases as `sample_field`.
@@ -398,6 +468,8 @@ pub fn resolve_temporal_bracket(
     request: RequestedSampleTime,
 ) -> Result<TemporalBracket, TemporalError> {
     let series = extract_series(field_id, snapshots)?;
+    let sampling_basis = instantaneous_sampling_basis(field_id)
+        .expect("extract_series accepts only fields with an approved sampling basis");
     if request.calendar != series[0].calendar {
         return Err(TemporalError::CalendarMismatch {
             requested: request.calendar,
@@ -464,6 +536,7 @@ pub fn resolve_temporal_bracket(
 
     Ok(TemporalBracket {
         field_id,
+        sampling_basis,
         request,
         application,
         source_timestamps: SourceTimestamps {

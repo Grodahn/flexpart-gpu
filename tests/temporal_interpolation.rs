@@ -14,13 +14,14 @@
 
 use flexpart_gpu::meteorology::{
     temporal::{
-        build_comparison_report, sample_field, OracleQuery, RequestedSampleTime,
-        TemporalApplication, TemporalError, Tolerance, Verdict,
+        build_comparison_report, instantaneous_sampling_basis, resolve_temporal_bracket,
+        sample_field, InstantaneousSamplingBasis, OracleQuery, RequestedSampleTime,
+        TemporalApplication, TemporalError, Tolerance, Verdict, INSTANTANEOUS_SURFACE_FLUX_FIELDS,
     },
     Axis, Calendar, Field, FieldId, FieldTime, HorizontalGrid, HorizontalStaggering,
     LongitudeDomain, SchemaIdentity, SignConvention, Snapshot, StorageOrder, TemporalKind,
     TemporalPolicy, Unit, VerticalCoordinate, VerticalCoordinateKind, VerticalOrdering,
-    VerticalReference, VerticalStaggering,
+    VerticalReference, VerticalStaggering, FIELD_SPECS,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -615,14 +616,170 @@ fn test_temporal_fail_closed_cases() {
     let extreme_sample = sample_field(FieldId::WindU, &extreme_refs, gregorian(1800))
         .expect("extreme finite inputs must sample");
     assert_eq!(extreme_sample.values[0], f32::MAX);
+}
 
-    assert_eq!(
-        sample_field(FieldId::SensibleHeatFlux, &before_refs, gregorian(1800)),
-        Err(TemporalError::UnsupportedTemporalPolicy {
-            field_id: FieldId::SensibleHeatFlux,
-            temporal_policy: TemporalPolicy::SurfaceFluxRate
-        })
-    );
+fn flux_snapshot(id: FieldId, epoch_seconds: i64, value: f32) -> Snapshot {
+    let spec = FIELD_SPECS.iter().find(|spec| spec.id == id).unwrap();
+    let mut snapshot = wind_snapshot(epoch_seconds, value);
+    let field = &mut snapshot.fields[0];
+    field.id = id;
+    field.unit = spec.unit;
+    field.sign = spec.sign;
+    snapshot
+}
+
+#[test]
+fn test_temporal_sampling_basis_is_explicit_per_field() {
+    for spec in FIELD_SPECS {
+        let expected = match spec.temporal_policy {
+            TemporalPolicy::Instantaneous => Some(InstantaneousSamplingBasis::InstantaneousState),
+            TemporalPolicy::SurfaceFluxRate => {
+                Some(InstantaneousSamplingBasis::PointInTimeSurfaceFlux)
+            }
+            TemporalPolicy::Static | TemporalPolicy::PrecipitationAmount => None,
+        };
+        assert_eq!(
+            instantaneous_sampling_basis(spec.id),
+            expected,
+            "{:?}",
+            spec.id
+        );
+        assert_eq!(
+            INSTANTANEOUS_SURFACE_FLUX_FIELDS.contains(&spec.id),
+            spec.temporal_policy == TemporalPolicy::SurfaceFluxRate,
+            "#120 approves exactly the audited surface-flux identities"
+        );
+    }
+}
+
+#[test]
+fn test_temporal_surface_flux_instantaneous_semantics_and_rejections() {
+    // Signed SSHF/stress and non-negative SSR values from the #120 fixture.
+    for (id, values) in [
+        (FieldId::SensibleHeatFlux, [-42.5_f32, 60.25, 185.0]),
+        (FieldId::SurfaceSolarRadiation, [0.0, 210.5, 512.25]),
+        (FieldId::SurfaceStressEastward, [0.125, -0.015625, 0.40625]),
+        (
+            FieldId::SurfaceStressNorthward,
+            [-0.0703125, 0.0390625, 0.171875],
+        ),
+    ] {
+        let series = [
+            flux_snapshot(id, 0, values[0]),
+            flux_snapshot(id, 10800, values[1]),
+            flux_snapshot(id, 21600, values[2]),
+        ];
+        let refs: Vec<&Snapshot> = series.iter().collect();
+        let bracket = resolve_temporal_bracket(id, &refs, gregorian(3600)).unwrap();
+        assert_eq!(
+            bracket.sampling_basis,
+            InstantaneousSamplingBasis::PointInTimeSurfaceFlux
+        );
+        for (time, application, value) in [
+            (0, TemporalApplication::FirstEndpoint, values[0]),
+            (10800, TemporalApplication::ExactSourceTimestamp, values[1]),
+            (21600, TemporalApplication::LastEndpoint, values[2]),
+        ] {
+            let sample = sample_field(id, &refs, gregorian(time)).unwrap();
+            assert_eq!(sample.application, application);
+            assert_eq!(sample.values[0].to_bits(), value.to_bits());
+        }
+        let interior = sample_field(id, &refs, gregorian(14400)).unwrap();
+        assert_eq!(interior.application, TemporalApplication::LinearInterior);
+        assert_eq!(
+            (
+                interior.source_timestamps.lower_epoch_seconds,
+                interior.source_timestamps.upper_epoch_seconds
+            ),
+            (10800, 21600)
+        );
+        assert_close(
+            f64::from(interior.values[0]),
+            f64::from(values[1]) + (f64::from(values[2]) - f64::from(values[1])) / 3.0,
+            "surface-flux interior",
+        );
+
+        let fails = |snapshots: &[Snapshot], request: RequestedSampleTime| {
+            let refs: Vec<&Snapshot> = snapshots.iter().collect();
+            resolve_temporal_bracket(id, &refs, request).unwrap_err()
+        };
+        assert!(matches!(
+            fails(&series, gregorian(-1)),
+            TemporalError::BeforeFirstCoverage { .. }
+        ));
+        assert!(matches!(
+            fails(&series, gregorian(21601)),
+            TemporalError::AfterLastCoverage { .. }
+        ));
+        assert!(matches!(
+            fails(
+                &series,
+                RequestedSampleTime::new(Calendar::ProlepticGregorian, 3600)
+            ),
+            TemporalError::CalendarMismatch { .. }
+        ));
+        assert!(matches!(
+            fails(&series[..1], gregorian(0)),
+            TemporalError::InsufficientTemporalCoverage { snapshots: 1 }
+        ));
+        let duplicate = [series[0].clone(), series[0].clone()];
+        let reversed = [series[1].clone(), series[0].clone()];
+        for invalid in [duplicate, reversed] {
+            assert!(matches!(
+                fails(&invalid, gregorian(0)),
+                TemporalError::NonMonotonicTimestamps { .. }
+            ));
+        }
+        let mut calendar = series.clone();
+        calendar[1].fields[0].time.calendar = Calendar::ProlepticGregorian;
+        assert!(matches!(
+            fails(&calendar, gregorian(0)),
+            TemporalError::InconsistentCalendar { .. }
+        ));
+        let mut non_finite = series.clone();
+        non_finite[2].fields[0].values[0] = f32::NAN;
+        assert!(matches!(
+            fails(&non_finite, gregorian(0)),
+            TemporalError::NonFiniteValue { .. }
+        ));
+        let missing = [series[0].clone(), wind_snapshot(10800, 1.0)];
+        assert!(matches!(
+            fails(&missing, gregorian(0)),
+            TemporalError::MissingFieldSnapshot {
+                snapshot_index: 1,
+                ..
+            }
+        ));
+        // Interval means and accumulations never enter the instantaneous blend.
+        for kind in [
+            TemporalKind::IntervalMean,
+            TemporalKind::IntervalTotal,
+            TemporalKind::AccumulatedSinceReset,
+            TemporalKind::Static,
+        ] {
+            let mut represented = series.clone();
+            represented[1].fields[0].time.kind = kind;
+            represented[1].fields[0].time.interval_start_epoch_seconds = Some(0);
+            represented[1].fields[0].time.interval_end_epoch_seconds = Some(10800);
+            assert_eq!(
+                fails(&represented, gregorian(0)),
+                TemporalError::NonInstantaneousSnapshot {
+                    snapshot_index: 1,
+                    field_id: id,
+                    kind
+                }
+            );
+        }
+        let mut ambiguous = series.clone();
+        ambiguous[1].fields[0].time.interval_end_epoch_seconds = Some(10800);
+        assert_eq!(
+            fails(&ambiguous, gregorian(0)),
+            TemporalError::AmbiguousInstantaneousMetadata {
+                snapshot_index: 1,
+                field_id: id
+            }
+        );
+    }
 }
 
 #[test]

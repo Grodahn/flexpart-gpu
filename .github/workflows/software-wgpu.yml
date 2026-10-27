@@ -125,6 +125,14 @@ jobs:
           cargo test --test shared_height_vector -- --nocapture --test-threads=1 > target/ci-gate/shared-height-vector.log 2>&1
           python3 scripts/interpolation/check_shared_height_vector.py target/ci-gate/shared-height-vector/report.json --software
           python3 scripts/interpolation/test_check_shared_height_vector.py
+      - name: Prove approved instantaneous surface-flux time sampling (#120)
+        id: surface-flux-temporal-120
+        run: |
+          set -euo pipefail
+          cargo test --test surface_flux_temporal_gpu -- --test-threads=1 --nocapture > target/ci-gate/surface-flux-temporal-gpu.log 2>&1
+          python3 scripts/interpolation/check_surface_flux_temporal_gpu.py target/ci-gate/surface-flux-temporal-gpu/report.json --software
+          python3 scripts/interpolation/test_check_surface_flux_temporal_gpu.py
+          python3 scripts/interpolation/test_surface_flux_temporal_oracle.py
       - name: Prove accumulated-field GPU oracle parity
         id: original-9
         run: |

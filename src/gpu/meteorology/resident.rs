@@ -731,6 +731,7 @@ impl<'ctx> CanonicalGpuField<'ctx> {
             vertical_staggering: field.vertical_staggering,
             time,
             temporal_bracket: bracket.as_ref().map(|b| TemporalBracketMetadata {
+                sampling_basis: b.sampling_basis,
                 lower_index: b.lower_index,
                 upper_index: b.upper_index,
                 source_timestamps: b.source_timestamps,

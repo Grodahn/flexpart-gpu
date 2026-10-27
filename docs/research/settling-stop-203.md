@@ -76,8 +76,8 @@ symbol still exists. In summary:
 | Mass ledger | `Particle::mass` | A category for mass on terminated particles. → #38 |
 
 **Production fidelity gap (matrix C20).** The backward driver uses the ordinary action. It has no
-derived flag. Its receptors are single-species, so the original would derive `lsettling=.true.` and
-stop particles at the top. Current backward production therefore matches the original only for
+derived flag. Its receptors are single-species without MQUASILAG, so the original would derive
+`lsettling=.true.` and stop particles at the top. Current backward production therefore matches the original only for
 particles that never reach the transport top. This record does not change the driver. Issue #214
 must derive the flag and then either execute the stop route or fail closed. It must never keep the
 silent `false` default.
@@ -154,8 +154,8 @@ canonical bracket (#112) ──> samplers ──> status regions        correcto
 | 2 | Acquire state | `nstop=.false.`, settling 0 | D2D snapshot to staged state; clear status **and** stop words. Live lanes = `FLAG_ACTIVE`. |
 | 3 | Predictor | current wind (+vs) | Unchanged sampling; `ZeroByCarrier` adds nothing. |
 | 4 | First action | inclusive test; stop iff backward with flag | `stop_route`: set bit 0 and keep the raw z. Otherwise ordinary f32 placement as in #198. |
-| 5 | Preserve predictor | stored position feeds the correction | Raw (stopped) or placed height in the private predictor record, which is the advanced query height. |
-| 6 | Corrector | always runs when the gates pass; vs recomputed at the predictor | Correct from the private raw-height record (#210). A stopped lane is still sampled and corrected. |
+| 5 | Preserve predictor | stored position feeds the correction | The #210 private record keeps the raw predictor height. The advanced query height is the raw height for a stopped lane and the placed height for an ordinary crossing. |
+| 6 | Corrector | always runs when the gates pass; vs recomputed at the predictor | Base is the raw record if stop bit 0 is set, the placed height for an ordinary crossing, else the raw record. The corrector reads bit 0 and never re-tests `raw >= top`, so both stages share one decision (#210). A stopped lane is still sampled and corrected. |
 | 7 | Second action | inclusive test; never clears | `stop_route`: OR bit 1 and keep z. Otherwise ordinary placement. |
 | 8 | Stage result | — | Corrected bytes in staged state; stop words private. |
 | 9 | Fatal observation | — | Existing guard: any fatal region inactivates **all** private lanes. Stop words are not status. |
@@ -185,7 +185,9 @@ consumer reads terminated positions; particle dumps of terminated particles rema
 | Settling producer failure | its own device status region | The same as meteorology. It is never a stop. |
 | Corrected arithmetic failure | arithmetic word | The same. |
 
-A stop never writes a status word, and `require_success` never reads stop words. A stopped lane
+The producer region joins the same fatal-region scan in the corrector, guard, commit and
+`require_success`, so none of them can miss it. A stop never writes a status word, and
+`require_success` never reads stop words. A stopped lane
 is still validated: a nonfinite corrector sample on that lane is fatal. Correction runs for
 stopped particles in the original, so a stop cannot excuse a failure.
 

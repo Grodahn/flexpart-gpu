@@ -85,6 +85,11 @@ class SettlingStopContract(unittest.TestCase):
     def test_changed_frozen_raw_output_hash(self):
         self.mutate(lambda m: m['authority'].update(frozen_raw_output_sha256='0' * 64))
 
+    def test_cli_requires_checkout_or_explicit_skip(self):
+        with patch('sys.argv', ['check_settling_stop_contract.py']), self.assertRaises(SystemExit) as stop:
+            contract.main()
+        self.assertEqual(stop.exception.code, 2)
+
     def test_source_anchor_token_mismatch(self):
         matrix = copy.deepcopy(self.matrix)
         checkout = self.root / 'flexpart'

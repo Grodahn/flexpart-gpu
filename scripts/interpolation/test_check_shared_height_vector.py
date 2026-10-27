@@ -101,6 +101,7 @@ class QueryEvidenceTests(unittest.TestCase):
                  ('resident_metadata', 0, 'horizontal_grid', 'dx_deg'),
                  ('host_metadata', 0, 'geometry_provenance', 0, 'height_algorithm_id'),
                  ('resident_metadata', 5, 'temporal_bracket', 'weights', 'dt1_seconds'),
+                 ('host_metadata', 1, 'temporal_bracket', 'sampling_basis'),
                  *[('resident_metadata', 0, key) for key in
                    ('capacity', 'active_count', 'component_count', 'lane_stride')],
                  ('host_metadata', 0, 'value_count'),

@@ -203,6 +203,15 @@ jobs:
           python3 scripts/interpolation/check_shared_height_vector.py target/ci-gate/shared-height-vector/report.json --software
           python3 scripts/interpolation/test_check_shared_height_vector.py
 
+      - name: Reproduce surface-flux temporal direct oracle (#120)
+        working-directory: flexpart-gpu
+        run: |
+          set -euo pipefail
+          python3 scripts/interpolation/test_surface_flux_temporal_oracle.py
+          python3 scripts/interpolation/run_surface_flux_temporal_oracle.py \
+            --checkout ../flexpart --flex-extract ../flex_extract \
+            --output-dir target/ci-gate/surface-flux-temporal-oracle
+
       - name: Replay real production-driver samples through genuine #186 routines (#197)
         working-directory: flexpart-gpu
         env:

@@ -54,6 +54,8 @@ Keep the final checks and owner-specific pinned-oracle gates described below.
 
 ## Meteorology
 
+- Precipitation member mapping (#202): `cargo test --test precipitation_member_mapping` locks the decision and its decoded evidence offline. It is research evidence only, not a GPU or production check. Regenerating the original evidence follows [the decision note](../research/precipitation-interval-mapping-202.md#phase-4--executed-example).
+
 - Shared-height W preparation: `cargo test --test shared_height_w_gpu`; then `python scripts/interpolation/check_shared_height_w_gpu.py target/ci-gate/interior-w-gpu/comparison.json --hardware` for the hardware proof. Required software CI uses `--software`; direct oracle/reproducibility and unsupported routes are defined in [the preparation handoff](../shared-height-w-preparation.md).
 
 - Shared-height U/V preparation: `cargo test --test shared_height_gpu -- --test-threads=1`; [evidence audit](../../scripts/interpolation/check_shared_height_gpu.py). Required actual device execution; compare all #118 rows, then repeat with the freshly regenerated direct oracle. [Lifecycle and unsupported routes](../shared-height-preparation.md).

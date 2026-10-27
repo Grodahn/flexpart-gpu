@@ -18,6 +18,11 @@ action, sampling at the adjusted predictor and signed advanced time, correction
 of that predictor, and another upper action. For ordinary particles the original
 f32 expression is `top - 100*(nxmax/3.e5)`. The demonstrated device endpoint
 `9521.84375 m` and `nxmax=2` yield exactly `9521.8427734375 m`.
+The margin `100*(nxmax/3.e5)` is evaluated once in IEEE f32 on the host from the
+validated `nxfield`, because WGSL division is not correctly rounded and a device
+compiler may contract `top - 100*eps`. The device performs only the correctly
+rounded subtraction from its own run-owned endpoint. The corrector reads the
+predictor's private raw height, so both stages share one boundary decision.
 Existing horizontal/lower treatment is preserved. The correction retains the
 existing lower-boundary behavior; it does not adopt new reflection physics.
 

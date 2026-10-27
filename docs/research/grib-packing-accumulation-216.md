@@ -9,8 +9,9 @@ rejecting every same-run decrease, and #207's genuine-input path stays blocked.
 
 Machine-readable decision: [grib-packing-decrease-decision-v1.json](../../fixtures/accumulation/grib-packing-decrease-decision-v1.json).
 ecCodes 2.24.2 keys: [grib-packing-eccodes-keys-v1.json](../../fixtures/accumulation/grib-packing-eccodes-keys-v1.json).
-Raw input: [the four #202 GRIB files](../../fixtures/accumulation/precipitation-202-accumulated-grib/)
-(SHA-256 equal to `accumulated_input_sha256` of the #202 evidence).
+Raw input: [the four #202 GRIB files](../../fixtures/accumulation/precipitation-202-accumulated-grib/),
+stored as `<trace name>.grib` (SHA-256 equal to `accumulated_input_sha256` of the
+#202 evidence, which keys them by trace name).
 Regression lock: [tests/grib_packing_decision.rs](../../tests/grib_packing_decision.rs).
 Generator: [grib_packing_decision.py](../../scripts/precipitation/grib_packing_decision.py).
 

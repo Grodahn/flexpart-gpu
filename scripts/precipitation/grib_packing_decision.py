@@ -31,6 +31,9 @@ from fractions import Fraction
 
 SCHEMA = "flexpart-gpu/grib-packing-decrease-decision/v1"
 GRIB_DIR = "fixtures/accumulation/precipitation-202-accumulated-grib"
+# Committed as "<#202 trace name>.grib" (repository binary-fixture policy); the
+# #202 evidence and this decision key the files by the original trace name.
+GRIB_SUFFIX = ".grib"
 MAPPING_DECISION = "fixtures/accumulation/precipitation-member-mapping-v1.json"
 MAPPING_EVIDENCE = "fixtures/accumulation/precipitation-member-mapping-evidence-v1.json"
 DARAIN_ORACLE = "fixtures/accumulation/precipitation-darain-oracle-v1.json"
@@ -96,9 +99,10 @@ def load_json(path):
 
 
 def grib_files(grib_dir):
-    names = sorted(n for n in os.listdir(grib_dir) if n.startswith("FCOG_acc_SL."))
-    require(len(names) == 4, "expected the four #202 accumulated GRIB inputs")
-    return [(name, os.path.join(grib_dir, name)) for name in names]
+    files = sorted(n for n in os.listdir(grib_dir)
+                   if n.startswith("FCOG_acc_SL.") and n.endswith(GRIB_SUFFIX))
+    require(len(files) == 4, "expected the four #202 accumulated GRIB inputs")
+    return [(n[:-len(GRIB_SUFFIX)], os.path.join(grib_dir, n)) for n in files]
 
 
 # --- eccodes-keys mode (pinned container) --------------------------------------

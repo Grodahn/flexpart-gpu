@@ -23,6 +23,9 @@ const MAPPING_DECISION_PATH: &str = "fixtures/accumulation/precipitation-member-
 const EVIDENCE_PATH: &str = "fixtures/accumulation/precipitation-member-mapping-evidence-v1.json";
 const ORACLE_PATH: &str = "fixtures/accumulation/precipitation-darain-oracle-v1.json";
 const GRIB_DIR: &str = "fixtures/accumulation/precipitation-202-accumulated-grib";
+/// Committed as `<#202 trace name>.grib` (repository binary-fixture policy); the
+/// #202 evidence and the decision key the files by the original trace name.
+const GRIB_SUFFIX: &str = ".grib";
 /// Pinned SHA-256 of the canonical LF decision artifact; update deliberately.
 const DECISION_SHA256: &str = "b601951c18abf1c9588a947ded0787b7f92c79309615ccc6de2c7491d3fdadf0";
 /// `flex_extract` divides GRIB metres by `fak = 1/1000` (`EcFlexpart.py:1123-1131`);
@@ -279,14 +282,18 @@ fn grib_files() -> Vec<(String, Vec<u8>)> {
                 .into_string()
                 .expect("name")
         })
-        .filter(|name| name.starts_with("FCOG_acc_SL."))
+        .filter_map(|file| {
+            file.strip_prefix("FCOG_acc_SL.")?;
+            file.strip_suffix(GRIB_SUFFIX).map(str::to_owned)
+        })
         .collect();
     names.sort();
     assert_eq!(names.len(), 4, "the four #202 accumulated GRIB inputs");
     names
         .into_iter()
         .map(|name| {
-            let bytes = std::fs::read(format!("{GRIB_DIR}/{name}")).expect("GRIB bytes");
+            let path = format!("{GRIB_DIR}/{name}{GRIB_SUFFIX}");
+            let bytes = std::fs::read(&path).expect("GRIB bytes");
             (name, bytes)
         })
         .collect()

@@ -13,13 +13,13 @@ use flexpart_gpu::gpu::{
     download_buffer_typed,
     meteorology::CanonicalGpuField,
     precipitation_members::{
-        build_precipitation_member_evidence, darain_shader_sha256, derive_member_sequence,
-        member_matches_oracle, prepare_precipitation_members, reconstruct_members_from_rates_gpu,
-        DisaggregationMethod, PrecipitationMemberError, PrecipitationMemberKernels,
-        PrecipitationMemberPreparation, PrecipitationMemberStage, MINIMUM_INTERVAL_COUNT,
-        PRECIPITATION_MEMBER_PREPARATION, STATUS_NON_FINITE_MEMBER,
+        darain_shader_sha256, derive_member_sequence, member_matches_oracle,
+        prepare_precipitation_members, reconstruct_members_from_rates_gpu, DisaggregationMethod,
+        PrecipitationMemberError, PrecipitationMemberKernels, PrecipitationMemberPreparation,
+        PrecipitationMemberStage, MINIMUM_INTERVAL_COUNT, PRECIPITATION_MEMBER_PREPARATION,
+        STATUS_NON_FINITE_MEMBER,
     },
-    GpuAccumulationError, GpuAdapterEvidence, GpuContext,
+    GpuAccumulationError, GpuAdapterEvidence, GpuCalculationEvidence, GpuContext,
 };
 use flexpart_gpu::meteorology::{
     accumulation::{validate_interval_sequence, AccumulatedObservation, AccumulationError},
@@ -126,15 +126,12 @@ fn compare_rows(candidate: &[f32], oracle: &[f64]) -> (Vec<Value>, bool) {
 
 fn lane_evidence(
     case_id: &str,
-    adapter: &GpuAdapterEvidence,
-    input_sha256: &str,
+    evidence: Result<GpuCalculationEvidence, PrecipitationMemberError>,
     oracle: &[f64],
     candidate: &[f32],
 ) -> Value {
     let (rows, rows_pass) = compare_rows(candidate, oracle);
-    let evidence =
-        build_precipitation_member_evidence(case_id, adapter, input_sha256, oracle, candidate)
-            .expect("evidence builds");
+    let evidence = evidence.expect("evidence builds from a valid device readback");
     evidence
         .require_paired_pass()
         .expect("GPU members match the pinned darain oracle");
@@ -362,12 +359,14 @@ fn raw_case(ctx: &GpuContext, case_id: &str, means: &Value, members: &Value) -> 
         cells,
     ))
     .expect("GPU darain executes");
-    assert_eq!(readback.status(), 0, "{case_id}: device status");
+    readback
+        .require_valid_status()
+        .expect("device status valid");
     let oracle_values = member_results(members);
     json!({"case": case_id, "intervals": rows.len(), "cells": cells,
         "members": rows.len() - 3, "input_sha256": readback.input_sha256(),
         "shader_sha256": darain_shader_sha256(), "adapter": readback.adapter(),
-        "lane": lane_evidence(case_id, readback.adapter(), readback.input_sha256(),
+        "lane": lane_evidence(case_id, readback.evidence(case_id, &oracle_values),
             &oracle_values, readback.members_mm_per_h())})
 }
 
@@ -616,11 +615,13 @@ fn test_precipitation_members_production_handoff_same_encoder() {
             rates_ok,
             "{name}: #90 rates equal the oracle's darain inputs"
         );
+        let case_id = format!("production-handoff-{name}");
+        let oracle_values = member_results(&params["darain_members"]);
+        assert_eq!(readback.input_sha256(), input_sha256);
         let lane = lane_evidence(
-            &format!("production-handoff-{name}"),
-            readback.adapter(),
-            &input_sha256,
-            &member_results(&params["darain_members"]),
+            &case_id,
+            readback.evidence(&case_id, field_id, &oracle_values),
+            &oracle_values,
             values,
         );
         let index = usize::from(name == "cp");
@@ -891,6 +892,10 @@ fn test_precipitation_members_fail_closed_matrix() {
         overflow.status() & STATUS_NON_FINITE_MEMBER,
         0,
         "device status flags overflow"
+    );
+    assert!(
+        overflow.evidence("overflow", &[0.0]).is_err(),
+        "no evidence from a flagged readback"
     );
     rows.push(json!({"case": "device_overflow_status", "code": "non_finite", "status": overflow.status()}));
 

@@ -840,6 +840,7 @@ impl PreparedPrecipitationMembers<'_, '_> {
             )
             .await?,
             status: download_status(ctx, &self.status).await?,
+            input_sha256: self.metadata.input_sha256()?,
             adapter: GpuAdapterEvidence::from_context(ctx),
         })
     }
@@ -851,6 +852,7 @@ pub struct PrecipitationMemberReadback {
     large_scale_mm_per_h: Vec<f32>,
     convective_mm_per_h: Vec<f32>,
     status: u32,
+    input_sha256: String,
     adapter: GpuAdapterEvidence,
 }
 
@@ -894,6 +896,45 @@ impl PrecipitationMemberReadback {
             return Err(PrecipitationMemberError::DeviceStatus(self.status));
         }
         Ok(())
+    }
+
+    /// SHA-256 of the normalized source manifest the members were built from.
+    #[must_use]
+    pub fn input_sha256(&self) -> &str {
+        &self.input_sha256
+    }
+
+    /// Repository-wide evidence for one lane against pinned `darain` results.
+    ///
+    /// `field_id` selects LSP or CP; `oracle` must be in member-buffer order.
+    /// Rows must additionally satisfy [`member_matches_oracle`] for a #207 pass.
+    ///
+    /// # Errors
+    /// Rejects a nonzero device status, a field other than LSP/CP, and forwards
+    /// comparison/evidence validation failures.
+    pub fn evidence(
+        &self,
+        case_id: &str,
+        field_id: FieldId,
+        oracle: &[f64],
+    ) -> Result<GpuCalculationEvidence, PrecipitationMemberError> {
+        let candidate = match field_id {
+            FieldId::LargeScalePrecipitation => self.large_scale_mm_per_h()?,
+            FieldId::ConvectivePrecipitation => self.convective_mm_per_h()?,
+            actual => {
+                return Err(PrecipitationMemberError::FieldOrder {
+                    expected: FieldId::LargeScalePrecipitation,
+                    actual,
+                })
+            }
+        };
+        build_lane_evidence(
+            case_id,
+            &self.adapter,
+            &self.input_sha256,
+            oracle,
+            candidate,
+        )
     }
 }
 
@@ -982,6 +1023,36 @@ impl DarainRateReadback {
     #[must_use]
     pub const fn adapter(&self) -> &GpuAdapterEvidence {
         &self.adapter
+    }
+
+    /// Reject a nonzero device status.
+    ///
+    /// # Errors
+    /// [`PrecipitationMemberError::DeviceStatus`] for any nonzero status.
+    pub const fn require_valid_status(&self) -> Result<(), PrecipitationMemberError> {
+        if self.status != 0 {
+            return Err(PrecipitationMemberError::DeviceStatus(self.status));
+        }
+        Ok(())
+    }
+
+    /// Repository-wide evidence against pinned `darain` results in member order.
+    ///
+    /// # Errors
+    /// Rejects a nonzero device status and forwards comparison/evidence failures.
+    pub fn evidence(
+        &self,
+        case_id: &str,
+        oracle: &[f64],
+    ) -> Result<GpuCalculationEvidence, PrecipitationMemberError> {
+        self.require_valid_status()?;
+        build_lane_evidence(
+            case_id,
+            &self.adapter,
+            &self.input_sha256,
+            oracle,
+            &self.members_mm_per_h,
+        )
     }
 }
 
@@ -1080,15 +1151,9 @@ pub fn precipitation_member_comparison_policy() -> Result<ComparisonPolicy, GpuE
     ComparisonPolicy::new(DEFAULT_ABS_TOL, DEFAULT_REL_TOL)
 }
 
-/// Build repository-wide evidence for one lane of device-read members.
-///
-/// `candidate` must be values read back from this module's WGSL path and
-/// `oracle` the pinned `darain` results in the same order. Records that do not
-/// also satisfy [`member_matches_oracle`] row-wise are not a pass for #207.
-///
-/// # Errors
-/// Forwards comparison/evidence validation failures.
-pub fn build_precipitation_member_evidence(
+// Private so that `wgsl_device` evidence can only be built from this module's
+// own status-checked readbacks, never from caller-supplied values.
+fn build_lane_evidence(
     case_id: &str,
     adapter: &GpuAdapterEvidence,
     input_sha256: &str,

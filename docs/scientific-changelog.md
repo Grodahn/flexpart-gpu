@@ -15,6 +15,18 @@ shaders, physics kernels, or advection logic must add an entry here.
 ---
 
 #
+### 2026-10-27 - Decide bounded admission of GRIB-packing accumulation decreases (#216)
+**Impact**: none (decision only; no production Rust/WGSL, tolerance or #75/#90 behaviour change)
+**Files**: `docs/research/grib-packing-accumulation-216.md`, `docs/accumulation-contract.md`,
+`fixtures/accumulation/grib-packing-decrease-decision-v1.json`, `tests/grib_packing_decision.rs`.
+**Validation**: committed #202 GRIB bytes decoded by ecCodes 2.24.2, a stdlib parser and a Rust
+parser (bit-identical); pinned flex_extract `e0005c99` arithmetic and `darain` clip reproduced.
+
+Records the #207 admission deviation as a decided rule: a same-run LSP/CP decrease inside
+`1000 (2^E_prev + 2^E_cur) + r_prev + r_cur` becomes a `+0.0` interval, equal to what original
+`darain` uses after clipping. Not active until #219 adds the packing provenance; until then
+#75/#90 still reject every same-run decrease.
+
 ### 2026-10-27 - Define settling flag and sticky particle-stop handoff (#203)
 **Impact**: none (architecture contract; no production Rust/WGSL, fixture or tolerance change)
 **Files**: `docs/research/settling-stop-203.md`, `docs/research/settling-stop-203-matrix.json`,

@@ -1,0 +1,4380 @@
+{
+ "attribution": {
+  "fixture": "PROVEN_BY_CONSTRUCTION",
+  "fixture_basis": "for all three rows the encoder input accumulations are identical float64 values; the stored integers are reproduced from those inputs with each message's own E and R, and the binary scale factor changes because the field maximum crosses a packing range",
+  "operational": "CONSISTENT_ONLY",
+  "operational_basis": "operational GRIB does not carry the unquantized model value; a decoded decrease within the bound is indistinguishable from a flat true accumulation, never proof of packing causation",
+  "proof_would_require": "the unquantized producer values or an encoder record for both messages (not available from MARS/GRIB)"
+ },
+ "consumed": {
+  "darain_oracle_sha256": "54830e945c438e1f0eb5e8eabcf7aa9746891952d19cd9b8c44a1e4b16997f90",
+  "eccodes_keys": "fixtures/accumulation/grib-packing-eccodes-keys-v1.json",
+  "eccodes_keys_sha256": "bf6b8d588fc0eade3472ffb9fba441ef44cd5bcf4bffe431bdf68f1350effb8a",
+  "eccodes_version": "2.24.2",
+  "flex_extract_image": "sha256:717f14dfd25610d2cc54624243610e8f654ba3a746ea973fd2b33f9841f288ec",
+  "grib_files": {
+   "FCOG_acc_SL.2023110100.4242.1": {
+    "message_count": 8,
+    "octets": 1072,
+    "sha256": "ac3acd57a6f264fa3610834fb342d8391f145d80bc7c40d5d68b8e08b384eb8a"
+   },
+   "FCOG_acc_SL.2023110112.4242.1": {
+    "message_count": 8,
+    "octets": 1072,
+    "sha256": "ca8579a0c32aa7e59a4aa937faab1877254ff7e0a295c7b838aa074c324f18de"
+   },
+   "FCOG_acc_SL.2023110200.4242.1": {
+    "message_count": 8,
+    "octets": 1072,
+    "sha256": "b5d24cdfc208a9b594b5fddb73385627e02713590c6cb17d48f6e7b05cf359dc"
+   },
+   "FCOG_acc_SL.2023110212.4242.1": {
+    "message_count": 8,
+    "octets": 1072,
+    "sha256": "2b281d364d4b730ae4aee514509da2f1e92da933f4f7a454b777b7323c7b6a9a"
+   }
+  },
+  "mapping_decision_sha256": "7851210604855a7a7e39094603ad906cf654c103ca09a58a23c8eb812c8e78d5",
+  "mapping_evidence_sha256": "039637b50647cd7dcd96be050fe5ebca1c026db9c948ee965bc1d7ad6848eeed",
+  "raw_trace_sha256": "d16ed0dd9085bbd446ae02e55d4de84749fd0ce0e2b63592f24f5fd12d69a621"
+ },
+ "darain_clip": {
+  "flexpart_reader": "windfields_mod.f90:2340,2348 clip negative lsprec/convprec at read",
+  "recomputation": {
+   "cp": {
+    "explicit_clip_recomputation_equal": true,
+    "members": 13,
+    "values": 117,
+    "values_changed_without_clip": [
+     {
+      "cell": 1,
+      "member_time_s": 86400,
+      "original_mm_per_h": 0.1017857288215533,
+      "unclipped_mm_per_h": 0.10178573464231953
+     },
+     {
+      "cell": 1,
+      "member_time_s": 97200,
+      "original_mm_per_h": 0.0,
+      "unclipped_mm_per_h": -2.522331987975283e-08
+     }
+    ],
+    "zero_projection_of_admitted_rows_equal": true
+   },
+   "lsp": {
+    "explicit_clip_recomputation_equal": true,
+    "members": 13,
+    "values": 117,
+    "values_changed_without_clip": [
+     {
+      "cell": 1,
+      "member_time_s": 86400,
+      "original_mm_per_h": 0.4071429152862132,
+      "unclipped_mm_per_h": 0.40714293856927813
+     },
+     {
+      "cell": 1,
+      "member_time_s": 97200,
+      "original_mm_per_h": 0.0,
+      "unclipped_mm_per_h": -1.0089323936340058e-07
+     },
+     {
+      "cell": 1,
+      "member_time_s": 108000,
+      "original_mm_per_h": 7.761021455128987e-08,
+      "unclipped_mm_per_h": 7.761017439567913e-08
+     }
+    ],
+    "zero_projection_of_admitted_rows_equal": true
+   }
+  },
+  "source": "disaggregation.py:144-147 numpy x[x < 0.] = 0. before both quotients"
+ },
+ "decision": {
+  "bound": {
+   "admission": "d = c_cur - c_prev < 0, (R, E, D) not identical, and -d < B",
+   "arithmetic": "d is exact in f64 from the two f32 values; B is evaluated in f64; strict comparison",
+   "canonical_bound": "B = 1000 (q_prev + q_cur) + r_prev + r_cur [kg/m2]",
+   "canonical_term": "r_k = ulp_f32(c_k) / 2 + 2**-50 (|c_k| + ulp_f32(c_k)) (one f32 rounding plus at most three f64 roundings in decode and unit conversion; ulp_f32(0) = 2**-149)",
+   "faithful_quantizer_assumptions": [
+    "Q1: each decoded value is one of the two levels R + X q bracketing the unquantized value, so |v_k - Y_k| < q_k",
+    "Q2: for fixed (R, E, D) the level choice is monotone in v"
+   ],
+   "identical_parameters": "monotone quantization cannot decrease: reject any decrease",
+   "nearest_rounding_bound": "diagnostic only: (q_prev + q_cur) / 2; the encoder rounding mode is not recorded in GRIB",
+   "not_a_tolerance": "B depends only on the two messages' metadata and the canonical values; no fixed epsilon, no #71 comparison tolerance",
+   "quantum_source_units": "q_k = 2**E_k * 10**-D_k [m] per message",
+   "source_bound": "v_cur >= v_prev implies Y_cur - Y_prev > -(q_prev + q_cur)"
+  },
+  "classes": [
+   {
+    "class": "supported_class above with packing provenance",
+    "verdict": "ADMIT_BOUNDED"
+   },
+   {
+    "class": "any input without canonical packing provenance (all current inputs); runtime: NegativeDelta until #219, fail closed afterwards",
+    "verdict": "UNRESOLVED"
+   },
+   {
+    "class": "identical (R, E, D) in both messages",
+    "verdict": "REJECT"
+   },
+   {
+    "class": "decrease >= B",
+    "verdict": "REJECT"
+   },
+   {
+    "class": "identity, time, reset, unit, finiteness or provenance inconsistency",
+    "verdict": "REJECT"
+   },
+   {
+    "class": "non-precipitation accumulated fields",
+    "verdict": "REJECT"
+   },
+   {
+    "class": "GRIB1 second-order/complex/spherical, bitsPerValue 0, decimalScaleFactor != 0, bitmap",
+    "verdict": "UNRESOLVED"
+   },
+   {
+    "class": "GRIB2 any template (incl. JPEG/CCSDS), NetCDF scale/offset packing, ERA5 class EA, other conversion paths",
+    "verdict": "UNRESOLVED"
+   }
+  ],
+  "consumers": {
+   "114_119_future": "consume #76/#207 products only; never the signed difference",
+   "207_precipitation_members": "binds the #90 mm/h grid in place; darain clip is a no-op on +0.0, members equal the original; kernel unchanged",
+   "76_prepare_sample": "AccumulatedInterval amount / rate_si / rate_mm_per_h; receives +0.0 for admitted pairs; no production caller today",
+   "diagnostic_reports": "may expose the signed difference as a typed diagnostic, never as RateMillimeterPerHour, RateKgPerSquareMeterPerSecond or AmountKgPerSquareMeter"
+  },
+  "follow_up": "one implementation issue: canonical packing provenance + #75/#90 bounded admission + genuine #202 -> #90 -> #207 production replay",
+  "implementation_status": "not_implemented",
+  "policies": {
+   "A_strict_rejection": {
+    "effect_on_202_example": "LSP and CP uploads fail; 0 of 18 cell series reach #207",
+    "reason": "rejects decreases that faithful independent quantization must produce whenever a flat accumulation is repacked with another scale; #207 could never consume packed accumulated GRIB",
+    "retained_as": "behaviour for every input outside the admitted class",
+    "verdict": "REJECTED_AS_PERMANENT_POLICY"
+   },
+   "B_evidence_bounded": {
+    "verdict": "SELECTED"
+   },
+   "C_unconditional_flex_extract": {
+    "misclassified_controls": [
+     "bound_smallest_rejected",
+     "decrease_twice_bound",
+     "undeclared_reset_consistent_provenance",
+     "undeclared_reset_provenance_conflict",
+     "identical_packing_parameters",
+     "missing_packing_provenance",
+     "packing_provenance_for_other_message",
+     "provenance_param_mismatch",
+     "unsupported_packing_second_order",
+     "unsupported_packing_grib2",
+     "decimal_scale_nonzero",
+     "unsupported_constant_field",
+     "bitmap_present",
+     "undeclared_conversion_path",
+     "wrong_source_unit"
+    ],
+    "reason": "flex_extract trusts message order and differences any pair; an undeclared restart or corrupt message becomes a negative rate that darain or the FLEXPART reader silently clips, losing the interval",
+    "verdict": "REJECTED"
+   }
+  },
+  "prerequisite": {
+   "missing_now": "the canonical Field carries only unit, sign, time and f32 values; Snapshot provenance is the schema identity only",
+   "owner": "#29 schema field (smallest) populated by #32 providers",
+   "required_record": "optional per-Field source quantization: encoding, message sha256, paramId, bitsPerValue, E, D, R, bitmap flag, forecast reference, step, source unit, canonical scale, conversion path",
+   "rule": "#75 must not infer or default any of these keys"
+  },
+  "representation": {
+   "canonical_interval_product": "remains non-negative: an admitted pair yields amount = rate_si = rate_mm_per_h = +0.0",
+   "flex_extract_equivalence": "every original consumer uses max(deac_vals, 0): darain clips before use; boundary writes are clipped by the FLEXPART reader",
+   "next_interval": "c_{i+1} - c_i from the unmodified lower c_i, as flex_extract orig_vals; no carry-forward maximum",
+   "projection_owner": "#75 classification (host validation) and #90 WGSL (amount := max(curr - prev, 0) for admitted entries only)",
+   "provenance": "per admitted (interval, cell): signed canonical difference, B, both message hashes and packing keys; kept outside the cell-invariant AccumulatedIntervalMetadata",
+   "signed_intermediate_on_device": "none; #90 buffers never carry a negative value",
+   "telescoping": "sum of interval amounts = final total + sum of projected admitted decreases, each below its B"
+  },
+  "runtime_effect_until_follow_up": "none: rows without the canonical packing provenance below remain REJECT (NegativeDelta)",
+  "scope": "decision only; #75/#90 runtime still rejects every same-run decrease",
+  "supported_class": {
+   "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest: c = f32_nearest(Y * 1000) or f32_nearest(Y / 0.001), the product in double",
+   "canonical_unit": "kilogram_per_square_meter",
+   "decode": "Y = (R + X 2**E) 10**-D in IEEE double",
+   "fields": [
+    "large_scale_precipitation",
+    "convective_precipitation"
+   ],
+   "packing": "BDS simple packing (grid_simple), bitsPerValue >= 1, decimalScaleFactor 0, no bitmap, floating-point data flag; exercised: bitsPerValue 24, D = 0",
+   "pair": "consecutive declared observations (i-1, i) of one cell; no carry, no skip",
+   "run_identity": "same declared reset R_prev == R_cur < t_prev; both messages carry forecast reference time == R and reference + step == valid time",
+   "sign": "non_negative",
+   "source": "GRIB edition 1 ECMWF table 128 paramId 142 (LSP) / 143 (CP) (m water equivalent), regular lat/lon grid-point data",
+   "temporal_kind": "accumulated_since_reset"
+  },
+  "verdict": "ADMIT_BOUNDED"
+ },
+ "decoding": {
+  "decode_exact_in_double": true,
+  "decoders": [
+   "ecCodes 2.24.2 codes_get_values (pinned container)",
+   "scripts/precipitation/grib_packing_decision.py stdlib BDS parser",
+   "tests/grib_packing_decision.rs BDS parser"
+  ],
+  "edition": 1,
+  "formula": "Y = (R + X * 2**E) * 10**-D (ecCodes grib_decode_double_array)",
+  "grid_identity": [
+   3,
+   3,
+   52000,
+   10000,
+   1000,
+   1000,
+   0
+  ],
+  "messages": [
+   {
+    "binaryScaleFactor": -32,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     2.9999995604157448e-05,
+     0.001500000013038516,
+     0.0,
+     0.0002999999560415745,
+     0.00011999998241662979,
+     0.0,
+     0.003000000026077032,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     2.9999999999999997e-05,
+     0.0015,
+     0.0,
+     0.0003,
+     0.00011999999999999999,
+     0.0,
+     0.003,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110100.4242.1",
+    "forecast_reference_s": 0,
+    "index": 0,
+    "message_sha256": "6fbf13ab582a53692c46ad7e51c7a2ef5719ea02019f2712a75f57920f03b9e2",
+    "packed_integers": [
+     128849,
+     6442451,
+     0,
+     1288490,
+     515396,
+     0,
+     12884902,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.003,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 25769804,
+     "range_over_quantum": 12884902
+    },
+    "step_hours": 3,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -33,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.00020000000949949026,
+     4.800001624971628e-05,
+     0.0,
+     0.0,
+     2.9999995604157448e-05,
+     0.0012000000569969416,
+     0.0006000000284984708,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0002,
+     4.8e-05,
+     0.0,
+     0.0,
+     2.9999999999999997e-05,
+     0.0012,
+     0.0006,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110100.4242.1",
+    "forecast_reference_s": 0,
+    "index": 1,
+    "message_sha256": "6d162a0853ab5d45685925cfce91217cf78e5c761f399310f8d8160fede877b6",
+    "packed_integers": [
+     1717987,
+     412317,
+     0,
+     0,
+     257698,
+     10307922,
+     5153961,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0012,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 20615843,
+     "range_over_quantum": 10307922
+    },
+    "step_hours": 3,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -31,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0001799999736249447,
+     0.003000000026077032,
+     0.0,
+     0.0008999998681247234,
+     0.0005700001493096352,
+     0.0044999998062849045,
+     0.006000000052154064,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.00017999999999999998,
+     0.003,
+     0.0,
+     0.0008999999999999999,
+     0.0005700000000000001,
+     0.0045,
+     0.006,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110100.4242.1",
+    "forecast_reference_s": 0,
+    "index": 2,
+    "message_sha256": "f2e6f8a1b781c5b2072c5e1f32970d948bb308b87784625f4d54ec9761c2c01e",
+    "packed_integers": [
+     386547,
+     6442451,
+     0,
+     1932735,
+     1224066,
+     9663676,
+     12884902,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.006,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 25769804,
+     "range_over_quantum": 12884902
+    },
+    "step_hours": 6,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -33,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0004000000189989805,
+     0.00022799998987466097,
+     0.0,
+     0.00014999997802078724,
+     0.0001799999736249447,
+     0.0012000000569969416,
+     0.0012000000569969416,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0004,
+     0.00022800000000000004,
+     0.0,
+     0.00015,
+     0.00017999999999999998,
+     0.0012,
+     0.0012,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110100.4242.1",
+    "forecast_reference_s": 0,
+    "index": 3,
+    "message_sha256": "df1c688748589459d0e5e85838597c785442bfdc4f159cd38f43673dfeff03e8",
+    "packed_integers": [
+     3435974,
+     1958505,
+     0,
+     1288490,
+     1546188,
+     10307922,
+     10307922,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0012,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 20615843,
+     "range_over_quantum": 10307922
+    },
+    "step_hours": 6,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -30,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0009300000965595245,
+     0.0044999998062849045,
+     0.0,
+     0.0017999997362494469,
+     0.0032700002193450928,
+     0.0044999998062849045,
+     0.008999999612569809,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0009299999999999999,
+     0.0045,
+     0.0,
+     0.0017999999999999997,
+     0.0032700000000000003,
+     0.0045,
+     0.009,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110100.4242.1",
+    "forecast_reference_s": 0,
+    "index": 4,
+    "message_sha256": "73f1311585edf4bba6bff45cbd8b715f94b0bb9bfdf99936a497088dce7db652",
+    "packed_integers": [
+     998580,
+     4831838,
+     0,
+     1932735,
+     3511136,
+     4831838,
+     9663676,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.009,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 19327353,
+     "range_over_quantum": 9663676
+    },
+    "step_hours": 9,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -33,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0006000000284984708,
+     0.001307999948039651,
+     0.0,
+     0.00045000005047768354,
+     0.0009299999801442027,
+     0.0012000000569969416,
+     0.0017999999690800905,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0006000000000000001,
+     0.0013080000000000001,
+     0.0,
+     0.00044999999999999993,
+     0.0009299999999999999,
+     0.0012,
+     0.0017999999999999997,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110100.4242.1",
+    "forecast_reference_s": 0,
+    "index": 5,
+    "message_sha256": "5d65f6bf9806bb3e91ec1c7ab1f34d419acb543e1e210f534d8412d5896186d1",
+    "packed_integers": [
+     5153961,
+     11235634,
+     0,
+     3865471,
+     7988639,
+     10307922,
+     15461882,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0017999999999999997,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 30923765,
+     "range_over_quantum": 15461882
+    },
+    "step_hours": 9,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -30,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0027299998328089714,
+     0.006000000052154064,
+     0.0,
+     0.0029999995604157448,
+     0.008369999937713146,
+     0.008999999612569809,
+     0.012000000104308128,
+     0.0015000002458691597,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.00273,
+     0.006,
+     0.0,
+     0.003,
+     0.00837,
+     0.009,
+     0.012,
+     0.0015,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110100.4242.1",
+    "forecast_reference_s": 0,
+    "index": 6,
+    "message_sha256": "0d43796a8f66f300d980e03ee365b54fbcfa628a4636e79af58d0885c0bb21ba",
+    "packed_integers": [
+     2931315,
+     6442451,
+     0,
+     3221225,
+     8987219,
+     9663676,
+     12884902,
+     1610613,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.012,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 25769804,
+     "range_over_quantum": 12884902
+    },
+    "step_hours": 12,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -32,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.000800000037997961,
+     0.0033480001147836447,
+     0.0,
+     0.0009000001009553671,
+     0.002730000065639615,
+     0.002400000113993883,
+     0.002400000113993883,
+     0.0003750000614672899,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0008,
+     0.003348,
+     0.0,
+     0.0008999999999999999,
+     0.00273,
+     0.0024,
+     0.0024,
+     0.000375,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110100.4242.1",
+    "forecast_reference_s": 0,
+    "index": 7,
+    "message_sha256": "c639eb93a66f6f6ad80f3a384f4c0a1bc8813e9308afd92df014876363c8ffc9",
+    "packed_integers": [
+     3435974,
+     14379551,
+     0,
+     3865471,
+     11725261,
+     10307922,
+     10307922,
+     1610613,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.003348,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 28759101,
+     "range_over_quantum": 14379551
+    },
+    "step_hours": 12,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -31,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0021000001579523087,
+     0.0014999997802078724,
+     0.0,
+     0.0014999997802078724,
+     0.0032999999821186066,
+     0.0,
+     0.003000000026077032,
+     0.006000000052154064,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0021000000000000003,
+     0.0015,
+     0.0,
+     0.0015,
+     0.0033,
+     0.0,
+     0.003,
+     0.006,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110112.4242.1",
+    "forecast_reference_s": 43200,
+    "index": 0,
+    "message_sha256": "7ecec469d132e1fbe16fd50a08aa92b4b35389aa07dfabe19b44f9b2cc0da0f0",
+    "packed_integers": [
+     4509716,
+     3221225,
+     0,
+     3221225,
+     7086696,
+     0,
+     6442451,
+     12884902,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.006,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 25769804,
+     "range_over_quantum": 12884902
+    },
+    "step_hours": 3,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -32,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.00019999989308416843,
+     0.0013200000394135714,
+     0.0,
+     0.0,
+     0.002099999925121665,
+     0.0,
+     0.000599999912083149,
+     0.001500000013038516,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0002,
+     0.00132,
+     0.0,
+     0.0,
+     0.0021000000000000003,
+     0.0,
+     0.0006,
+     0.0015,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110112.4242.1",
+    "forecast_reference_s": 43200,
+    "index": 1,
+    "message_sha256": "f76c3017a41eba0a50ec28195541ccd348ce7aedcd3609598bfd5ac5acc56b30",
+    "packed_integers": [
+     858993,
+     5669357,
+     0,
+     0,
+     9019431,
+     0,
+     2576980,
+     6442451,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0021000000000000003,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 18038863,
+     "range_over_quantum": 9019431
+    },
+    "step_hours": 3,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -29,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0032999999821186066,
+     0.0030000004917383194,
+     0.0,
+     0.0032999999821186066,
+     0.005100000649690628,
+     0.0044999998062849045,
+     0.0059999991208314896,
+     0.017999999225139618,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0033,
+     0.003,
+     0.0,
+     0.0033,
+     0.0050999999999999995,
+     0.0045,
+     0.006,
+     0.018,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110112.4242.1",
+    "forecast_reference_s": 43200,
+    "index": 2,
+    "message_sha256": "20713cc1e4d3185225ed6064b1131c9ac6b7df6511e27c7f468653bacd323176",
+    "packed_integers": [
+     1771674,
+     1610613,
+     0,
+     1771674,
+     2738042,
+     2415919,
+     3221225,
+     9663676,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.018,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 19327353,
+     "range_over_quantum": 9663676
+    },
+    "step_hours": 6,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -31,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.00039999978616833687,
+     0.0020400001667439938,
+     0.0,
+     0.0001500002108514309,
+     0.0032999999821186066,
+     0.0,
+     0.001199999824166298,
+     0.0044999998062849045,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0004,
+     0.00204,
+     0.0,
+     0.00015,
+     0.0033,
+     0.0,
+     0.0012,
+     0.0045,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110112.4242.1",
+    "forecast_reference_s": 43200,
+    "index": 3,
+    "message_sha256": "9125076c1ca735c07a6c3edb3b6b2333993bb2f648dcedf92fefad9eb5615e32",
+    "packed_integers": [
+     858993,
+     4380867,
+     0,
+     322123,
+     7086696,
+     0,
+     2576980,
+     9663676,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0045,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 19327353,
+     "range_over_quantum": 9663676
+    },
+    "step_hours": 6,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -29,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.003750000149011612,
+     0.0044999998062849045,
+     0.0,
+     0.005400000140070915,
+     0.005699999630451202,
+     0.0044999998062849045,
+     0.008999999612569809,
+     0.025499999523162842,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.00375,
+     0.0045,
+     0.0,
+     0.0054,
+     0.005699999999999999,
+     0.0045,
+     0.009,
+     0.0255,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110112.4242.1",
+    "forecast_reference_s": 43200,
+    "index": 4,
+    "message_sha256": "1c5cebfa3dd4b8ed5c2a7f50860c3c781e6478a851c3d2f9b66fd14bd7ea435e",
+    "packed_integers": [
+     2013266,
+     2415919,
+     0,
+     2899103,
+     3060164,
+     2415919,
+     4831838,
+     13690208,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0255,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 27380417,
+     "range_over_quantum": 13690208
+    },
+    "step_hours": 9,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -31,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.000599999912083149,
+     0.0022800001315772533,
+     0.0,
+     0.00045000016689300537,
+     0.003750000149011612,
+     0.001199999824166298,
+     0.0018000002019107342,
+     0.0063749998807907104,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0006000000000000001,
+     0.0022800000000000003,
+     0.0,
+     0.00044999999999999993,
+     0.00375,
+     0.0012,
+     0.0017999999999999997,
+     0.006375,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110112.4242.1",
+    "forecast_reference_s": 43200,
+    "index": 5,
+    "message_sha256": "479da413a3bbb99c4417b641cecf6b5b9afa0c5b91cb00957b2981b7550f9aa6",
+    "packed_integers": [
+     1288490,
+     4896263,
+     0,
+     966368,
+     8053064,
+     2576980,
+     3865471,
+     13690208,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.006375,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 27380417,
+     "range_over_quantum": 13690208
+    },
+    "step_hours": 9,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -29,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.003750000149011612,
+     0.0059999991208314896,
+     0.0,
+     0.007799999788403511,
+     0.005699999630451202,
+     0.008999999612569809,
+     0.012000000104308128,
+     0.02850000001490116,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.00375,
+     0.006,
+     0.0,
+     0.0078000000000000005,
+     0.005699999999999999,
+     0.009,
+     0.012,
+     0.0285,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110112.4242.1",
+    "forecast_reference_s": 43200,
+    "index": 6,
+    "message_sha256": "9434fe7efd1c9e80a2896ad47dff81cebe3bde42032ac0bf3408832d33e42b58",
+    "packed_integers": [
+     2013266,
+     3221225,
+     0,
+     4187593,
+     3060164,
+     4831838,
+     6442451,
+     15300821,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0285,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 30601642,
+     "range_over_quantum": 15300821
+    },
+    "step_hours": 12,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -31,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.000800000037997961,
+     0.0022800001315772533,
+     0.0,
+     0.0008999998681247234,
+     0.003750000149011612,
+     0.001199999824166298,
+     0.002400000113993883,
+     0.00712500000372529,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0008,
+     0.0022800000000000003,
+     0.0,
+     0.0008999999999999999,
+     0.00375,
+     0.0012,
+     0.0024,
+     0.007125,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110112.4242.1",
+    "forecast_reference_s": 43200,
+    "index": 7,
+    "message_sha256": "13f9f27ce581c097bd841a8379009e956b1f495778a78ecfb0a2d68542951c8a",
+    "packed_integers": [
+     1717987,
+     4896263,
+     0,
+     1932735,
+     8053064,
+     2576980,
+     5153961,
+     15300821,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.007125,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 30601642,
+     "range_over_quantum": 15300821
+    },
+    "step_hours": 12,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -32,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0,
+     0.001500000013038516,
+     0.0,
+     0.0027000000700354576,
+     0.0,
+     0.0,
+     0.003000000026077032,
+     0.0009000001009553671,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0,
+     0.0015,
+     0.0,
+     0.0026999999999999997,
+     0.0,
+     0.0,
+     0.003,
+     0.0009,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110200.4242.1",
+    "forecast_reference_s": 86400,
+    "index": 0,
+    "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+    "packed_integers": [
+     0,
+     6442451,
+     0,
+     11596412,
+     0,
+     0,
+     12884902,
+     3865471,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.003,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 25769804,
+     "range_over_quantum": 12884902
+    },
+    "step_hours": 3,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -34,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.00020000000949949026,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0006000000284984708,
+     0.00022500002523884177,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0002,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0006,
+     0.000225,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110200.4242.1",
+    "forecast_reference_s": 86400,
+    "index": 1,
+    "message_sha256": "64e188593e57518ff4b77247d6b0fba4b776d6c71ef266f98692c2e7af20a5a7",
+    "packed_integers": [
+     3435974,
+     0,
+     0,
+     0,
+     0,
+     0,
+     10307922,
+     3865471,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0006,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 20615843,
+     "range_over_quantum": 10307922
+    },
+    "step_hours": 3,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -31,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0002999999560415745,
+     0.003000000026077032,
+     0.0,
+     0.00570000009611249,
+     0.0008999998681247234,
+     0.0044999998062849045,
+     0.006000000052154064,
+     0.0008999998681247234,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0003,
+     0.003,
+     0.0,
+     0.005699999999999999,
+     0.0009,
+     0.0045,
+     0.006,
+     0.0009,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110200.4242.1",
+    "forecast_reference_s": 86400,
+    "index": 2,
+    "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+    "packed_integers": [
+     644245,
+     6442451,
+     0,
+     12240657,
+     1932735,
+     9663676,
+     12884902,
+     1932735,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.006,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 25769804,
+     "range_over_quantum": 12884902
+    },
+    "step_hours": 6,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -33,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0004000000189989805,
+     0.0003599999472498894,
+     0.0,
+     0.00014999997802078724,
+     0.0002999999560415745,
+     0.0012000000569969416,
+     0.0012000000569969416,
+     0.00022499996703118086,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0004,
+     0.00036,
+     0.0,
+     0.00015,
+     0.0003,
+     0.0012,
+     0.0012,
+     0.000225,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110200.4242.1",
+    "forecast_reference_s": 86400,
+    "index": 3,
+    "message_sha256": "d1db89d778960552b807212768029630589b706bc27869b266046ff69c075a79",
+    "packed_integers": [
+     3435974,
+     3092376,
+     0,
+     1288490,
+     2576980,
+     10307922,
+     10307922,
+     1932735,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0012,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 20615843,
+     "range_over_quantum": 10307922
+    },
+    "step_hours": 6,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -30,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.001199999824166298,
+     0.0044999998062849045,
+     0.0,
+     0.008999999612569809,
+     0.0032999999821186066,
+     0.0044999998062849045,
+     0.008999999612569809,
+     0.0009000003337860107,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0012,
+     0.0045,
+     0.0,
+     0.009,
+     0.0033,
+     0.0045,
+     0.009,
+     0.0009,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110200.4242.1",
+    "forecast_reference_s": 86400,
+    "index": 4,
+    "message_sha256": "c34e53346a756bbe7b0f9009ade4b1a445cebbe18c26cfb352deef3412c8f49e",
+    "packed_integers": [
+     1288490,
+     4831838,
+     0,
+     9663676,
+     3543348,
+     4831838,
+     9663676,
+     966368,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.009,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 19327353,
+     "range_over_quantum": 9663676
+    },
+    "step_hours": 9,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -33,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0006000000284984708,
+     0.0013200000394135714,
+     0.0,
+     0.00045000005047768354,
+     0.0012000000569969416,
+     0.0012000000569969416,
+     0.0017999999690800905,
+     0.00022499996703118086,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0006000000000000001,
+     0.00132,
+     0.0,
+     0.00044999999999999993,
+     0.0012,
+     0.0012,
+     0.0017999999999999997,
+     0.000225,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110200.4242.1",
+    "forecast_reference_s": 86400,
+    "index": 5,
+    "message_sha256": "473f3892041a99567c6468479b9925807df5d64a9baef0f2b48a392c78c045b6",
+    "packed_integers": [
+     5153961,
+     11338714,
+     0,
+     3865471,
+     10307922,
+     10307922,
+     15461882,
+     1932735,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0017999999999999997,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 30923765,
+     "range_over_quantum": 15461882
+    },
+    "step_hours": 9,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -30,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.002849999815225601,
+     0.006000000052154064,
+     0.0,
+     0.012600000016391277,
+     0.007500000298023224,
+     0.008999999612569809,
+     0.012000000104308128,
+     0.0009000003337860107,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0028499999999999997,
+     0.006,
+     0.0,
+     0.0126,
+     0.0075,
+     0.009,
+     0.012,
+     0.0009,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110200.4242.1",
+    "forecast_reference_s": 86400,
+    "index": 6,
+    "message_sha256": "9cabf8bacafe7d4996056943ba91e115fad51b5a63f1b16a19bcfe88a33a3847",
+    "packed_integers": [
+     3060164,
+     6442451,
+     0,
+     13529147,
+     8053064,
+     9663676,
+     12884902,
+     966368,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0126,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 27058294,
+     "range_over_quantum": 13529147
+    },
+    "step_hours": 12,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -32,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.000800000037997961,
+     0.003000000026077032,
+     0.0,
+     0.0009000001009553671,
+     0.002850000048056245,
+     0.0012000000569969416,
+     0.002400000113993883,
+     0.00022500008344650269,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0008,
+     0.003,
+     0.0,
+     0.0008999999999999999,
+     0.0028499999999999997,
+     0.0012,
+     0.0024,
+     0.000225,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110200.4242.1",
+    "forecast_reference_s": 86400,
+    "index": 7,
+    "message_sha256": "946e5db9b5ec491413ededb41315ff2f0be3e3e8a9d56bcc775f11d78e3be1bc",
+    "packed_integers": [
+     3435974,
+     12884902,
+     0,
+     3865471,
+     12240657,
+     5153961,
+     10307922,
+     966368,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.003,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 25769804,
+     "range_over_quantum": 12884902
+    },
+    "step_hours": 12,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -32,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0025500000920146704,
+     0.001500000013038516,
+     0.0,
+     0.0038999998942017555,
+     0.003599999938160181,
+     0.0,
+     0.003000000026077032,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0025499999999999997,
+     0.0015,
+     0.0,
+     0.0039,
+     0.0036,
+     0.0,
+     0.003,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110212.4242.1",
+    "forecast_reference_s": 129600,
+    "index": 0,
+    "message_sha256": "ed6c0501efcb32f3b719140db5385887f5900e4a58d7c41897a2b595a25e6a73",
+    "packed_integers": [
+     10952167,
+     6442451,
+     0,
+     16750372,
+     15461882,
+     0,
+     12884902,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0039,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 33500745,
+     "range_over_quantum": 16750372
+    },
+    "step_hours": 3,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -32,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.00019999989308416843,
+     0.0014400000218302011,
+     0.0,
+     0.0,
+     0.0025500000920146704,
+     0.0012000000569969416,
+     0.000599999912083149,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0002,
+     0.00144,
+     0.0,
+     0.0,
+     0.0025499999999999997,
+     0.0012,
+     0.0006,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110212.4242.1",
+    "forecast_reference_s": 129600,
+    "index": 1,
+    "message_sha256": "0404a51e6d84ab922d7587710bcb533a08d3b23a5e6f8adb7c4b83decf197b26",
+    "packed_integers": [
+     858993,
+     6184753,
+     0,
+     0,
+     10952167,
+     5153961,
+     2576980,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0025499999999999997,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 21904333,
+     "range_over_quantum": 10952167
+    },
+    "step_hours": 3,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -30,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0038999998942017555,
+     0.0029999995604157448,
+     0.0,
+     0.008100000210106373,
+     0.0050999997183680534,
+     0.0044999998062849045,
+     0.006000000052154064,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0039,
+     0.003,
+     0.0,
+     0.0081,
+     0.0050999999999999995,
+     0.0045,
+     0.006,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110212.4242.1",
+    "forecast_reference_s": 129600,
+    "index": 2,
+    "message_sha256": "b52b57a4ccf8a9f5972283d35e471ff80d652228db607d55da156515bfb95afa",
+    "packed_integers": [
+     4187593,
+     3221225,
+     0,
+     8697309,
+     5476083,
+     4831838,
+     6442451,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0081,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 17394618,
+     "range_over_quantum": 8697309
+    },
+    "step_hours": 6,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -32,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.0004000000189989805,
+     0.00203999993391335,
+     0.0,
+     0.00014999997802078724,
+     0.0038999998942017555,
+     0.0012000000569969416,
+     0.0012000000569969416,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0004,
+     0.00204,
+     0.0,
+     0.00015,
+     0.0039,
+     0.0012,
+     0.0012,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110212.4242.1",
+    "forecast_reference_s": 129600,
+    "index": 3,
+    "message_sha256": "c1fe8802c837cb9c532d57d97db4a6e568b7de6a49c3eb27aa4e6f7049127d26",
+    "packed_integers": [
+     1717987,
+     8761733,
+     0,
+     644245,
+     16750372,
+     5153961,
+     5153961,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0039,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 33500745,
+     "range_over_quantum": 16750372
+    },
+    "step_hours": 6,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -30,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.004124999977648258,
+     0.0044999998062849045,
+     0.0,
+     0.012600000016391277,
+     0.005400000140070915,
+     0.0044999998062849045,
+     0.008999999612569809,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.004125,
+     0.0045,
+     0.0,
+     0.0126,
+     0.005399999999999999,
+     0.0045,
+     0.009,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110212.4242.1",
+    "forecast_reference_s": 129600,
+    "index": 4,
+    "message_sha256": "a6c3c98970a7586befbc85bd83215ec261f2aad4b56454f47bda9ad6034ab6e6",
+    "packed_integers": [
+     4429185,
+     4831838,
+     0,
+     13529147,
+     5798206,
+     4831838,
+     9663676,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0126,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 27058294,
+     "range_over_quantum": 13529147
+    },
+    "step_hours": 9,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -31,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.000599999912083149,
+     0.0021600001491606236,
+     0.0,
+     0.00045000016689300537,
+     0.004124999977648258,
+     0.001199999824166298,
+     0.0018000002019107342,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0006000000000000001,
+     0.00216,
+     0.0,
+     0.00044999999999999993,
+     0.004125,
+     0.0012,
+     0.0017999999999999997,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110212.4242.1",
+    "forecast_reference_s": 129600,
+    "index": 5,
+    "message_sha256": "ad31bc1e5d369f54133880a54f4660b93a5f15e4098eb3c8a752aff1928d5821",
+    "packed_integers": [
+     1288490,
+     4638565,
+     0,
+     966368,
+     8858370,
+     2576980,
+     3865471,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.004125,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 17716740,
+     "range_over_quantum": 8858370
+    },
+    "step_hours": 9,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -29,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.00418500043451786,
+     0.0059999991208314896,
+     0.0,
+     0.017400000244379044,
+     0.005459999665617943,
+     0.008999999612569809,
+     0.012000000104308128,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0041849999999999995,
+     0.006,
+     0.0,
+     0.0174,
+     0.005459999999999999,
+     0.009,
+     0.012,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110212.4242.1",
+    "forecast_reference_s": 129600,
+    "index": 6,
+    "message_sha256": "a3903f39c196e183f9a2e544533175e282ce0235a86f7f1c7ab757c2bdc4d89c",
+    "packed_integers": [
+     2246805,
+     3221225,
+     0,
+     9341554,
+     2931315,
+     4831838,
+     6442451,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 142,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0174,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 18683108,
+     "range_over_quantum": 9341554
+    },
+    "step_hours": 12,
+    "timeRangeIndicator": 0
+   },
+   {
+    "binaryScaleFactor": -31,
+    "bitmap_present": false,
+    "bitsPerValue": 24,
+    "decimalScaleFactor": 0,
+    "decoded_m": [
+     0.000800000037997961,
+     0.002183999866247177,
+     0.0,
+     0.0008999998681247234,
+     0.004184999968856573,
+     0.002400000113993883,
+     0.002400000113993883,
+     0.0,
+     0.0
+    ],
+    "eccodes_stepType": "instant",
+    "eccodes_units": "m",
+    "encoder_input_m": [
+     0.0008,
+     0.002184,
+     0.0,
+     0.0008999999999999999,
+     0.0041849999999999995,
+     0.0024,
+     0.0024,
+     0.0,
+     0.0
+    ],
+    "file": "FCOG_acc_SL.2023110212.4242.1",
+    "forecast_reference_s": 129600,
+    "index": 7,
+    "message_sha256": "e67817166c7f3083086d194825f7a7ae5eee0cff93db7011c720159d656e1b07",
+    "packed_integers": [
+     1717987,
+     4690104,
+     0,
+     1932735,
+     8987219,
+     5153961,
+     5153961,
+     0,
+     0
+    ],
+    "packingType": "grid_simple",
+    "paramId": 143,
+    "referenceValue": 0.0,
+    "referenceValue_ibm_hex": "00000000",
+    "scale_choice": {
+     "binary_scale_is_smallest_fitting": true,
+     "field_maximum_m": 0.0041849999999999995,
+     "max_packed_integer": 16777215,
+     "range_over_half_quantum": 17974438,
+     "range_over_quantum": 8987219
+    },
+    "step_hours": 12,
+    "timeRangeIndicator": 0
+   }
+  ],
+  "packing": "grid-point simple packing (BDS flag 0, grid_simple)",
+  "stdlib_equals_eccodes_bitwise": true,
+  "values_decoded": 288
+ },
+ "encoder_reconstruction": {
+  "max_abs_error_over_half_quantum": {
+   "exact": "264673065/268435456",
+   "float": 0.9859840013086796
+  },
+  "rule": "X = floor((v - R) * 2**-E + 0.5) (ecCodes nearest)",
+  "source": "fixed interval amounts of scripts/precipitation/flex_extract_member_trace.py recorded in the #202 evidence (interval_amounts_mm), left-to-right float64 sums / 1000 as in Python 3.10.12",
+  "values_reproduced": 288
+ },
+ "issue": 216,
+ "negative_controls": [
+  {
+   "description": "12 f32 steps below the previous value against a bound of 12.719 steps",
+   "expected_code": "quantization_compatible_decrease",
+   "expected_verdict": "ADMIT_BOUNDED",
+   "id": "bound_largest_admitted",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999993801116943,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "13 f32 steps below the previous value against a bound of 12.719 steps",
+   "expected_code": "decrease_exceeds_quantization_bound",
+   "expected_verdict": "REJECT",
+   "id": "bound_smallest_rejected",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999993205070496,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "genuine-looking decrease of twice the bound",
+   "expected_code": "decrease_exceeds_quantization_bound",
+   "expected_verdict": "REJECT",
+   "id": "decrease_twice_bound",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999986052513123,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "genuine 36 h -> 39 h pair of node (0,0) with the 36 h restart hidden in both canonical and packing metadata",
+   "expected_code": "decrease_exceeds_quantization_bound",
+   "expected_verdict": "REJECT",
+   "id": "undeclared_reset_consistent_provenance",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 3.0,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "ed6c0501efcb32f3b719140db5385887f5900e4a58d7c41897a2b595a25e6a73",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 54000
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "ed6c0501efcb32f3b719140db5385887f5900e4a58d7c41897a2b595a25e6a73",
+     "valid_time_s": 140400
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 12.0,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -30,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "9cabf8bacafe7d4996056943ba91e115fad51b5a63f1b16a19bcfe88a33a3847",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 43200
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "9cabf8bacafe7d4996056943ba91e115fad51b5a63f1b16a19bcfe88a33a3847",
+     "valid_time_s": 129600
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "same genuine pair declared same-run while its message reference time is the 36 h restart",
+   "expected_code": "run_identity_mismatch",
+   "expected_verdict": "REJECT",
+   "id": "undeclared_reset_provenance_conflict",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 3.0,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 129600,
+      "message_sha256": "ed6c0501efcb32f3b719140db5385887f5900e4a58d7c41897a2b595a25e6a73",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "ed6c0501efcb32f3b719140db5385887f5900e4a58d7c41897a2b595a25e6a73",
+     "valid_time_s": 140400
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 12.0,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -30,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "9cabf8bacafe7d4996056943ba91e115fad51b5a63f1b16a19bcfe88a33a3847",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 43200
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "9cabf8bacafe7d4996056943ba91e115fad51b5a63f1b16a19bcfe88a33a3847",
+     "valid_time_s": 129600
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "previous message re-declared with the current message's scale factors (monotone quantizer)",
+   "expected_code": "identical_packing_parameters",
+   "expected_verdict": "REJECT",
+   "id": "identical_packing_parameters",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "previous observation without packing provenance",
+   "expected_code": "missing_packing_provenance",
+   "expected_verdict": "UNRESOLVED",
+   "id": "missing_packing_provenance",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": null,
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "provenance bound to a different message",
+   "expected_code": "packing_provenance_mismatch",
+   "expected_verdict": "REJECT",
+   "id": "packing_provenance_for_other_message",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "LSP observation with paramId 143 provenance",
+   "expected_code": "packing_provenance_mismatch",
+   "expected_verdict": "REJECT",
+   "id": "provenance_param_mismatch",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 143,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "GRIB1 second-order packing",
+   "expected_code": "unsupported_packing",
+   "expected_verdict": "UNRESOLVED",
+   "id": "unsupported_packing_second_order",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_second_order",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "GRIB2 simple packing (accumulated GRIB2 input not exercised; #211 covers prepared GRIB2 members only)",
+   "expected_code": "unsupported_packing",
+   "expected_verdict": "UNRESOLVED",
+   "id": "unsupported_packing_grib2",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib2_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "decimalScaleFactor 1 (10**-D evaluated by repeated division in ecCodes; error term not derived)",
+   "expected_code": "unsupported_packing",
+   "expected_verdict": "UNRESOLVED",
+   "id": "decimal_scale_nonzero",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 1,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "bitsPerValue = 0 constant field",
+   "expected_code": "unsupported_packing",
+   "expected_verdict": "UNRESOLVED",
+   "id": "unsupported_constant_field",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 0,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "message with a bitmap / missing-value representation",
+   "expected_code": "unsupported_packing",
+   "expected_verdict": "UNRESOLVED",
+   "id": "bitmap_present",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": true,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "canonical f32 produced through an f32 decode",
+   "expected_code": "unsupported_conversion",
+   "expected_verdict": "UNRESOLVED",
+   "id": "undeclared_conversion_path",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f32_decode",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "valid times swapped",
+   "expected_code": "non_increasing_valid_time",
+   "expected_verdict": "REJECT",
+   "id": "reversed_timestamps",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 97200
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 108000
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "non_increasing_valid_time"
+   ],
+   "policy_c": [
+    "REJECT",
+    "non_increasing_valid_time"
+   ]
+  },
+  {
+   "description": "current valid time absent",
+   "expected_code": "missing_time_metadata",
+   "expected_verdict": "REJECT",
+   "id": "missing_timestamp",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": null
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "missing_time_metadata"
+   ],
+   "policy_c": [
+    "REJECT",
+    "missing_time_metadata"
+   ]
+  },
+  {
+   "description": "current reset absent",
+   "expected_code": "missing_time_metadata",
+   "expected_verdict": "REJECT",
+   "id": "missing_reset",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": null,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "missing_time_metadata"
+   ],
+   "policy_c": [
+    "REJECT",
+    "missing_time_metadata"
+   ]
+  },
+  {
+   "description": "current reset inside the previous window",
+   "expected_code": "reset_mismatch",
+   "expected_verdict": "REJECT",
+   "id": "mid_window_reset",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 93600,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "reset_mismatch"
+   ],
+   "policy_c": [
+    "REJECT",
+    "reset_mismatch"
+   ]
+  },
+  {
+   "description": "current observation on another grid",
+   "expected_code": "identity_mismatch",
+   "expected_verdict": "REJECT",
+   "id": "mixed_grid_identity",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat53_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "identity_mismatch"
+   ],
+   "policy_c": [
+    "REJECT",
+    "identity_mismatch"
+   ]
+  },
+  {
+   "description": "current observation from parameter 143",
+   "expected_code": "identity_mismatch",
+   "expected_verdict": "REJECT",
+   "id": "mixed_source_identity",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param143",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "identity_mismatch"
+   ],
+   "policy_c": [
+    "REJECT",
+    "identity_mismatch"
+   ]
+  },
+  {
+   "description": "current value absent (missing message/cell)",
+   "expected_code": "missing_value",
+   "expected_verdict": "REJECT",
+   "id": "missing_accumulated_observation",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": null,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "missing_value"
+   ],
+   "policy_c": [
+    "REJECT",
+    "missing_value"
+   ]
+  },
+  {
+   "description": "packing quantum declared in mm",
+   "expected_code": "unit_mismatch",
+   "expected_verdict": "REJECT",
+   "id": "wrong_source_unit",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "mm",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "same_run_negative_delta"
+   ],
+   "policy_c": [
+    "ADMIT_UNBOUNDED",
+    "clipped_by_darain"
+   ]
+  },
+  {
+   "description": "canonical unit not kg/m2",
+   "expected_code": "unit_mismatch",
+   "expected_verdict": "REJECT",
+   "id": "wrong_canonical_unit",
+   "pair": {
+    "canonical_unit": "meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "unit_mismatch"
+   ],
+   "policy_c": [
+    "REJECT",
+    "unit_mismatch"
+   ]
+  },
+  {
+   "description": "current value NaN",
+   "expected_code": "non_finite_value",
+   "expected_verdict": "REJECT",
+   "id": "non_finite_nan",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": "NaN",
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "non_finite_value"
+   ],
+   "policy_c": [
+    "REJECT",
+    "non_finite_value"
+   ]
+  },
+  {
+   "description": "previous value +inf",
+   "expected_code": "non_finite_value",
+   "expected_verdict": "REJECT",
+   "id": "non_finite_infinity",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": "Infinity",
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "non_finite_value"
+   ],
+   "policy_c": [
+    "REJECT",
+    "non_finite_value"
+   ]
+  },
+  {
+   "description": "current accumulated amount below zero",
+   "expected_code": "negative_accumulated_amount",
+   "expected_verdict": "REJECT",
+   "id": "negative_accumulation",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": -0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "negative_accumulated_amount"
+   ],
+   "policy_c": [
+    "REJECT",
+    "negative_accumulated_amount"
+   ]
+  },
+  {
+   "description": "decrease of a non-precipitation field",
+   "expected_code": "unsupported_field",
+   "expected_verdict": "REJECT",
+   "id": "unsupported_field",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.8999998569488525,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -31,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 21600
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "surface_sensible_heat_flux",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": {
+      "binaryScaleFactor": -32,
+      "bitmap_present": false,
+      "bitsPerValue": 24,
+      "canonical_conversion": "f64_decode_unit_scale_then_f32_nearest",
+      "canonical_per_source_unit": 1000,
+      "decimalScaleFactor": 0,
+      "encoding": "grib1_grid_simple",
+      "forecast_reference_s": 86400,
+      "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+      "paramId": 142,
+      "referenceValue": 0.0,
+      "source_unit": "m",
+      "step_s": 10800
+     },
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "REJECT",
+    "unsupported_field"
+   ],
+   "policy_c": [
+    "REJECT",
+    "unsupported_field"
+   ]
+  },
+  {
+   "description": "equal accumulation needs no packing provenance",
+   "expected_code": "ordinary_same_run_interval",
+   "expected_verdict": "OUTSIDE_RULE",
+   "id": "flat_without_provenance",
+   "pair": {
+    "canonical_unit": "kilogram_per_square_meter",
+    "current": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": null,
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+     "valid_time_s": 108000
+    },
+    "field": "large_scale_precipitation",
+    "previous": {
+     "canonical_value": 0.9000000953674316,
+     "grid_id": "regular_ll_3x3_lat52_lon10_step1",
+     "packing": null,
+     "reset_s": 86400,
+     "source_id": "ecmf-table128-param142",
+     "source_message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+     "valid_time_s": 97200
+    }
+   },
+   "policy_a": [
+    "OUTSIDE_RULE",
+    "ordinary_same_run_interval"
+   ],
+   "policy_c": [
+    "OUTSIDE_RULE",
+    "ordinary_same_run_interval"
+   ]
+  }
+ ],
+ "offending_rows": [
+  {
+   "bounds": {
+    "canonical_kg_per_m2": {
+     "exact": "7160019735176807/9444732965739290427392",
+     "float": 7.580965773357207e-07
+    },
+    "decrease_over_canonical_bound": 0.31449631383308513,
+    "decrease_over_source_adjacent_bound": 0.3333333333333333,
+    "decrease_over_source_nearest_bound": 0.6666666666666666,
+    "source_adjacent_level_m": {
+     "exact": "3/4294967296",
+     "float": 6.984919309616089e-10
+    },
+    "source_nearest_rounding_m": {
+     "exact": "3/8589934592",
+     "float": 3.4924596548080444e-10
+    }
+   },
+   "canonical_cell": 1,
+   "classification": {
+    "code": "quantization_compatible_decrease",
+    "verdict": "ADMIT_BOUNDED"
+   },
+   "current": {
+    "binaryScaleFactor": -31,
+    "bitsPerValue": 24,
+    "canonical_f32_hex": "3f666664",
+    "canonical_f32_ulp": 5.960464477539063e-08,
+    "canonical_kg_per_m2_f32": 0.8999998569488525,
+    "decimalScaleFactor": 0,
+    "decoded_m": 0.0008999998681247234,
+    "decoded_m_f64_hex": "3f4d7dbf00000000",
+    "encoder_input_m": 0.0009,
+    "encoder_input_m_f64_hex": "3f4d7dbf487fcb92",
+    "field_maximum_m": 0.006,
+    "file": "FCOG_acc_SL.2023110200.4242.1",
+    "flex_extract_mm": 0.8999998681247234,
+    "forecast_reference_s": 86400,
+    "grib_value_index": 7,
+    "message_index": 2,
+    "message_sha256": "4ca5e4b159b9b70947c0b68473a3f4b1e76882d89b3423f55bd973684bd24efe",
+    "observation_index": 9,
+    "packed_integer": 1932735,
+    "quantization_error_m": {
+     "exact": "-608167369/4611686018427387904",
+     "float": -1.3187527654091868e-10
+    },
+    "quantization_error_over_quantum": -0.2831999999471009,
+    "quantum_m": {
+     "exact": "1/2147483648",
+     "float": 4.656612873077393e-10
+    },
+    "referenceValue": 0.0,
+    "reset_s": 86400,
+    "step_hours": 6,
+    "valid_time_s": 108000
+   },
+   "darain_clipped_mm_per_h": 0.0,
+   "darain_input_mm_per_h": -7.761021455128987e-08,
+   "encoder_inputs_identical": true,
+   "interval_duration_s": 10800,
+   "interval_end_s": 108000,
+   "interval_start_s": 97200,
+   "node_i_j": [
+    1,
+    0
+   ],
+   "packing_parameters_differ": true,
+   "param_id": 142,
+   "parameter": "lsp",
+   "previous": {
+    "binaryScaleFactor": -32,
+    "bitsPerValue": 24,
+    "canonical_f32_hex": "3f666668",
+    "canonical_f32_ulp": 5.960464477539063e-08,
+    "canonical_kg_per_m2_f32": 0.9000000953674316,
+    "decimalScaleFactor": 0,
+    "decoded_m": 0.0009000001009553671,
+    "decoded_m_f64_hex": "3f4d7dbf80000000",
+    "encoder_input_m": 0.0009,
+    "encoder_input_m_f64_hex": "3f4d7dbf487fcb92",
+    "field_maximum_m": 0.003,
+    "file": "FCOG_acc_SL.2023110200.4242.1",
+    "flex_extract_mm": 0.9000001009553671,
+    "forecast_reference_s": 86400,
+    "grib_value_index": 7,
+    "message_index": 0,
+    "message_sha256": "1e347b3b09e5f9a77b88615ca527ae1aa81f784b9087d9493419366085957c79",
+    "observation_index": 8,
+    "packed_integer": 3865471,
+    "quantization_error_m": {
+     "exact": "465574455/4611686018427387904",
+     "float": 1.0095536711295094e-10
+    },
+    "quantization_error_over_quantum": 0.43360000010579824,
+    "quantum_m": {
+     "exact": "1/4294967296",
+     "float": 2.3283064365386963e-10
+    },
+    "referenceValue": 0.0,
+    "reset_s": 86400,
+    "step_hours": 3,
+    "valid_time_s": 97200
+   },
+   "rejection_75_90": {
+    "caller": "src/gpu/meteorology.rs upload_accumulation -> validate_interval_sequence",
+    "current_kg_per_m2": 0.8999998569488525,
+    "effect": "CanonicalGpuField::upload fails for the complete field",
+    "error": "AccumulationError::NegativeDelta",
+    "observation_index": 9,
+    "previous_kg_per_m2": 0.9000000953674316,
+    "site": "src/meteorology/accumulation.rs validate_interval_metadata"
+   },
+   "run_identity": {
+    "reset_s": 86400,
+    "same_declared_reset": true,
+    "same_forecast_reference": true
+   },
+   "signed_difference": {
+    "canonical_f32_ulps_of_previous": -4.0,
+    "canonical_kg_per_m2": {
+     "exact": "-1/4194304",
+     "float": -2.384185791015625e-07
+    },
+    "decoded_m": {
+     "exact": "-1/4294967296",
+     "float": -2.3283064365386963e-10
+    },
+    "decoded_over_previous_quantum": -1.0,
+    "flex_extract_mm": -2.3283064365386963e-07
+   },
+   "signed_interval_mean_rate": {
+    "canonical_f32_diagnostic_amount_kg_per_m2": -2.384185791015625e-07,
+    "canonical_f32_diagnostic_note": "what the #90 WGSL arithmetic would yield if the row were not rejected; never emitted",
+    "canonical_f32_diagnostic_rate_mm_per_h": -7.947286206899662e-08,
+    "flex_extract_deac_vals_mm_per_h": -7.761021455128987e-08,
+    "oracle_negative_interval_mean_mm_per_h": -7.761021455128987e-08
+   }
+  },
+  {
+   "bounds": {
+    "canonical_kg_per_m2": {
+     "exact": "7160019735176807/37778931862957161709568",
+     "float": 1.8952414433393018e-07
+    },
+    "decrease_over_canonical_bound": 0.31449631383308513,
+    "decrease_over_source_adjacent_bound": 0.3333333333333333,
+    "decrease_over_source_nearest_bound": 0.6666666666666666,
+    "source_adjacent_level_m": {
+     "exact": "3/17179869184",
+     "float": 1.7462298274040222e-10
+    },
+    "source_nearest_rounding_m": {
+     "exact": "3/34359738368",
+     "float": 8.731149137020111e-11
+    }
+   },
+   "canonical_cell": 1,
+   "classification": {
+    "code": "quantization_compatible_decrease",
+    "verdict": "ADMIT_BOUNDED"
+   },
+   "current": {
+    "binaryScaleFactor": -33,
+    "bitsPerValue": 24,
+    "canonical_f32_hex": "3e666664",
+    "canonical_f32_ulp": 1.4901161193847656e-08,
+    "canonical_kg_per_m2_f32": 0.22499996423721313,
+    "decimalScaleFactor": 0,
+    "decoded_m": 0.00022499996703118086,
+    "decoded_m_f64_hex": "3f2d7dbf00000000",
+    "encoder_input_m": 0.000225,
+    "encoder_input_m_f64_hex": "3f2d7dbf487fcb92",
+    "field_maximum_m": 0.0012,
+    "file": "FCOG_acc_SL.2023110200.4242.1",
+    "flex_extract_mm": 0.22499996703118086,
+    "forecast_reference_s": 86400,
+    "grib_value_index": 7,
+    "message_index": 3,
+    "message_sha256": "d1db89d778960552b807212768029630589b706bc27869b266046ff69c075a79",
+    "observation_index": 9,
+    "packed_integer": 1932735,
+    "quantization_error_m": {
+     "exact": "-608167369/18446744073709551616",
+     "float": -3.296881913522967e-11
+    },
+    "quantization_error_over_quantum": -0.2831999999471009,
+    "quantum_m": {
+     "exact": "1/8589934592",
+     "float": 1.1641532182693481e-10
+    },
+    "referenceValue": 0.0,
+    "reset_s": 86400,
+    "step_hours": 6,
+    "valid_time_s": 108000
+   },
+   "darain_clipped_mm_per_h": 0.0,
+   "darain_input_mm_per_h": -1.9402553637822468e-08,
+   "encoder_inputs_identical": true,
+   "interval_duration_s": 10800,
+   "interval_end_s": 108000,
+   "interval_start_s": 97200,
+   "node_i_j": [
+    1,
+    0
+   ],
+   "packing_parameters_differ": true,
+   "param_id": 143,
+   "parameter": "cp",
+   "previous": {
+    "binaryScaleFactor": -34,
+    "bitsPerValue": 24,
+    "canonical_f32_hex": "3e666668",
+    "canonical_f32_ulp": 1.4901161193847656e-08,
+    "canonical_kg_per_m2_f32": 0.2250000238418579,
+    "decimalScaleFactor": 0,
+    "decoded_m": 0.00022500002523884177,
+    "decoded_m_f64_hex": "3f2d7dbf80000000",
+    "encoder_input_m": 0.000225,
+    "encoder_input_m_f64_hex": "3f2d7dbf487fcb92",
+    "field_maximum_m": 0.0006,
+    "file": "FCOG_acc_SL.2023110200.4242.1",
+    "flex_extract_mm": 0.22500002523884177,
+    "forecast_reference_s": 86400,
+    "grib_value_index": 7,
+    "message_index": 1,
+    "message_sha256": "64e188593e57518ff4b77247d6b0fba4b776d6c71ef266f98692c2e7af20a5a7",
+    "observation_index": 8,
+    "packed_integer": 3865471,
+    "quantization_error_m": {
+     "exact": "465574455/18446744073709551616",
+     "float": 2.5238841778237736e-11
+    },
+    "quantization_error_over_quantum": 0.43360000010579824,
+    "quantum_m": {
+     "exact": "1/17179869184",
+     "float": 5.820766091346741e-11
+    },
+    "referenceValue": 0.0,
+    "reset_s": 86400,
+    "step_hours": 3,
+    "valid_time_s": 97200
+   },
+   "rejection_75_90": {
+    "caller": "src/gpu/meteorology.rs upload_accumulation -> validate_interval_sequence",
+    "current_kg_per_m2": 0.22499996423721313,
+    "effect": "CanonicalGpuField::upload fails for the complete field",
+    "error": "AccumulationError::NegativeDelta",
+    "observation_index": 9,
+    "previous_kg_per_m2": 0.2250000238418579,
+    "site": "src/meteorology/accumulation.rs validate_interval_metadata"
+   },
+   "run_identity": {
+    "reset_s": 86400,
+    "same_declared_reset": true,
+    "same_forecast_reference": true
+   },
+   "signed_difference": {
+    "canonical_f32_ulps_of_previous": -4.0,
+    "canonical_kg_per_m2": {
+     "exact": "-1/16777216",
+     "float": -5.960464477539063e-08
+    },
+    "decoded_m": {
+     "exact": "-1/17179869184",
+     "float": -5.820766091346741e-11
+    },
+    "decoded_over_previous_quantum": -1.0,
+    "flex_extract_mm": -5.820766091346741e-08
+   },
+   "signed_interval_mean_rate": {
+    "canonical_f32_diagnostic_amount_kg_per_m2": -5.960464477539063e-08,
+    "canonical_f32_diagnostic_note": "what the #90 WGSL arithmetic would yield if the row were not rejected; never emitted",
+    "canonical_f32_diagnostic_rate_mm_per_h": -1.9868215517249155e-08,
+    "flex_extract_deac_vals_mm_per_h": -1.9402553637822468e-08,
+    "oracle_negative_interval_mean_mm_per_h": -1.9402553637822468e-08
+   }
+  },
+  {
+   "bounds": {
+    "canonical_kg_per_m2": {
+     "exact": "1930742423407821/2361183241434822606848",
+     "float": 8.177012226440184e-07
+    },
+    "decrease_over_canonical_bound": 0.29157175322624734,
+    "decrease_over_source_adjacent_bound": 0.3333333333333333,
+    "decrease_over_source_nearest_bound": 0.6666666666666666,
+    "source_adjacent_level_m": {
+     "exact": "3/4294967296",
+     "float": 6.984919309616089e-10
+    },
+    "source_nearest_rounding_m": {
+     "exact": "3/8589934592",
+     "float": 3.4924596548080444e-10
+    }
+   },
+   "canonical_cell": 5,
+   "classification": {
+    "code": "quantization_compatible_decrease",
+    "verdict": "ADMIT_BOUNDED"
+   },
+   "current": {
+    "binaryScaleFactor": -31,
+    "bitsPerValue": 24,
+    "canonical_f32_hex": "3f999998",
+    "canonical_f32_ulp": 1.1920928955078125e-07,
+    "canonical_kg_per_m2_f32": 1.1999998092651367,
+    "decimalScaleFactor": 0,
+    "decoded_m": 0.001199999824166298,
+    "decoded_m_f64_hex": "3f53a92a00000000",
+    "encoder_input_m": 0.0012,
+    "encoder_input_m_f64_hex": "3f53a92a30553261",
+    "field_maximum_m": 0.004125,
+    "file": "FCOG_acc_SL.2023110212.4242.1",
+    "flex_extract_mm": 1.199999824166298,
+    "forecast_reference_s": 129600,
+    "grib_value_index": 5,
+    "message_index": 5,
+    "message_sha256": "ad31bc1e5d369f54133880a54f4660b93a5f15e4098eb3c8a752aff1928d5821",
+    "observation_index": 14,
+    "packed_integer": 2576980,
+    "quantization_error_m": {
+     "exact": "-810889825/4611686018427387904",
+     "float": -1.758337019822781e-10
+    },
+    "quantization_error_over_quantum": -0.3775999997742474,
+    "quantum_m": {
+     "exact": "1/2147483648",
+     "float": 4.656612873077393e-10
+    },
+    "referenceValue": 0.0,
+    "reset_s": 129600,
+    "step_hours": 9,
+    "valid_time_s": 162000
+   },
+   "darain_clipped_mm_per_h": 0.0,
+   "darain_input_mm_per_h": -7.761021455128987e-08,
+   "encoder_inputs_identical": true,
+   "interval_duration_s": 10800,
+   "interval_end_s": 162000,
+   "interval_start_s": 151200,
+   "node_i_j": [
+    2,
+    1
+   ],
+   "packing_parameters_differ": true,
+   "param_id": 143,
+   "parameter": "cp",
+   "previous": {
+    "binaryScaleFactor": -32,
+    "bitsPerValue": 24,
+    "canonical_f32_hex": "3f99999a",
+    "canonical_f32_ulp": 1.1920928955078125e-07,
+    "canonical_kg_per_m2_f32": 1.2000000476837158,
+    "decimalScaleFactor": 0,
+    "decoded_m": 0.0012000000569969416,
+    "decoded_m_f64_hex": "3f53a92a40000000",
+    "encoder_input_m": 0.0012,
+    "encoder_input_m_f64_hex": "3f53a92a30553261",
+    "field_maximum_m": 0.0039,
+    "file": "FCOG_acc_SL.2023110212.4242.1",
+    "flex_extract_mm": 1.2000000569969416,
+    "forecast_reference_s": 129600,
+    "grib_value_index": 5,
+    "message_index": 3,
+    "message_sha256": "c1fe8802c837cb9c532d57d97db4a6e568b7de6a49c3eb27aa4e6f7049127d26",
+    "observation_index": 13,
+    "packed_integer": 5153961,
+    "quantization_error_m": {
+     "exact": "262851999/4611686018427387904",
+     "float": 5.699694167159153e-11
+    },
+    "quantization_error_over_quantum": 0.24480000045150518,
+    "quantum_m": {
+     "exact": "1/4294967296",
+     "float": 2.3283064365386963e-10
+    },
+    "referenceValue": 0.0,
+    "reset_s": 129600,
+    "step_hours": 6,
+    "valid_time_s": 151200
+   },
+   "rejection_75_90": {
+    "caller": "src/gpu/meteorology.rs upload_accumulation -> validate_interval_sequence",
+    "current_kg_per_m2": 1.1999998092651367,
+    "effect": "CanonicalGpuField::upload fails for the complete field",
+    "error": "AccumulationError::NegativeDelta",
+    "observation_index": 14,
+    "previous_kg_per_m2": 1.2000000476837158,
+    "site": "src/meteorology/accumulation.rs validate_interval_metadata"
+   },
+   "run_identity": {
+    "reset_s": 129600,
+    "same_declared_reset": true,
+    "same_forecast_reference": true
+   },
+   "signed_difference": {
+    "canonical_f32_ulps_of_previous": -2.0,
+    "canonical_kg_per_m2": {
+     "exact": "-1/4194304",
+     "float": -2.384185791015625e-07
+    },
+    "decoded_m": {
+     "exact": "-1/4294967296",
+     "float": -2.3283064365386963e-10
+    },
+    "decoded_over_previous_quantum": -1.0,
+    "flex_extract_mm": -2.3283064365386963e-07
+   },
+   "signed_interval_mean_rate": {
+    "canonical_f32_diagnostic_amount_kg_per_m2": -2.384185791015625e-07,
+    "canonical_f32_diagnostic_note": "what the #90 WGSL arithmetic would yield if the row were not rejected; never emitted",
+    "canonical_f32_diagnostic_rate_mm_per_h": -7.947286206899662e-08,
+    "flex_extract_deac_vals_mm_per_h": -7.761021455128987e-08,
+    "oracle_negative_interval_mean_mm_per_h": -7.761021455128987e-08
+   }
+  }
+ ],
+ "pair_statistics": {
+  "binary_scale_changes": 108,
+  "canonical_decreases": 3,
+  "decoded_decreases": 3,
+  "decoded_flat": 75,
+  "decoded_increases_on_true_flat": 2,
+  "decreases_on_unchanged_packing": 0,
+  "same_run_pairs": 216,
+  "true_flat_pairs": 80,
+  "true_increase_decoded_decrease": 0
+ },
+ "references": {
+  "flex_extract": {
+   "blobs": {
+    "Source/Python/Classes/EcFlexpart.py": "65ba97f7e4212e4187accda307d79436bee23231",
+    "Source/Python/Mods/disaggregation.py": "12ec74a7ee4cc0d0fe4555406160fcd7b4b9945e"
+   },
+   "darain": "Source/Python/Mods/disaggregation.py:106-157",
+   "darain_clip": "Source/Python/Mods/disaggregation.py:144-147",
+   "deaccumulation": "Source/Python/Classes/EcFlexpart.py:1123-1143",
+   "pinned_commit": "e0005c99ac81d12faa45a8ff799debbd592b0dc0"
+  },
+  "flexpart": {
+   "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+   "precipitation_reader_clip": "src/windfields_mod.f90:2335-2348"
+  },
+  "repository_revision": "249a5ae563a8a5fb36943e6ac27625579878c980"
+ },
+ "related_issues": [
+  75,
+  90,
+  202,
+  207,
+  32,
+  29
+ ],
+ "schema": "flexpart-gpu/grib-packing-decrease-decision/v1",
+ "validation_level": "original-source analysis; exact bit-level decoding of the committed #202 GRIB input with two independent decoders; no GPU execution, no production change, no parity claim"
+}

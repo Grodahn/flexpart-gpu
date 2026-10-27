@@ -56,6 +56,8 @@ Keep the final checks and owner-specific pinned-oracle gates described below.
 
 - Precipitation member mapping (#202): `cargo test --test precipitation_member_mapping` locks the decision and its decoded evidence offline. It is research evidence only, not a GPU or production check. Regenerating the original evidence follows [the decision note](../research/precipitation-interval-mapping-202.md#phase-4--executed-example).
 
+- GRIB-packing decreases (#216): `cargo test --test grib_packing_decision` locks the decision offline: three independent GRIB1 decoders, exact bound, policy controls and the unchanged #75 rejection. It is research evidence only, not a GPU or production check. Regeneration is in [the decision note](../research/grib-packing-accumulation-216.md#reproduction).
+
 - Precipitation members (#207): `cargo test --lib precipitation_members`, then `cargo test --test precipitation_members_gpu -- --test-threads=1` on software (`FLEXPART_GPU_SOFTWARE=1`) and hardware adapters; reports in `target/ci-gate/precipitation-members/`. Oracle regeneration and the #75 blocker are in [the contract](../precipitation-members.md#evidence).
 - GRIB2 CP units (#211): `cargo test --test grib2_cp_units` locks the decision and its decoded producer/reader evidence offline. Research evidence only, not a GPU or production check; regeneration follows [the decision note](../research/grib2-cp-units-211.md#reproduction).
 

@@ -1,0 +1,212 @@
+{
+  "schema": "flexpart-gpu/grib2-cp-units-decision/v1",
+  "version": 1,
+  "issue": 211,
+  "consumer_issue": 32,
+  "related_issues": [29, 90, 119, 202, 207, 212],
+  "evidence": "fixtures/accumulation/grib2-cp-units-evidence-v1.json",
+  "evidence_sha256": "b65935777e01359b810a0fdc10c18b5ec26b11ce53cc463b6e661841b2a68757",
+  "research_note": "docs/research/grib2-cp-units-211.md",
+  "verdict_statement": "The pinned FLEXPART 11.1 GRIB2 CP divisor of 1000 is a compensation for the ecCodes 2.24.2 GRIB1->GRIB2 concept of ECMWF paramId 143 (discipline 0, category 1, number 10, unitsFactor = 1000), which multiplies the flex_extract mm/h CP values by 1000 and relabels them acpcp (paramId 3063, kg m**-2). For flex_extract 7.1.2 FORMAT=GRIB2 output converted by ecCodes 2.24.2 and read by FLEXPART linked against ecCodes 2.24.2, the reader stores CP and LSP in the mm/h that interpol_rain and wetdepo expect: CORRECT_AS_PREPARED. The result depends on the producer's ecCodes definitions; ecCodes 2.50.0 maps LSP/CP to local 0/1/196 and 0/1/195 without scaling, and the pinned reader then stops in gridcheck_ecmwf. No reference defect is confirmed and none is corrected.",
+  "validation_level": [
+    "original-source analysis (pinned FLEXPART 11.1, flex_extract 7.1.2, ecCodes 2.24.2 definitions)",
+    "execution of unmodified pinned flex_extract EcFlexpart.deacc_fluxes and EcFlexpart.process_output (FORMAT GRIB1 and GRIB2)",
+    "execution of unmodified pinned FLEXPART 11.1 gridcheck_ecmwf and readwind_ecmwf on complete prepared input files (scripts/precipitation/grib2_cp_reader_oracle.f90)"
+  ],
+  "not_claimed": [
+    "GPU execution",
+    "production-path or FLEXPART 11.1 parity",
+    "suitability of GRIB2 precipitation produced or read with any ecCodes release other than the executed ones",
+    "RRINT=1 / numpf=3, PUREFC=1, BASETIME, ERA5 class EA, ensemble or nested-domain inputs",
+    "snow depth (SD) GRIB2 handling, observed only as an out-of-scope note",
+    "physical correctness of the candidate-created support fields (model-level, surface and orography messages)"
+  ],
+  "normative_references": {
+    "flexpart": {
+      "manifest": "reference/flexpart-11.1.json",
+      "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+      "configuration": {"eta": "no", "numpf": 1, "numwfmem": 2},
+      "blobs": {
+        "src/windfields_mod.f90": "6998b2a79263dd2b6deedb92380985f842e76c67",
+        "src/interpol_mod.f90": "8620892bf66adcbcf8b1a82982e492c1dc0171b4",
+        "src/wetdepo_mod.f90": "f76aa59124e296c0c9b9e53143e818f9e66e8c9a",
+        "src/com_mod.f90": "9e87f459e04518081c5c26f381d6151a950e8086",
+        "src/par_mod.f90": "98d831a487e77ca0daa596f5aa1c2a6b3a9e9197"
+      },
+      "divisor_origin": "introduced with the LSP/CC paramId fallbacks in commit 4fbe7a5609fe43bdc3940768d8f4d949237cc44a (version 9.2 beta, 2014-05-23), commented only as consistency with a new readwind.f90; no physical rationale is recorded in the source"
+    },
+    "flex_extract": {
+      "manifest": "reference/flex-extract.json",
+      "pinned_tag": "7.1.2",
+      "pinned_commit": "e0005c99ac81d12faa45a8ff799debbd592b0dc0",
+      "blobs": {
+        "Source/Python/Classes/EcFlexpart.py": "65ba97f7e4212e4187accda307d79436bee23231",
+        "Source/Python/Classes/ControlFile.py": "8ffff5aa0bd248fa926ce53b9d8d75641d6f6b25",
+        "Source/Python/Mods/prepare_flexpart.py": "d4958e34ce5d42a80c4adccec534803368ca0e37",
+        "Run/Control/CONTROL_OD.OPER.FC.eta.global": "00a8995f0a7e72122ad0d333a1f54388f26816b5",
+        "Run/Control/CONTROL_EA5": "3d5e7c28a44733a98b491ba65a6d1b094aa05dd3"
+      },
+      "grib2_configurations_shipped": ["CONTROL_EA5", "CONTROL_EI", "CONTROL_EI.global", "CONTROL_OD.OPER.FC.eta.basetime", "CONTROL_OD.OPER.FC.eta.global", "CONTROL_OD.OPER.FC.eta.highres", "CONTROL_OD.OPER.FC.gauss.global", "CONTROL_OD.OPER.FC.gauss.highres", "CONTROL_OD.OPER.FC.operational"],
+      "default_format": "GRIB1 (ControlFile.py:391)"
+    },
+    "eccodes": {
+      "producer_and_reader": "2.24.2 (Ubuntu 22.04 libeccodes 2.24.2-1 in flex-extract:latest and flexpart-fortran:latest)",
+      "variant_producer": "2.50.0 (PyPI eccodes 2.50.0 / eccodeslib 2.50.0.33 / eckitlib 2.5.0.33)",
+      "paramId_143_grib2_concept_by_release": {
+        "2.24.2": "discipline 0, parameterCategory 1, parameterNumber 10, unitsFactor 1000 (executed)",
+        "2.30.0": "discipline 0, parameterCategory 1, parameterNumber 10, unitsFactor 1000 (definitions source only)",
+        "2.31.0": "localTablesVersion 1, discipline 0, parameterCategory 1, parameterNumber 195, typeOfFirstFixedSurface 1, typeOfStatisticalProcessing 1 (definitions source only)",
+        "2.50.0": "discipline 0, parameterCategory 1, parameterNumber 195, typeOfStatisticalProcessing 1, units m, no scaling (executed)"
+      },
+      "paramId_142_grib2_concept_by_release": {
+        "2.24.2": "discipline 192, parameterCategory 128, parameterNumber 142 (executed)",
+        "2.30.0": "localTablesVersion 1, discipline 0, parameterCategory 1, parameterNumber 196, typeOfFirstFixedSurface 1, typeOfStatisticalProcessing 1 (definitions source only)",
+        "2.50.0": "discipline 0, parameterCategory 1, parameterNumber 196, typeOfStatisticalProcessing 1, units m, no scaling (executed)"
+      },
+      "definitions_source": "github.com/ecmwf/eccodes definitions/grib2/localConcepts/ecmf/paramId.def at tags 2.24.2, 2.30.0, 2.31.0, 2.32.0, 2.33.0, 2.34.0, 2.38.0 and develop (inspected 2026-10-27)"
+    },
+    "execution_environment": {
+      "flex-extract:latest": "sha256:717f14dfd25610d2cc54624243610e8f654ba3a746ea973fd2b33f9841f288ec",
+      "flexpart-fortran:latest": "sha256:324bb63d7311b13d9700906f05c98babaa69967c1dbfed124abb135855f80d84",
+      "variant": "python:3.11-slim with eccodes 2.50.0, eccodeslib 2.50.0.33, eckitlib 2.5.0.33, numpy 1.26.4",
+      "compiler": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0"
+    }
+  },
+  "producer_path": {
+    "entry": "Mods/prepare_flexpart.py:158-172: deacc_fluxes -> create -> process_output",
+    "deaccumulation": "EcFlexpart.py:1121-1143: values / (1/1000) then interval difference / DTIME, i.e. m accumulated -> mm/h interval mean for both LSP (142) and CP (143)",
+    "reconstruction": "RRINT=0 darain point rate, written as GRIB1 with the input's paramId and stepRange 0 (EcFlexpart.py:1180-1211; #202)",
+    "assembly": "EcFlexpart.py:1757-1765: fort.15, flux<T>, fort.16, OG_OROLSM concatenated into <PREFIX><YYMMDDHH>",
+    "grib2_conversion": "EcFlexpart.py:1893-1902: grib_set -s edition=2,productDefinitionTemplateNumber=8 on every output file when FORMAT=GRIB2; no other value change",
+    "grib1_label_versus_content": "The GRIB1 flux messages keep paramId 142/143, whose ecCodes units label is m, while they contain mm/h point rates. The units label is therefore not evidence of the content."
+  },
+  "reader_crosswalk": {
+    "common": {
+      "lines": "windfields_mod.f90:2060-2066 (editionNumber, stepRange -> ipf = stepRange + 1), 2085-2105 (GRIB2 keys discipline, parameterCategory, parameterNumber, typeOfFirstFixedSurface, level, paramId; conversion_factor reset to 1 per message), 2171-2179 (grib_get_real4_array 'values')",
+      "gridcheck_admission": "windfields_mod.f90:540-560 counts LSP/CP messages; 757-760 stops when none is recognised"
+    },
+    "cp": {
+      "grib2_match": "windfields_mod.f90:2145-2147: parameterCategory 1 and parameterNumber 10 -> is6 143, conversion_factor 1000; no paramId fallback",
+      "grib1_match": "windfields_mod.f90:2068-2080: indicatorOfParameter 143, conversion_factor 1",
+      "store": "windfields_mod.f90:2344-2349: convprec(i,j,1,ipf,n) = value / conversion_factor, then negative values clipped to 0",
+      "declared_units": "windfields_mod.f90:158 convprec [mm/h]"
+    },
+    "lsp": {
+      "grib2_match": "windfields_mod.f90:2143-2144: (parameterCategory 1 and parameterNumber 9) or paramId 142 -> is6 142, conversion_factor 1",
+      "grib1_match": "indicatorOfParameter 142, conversion_factor 1",
+      "store": "windfields_mod.f90:2336-2342: lsprec(i,j,1,ipf,n) = value, then negative values clipped to 0",
+      "declared_units": "windfields_mod.f90:157 lsprec [mm/h]"
+    },
+    "consumers": {
+      "interpol_rain": "interpol_mod.f90:1347-1354 bilinear lsprec/convprec without scaling (temporal arithmetic per #202)",
+      "wetdepo": "wetdepo_mod.f90:237,246 lsp/convp [mm/h]; 278,331-343 precsub = 0.01 mm/h; 611,644 prec/3.6E6 mm/h -> m/s; 716 lsp/convp area-fraction weighting"
+    },
+    "asymmetry_explanation": "ecCodes 2.24.2 encodes paramId 142 in the ECMWF local table (192/128/142, no unitsFactor) but paramId 143 as WMO 0/1/10 with unitsFactor 1000. FLEXPART divides only the WMO-numbered CP message, which is the one ecCodes scaled. The asymmetry is an intentional-looking compensation for an upstream encoder conversion, conditional on the ecCodes definitions; it is not a difference in prepared physical representation."
+  },
+  "units_by_stage_executed": {
+    "accumulated_input": {"lsp": "m accumulated since forecast base", "cp": "m accumulated since forecast base"},
+    "deacc_fluxes_written": {"lsp": "mm/h RRINT=0 point rate", "cp": "mm/h RRINT=0 point rate"},
+    "grib1_decoded": {"lsp": "mm/h (label m, paramId 142)", "cp": "mm/h (label m, paramId 143)", "power_of_1000_vs_written": 0},
+    "grib2_eccodes_2.24.2_decoded": {"lsp": "mm/h (label m, paramId 142, 192/128/142)", "cp": "1000 x mm/h (label kg m**-2, paramId 3063 acpcp, 0/1/10)", "cp_power_of_1000_vs_written": 1, "lsp_power_of_1000_vs_written": 0},
+    "reader_stored": {"lsp": "mm/h", "cp": "mm/h", "power_of_1000_vs_written": 0},
+    "packing": "simple packing, 24 bits, decimalScaleFactor 0 in both editions; the CP binaryScaleFactor changes from -24 (GRIB1) to -14 (GRIB2) only because the encoded range grew by 1000. Binary scaling is not the unit conversion."
+  },
+  "measured_divisor_effect": {
+    "statement": "In the executed ecCodes 2.24.2 GRIB2 file the decoded CP is 1000 times the prepared mm/h value (power-of-1000 exponent 1 on every nonzero row). The reader divisor returns it to exponent 0. Stored GRIB2 CP equals stored GRIB1 CP within the #71 policy (max absolute difference 2.235e-08 mm/h, from re-packing), and stored GRIB2 LSP equals stored GRIB1 LSP exactly.",
+    "without_divisor": "CP would be stored 1000 times too large (e.g. 200.00006 instead of 0.2 mm/h at node 0,0 on 2023-11-01 12 UTC)",
+    "divisor_without_eccodes_scaling": "Not reached by any executed original input: the ecCodes 2.50.0 CP message (0/1/195, m, unscaled) does not match the CP branch at all."
+  },
+  "input_classes": [
+    {
+      "id": "fe712-grib1",
+      "description": "flex_extract 7.1.2 FORMAT=GRIB1, RRINT=0, OD/OPER FC accumulated LSP/CP, numpf=1",
+      "verdict": "CORRECT_AS_PREPARED",
+      "execution": "executed (control): GRIB1 reader branch, conversion_factor 1; stored values equal the written mm/h within the #71 policy",
+      "evidence_rows": "all GRIB1 reader rows in every conversion of the evidence"
+    },
+    {
+      "id": "fe712-grib2-eccodes-2.24.2",
+      "description": "flex_extract 7.1.2 FORMAT=GRIB2 (grib_set edition=2, productDefinitionTemplateNumber=8) with ecCodes 2.24.2, read by FLEXPART 11.1 linked against ecCodes 2.24.2; RRINT=0, OD/OPER FC accumulated LSP/CP, numpf=1",
+      "verdict": "CORRECT_AS_PREPARED",
+      "fields": {
+        "cp": "0/1/10, PDT 8, typeOfStatisticalProcessing 0, stepRange 0, decoded paramId 3063 acpcp kg m**-2 carrying 1000 x mm/h; reader /1000 -> mm/h",
+        "lsp": "192/128/142, PDT 8, typeOfStatisticalProcessing 0, stepRange 0, decoded paramId 142 lsp m carrying mm/h; reader factor 1 -> mm/h"
+      },
+      "execution": "executed: 2 files, 18 CP and 18 LSP node rows, including 6 zero CP rows, 12 nonzero CP rows exposing the factor 1000 and 13 nonzero LSP control rows",
+      "evidence_conversion": "GRIB2"
+    },
+    {
+      "id": "fe712-grib2-eccodes-2.50.0-reader-eccodes-2.24.2",
+      "description": "flex_extract 7.1.2 FORMAT=GRIB2 converted by ecCodes 2.50.0, read by FLEXPART 11.1 linked against ecCodes 2.24.2",
+      "verdict": "UNRESOLVED",
+      "reason": "No precipitation value is stored, so no units verdict exists: LSP 0/1/196 and CP 0/1/195 match no reader branch and gridcheck_ecmwf stops at windfields_mod.f90:760. The original reader fails closed for this class.",
+      "execution": "executed: reader exit status 1 on both files",
+      "evidence_conversion": "prepared-grib2-eccodes-2.50.0"
+    },
+    {
+      "id": "fe712-grib2-eccodes-ge-2.31-reader-eccodes-ge-2.31",
+      "description": "flex_extract 7.1.2 FORMAT=GRIB2 converted by ecCodes >= 2.31, read by FLEXPART 11.1 linked against an ecCodes release that decodes 0/1/196 as paramId 142",
+      "verdict": "UNRESOLVED",
+      "reason": "Source-level hazard only: the LSP paramId fallback would admit LSP, so gridcheck_ecmwf passes, while CP (0/1/195) matches no branch and is never stored. Not executed; needs pinned FLEXPART built against such an ecCodes.",
+      "execution": "not executed"
+    },
+    {
+      "id": "fe712-grib2-eccodes-2.25-to-2.30",
+      "description": "flex_extract 7.1.2 FORMAT=GRIB2 converted by ecCodes 2.25-2.30",
+      "verdict": "UNRESOLVED",
+      "reason": "The CP concept is unchanged at 2.30.0 but the LSP concept already moved to 0/1/196; neither release was executed.",
+      "execution": "not executed"
+    },
+    {
+      "id": "non-flex-extract-grib2",
+      "description": "GRIB2 CP/LSP not produced by the flex_extract grib_set route: native MARS/ERA5 GRIB2 retrievals, WMO-standard accumulated acpcp in kg m**-2 from other producers, or any message whose values are not flex_extract mm/h point rates",
+      "verdict": "UNRESOLVED",
+      "reason": "No original producer for these representations was identified or executed. The reader would still divide any 0/1/10 message by 1000 and treat it as mm/h regardless of its accumulation period. This is not evidence that all GRIB2 precipitation is invalid.",
+      "execution": "not executed"
+    },
+    {
+      "id": "fe712-grib2-rrint1-numpf3",
+      "description": "flex_extract 7.1.2 RRINT=1 GRIB2 sub-members with numpf=3",
+      "verdict": "UNRESOLVED",
+      "reason": "Out of scope (#212). The same per-message conversion applies, but timing and member semantics are unresolved.",
+      "execution": "not executed"
+    }
+  ],
+  "handoff_32": {
+    "canonical_representation": "CP and LSP as point precipitation rates in mm/h at the member time (#202/#207 semantics), stored unscaled. #32 owns the provider-to-canonical conversion and records it in provenance.",
+    "accepted_provider_identities": [
+      "fe712-grib1 (GRIB1, table2Version 128, indicatorOfParameter 142/143, flex_extract 7.1.2 RRINT=0 output)",
+      "fe712-grib2-eccodes-2.24.2 (GRIB2 as converted by flex_extract 7.1.2 process_output with ecCodes 2.24.2)"
+    ],
+    "required_grib2_keys": {
+      "cp": {"editionNumber": 2, "discipline": 0, "parameterCategory": 1, "parameterNumber": 10, "productDefinitionTemplateNumber": 8, "typeOfStatisticalProcessing": 0, "typeOfFirstFixedSurface": 1, "stepRange": "0", "paramId_decoded_by_ecCodes_2.24.2": 3063},
+      "lsp": {"editionNumber": 2, "discipline": 192, "parameterCategory": 128, "parameterNumber": 142, "productDefinitionTemplateNumber": 8, "typeOfStatisticalProcessing": 0, "typeOfFirstFixedSurface": 1, "stepRange": "0", "paramId_decoded_by_ecCodes_2.24.2": 142},
+      "both": "regular_ll grid matching the snapshot, simple packing, one LSP and one CP message per file for numpf=1, producer provenance naming flex_extract 7.1.2 FORMAT=GRIB2 and the producer ecCodes release"
+    },
+    "conversion_ownership": "For the accepted GRIB2 class the decoder divides the decoded 0/1/10 CP values by exactly 1000 as the explicit inverse of the producer ecCodes unitsFactor, records that conversion with its producer identity in provenance, and keeps LSP unscaled. It must not apply the factor because of the units label, the WMO table or the FLEXPART source alone.",
+    "fail_closed_rejections": [
+      "missing_or_unknown_producer_identity",
+      "producer_eccodes_release_not_accepted",
+      "cp_grib2_identity_mismatch",
+      "lsp_grib2_identity_mismatch",
+      "unexpected_stepRange_or_statistical_processing",
+      "multiple_precipitation_members_for_numpf_1",
+      "missing_cp_or_lsp_member",
+      "units_label_used_as_conversion_evidence",
+      "non_finite_value"
+    ],
+    "negative_values": "clipped to 0 after the conversion, exactly as readwind_ecmwf does (windfields_mod.f90:2340, 2348); the clip is recorded in provenance",
+    "deliberate_differences_from_pinned_reader": "None required for the accepted classes. A candidate that admits other classes must document the difference; it must not inherit the pinned reader's behaviour of dividing every 0/1/10 message or of dropping 0/1/195 CP.",
+    "regression_fixture_requirements": [
+      "the frozen executed rows of fixtures/accumulation/grib2-cp-units-evidence-v1.json for both editions, including zero CP, nonzero CP and the LSP control",
+      "a rejection case for the ecCodes 2.50.0 0/1/195 and 0/1/196 messages",
+      "a rejection case for a 0/1/10 message without the accepted producer identity"
+    ],
+    "follow_up_issue": null,
+    "follow_up_reason": "No missing implementation was identified. The unexecuted ecCodes >= 2.31 hazard only needs #32 rejection; executing it requires a FLEXPART build against a newer ecCodes."
+  },
+  "out_of_scope_observations": [
+    "ecCodes 2.24.2 encodes snow depth (paramId 141) as 0/1/254, so the GRIB2 SD branch (0/1/11, /1000) never matches flex_extract GRIB2 output; the reader logs 'undefined GRiB2 message' and leaves sd unread.",
+    "The GRIB2 messages carry productDefinitionTemplateNumber 8 with typeOfStatisticalProcessing 0 (average) and stepRange 0 for point rates; the reader ignores these keys apart from stepRange."
+  ]
+}

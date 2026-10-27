@@ -28,6 +28,11 @@ jobs:
           python3 scripts/transport/run_top_boundary_oracle.py --checkout target/pristine-flexpart --output-dir target/ci-gate/top-second
           python3 scripts/transport/compare_top_boundary_builds.py --first target/ci-gate/top-first --second target/ci-gate/top-second --output target/ci-gate/top-reproducibility.json
           python3 scripts/transport/test_top_boundary_oracle.py
+      - name: Audit settling/sticky-stop contract against the pristine pin (#203)
+        run: |
+          set -euo pipefail
+          python3 scripts/transport/check_settling_stop_contract.py --checkout target/pristine-flexpart
+          python3 scripts/transport/test_check_settling_stop_contract.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

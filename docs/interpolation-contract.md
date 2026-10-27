@@ -432,6 +432,14 @@ yint4 (ctwc) = 0.0025
 intiy1/intiy2 = -9999, -9999   (all four corners icmv -> CLOUD -9999 -9999)
 ```
 
+**Member provenance ([#202](https://github.com/Grodahn/flexpart-gpu/issues/202)).**
+With `numpf=1`, the two members are flex_extract `RRINT=0` `darain`
+reconstructions of the rate at each memory time. They are not interval means.
+The golden above therefore proves the pinned arithmetic only. Within an
+admitted pair the result is three times the linear blend of the members. See
+the [decision](research/precipitation-interval-mapping-202.md) and
+[#207](https://github.com/Grodahn/flexpart-gpu/issues/207).
+
 ## 6. Real #29/#30 ERA5/ETEX oracle-sampled column
 
 The contract now contains both the real source descriptor

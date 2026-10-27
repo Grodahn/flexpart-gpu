@@ -232,6 +232,7 @@ fn main() {
     };
 
     let forcing = ForwardStepForcing {
+        settling_enabled: false,
         dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.0)],
         wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(0.0)],
         wet_precipitating_fraction: ParticleForcingField::Uniform(0.0),

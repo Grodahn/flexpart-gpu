@@ -89,7 +89,9 @@ The [software workflow](../.github/workflows/software-wgpu.yml) requires both.
 
 #112 can adopt this substrate for resident advection queries. Production consumer
 migrations remain #112–#115; within-stencil differing profiles remain #118;
-precipitation time and surface-flux eligibility remain #119/#120. ASL conversion,
+precipitation time sampling remains #119. #120 admits instantaneous surface fluxes
+to the shared #89 resolver; its paired evidence covers the #89 and #76 host-query
+paths, not resident lane batches. ASL conversion,
 interface-W extension and #117 cleanup are outside this change.
 
 [#173/#197 driver preparation](canonical-timeloop-meteorology.md) supplies complete

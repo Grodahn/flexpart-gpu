@@ -1,0 +1,7388 @@
+{
+  "schema": {
+    "id": "flexpart-gpu.surface-flux-temporal-oracle",
+    "version": 1
+  },
+  "issue": 120,
+  "validation_level": "direct_pinned_routines_on_field_memory_slots",
+  "comparison_policy": {
+    "owner": "issue #74/#89 temporal default",
+    "absolute": 1e-06,
+    "relative": 1e-05,
+    "formula": "abs(a-b) <= absolute OR abs(a-b) <= relative*max(abs(a),abs(b))"
+  },
+  "grid": {
+    "nx": 4,
+    "ny": 3,
+    "storage_order": "x_fastest"
+  },
+  "snapshot_times_s": [
+    0,
+    10800,
+    21600
+  ],
+  "fields": [
+    {
+      "index": 1,
+      "flexpart_variable": "sshf",
+      "grib_param_id": 146,
+      "canonical_field": "sensible_heat_flux",
+      "unit": "watt_per_square_meter",
+      "canonical_sign": "positive_upward_flux",
+      "flexpart_sign": "positive_downward",
+      "flexpart_to_canonical_factor": -1.0,
+      "flexpart_memory_array": "windfields_mod::sshf(:,:,1,memind(m))",
+      "flexpart_values_per_snapshot": [
+        [
+          42.5,
+          31.25,
+          18.0,
+          7.75,
+          25.5,
+          12.0,
+          -3.5,
+          -12.25,
+          8.0,
+          -6.5,
+          -20.75,
+          -35.0
+        ],
+        [
+          -60.25,
+          -95.5,
+          -130.0,
+          -152.75,
+          -88.0,
+          -121.5,
+          -170.25,
+          -198.0,
+          -110.5,
+          -149.0,
+          -205.5,
+          -240.25
+        ],
+        [
+          -185.0,
+          -230.75,
+          -262.5,
+          -301.25,
+          -210.5,
+          -255.0,
+          -298.75,
+          -340.0,
+          -240.25,
+          -287.5,
+          -333.0,
+          -372.5
+        ]
+      ],
+      "canonical_values_per_snapshot": [
+        [
+          -42.5,
+          -31.25,
+          -18.0,
+          -7.75,
+          -25.5,
+          -12.0,
+          3.5,
+          12.25,
+          -8.0,
+          6.5,
+          20.75,
+          35.0
+        ],
+        [
+          60.25,
+          95.5,
+          130.0,
+          152.75,
+          88.0,
+          121.5,
+          170.25,
+          198.0,
+          110.5,
+          149.0,
+          205.5,
+          240.25
+        ],
+        [
+          185.0,
+          230.75,
+          262.5,
+          301.25,
+          210.5,
+          255.0,
+          298.75,
+          340.0,
+          240.25,
+          287.5,
+          333.0,
+          372.5
+        ]
+      ]
+    },
+    {
+      "index": 2,
+      "flexpart_variable": "ssr",
+      "grib_param_id": 176,
+      "canonical_field": "surface_solar_radiation",
+      "unit": "watt_per_square_meter",
+      "canonical_sign": "non_negative",
+      "flexpart_sign": "non_negative_after_readwind_clip",
+      "flexpart_to_canonical_factor": 1.0,
+      "flexpart_memory_array": "windfields_mod::ssr(:,:,1,memind(m))",
+      "flexpart_values_per_snapshot": [
+        [
+          0.0,
+          0.0,
+          3.5,
+          12.25,
+          0.0,
+          6.75,
+          21.5,
+          40.0,
+          2.25,
+          18.5,
+          47.75,
+          80.5
+        ],
+        [
+          210.5,
+          265.25,
+          318.0,
+          371.75,
+          240.0,
+          299.5,
+          352.25,
+          405.0,
+          268.75,
+          330.0,
+          388.5,
+          447.25
+        ],
+        [
+          512.25,
+          580.5,
+          641.0,
+          702.75,
+          545.5,
+          610.25,
+          676.0,
+          735.5,
+          579.0,
+          648.75,
+          712.5,
+          781.25
+        ]
+      ],
+      "canonical_values_per_snapshot": [
+        [
+          0.0,
+          0.0,
+          3.5,
+          12.25,
+          0.0,
+          6.75,
+          21.5,
+          40.0,
+          2.25,
+          18.5,
+          47.75,
+          80.5
+        ],
+        [
+          210.5,
+          265.25,
+          318.0,
+          371.75,
+          240.0,
+          299.5,
+          352.25,
+          405.0,
+          268.75,
+          330.0,
+          388.5,
+          447.25
+        ],
+        [
+          512.25,
+          580.5,
+          641.0,
+          702.75,
+          545.5,
+          610.25,
+          676.0,
+          735.5,
+          579.0,
+          648.75,
+          712.5,
+          781.25
+        ]
+      ]
+    },
+    {
+      "index": 3,
+      "flexpart_variable": "ewss",
+      "grib_param_id": 180,
+      "canonical_field": "surface_stress_eastward",
+      "unit": "newton_per_square_meter",
+      "canonical_sign": "positive_eastward",
+      "flexpart_sign": "positive_eastward",
+      "flexpart_to_canonical_factor": 1.0,
+      "flexpart_memory_array": null,
+      "flexpart_values_per_snapshot": [
+        [
+          0.125,
+          0.0625,
+          -0.03125,
+          -0.09375,
+          0.15625,
+          0.078125,
+          0.0,
+          -0.0625,
+          0.1875,
+          0.09375,
+          0.015625,
+          -0.046875
+        ],
+        [
+          0.25,
+          0.1875,
+          0.09375,
+          -0.015625,
+          0.28125,
+          0.21875,
+          0.125,
+          0.03125,
+          0.3125,
+          0.234375,
+          0.15625,
+          0.0625
+        ],
+        [
+          0.40625,
+          0.34375,
+          0.25,
+          0.1328125,
+          0.4375,
+          0.375,
+          0.28125,
+          0.1875,
+          0.46875,
+          0.390625,
+          0.3125,
+          0.21875
+        ]
+      ],
+      "canonical_values_per_snapshot": [
+        [
+          0.125,
+          0.0625,
+          -0.03125,
+          -0.09375,
+          0.15625,
+          0.078125,
+          0.0,
+          -0.0625,
+          0.1875,
+          0.09375,
+          0.015625,
+          -0.046875
+        ],
+        [
+          0.25,
+          0.1875,
+          0.09375,
+          -0.015625,
+          0.28125,
+          0.21875,
+          0.125,
+          0.03125,
+          0.3125,
+          0.234375,
+          0.15625,
+          0.0625
+        ],
+        [
+          0.40625,
+          0.34375,
+          0.25,
+          0.1328125,
+          0.4375,
+          0.375,
+          0.28125,
+          0.1875,
+          0.46875,
+          0.390625,
+          0.3125,
+          0.21875
+        ]
+      ]
+    },
+    {
+      "index": 4,
+      "flexpart_variable": "nsss",
+      "grib_param_id": 181,
+      "canonical_field": "surface_stress_northward",
+      "unit": "newton_per_square_meter",
+      "canonical_sign": "positive_northward",
+      "flexpart_sign": "positive_northward",
+      "flexpart_to_canonical_factor": 1.0,
+      "flexpart_memory_array": null,
+      "flexpart_values_per_snapshot": [
+        [
+          -0.0703125,
+          -0.109375,
+          -0.15625,
+          -0.203125,
+          -0.046875,
+          -0.078125,
+          -0.125,
+          -0.171875,
+          -0.015625,
+          -0.0546875,
+          -0.09375,
+          -0.140625
+        ],
+        [
+          0.0390625,
+          0.0078125,
+          -0.03125,
+          -0.0859375,
+          0.0625,
+          0.0234375,
+          -0.015625,
+          -0.0546875,
+          0.09375,
+          0.046875,
+          0.0078125,
+          -0.0390625
+        ],
+        [
+          0.171875,
+          0.140625,
+          0.09375,
+          0.046875,
+          0.1953125,
+          0.15625,
+          0.1171875,
+          0.0703125,
+          0.21875,
+          0.1875,
+          0.140625,
+          0.09375
+        ]
+      ],
+      "canonical_values_per_snapshot": [
+        [
+          -0.0703125,
+          -0.109375,
+          -0.15625,
+          -0.203125,
+          -0.046875,
+          -0.078125,
+          -0.125,
+          -0.171875,
+          -0.015625,
+          -0.0546875,
+          -0.09375,
+          -0.140625
+        ],
+        [
+          0.0390625,
+          0.0078125,
+          -0.03125,
+          -0.0859375,
+          0.0625,
+          0.0234375,
+          -0.015625,
+          -0.0546875,
+          0.09375,
+          0.046875,
+          0.0078125,
+          -0.0390625
+        ],
+        [
+          0.171875,
+          0.140625,
+          0.09375,
+          0.046875,
+          0.1953125,
+          0.15625,
+          0.1171875,
+          0.0703125,
+          0.21875,
+          0.1875,
+          0.140625,
+          0.09375
+        ]
+      ]
+    }
+  ],
+  "source_trace": {
+    "flexpart_revision_files": [
+      "src/windfields_mod.f90",
+      "src/getfields_mod.f90",
+      "src/interpol_mod.f90",
+      "src/drydepo_mod.f90"
+    ],
+    "flex_extract_files": [
+      "Source/Python/Classes/EcFlexpart.py",
+      "Source/Python/Mods/disaggregation.py"
+    ],
+    "preprocessing": "flex_extract EcFlexpart.deacc_fluxes (EcFlexpart.py:1123-1143) de-accumulates J/m2 or N m-2 s by /3600/dtime, then disaggregation.dapoly (disaggregation.py:62-103) reconstructs a point value at the central boundary of four intervals and writes it with stepRange 0 at that validity time (EcFlexpart.py:1180-1211); period-edge records are not reconstructions (1193-1250)",
+    "reader": "readwind_ecmwf stores values unscaled per memory slot (windfields_mod.f90:2351-2386); SSR < 0 is clipped to 0; EWSS/NSSS remain locals and form sfcstress (2543-2579); missing fluxes trigger the pbl_profile fallback (2583-2609)",
+    "consumer": "calcpar(memind(n)) consumes values at memtime(n) only (getfields_mod.f90:976-1067); derived ustar/wstar/oli (interpol_mod.f90:706-737), hmix (1119-1158) and vdep (drydepo_mod.f90:805-814) are interpolated in time",
+    "original_production_temporal_interpolation_of_field": false
+  },
+  "records": [
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 1,
+      "itime_s": 0,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        42.5,
+        -60.25
+      ],
+      "flexpart_value": 42.5,
+      "canonical_value": -42.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 1,
+      "itime_s": 0,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0,
+        210.5
+      ],
+      "flexpart_value": 0.0,
+      "canonical_value": 0.0
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 1,
+      "itime_s": 0,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.125,
+        0.25
+      ],
+      "flexpart_value": 0.125,
+      "canonical_value": 0.125
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 1,
+      "itime_s": 0,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0703125,
+        0.0390625
+      ],
+      "flexpart_value": -0.0703125,
+      "canonical_value": -0.0703125
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 2,
+      "itime_s": 0,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        31.25,
+        -95.5
+      ],
+      "flexpart_value": 31.25,
+      "canonical_value": -31.25
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 2,
+      "itime_s": 0,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0,
+        265.25
+      ],
+      "flexpart_value": 0.0,
+      "canonical_value": 0.0
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 2,
+      "itime_s": 0,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0625,
+        0.1875
+      ],
+      "flexpart_value": 0.0625,
+      "canonical_value": 0.0625
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 2,
+      "itime_s": 0,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.109375,
+        0.0078125
+      ],
+      "flexpart_value": -0.109375,
+      "canonical_value": -0.109375
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 3,
+      "itime_s": 0,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        18.0,
+        -130.0
+      ],
+      "flexpart_value": 18.0,
+      "canonical_value": -18.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 3,
+      "itime_s": 0,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        3.5,
+        318.0
+      ],
+      "flexpart_value": 3.5,
+      "canonical_value": 3.5
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 3,
+      "itime_s": 0,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.03125,
+        0.09375
+      ],
+      "flexpart_value": -0.03125,
+      "canonical_value": -0.03125
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 3,
+      "itime_s": 0,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.15625,
+        -0.03125
+      ],
+      "flexpart_value": -0.15625,
+      "canonical_value": -0.15625
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 4,
+      "itime_s": 0,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        7.75,
+        -152.75
+      ],
+      "flexpart_value": 7.75,
+      "canonical_value": -7.75
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 4,
+      "itime_s": 0,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        12.25,
+        371.75
+      ],
+      "flexpart_value": 12.25,
+      "canonical_value": 12.25
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 4,
+      "itime_s": 0,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.09375,
+        -0.015625
+      ],
+      "flexpart_value": -0.09375,
+      "canonical_value": -0.09375
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 4,
+      "itime_s": 0,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.203125,
+        -0.0859375
+      ],
+      "flexpart_value": -0.203125,
+      "canonical_value": -0.203125
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 5,
+      "itime_s": 0,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        25.5,
+        -88.0
+      ],
+      "flexpart_value": 25.5,
+      "canonical_value": -25.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 5,
+      "itime_s": 0,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0,
+        240.0
+      ],
+      "flexpart_value": 0.0,
+      "canonical_value": 0.0
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 5,
+      "itime_s": 0,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.15625,
+        0.28125
+      ],
+      "flexpart_value": 0.15625,
+      "canonical_value": 0.15625
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 5,
+      "itime_s": 0,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.046875,
+        0.0625
+      ],
+      "flexpart_value": -0.046875,
+      "canonical_value": -0.046875
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 6,
+      "itime_s": 0,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        12.0,
+        -121.5
+      ],
+      "flexpart_value": 12.0,
+      "canonical_value": -12.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 6,
+      "itime_s": 0,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        6.75,
+        299.5
+      ],
+      "flexpart_value": 6.75,
+      "canonical_value": 6.75
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 6,
+      "itime_s": 0,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.078125,
+        0.21875
+      ],
+      "flexpart_value": 0.078125,
+      "canonical_value": 0.078125
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 6,
+      "itime_s": 0,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.078125,
+        0.0234375
+      ],
+      "flexpart_value": -0.078125,
+      "canonical_value": -0.078125
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 7,
+      "itime_s": 0,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -3.5,
+        -170.25
+      ],
+      "flexpart_value": -3.5,
+      "canonical_value": 3.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 7,
+      "itime_s": 0,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        21.5,
+        352.25
+      ],
+      "flexpart_value": 21.5,
+      "canonical_value": 21.5
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 7,
+      "itime_s": 0,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0,
+        0.125
+      ],
+      "flexpart_value": 0.0,
+      "canonical_value": 0.0
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 7,
+      "itime_s": 0,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.125,
+        -0.015625
+      ],
+      "flexpart_value": -0.125,
+      "canonical_value": -0.125
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 8,
+      "itime_s": 0,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -12.25,
+        -198.0
+      ],
+      "flexpart_value": -12.25,
+      "canonical_value": 12.25
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 8,
+      "itime_s": 0,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        40.0,
+        405.0
+      ],
+      "flexpart_value": 40.0,
+      "canonical_value": 40.0
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 8,
+      "itime_s": 0,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0625,
+        0.03125
+      ],
+      "flexpart_value": -0.0625,
+      "canonical_value": -0.0625
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 8,
+      "itime_s": 0,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.171875,
+        -0.0546875
+      ],
+      "flexpart_value": -0.171875,
+      "canonical_value": -0.171875
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 9,
+      "itime_s": 0,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        8.0,
+        -110.5
+      ],
+      "flexpart_value": 8.0,
+      "canonical_value": -8.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 9,
+      "itime_s": 0,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        2.25,
+        268.75
+      ],
+      "flexpart_value": 2.25,
+      "canonical_value": 2.25
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 9,
+      "itime_s": 0,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.1875,
+        0.3125
+      ],
+      "flexpart_value": 0.1875,
+      "canonical_value": 0.1875
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 9,
+      "itime_s": 0,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.015625,
+        0.09375
+      ],
+      "flexpart_value": -0.015625,
+      "canonical_value": -0.015625
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 10,
+      "itime_s": 0,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -6.5,
+        -149.0
+      ],
+      "flexpart_value": -6.5,
+      "canonical_value": 6.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 10,
+      "itime_s": 0,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        18.5,
+        330.0
+      ],
+      "flexpart_value": 18.5,
+      "canonical_value": 18.5
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 10,
+      "itime_s": 0,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.09375,
+        0.234375
+      ],
+      "flexpart_value": 0.09375,
+      "canonical_value": 0.09375
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 10,
+      "itime_s": 0,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0546875,
+        0.046875
+      ],
+      "flexpart_value": -0.0546875,
+      "canonical_value": -0.0546875
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 11,
+      "itime_s": 0,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -20.75,
+        -205.5
+      ],
+      "flexpart_value": -20.75,
+      "canonical_value": 20.75
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 11,
+      "itime_s": 0,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        47.75,
+        388.5
+      ],
+      "flexpart_value": 47.75,
+      "canonical_value": 47.75
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 11,
+      "itime_s": 0,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.015625,
+        0.15625
+      ],
+      "flexpart_value": 0.015625,
+      "canonical_value": 0.015625
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 11,
+      "itime_s": 0,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.09375,
+        0.0078125
+      ],
+      "flexpart_value": -0.09375,
+      "canonical_value": -0.09375
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 12,
+      "itime_s": 0,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -35.0,
+        -240.25
+      ],
+      "flexpart_value": -35.0,
+      "canonical_value": 35.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 12,
+      "itime_s": 0,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        80.5,
+        447.25
+      ],
+      "flexpart_value": 80.5,
+      "canonical_value": 80.5
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 12,
+      "itime_s": 0,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.046875,
+        0.0625
+      ],
+      "flexpart_value": -0.046875,
+      "canonical_value": -0.046875
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 12,
+      "itime_s": 0,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "first_endpoint",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.140625,
+        -0.0390625
+      ],
+      "flexpart_value": -0.140625,
+      "canonical_value": -0.140625
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 13,
+      "itime_s": 3600,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        42.5,
+        -60.25
+      ],
+      "flexpart_value": 8.25,
+      "canonical_value": -8.25
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 13,
+      "itime_s": 3600,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0,
+        210.5
+      ],
+      "flexpart_value": 70.16666412353516,
+      "canonical_value": 70.16666412353516
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 13,
+      "itime_s": 3600,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.125,
+        0.25
+      ],
+      "flexpart_value": 0.1666666716337204,
+      "canonical_value": 0.1666666716337204
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 13,
+      "itime_s": 3600,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0703125,
+        0.0390625
+      ],
+      "flexpart_value": -0.0338541679084301,
+      "canonical_value": -0.0338541679084301
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 14,
+      "itime_s": 3600,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        31.25,
+        -95.5
+      ],
+      "flexpart_value": -11.0,
+      "canonical_value": 11.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 14,
+      "itime_s": 3600,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0,
+        265.25
+      ],
+      "flexpart_value": 88.41666412353516,
+      "canonical_value": 88.41666412353516
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 14,
+      "itime_s": 3600,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0625,
+        0.1875
+      ],
+      "flexpart_value": 0.1041666641831398,
+      "canonical_value": 0.1041666641831398
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 14,
+      "itime_s": 3600,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.109375,
+        0.0078125
+      ],
+      "flexpart_value": -0.0703125,
+      "canonical_value": -0.0703125
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 15,
+      "itime_s": 3600,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        18.0,
+        -130.0
+      ],
+      "flexpart_value": -31.33333396911621,
+      "canonical_value": 31.33333396911621
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 15,
+      "itime_s": 3600,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        3.5,
+        318.0
+      ],
+      "flexpart_value": 108.33333587646484,
+      "canonical_value": 108.33333587646484
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 15,
+      "itime_s": 3600,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.03125,
+        0.09375
+      ],
+      "flexpart_value": 0.010416666977107525,
+      "canonical_value": 0.010416666977107525
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 15,
+      "itime_s": 3600,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.15625,
+        -0.03125
+      ],
+      "flexpart_value": -0.1145833358168602,
+      "canonical_value": -0.1145833358168602
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 16,
+      "itime_s": 3600,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        7.75,
+        -152.75
+      ],
+      "flexpart_value": -45.75,
+      "canonical_value": 45.75
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 16,
+      "itime_s": 3600,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        12.25,
+        371.75
+      ],
+      "flexpart_value": 132.0833282470703,
+      "canonical_value": 132.0833282470703
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 16,
+      "itime_s": 3600,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.09375,
+        -0.015625
+      ],
+      "flexpart_value": -0.0677083358168602,
+      "canonical_value": -0.0677083358168602
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 16,
+      "itime_s": 3600,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.203125,
+        -0.0859375
+      ],
+      "flexpart_value": -0.1640625,
+      "canonical_value": -0.1640625
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 17,
+      "itime_s": 3600,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        25.5,
+        -88.0
+      ],
+      "flexpart_value": -12.333333015441895,
+      "canonical_value": 12.333333015441895
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 17,
+      "itime_s": 3600,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0,
+        240.0
+      ],
+      "flexpart_value": 80.0,
+      "canonical_value": 80.0
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 17,
+      "itime_s": 3600,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.15625,
+        0.28125
+      ],
+      "flexpart_value": 0.1979166716337204,
+      "canonical_value": 0.1979166716337204
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 17,
+      "itime_s": 3600,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.046875,
+        0.0625
+      ],
+      "flexpart_value": -0.010416666977107525,
+      "canonical_value": -0.010416666977107525
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 18,
+      "itime_s": 3600,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        12.0,
+        -121.5
+      ],
+      "flexpart_value": -32.5,
+      "canonical_value": 32.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 18,
+      "itime_s": 3600,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        6.75,
+        299.5
+      ],
+      "flexpart_value": 104.33333587646484,
+      "canonical_value": 104.33333587646484
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 18,
+      "itime_s": 3600,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.078125,
+        0.21875
+      ],
+      "flexpart_value": 0.125,
+      "canonical_value": 0.125
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 18,
+      "itime_s": 3600,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.078125,
+        0.0234375
+      ],
+      "flexpart_value": -0.0442708320915699,
+      "canonical_value": -0.0442708320915699
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 19,
+      "itime_s": 3600,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -3.5,
+        -170.25
+      ],
+      "flexpart_value": -59.08333206176758,
+      "canonical_value": 59.08333206176758
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 19,
+      "itime_s": 3600,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        21.5,
+        352.25
+      ],
+      "flexpart_value": 131.75,
+      "canonical_value": 131.75
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 19,
+      "itime_s": 3600,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0,
+        0.125
+      ],
+      "flexpart_value": 0.0416666679084301,
+      "canonical_value": 0.0416666679084301
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 19,
+      "itime_s": 3600,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.125,
+        -0.015625
+      ],
+      "flexpart_value": -0.0885416641831398,
+      "canonical_value": -0.0885416641831398
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 20,
+      "itime_s": 3600,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -12.25,
+        -198.0
+      ],
+      "flexpart_value": -74.16666412353516,
+      "canonical_value": 74.16666412353516
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 20,
+      "itime_s": 3600,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        40.0,
+        405.0
+      ],
+      "flexpart_value": 161.6666717529297,
+      "canonical_value": 161.6666717529297
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 20,
+      "itime_s": 3600,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0625,
+        0.03125
+      ],
+      "flexpart_value": -0.03125,
+      "canonical_value": -0.03125
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 20,
+      "itime_s": 3600,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.171875,
+        -0.0546875
+      ],
+      "flexpart_value": -0.1328125,
+      "canonical_value": -0.1328125
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 21,
+      "itime_s": 3600,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        8.0,
+        -110.5
+      ],
+      "flexpart_value": -31.5,
+      "canonical_value": 31.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 21,
+      "itime_s": 3600,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        2.25,
+        268.75
+      ],
+      "flexpart_value": 91.08333587646484,
+      "canonical_value": 91.08333587646484
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 21,
+      "itime_s": 3600,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.1875,
+        0.3125
+      ],
+      "flexpart_value": 0.2291666716337204,
+      "canonical_value": 0.2291666716337204
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 21,
+      "itime_s": 3600,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.015625,
+        0.09375
+      ],
+      "flexpart_value": 0.02083333395421505,
+      "canonical_value": 0.02083333395421505
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 22,
+      "itime_s": 3600,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -6.5,
+        -149.0
+      ],
+      "flexpart_value": -54.0,
+      "canonical_value": 54.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 22,
+      "itime_s": 3600,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        18.5,
+        330.0
+      ],
+      "flexpart_value": 122.33333587646484,
+      "canonical_value": 122.33333587646484
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 22,
+      "itime_s": 3600,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.09375,
+        0.234375
+      ],
+      "flexpart_value": 0.140625,
+      "canonical_value": 0.140625
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 22,
+      "itime_s": 3600,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0546875,
+        0.046875
+      ],
+      "flexpart_value": -0.02083333395421505,
+      "canonical_value": -0.02083333395421505
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 23,
+      "itime_s": 3600,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -20.75,
+        -205.5
+      ],
+      "flexpart_value": -82.33333587646484,
+      "canonical_value": 82.33333587646484
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 23,
+      "itime_s": 3600,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        47.75,
+        388.5
+      ],
+      "flexpart_value": 161.3333282470703,
+      "canonical_value": 161.3333282470703
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 23,
+      "itime_s": 3600,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.015625,
+        0.15625
+      ],
+      "flexpart_value": 0.0625,
+      "canonical_value": 0.0625
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 23,
+      "itime_s": 3600,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.09375,
+        0.0078125
+      ],
+      "flexpart_value": -0.0598958320915699,
+      "canonical_value": -0.0598958320915699
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 24,
+      "itime_s": 3600,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -35.0,
+        -240.25
+      ],
+      "flexpart_value": -103.41666412353516,
+      "canonical_value": 103.41666412353516
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 24,
+      "itime_s": 3600,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        80.5,
+        447.25
+      ],
+      "flexpart_value": 202.75,
+      "canonical_value": 202.75
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 24,
+      "itime_s": 3600,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.046875,
+        0.0625
+      ],
+      "flexpart_value": -0.010416666977107525,
+      "canonical_value": -0.010416666977107525
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 24,
+      "itime_s": 3600,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.140625,
+        -0.0390625
+      ],
+      "flexpart_value": -0.1067708358168602,
+      "canonical_value": -0.1067708358168602
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 25,
+      "itime_s": 7777,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        42.5,
+        -60.25
+      ],
+      "flexpart_value": -31.489513397216797,
+      "canonical_value": 31.489513397216797
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 25,
+      "itime_s": 7777,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0,
+        210.5
+      ],
+      "flexpart_value": 151.57948303222656,
+      "canonical_value": 151.57948303222656
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 25,
+      "itime_s": 7777,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.125,
+        0.25
+      ],
+      "flexpart_value": 0.2150115668773651,
+      "canonical_value": 0.2150115668773651
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 25,
+      "itime_s": 7777,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0703125,
+        0.0390625
+      ],
+      "flexpart_value": 0.008447627536952496,
+      "canonical_value": 0.008447627536952496
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 26,
+      "itime_s": 7777,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        31.25,
+        -95.5
+      ],
+      "flexpart_value": -60.02173614501953,
+      "canonical_value": 60.02173614501953
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 26,
+      "itime_s": 7777,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0,
+        265.25
+      ],
+      "flexpart_value": 191.0045623779297,
+      "canonical_value": 191.0045623779297
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 26,
+      "itime_s": 7777,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0625,
+        0.1875
+      ],
+      "flexpart_value": 0.1525115668773651,
+      "canonical_value": 0.1525115668773651
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 26,
+      "itime_s": 7777,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.109375,
+        0.0078125
+      ],
+      "flexpart_value": -0.02498914860188961,
+      "canonical_value": -0.02498914860188961
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 27,
+      "itime_s": 7777,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        18.0,
+        -130.0
+      ],
+      "flexpart_value": -88.57369995117188,
+      "canonical_value": 88.57369995117188
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 27,
+      "itime_s": 7777,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        3.5,
+        318.0
+      ],
+      "flexpart_value": 229.9691162109375,
+      "canonical_value": 229.9691162109375
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 27,
+      "itime_s": 7777,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.03125,
+        0.09375
+      ],
+      "flexpart_value": 0.05876157432794571,
+      "canonical_value": 0.05876157432794571
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 27,
+      "itime_s": 7777,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.15625,
+        -0.03125
+      ],
+      "flexpart_value": -0.06623842567205429,
+      "canonical_value": -0.06623842567205429
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 28,
+      "itime_s": 7777,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        7.75,
+        -152.75
+      ],
+      "flexpart_value": -107.82485961914062,
+      "canonical_value": 107.82485961914062
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 28,
+      "itime_s": 7777,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        12.25,
+        371.75
+      ],
+      "flexpart_value": 271.123291015625,
+      "canonical_value": 271.123291015625
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 28,
+      "itime_s": 7777,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.09375,
+        -0.015625
+      ],
+      "flexpart_value": -0.037492766976356506,
+      "canonical_value": -0.037492766976356506
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 28,
+      "itime_s": 7777,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.203125,
+        -0.0859375
+      ],
+      "flexpart_value": -0.11873915046453476,
+      "canonical_value": -0.11873915046453476
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 29,
+      "itime_s": 7777,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        25.5,
+        -88.0
+      ],
+      "flexpart_value": -56.23051071166992,
+      "canonical_value": 56.23051071166992
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 29,
+      "itime_s": 7777,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0,
+        240.0
+      ],
+      "flexpart_value": 172.8222198486328,
+      "canonical_value": 172.8222198486328
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 29,
+      "itime_s": 7777,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.15625,
+        0.28125
+      ],
+      "flexpart_value": 0.2462615668773651,
+      "canonical_value": 0.2462615668773651
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 29,
+      "itime_s": 7777,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.046875,
+        0.0625
+      ],
+      "flexpart_value": 0.03188512846827507,
+      "canonical_value": 0.03188512846827507
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 30,
+      "itime_s": 7777,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        12.0,
+        -121.5
+      ],
+      "flexpart_value": -84.13236236572266,
+      "canonical_value": 84.13236236572266
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 30,
+      "itime_s": 7777,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        6.75,
+        299.5
+      ],
+      "flexpart_value": 217.55711364746094,
+      "canonical_value": 217.55711364746094
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 30,
+      "itime_s": 7777,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.078125,
+        0.21875
+      ],
+      "flexpart_value": 0.17938801646232605,
+      "canonical_value": 0.17938801646232605
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 30,
+      "itime_s": 7777,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.078125,
+        0.0234375
+      ],
+      "flexpart_value": -0.004990595858544111,
+      "canonical_value": -0.004990595858544111
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 31,
+      "itime_s": 7777,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -3.5,
+        -170.25
+      ],
+      "flexpart_value": -123.575439453125,
+      "canonical_value": 123.575439453125
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 31,
+      "itime_s": 7777,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        21.5,
+        352.25
+      ],
+      "flexpart_value": 259.6706237792969,
+      "canonical_value": 259.6706237792969
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 31,
+      "itime_s": 7777,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0,
+        0.125
+      ],
+      "flexpart_value": 0.09001157432794571,
+      "canonical_value": 0.09001157432794571
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 31,
+      "itime_s": 7777,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.125,
+        -0.015625
+      ],
+      "flexpart_value": -0.04623987153172493,
+      "canonical_value": -0.04623987153172493
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 32,
+      "itime_s": 7777,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -12.25,
+        -198.0
+      ],
+      "flexpart_value": -146.0072021484375,
+      "canonical_value": 146.0072021484375
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 32,
+      "itime_s": 7777,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        40.0,
+        405.0
+      ],
+      "flexpart_value": 302.83380126953125,
+      "canonical_value": 302.83380126953125
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 32,
+      "itime_s": 7777,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0625,
+        0.03125
+      ],
+      "flexpart_value": 0.005008680745959282,
+      "canonical_value": 0.005008680745959282
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 32,
+      "itime_s": 7777,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.171875,
+        -0.0546875
+      ],
+      "flexpart_value": -0.08748915046453476,
+      "canonical_value": -0.08748915046453476
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 33,
+      "itime_s": 7777,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        8.0,
+        -110.5
+      ],
+      "flexpart_value": -77.33097076416016,
+      "canonical_value": 77.33097076416016
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 33,
+      "itime_s": 7777,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        2.25,
+        268.75
+      ],
+      "flexpart_value": 194.15467834472656,
+      "canonical_value": 194.15467834472656
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 33,
+      "itime_s": 7777,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.1875,
+        0.3125
+      ],
+      "flexpart_value": 0.2775115668773651,
+      "canonical_value": 0.2775115668773651
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 33,
+      "itime_s": 7777,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.015625,
+        0.09375
+      ],
+      "flexpart_value": 0.06313512474298477,
+      "canonical_value": 0.06313512474298477
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 34,
+      "itime_s": 7777,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -6.5,
+        -149.0
+      ],
+      "flexpart_value": -109.11319732666016,
+      "canonical_value": 109.11319732666016
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 34,
+      "itime_s": 7777,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        18.5,
+        330.0
+      ],
+      "flexpart_value": 242.808837890625,
+      "canonical_value": 242.808837890625
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 34,
+      "itime_s": 7777,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.09375,
+        0.234375
+      ],
+      "flexpart_value": 0.19501301646232605,
+      "canonical_value": 0.19501301646232605
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 34,
+      "itime_s": 7777,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0546875,
+        0.046875
+      ],
+      "flexpart_value": 0.0184469036757946,
+      "canonical_value": 0.0184469036757946
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 35,
+      "itime_s": 7777,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -20.75,
+        -205.5
+      ],
+      "flexpart_value": -153.787109375,
+      "canonical_value": 153.787109375
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 35,
+      "itime_s": 7777,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        47.75,
+        388.5
+      ],
+      "flexpart_value": 293.1215515136719,
+      "canonical_value": 293.1215515136719
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 35,
+      "itime_s": 7777,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.015625,
+        0.15625
+      ],
+      "flexpart_value": 0.11688802391290665,
+      "canonical_value": 0.11688802391290665
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 35,
+      "itime_s": 7777,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.09375,
+        0.0078125
+      ],
+      "flexpart_value": -0.0206155963242054,
+      "canonical_value": -0.0206155963242054
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 36,
+      "itime_s": 7777,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -35.0,
+        -240.25
+      ],
+      "flexpart_value": -182.79901123046875,
+      "canonical_value": 182.79901123046875
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 36,
+      "itime_s": 7777,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        80.5,
+        447.25
+      ],
+      "flexpart_value": 344.5939636230469,
+      "canonical_value": 344.5939636230469
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 36,
+      "itime_s": 7777,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.046875,
+        0.0625
+      ],
+      "flexpart_value": 0.03188512846827507,
+      "canonical_value": 0.03188512846827507
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 36,
+      "itime_s": 7777,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.140625,
+        -0.0390625
+      ],
+      "flexpart_value": -0.0674905925989151,
+      "canonical_value": -0.0674905925989151
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 37,
+      "itime_s": 3600,
+      "xt": 0.25,
+      "yt": 0.5,
+      "node": false,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        30.90625,
+        -82.71875
+      ],
+      "flexpart_value": -6.96875,
+      "canonical_value": 6.96875
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 37,
+      "itime_s": 3600,
+      "xt": 0.25,
+      "yt": 0.5,
+      "node": false,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.84375,
+        239.53125
+      ],
+      "flexpart_value": 80.40625,
+      "canonical_value": 80.40625
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 37,
+      "itime_s": 3600,
+      "xt": 0.25,
+      "yt": 0.5,
+      "node": false,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.123046875,
+        0.25
+      ],
+      "flexpart_value": 0.1653645783662796,
+      "canonical_value": 0.1653645783662796
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 37,
+      "itime_s": 3600,
+      "xt": 0.25,
+      "yt": 0.5,
+      "node": false,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0673828125,
+        0.0419921875
+      ],
+      "flexpart_value": -0.03092447854578495,
+      "canonical_value": -0.03092447854578495
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 1,
+      "query": 38,
+      "itime_s": 7777,
+      "xt": 1.625,
+      "yt": 1.375,
+      "node": false,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -4.33203125,
+        -164.09765625
+      ],
+      "flexpart_value": -119.37808227539062,
+      "canonical_value": 119.37808227539062
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 1,
+      "query": 38,
+      "itime_s": 7777,
+      "xt": 1.625,
+      "yt": 1.375,
+      "node": false,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        23.7734375,
+        345.25390625
+      ],
+      "flexpart_value": 255.26914978027344,
+      "canonical_value": 255.26914978027344
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 1,
+      "query": 38,
+      "itime_s": 7777,
+      "xt": 1.625,
+      "yt": 1.375,
+      "node": false,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.03515625,
+        0.169677734375
+      ],
+      "flexpart_value": 0.13202416896820068,
+      "canonical_value": 0.13202416896820068
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 1,
+      "query": 38,
+      "itime_s": 7777,
+      "xt": 1.625,
+      "yt": 1.375,
+      "node": false,
+      "application": "linear_interior",
+      "dts": [
+        7777.0,
+        3023.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0968017578125,
+        0.0078125
+      ],
+      "flexpart_value": -0.021469805389642715,
+      "canonical_value": -0.021469805389642715
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 1,
+      "itime_s": 10800,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -60.25,
+        -185.0
+      ],
+      "flexpart_value": -60.25,
+      "canonical_value": 60.25
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 1,
+      "itime_s": 10800,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        210.5,
+        512.25
+      ],
+      "flexpart_value": 210.5,
+      "canonical_value": 210.5
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 1,
+      "itime_s": 10800,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.25,
+        0.40625
+      ],
+      "flexpart_value": 0.25,
+      "canonical_value": 0.25
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 1,
+      "itime_s": 10800,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0390625,
+        0.171875
+      ],
+      "flexpart_value": 0.0390625,
+      "canonical_value": 0.0390625
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 2,
+      "itime_s": 10800,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -95.5,
+        -230.75
+      ],
+      "flexpart_value": -95.5,
+      "canonical_value": 95.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 2,
+      "itime_s": 10800,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        265.25,
+        580.5
+      ],
+      "flexpart_value": 265.25,
+      "canonical_value": 265.25
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 2,
+      "itime_s": 10800,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.1875,
+        0.34375
+      ],
+      "flexpart_value": 0.1875,
+      "canonical_value": 0.1875
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 2,
+      "itime_s": 10800,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0078125,
+        0.140625
+      ],
+      "flexpart_value": 0.0078125,
+      "canonical_value": 0.0078125
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 3,
+      "itime_s": 10800,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -130.0,
+        -262.5
+      ],
+      "flexpart_value": -130.0,
+      "canonical_value": 130.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 3,
+      "itime_s": 10800,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        318.0,
+        641.0
+      ],
+      "flexpart_value": 318.0,
+      "canonical_value": 318.0
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 3,
+      "itime_s": 10800,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.09375,
+        0.25
+      ],
+      "flexpart_value": 0.09375,
+      "canonical_value": 0.09375
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 3,
+      "itime_s": 10800,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.03125,
+        0.09375
+      ],
+      "flexpart_value": -0.03125,
+      "canonical_value": -0.03125
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 4,
+      "itime_s": 10800,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -152.75,
+        -301.25
+      ],
+      "flexpart_value": -152.75,
+      "canonical_value": 152.75
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 4,
+      "itime_s": 10800,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        371.75,
+        702.75
+      ],
+      "flexpart_value": 371.75,
+      "canonical_value": 371.75
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 4,
+      "itime_s": 10800,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.015625,
+        0.1328125
+      ],
+      "flexpart_value": -0.015625,
+      "canonical_value": -0.015625
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 4,
+      "itime_s": 10800,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0859375,
+        0.046875
+      ],
+      "flexpart_value": -0.0859375,
+      "canonical_value": -0.0859375
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 5,
+      "itime_s": 10800,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -88.0,
+        -210.5
+      ],
+      "flexpart_value": -88.0,
+      "canonical_value": 88.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 5,
+      "itime_s": 10800,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        240.0,
+        545.5
+      ],
+      "flexpart_value": 240.0,
+      "canonical_value": 240.0
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 5,
+      "itime_s": 10800,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.28125,
+        0.4375
+      ],
+      "flexpart_value": 0.28125,
+      "canonical_value": 0.28125
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 5,
+      "itime_s": 10800,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0625,
+        0.1953125
+      ],
+      "flexpart_value": 0.0625,
+      "canonical_value": 0.0625
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 6,
+      "itime_s": 10800,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -121.5,
+        -255.0
+      ],
+      "flexpart_value": -121.5,
+      "canonical_value": 121.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 6,
+      "itime_s": 10800,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        299.5,
+        610.25
+      ],
+      "flexpart_value": 299.5,
+      "canonical_value": 299.5
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 6,
+      "itime_s": 10800,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.21875,
+        0.375
+      ],
+      "flexpart_value": 0.21875,
+      "canonical_value": 0.21875
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 6,
+      "itime_s": 10800,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0234375,
+        0.15625
+      ],
+      "flexpart_value": 0.0234375,
+      "canonical_value": 0.0234375
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 7,
+      "itime_s": 10800,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -170.25,
+        -298.75
+      ],
+      "flexpart_value": -170.25,
+      "canonical_value": 170.25
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 7,
+      "itime_s": 10800,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        352.25,
+        676.0
+      ],
+      "flexpart_value": 352.25,
+      "canonical_value": 352.25
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 7,
+      "itime_s": 10800,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.125,
+        0.28125
+      ],
+      "flexpart_value": 0.125,
+      "canonical_value": 0.125
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 7,
+      "itime_s": 10800,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.015625,
+        0.1171875
+      ],
+      "flexpart_value": -0.015625,
+      "canonical_value": -0.015625
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 8,
+      "itime_s": 10800,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -198.0,
+        -340.0
+      ],
+      "flexpart_value": -198.0,
+      "canonical_value": 198.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 8,
+      "itime_s": 10800,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        405.0,
+        735.5
+      ],
+      "flexpart_value": 405.0,
+      "canonical_value": 405.0
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 8,
+      "itime_s": 10800,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.03125,
+        0.1875
+      ],
+      "flexpart_value": 0.03125,
+      "canonical_value": 0.03125
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 8,
+      "itime_s": 10800,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0546875,
+        0.0703125
+      ],
+      "flexpart_value": -0.0546875,
+      "canonical_value": -0.0546875
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 9,
+      "itime_s": 10800,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -110.5,
+        -240.25
+      ],
+      "flexpart_value": -110.5,
+      "canonical_value": 110.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 9,
+      "itime_s": 10800,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        268.75,
+        579.0
+      ],
+      "flexpart_value": 268.75,
+      "canonical_value": 268.75
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 9,
+      "itime_s": 10800,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.3125,
+        0.46875
+      ],
+      "flexpart_value": 0.3125,
+      "canonical_value": 0.3125
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 9,
+      "itime_s": 10800,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.09375,
+        0.21875
+      ],
+      "flexpart_value": 0.09375,
+      "canonical_value": 0.09375
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 10,
+      "itime_s": 10800,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -149.0,
+        -287.5
+      ],
+      "flexpart_value": -149.0,
+      "canonical_value": 149.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 10,
+      "itime_s": 10800,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        330.0,
+        648.75
+      ],
+      "flexpart_value": 330.0,
+      "canonical_value": 330.0
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 10,
+      "itime_s": 10800,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.234375,
+        0.390625
+      ],
+      "flexpart_value": 0.234375,
+      "canonical_value": 0.234375
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 10,
+      "itime_s": 10800,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.046875,
+        0.1875
+      ],
+      "flexpart_value": 0.046875,
+      "canonical_value": 0.046875
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 11,
+      "itime_s": 10800,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -205.5,
+        -333.0
+      ],
+      "flexpart_value": -205.5,
+      "canonical_value": 205.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 11,
+      "itime_s": 10800,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        388.5,
+        712.5
+      ],
+      "flexpart_value": 388.5,
+      "canonical_value": 388.5
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 11,
+      "itime_s": 10800,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.15625,
+        0.3125
+      ],
+      "flexpart_value": 0.15625,
+      "canonical_value": 0.15625
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 11,
+      "itime_s": 10800,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0078125,
+        0.140625
+      ],
+      "flexpart_value": 0.0078125,
+      "canonical_value": 0.0078125
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 12,
+      "itime_s": 10800,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -240.25,
+        -372.5
+      ],
+      "flexpart_value": -240.25,
+      "canonical_value": 240.25
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 12,
+      "itime_s": 10800,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        447.25,
+        781.25
+      ],
+      "flexpart_value": 447.25,
+      "canonical_value": 447.25
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 12,
+      "itime_s": 10800,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0625,
+        0.21875
+      ],
+      "flexpart_value": 0.0625,
+      "canonical_value": 0.0625
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 12,
+      "itime_s": 10800,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0390625,
+        0.09375
+      ],
+      "flexpart_value": -0.0390625,
+      "canonical_value": -0.0390625
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 13,
+      "itime_s": 14400,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -60.25,
+        -185.0
+      ],
+      "flexpart_value": -101.83333587646484,
+      "canonical_value": 101.83333587646484
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 13,
+      "itime_s": 14400,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        210.5,
+        512.25
+      ],
+      "flexpart_value": 311.0833435058594,
+      "canonical_value": 311.0833435058594
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 13,
+      "itime_s": 14400,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.25,
+        0.40625
+      ],
+      "flexpart_value": 0.3020833432674408,
+      "canonical_value": 0.3020833432674408
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 13,
+      "itime_s": 14400,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0390625,
+        0.171875
+      ],
+      "flexpart_value": 0.0833333358168602,
+      "canonical_value": 0.0833333358168602
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 14,
+      "itime_s": 14400,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -95.5,
+        -230.75
+      ],
+      "flexpart_value": -140.5833282470703,
+      "canonical_value": 140.5833282470703
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 14,
+      "itime_s": 14400,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        265.25,
+        580.5
+      ],
+      "flexpart_value": 370.3333435058594,
+      "canonical_value": 370.3333435058594
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 14,
+      "itime_s": 14400,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.1875,
+        0.34375
+      ],
+      "flexpart_value": 0.2395833283662796,
+      "canonical_value": 0.2395833283662796
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 14,
+      "itime_s": 14400,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0078125,
+        0.140625
+      ],
+      "flexpart_value": 0.0520833320915699,
+      "canonical_value": 0.0520833320915699
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 15,
+      "itime_s": 14400,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -130.0,
+        -262.5
+      ],
+      "flexpart_value": -174.1666717529297,
+      "canonical_value": 174.1666717529297
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 15,
+      "itime_s": 14400,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        318.0,
+        641.0
+      ],
+      "flexpart_value": 425.6666564941406,
+      "canonical_value": 425.6666564941406
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 15,
+      "itime_s": 14400,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.09375,
+        0.25
+      ],
+      "flexpart_value": 0.1458333283662796,
+      "canonical_value": 0.1458333283662796
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 15,
+      "itime_s": 14400,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.03125,
+        0.09375
+      ],
+      "flexpart_value": 0.010416666977107525,
+      "canonical_value": 0.010416666977107525
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 16,
+      "itime_s": 14400,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -152.75,
+        -301.25
+      ],
+      "flexpart_value": -202.25,
+      "canonical_value": 202.25
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 16,
+      "itime_s": 14400,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        371.75,
+        702.75
+      ],
+      "flexpart_value": 482.0833435058594,
+      "canonical_value": 482.0833435058594
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 16,
+      "itime_s": 14400,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.015625,
+        0.1328125
+      ],
+      "flexpart_value": 0.0338541679084301,
+      "canonical_value": 0.0338541679084301
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 16,
+      "itime_s": 14400,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0859375,
+        0.046875
+      ],
+      "flexpart_value": -0.0416666679084301,
+      "canonical_value": -0.0416666679084301
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 17,
+      "itime_s": 14400,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -88.0,
+        -210.5
+      ],
+      "flexpart_value": -128.8333282470703,
+      "canonical_value": 128.8333282470703
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 17,
+      "itime_s": 14400,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        240.0,
+        545.5
+      ],
+      "flexpart_value": 341.8333435058594,
+      "canonical_value": 341.8333435058594
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 17,
+      "itime_s": 14400,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.28125,
+        0.4375
+      ],
+      "flexpart_value": 0.3333333432674408,
+      "canonical_value": 0.3333333432674408
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 17,
+      "itime_s": 14400,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0625,
+        0.1953125
+      ],
+      "flexpart_value": 0.1067708358168602,
+      "canonical_value": 0.1067708358168602
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 18,
+      "itime_s": 14400,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -121.5,
+        -255.0
+      ],
+      "flexpart_value": -166.0,
+      "canonical_value": 166.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 18,
+      "itime_s": 14400,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        299.5,
+        610.25
+      ],
+      "flexpart_value": 403.0833435058594,
+      "canonical_value": 403.0833435058594
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 18,
+      "itime_s": 14400,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.21875,
+        0.375
+      ],
+      "flexpart_value": 0.2708333432674408,
+      "canonical_value": 0.2708333432674408
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 18,
+      "itime_s": 14400,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0234375,
+        0.15625
+      ],
+      "flexpart_value": 0.0677083358168602,
+      "canonical_value": 0.0677083358168602
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 19,
+      "itime_s": 14400,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -170.25,
+        -298.75
+      ],
+      "flexpart_value": -213.0833282470703,
+      "canonical_value": 213.0833282470703
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 19,
+      "itime_s": 14400,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        352.25,
+        676.0
+      ],
+      "flexpart_value": 460.1666564941406,
+      "canonical_value": 460.1666564941406
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 19,
+      "itime_s": 14400,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.125,
+        0.28125
+      ],
+      "flexpart_value": 0.1770833283662796,
+      "canonical_value": 0.1770833283662796
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 19,
+      "itime_s": 14400,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.015625,
+        0.1171875
+      ],
+      "flexpart_value": 0.02864583395421505,
+      "canonical_value": 0.02864583395421505
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 20,
+      "itime_s": 14400,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -198.0,
+        -340.0
+      ],
+      "flexpart_value": -245.3333282470703,
+      "canonical_value": 245.3333282470703
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 20,
+      "itime_s": 14400,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        405.0,
+        735.5
+      ],
+      "flexpart_value": 515.1666870117188,
+      "canonical_value": 515.1666870117188
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 20,
+      "itime_s": 14400,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.03125,
+        0.1875
+      ],
+      "flexpart_value": 0.0833333358168602,
+      "canonical_value": 0.0833333358168602
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 20,
+      "itime_s": 14400,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0546875,
+        0.0703125
+      ],
+      "flexpart_value": -0.013020833022892475,
+      "canonical_value": -0.013020833022892475
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 21,
+      "itime_s": 14400,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -110.5,
+        -240.25
+      ],
+      "flexpart_value": -153.75,
+      "canonical_value": 153.75
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 21,
+      "itime_s": 14400,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        268.75,
+        579.0
+      ],
+      "flexpart_value": 372.1666564941406,
+      "canonical_value": 372.1666564941406
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 21,
+      "itime_s": 14400,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.3125,
+        0.46875
+      ],
+      "flexpart_value": 0.3645833432674408,
+      "canonical_value": 0.3645833432674408
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 21,
+      "itime_s": 14400,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.09375,
+        0.21875
+      ],
+      "flexpart_value": 0.1354166716337204,
+      "canonical_value": 0.1354166716337204
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 22,
+      "itime_s": 14400,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -149.0,
+        -287.5
+      ],
+      "flexpart_value": -195.1666717529297,
+      "canonical_value": 195.1666717529297
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 22,
+      "itime_s": 14400,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        330.0,
+        648.75
+      ],
+      "flexpart_value": 436.25,
+      "canonical_value": 436.25
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 22,
+      "itime_s": 14400,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.234375,
+        0.390625
+      ],
+      "flexpart_value": 0.2864583432674408,
+      "canonical_value": 0.2864583432674408
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 22,
+      "itime_s": 14400,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.046875,
+        0.1875
+      ],
+      "flexpart_value": 0.09375,
+      "canonical_value": 0.09375
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 23,
+      "itime_s": 14400,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -205.5,
+        -333.0
+      ],
+      "flexpart_value": -248.0,
+      "canonical_value": 248.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 23,
+      "itime_s": 14400,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        388.5,
+        712.5
+      ],
+      "flexpart_value": 496.5,
+      "canonical_value": 496.5
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 23,
+      "itime_s": 14400,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.15625,
+        0.3125
+      ],
+      "flexpart_value": 0.2083333283662796,
+      "canonical_value": 0.2083333283662796
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 23,
+      "itime_s": 14400,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0078125,
+        0.140625
+      ],
+      "flexpart_value": 0.0520833320915699,
+      "canonical_value": 0.0520833320915699
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 24,
+      "itime_s": 14400,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -240.25,
+        -372.5
+      ],
+      "flexpart_value": -284.3333435058594,
+      "canonical_value": 284.3333435058594
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 24,
+      "itime_s": 14400,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        447.25,
+        781.25
+      ],
+      "flexpart_value": 558.5833129882812,
+      "canonical_value": 558.5833129882812
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 24,
+      "itime_s": 14400,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0625,
+        0.21875
+      ],
+      "flexpart_value": 0.1145833358168602,
+      "canonical_value": 0.1145833358168602
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 24,
+      "itime_s": 14400,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0390625,
+        0.09375
+      ],
+      "flexpart_value": 0.0052083334885537624,
+      "canonical_value": 0.0052083334885537624
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 25,
+      "itime_s": 21600,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -60.25,
+        -185.0
+      ],
+      "flexpart_value": -185.0,
+      "canonical_value": 185.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 25,
+      "itime_s": 21600,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        210.5,
+        512.25
+      ],
+      "flexpart_value": 512.25,
+      "canonical_value": 512.25
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 25,
+      "itime_s": 21600,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.25,
+        0.40625
+      ],
+      "flexpart_value": 0.40625,
+      "canonical_value": 0.40625
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 25,
+      "itime_s": 21600,
+      "xt": 0.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0390625,
+        0.171875
+      ],
+      "flexpart_value": 0.171875,
+      "canonical_value": 0.171875
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 26,
+      "itime_s": 21600,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -95.5,
+        -230.75
+      ],
+      "flexpart_value": -230.75,
+      "canonical_value": 230.75
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 26,
+      "itime_s": 21600,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        265.25,
+        580.5
+      ],
+      "flexpart_value": 580.5,
+      "canonical_value": 580.5
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 26,
+      "itime_s": 21600,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.1875,
+        0.34375
+      ],
+      "flexpart_value": 0.34375,
+      "canonical_value": 0.34375
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 26,
+      "itime_s": 21600,
+      "xt": 1.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0078125,
+        0.140625
+      ],
+      "flexpart_value": 0.140625,
+      "canonical_value": 0.140625
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 27,
+      "itime_s": 21600,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -130.0,
+        -262.5
+      ],
+      "flexpart_value": -262.5,
+      "canonical_value": 262.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 27,
+      "itime_s": 21600,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        318.0,
+        641.0
+      ],
+      "flexpart_value": 641.0,
+      "canonical_value": 641.0
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 27,
+      "itime_s": 21600,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.09375,
+        0.25
+      ],
+      "flexpart_value": 0.25,
+      "canonical_value": 0.25
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 27,
+      "itime_s": 21600,
+      "xt": 2.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.03125,
+        0.09375
+      ],
+      "flexpart_value": 0.09375,
+      "canonical_value": 0.09375
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 28,
+      "itime_s": 21600,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -152.75,
+        -301.25
+      ],
+      "flexpart_value": -301.25,
+      "canonical_value": 301.25
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 28,
+      "itime_s": 21600,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        371.75,
+        702.75
+      ],
+      "flexpart_value": 702.75,
+      "canonical_value": 702.75
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 28,
+      "itime_s": 21600,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.015625,
+        0.1328125
+      ],
+      "flexpart_value": 0.1328125,
+      "canonical_value": 0.1328125
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 28,
+      "itime_s": 21600,
+      "xt": 3.0,
+      "yt": 0.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0859375,
+        0.046875
+      ],
+      "flexpart_value": 0.046875,
+      "canonical_value": 0.046875
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 29,
+      "itime_s": 21600,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -88.0,
+        -210.5
+      ],
+      "flexpart_value": -210.5,
+      "canonical_value": 210.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 29,
+      "itime_s": 21600,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        240.0,
+        545.5
+      ],
+      "flexpart_value": 545.5,
+      "canonical_value": 545.5
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 29,
+      "itime_s": 21600,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.28125,
+        0.4375
+      ],
+      "flexpart_value": 0.4375,
+      "canonical_value": 0.4375
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 29,
+      "itime_s": 21600,
+      "xt": 0.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0625,
+        0.1953125
+      ],
+      "flexpart_value": 0.1953125,
+      "canonical_value": 0.1953125
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 30,
+      "itime_s": 21600,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -121.5,
+        -255.0
+      ],
+      "flexpart_value": -255.0,
+      "canonical_value": 255.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 30,
+      "itime_s": 21600,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        299.5,
+        610.25
+      ],
+      "flexpart_value": 610.25,
+      "canonical_value": 610.25
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 30,
+      "itime_s": 21600,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.21875,
+        0.375
+      ],
+      "flexpart_value": 0.375,
+      "canonical_value": 0.375
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 30,
+      "itime_s": 21600,
+      "xt": 1.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0234375,
+        0.15625
+      ],
+      "flexpart_value": 0.15625,
+      "canonical_value": 0.15625
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 31,
+      "itime_s": 21600,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -170.25,
+        -298.75
+      ],
+      "flexpart_value": -298.75,
+      "canonical_value": 298.75
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 31,
+      "itime_s": 21600,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        352.25,
+        676.0
+      ],
+      "flexpart_value": 676.0,
+      "canonical_value": 676.0
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 31,
+      "itime_s": 21600,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.125,
+        0.28125
+      ],
+      "flexpart_value": 0.28125,
+      "canonical_value": 0.28125
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 31,
+      "itime_s": 21600,
+      "xt": 2.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.015625,
+        0.1171875
+      ],
+      "flexpart_value": 0.1171875,
+      "canonical_value": 0.1171875
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 32,
+      "itime_s": 21600,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -198.0,
+        -340.0
+      ],
+      "flexpart_value": -340.0,
+      "canonical_value": 340.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 32,
+      "itime_s": 21600,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        405.0,
+        735.5
+      ],
+      "flexpart_value": 735.5,
+      "canonical_value": 735.5
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 32,
+      "itime_s": 21600,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.03125,
+        0.1875
+      ],
+      "flexpart_value": 0.1875,
+      "canonical_value": 0.1875
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 32,
+      "itime_s": 21600,
+      "xt": 3.0,
+      "yt": 1.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0546875,
+        0.0703125
+      ],
+      "flexpart_value": 0.0703125,
+      "canonical_value": 0.0703125
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 33,
+      "itime_s": 21600,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -110.5,
+        -240.25
+      ],
+      "flexpart_value": -240.25,
+      "canonical_value": 240.25
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 33,
+      "itime_s": 21600,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        268.75,
+        579.0
+      ],
+      "flexpart_value": 579.0,
+      "canonical_value": 579.0
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 33,
+      "itime_s": 21600,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.3125,
+        0.46875
+      ],
+      "flexpart_value": 0.46875,
+      "canonical_value": 0.46875
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 33,
+      "itime_s": 21600,
+      "xt": 0.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.09375,
+        0.21875
+      ],
+      "flexpart_value": 0.21875,
+      "canonical_value": 0.21875
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 34,
+      "itime_s": 21600,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -149.0,
+        -287.5
+      ],
+      "flexpart_value": -287.5,
+      "canonical_value": 287.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 34,
+      "itime_s": 21600,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        330.0,
+        648.75
+      ],
+      "flexpart_value": 648.75,
+      "canonical_value": 648.75
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 34,
+      "itime_s": 21600,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.234375,
+        0.390625
+      ],
+      "flexpart_value": 0.390625,
+      "canonical_value": 0.390625
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 34,
+      "itime_s": 21600,
+      "xt": 1.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.046875,
+        0.1875
+      ],
+      "flexpart_value": 0.1875,
+      "canonical_value": 0.1875
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 35,
+      "itime_s": 21600,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -205.5,
+        -333.0
+      ],
+      "flexpart_value": -333.0,
+      "canonical_value": 333.0
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 35,
+      "itime_s": 21600,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        388.5,
+        712.5
+      ],
+      "flexpart_value": 712.5,
+      "canonical_value": 712.5
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 35,
+      "itime_s": 21600,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.15625,
+        0.3125
+      ],
+      "flexpart_value": 0.3125,
+      "canonical_value": 0.3125
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 35,
+      "itime_s": 21600,
+      "xt": 2.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0078125,
+        0.140625
+      ],
+      "flexpart_value": 0.140625,
+      "canonical_value": 0.140625
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 36,
+      "itime_s": 21600,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -240.25,
+        -372.5
+      ],
+      "flexpart_value": -372.5,
+      "canonical_value": 372.5
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 36,
+      "itime_s": 21600,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        447.25,
+        781.25
+      ],
+      "flexpart_value": 781.25,
+      "canonical_value": 781.25
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 36,
+      "itime_s": 21600,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0625,
+        0.21875
+      ],
+      "flexpart_value": 0.21875,
+      "canonical_value": 0.21875
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 36,
+      "itime_s": 21600,
+      "xt": 3.0,
+      "yt": 2.0,
+      "node": true,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.0390625,
+        0.09375
+      ],
+      "flexpart_value": 0.09375,
+      "canonical_value": 0.09375
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 37,
+      "itime_s": 10800,
+      "xt": 0.25,
+      "yt": 0.5,
+      "node": false,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -82.71875,
+        -209.03125
+      ],
+      "flexpart_value": -82.71875,
+      "canonical_value": 82.71875
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 37,
+      "itime_s": 10800,
+      "xt": 0.25,
+      "yt": 0.5,
+      "node": false,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        239.53125,
+        545.5
+      ],
+      "flexpart_value": 239.53125,
+      "canonical_value": 239.53125
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 37,
+      "itime_s": 10800,
+      "xt": 0.25,
+      "yt": 0.5,
+      "node": false,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.25,
+        0.40625
+      ],
+      "flexpart_value": 0.25,
+      "canonical_value": 0.25
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 37,
+      "itime_s": 10800,
+      "xt": 0.25,
+      "yt": 0.5,
+      "node": false,
+      "application": "exact_source_timestamp",
+      "dts": [
+        0.0,
+        10800.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0419921875,
+        0.1748046875
+      ],
+      "flexpart_value": 0.0419921875,
+      "canonical_value": 0.0419921875
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 38,
+      "itime_s": 14400,
+      "xt": 2.75,
+      "yt": 0.125,
+      "node": false,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -152.5625,
+        -296.328125
+      ],
+      "flexpart_value": -200.484375,
+      "canonical_value": 200.484375
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 38,
+      "itime_s": 14400,
+      "xt": 2.75,
+      "yt": 0.125,
+      "node": false,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        362.5,
+        691.4765625
+      ],
+      "flexpart_value": 472.1588439941406,
+      "canonical_value": 472.1588439941406
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 38,
+      "itime_s": 14400,
+      "xt": 2.75,
+      "yt": 0.125,
+      "node": false,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.01708984375,
+        0.168212890625
+      ],
+      "flexpart_value": 0.0674641951918602,
+      "canonical_value": 0.0674641951918602
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 38,
+      "itime_s": 14400,
+      "xt": 2.75,
+      "yt": 0.125,
+      "node": false,
+      "application": "linear_interior",
+      "dts": [
+        3600.0,
+        7200.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -0.06884765625,
+        0.0615234375
+      ],
+      "flexpart_value": -0.025390625,
+      "canonical_value": -0.025390625
+    },
+    {
+      "canonical_field": "sensible_heat_flux",
+      "flexpart_variable": "sshf",
+      "pair": 2,
+      "query": 39,
+      "itime_s": 21600,
+      "xt": 1.625,
+      "yt": 1.375,
+      "node": false,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        -164.09765625,
+        -294.94140625
+      ],
+      "flexpart_value": -294.94140625,
+      "canonical_value": 294.94140625
+    },
+    {
+      "canonical_field": "surface_solar_radiation",
+      "flexpart_variable": "ssr",
+      "pair": 2,
+      "query": 39,
+      "itime_s": 21600,
+      "xt": 1.625,
+      "yt": 1.375,
+      "node": false,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        345.25390625,
+        665.3125
+      ],
+      "flexpart_value": 665.3125,
+      "canonical_value": 665.3125
+    },
+    {
+      "canonical_field": "surface_stress_eastward",
+      "flexpart_variable": "ewss",
+      "pair": 2,
+      "query": 39,
+      "itime_s": 21600,
+      "xt": 1.625,
+      "yt": 1.375,
+      "node": false,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.169677734375,
+        0.325927734375
+      ],
+      "flexpart_value": 0.325927734375,
+      "canonical_value": 0.325927734375
+    },
+    {
+      "canonical_field": "surface_stress_northward",
+      "flexpart_variable": "nsss",
+      "pair": 2,
+      "query": 39,
+      "itime_s": 21600,
+      "xt": 1.625,
+      "yt": 1.375,
+      "node": false,
+      "application": "last_endpoint",
+      "dts": [
+        10800.0,
+        0.0,
+        9.259259240934625e-05
+      ],
+      "flexpart_memory_slot_values": [
+        0.0078125,
+        0.1417236328125
+      ],
+      "flexpart_value": 0.1417236328125,
+      "canonical_value": 0.1417236328125
+    }
+  ],
+  "provenance": {
+    "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+    "checkout_clean": true,
+    "flex_extract_pinned_commit": "e0005c99ac81d12faa45a8ff799debbd592b0dc0",
+    "flex_extract_checkout_clean": true,
+    "flex_extract_sources_sha256": {
+      "Source/Python/Classes/EcFlexpart.py": "59c7818be2088a623ed86bb0a63749f5971b82a567cd3613bb6708e9af5b2021",
+      "Source/Python/Mods/disaggregation.py": "ddfa9276f7cd6c7a5c9380c7ef91f5a11c6790f1b0ea7629b6d226776a0161b6"
+    },
+    "compiler": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+    "docker_image_id": "sha256:324bb63d7311b13d9700906f05c98babaa69967c1dbfed124abb135855f80d84",
+    "build_profile": {
+      "id": "flexpart-11.1-single-thread",
+      "version": 1,
+      "runtime_environment": {
+        "OMP_NUM_THREADS": "1",
+        "OMP_THREAD_LIMIT": "1",
+        "OMP_DYNAMIC": "FALSE",
+        "OMP_NESTED": "FALSE",
+        "OMP_MAX_ACTIVE_LEVELS": "1",
+        "OMP_SCHEDULE": "static",
+        "OMP_PROC_BIND": "FALSE",
+        "OMP_WAIT_POLICY": "PASSIVE"
+      },
+      "build": {
+        "makefile": "src/makefile_gfortran",
+        "make_arguments": "eta=no arch=x86-64",
+        "fortran_compiler": "gfortran",
+        "optimization": "-O3",
+        "openmp_flag": "-fopenmp",
+        "arch_flag": "-march=x86-64",
+        "eta": "no",
+        "netcdf": "enabled (USE_NCF)"
+      },
+      "docker": {
+        "image": "flexpart-fortran:latest",
+        "dockerfile": "docker/Dockerfile.fortran",
+        "compose_file": "docker/docker-compose.fortran.yml",
+        "base_image": "ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7",
+        "ubuntu_snapshot": "20260910T000000Z"
+      },
+      "required_inputs": [
+        "COMMAND",
+        "RELEASES",
+        "OUTGRID",
+        "AGECLASSES",
+        "RECEPTORS",
+        "SPECIES/SPECIES_*",
+        "METEO_ARGS.txt",
+        "generated GRIB meteorology and AVAILABLE"
+      ],
+      "external_seed_control": "unavailable",
+      "repeatability_cases": {
+        "ADV-ANA-001": "deterministic",
+        "WIND-UNI-002": "stochastic"
+      },
+      "minimum_repetitions": 5
+    },
+    "driver_flags": [
+      "-O0",
+      "-fopenmp",
+      "-mcmodel=large"
+    ],
+    "sources_sha256": {
+      "src/windfields_mod.f90": "440ec62b9a7b8f4534e913b2af2a41aabdf44072b3fe77edbc213866e698e7d1",
+      "src/getfields_mod.f90": "c3b4ce1adae8ab5e12ae51b2e2c4170925d326cbc6240d3531265eddd92433aa",
+      "src/interpol_mod.f90": "cc7ab1a55267971ca540d88d3992c613897e0a219da5b66fe2358b5eaeb9bf63",
+      "src/drydepo_mod.f90": "779d21d2790c2118373c66f9394d00596612ced63ebd2efe50fde5d9e26ff585",
+      "src/com_mod.f90": "a25dce18fc3d4f3bbbf1b8c64e9b2629fb4e170540d350e555118ab9dd00bab3",
+      "src/par_mod.f90": "3164314b5d7212ff5136b5605634fe3c34426aef1320c9fb499ded31f021a9db",
+      "src/makefile_gfortran": "6e3c2e6d34e5f1fb1fd5e9b784299eab4f3bcb7d7710239d0372f2a9c11ab1f0"
+    },
+    "research_sources_sha256": {
+      "scripts/interpolation/surface_flux_temporal_oracle.f90": "e0adb404ad7cb7122a26c1da1d1402bc277246fe632b6f3efff155ad8c451c38",
+      "scripts/interpolation/surface_flux_temporal_oracle.sh": "0a4e94e1f98a0d2bb9db496041cf9c13bcccdedd8ce6e365caf55afbc5606734",
+      "scripts/interpolation/run_surface_flux_temporal_oracle.py": "59290d2ac504cf90bf4c4d83e3cdac8b1c882c62e8d6e95bb12fb69dafaaaf1d",
+      "scripts/interpolation/prepare_surface_flux_temporal_oracle.py": "4999c6cdbeeff31aa89ebaa527f45fc0fa568f96db0323787aa852e9a8f27626",
+      "scripts/oracle_build_cache.py": "9786c45832d999fe05deb6035ff68214210861f349425521bcacd19b4965b10c",
+      "reference/flexpart-11.1.json": "2c13a87733098e385dc12f33d1bf5ca60ba275775f472ec279b8a0a234c3a464",
+      "reference/flex-extract.json": "283948aaf9a14a09166ad449b496f1ef1e1dd6c672e22f7226992b4ffbd26d40"
+    },
+    "linked_objects_sha256": {
+      "advance_mod.o": "84b8810c98550b7a8df74ea70388433e02fe3c492c1e68cad562c930c00a1672",
+      "binary_output_mod.o": "65eb56538b6c3c93d4e7336ced79e2c9d3e6c6b8f500da51703302720d97b2bc",
+      "cbl_mod.o": "c2e660b633ee1c0f39d22b0f840ff5b6cb373259a8151f156088e4c2691d372d",
+      "chemistry_mod.o": "53fb10ce3a8685963d5b6d9fc675f4e8a7da3ede14c50bda6725bfe070c8e666",
+      "class_gribfile_mod.o": "c9c0d495f396e873e29f6c29c9c45741667a5e9248e1db4eb977029f296fcbab",
+      "cmapf_mod.o": "23a73624c38efa1aef994bf8d5fa7bbdbb0a04257d97153be70984a0030f7403",
+      "com_mod.o": "76e34fb0c13bdeb297e7c402bb2b3976737d8b830d87eb661cc1a153afbccc10",
+      "conv_mod.o": "f9d0ae69bfafa20bfb9d0f5aa948696ca190a542645dce74239ed78b9185a6fa",
+      "date_mod.o": "9066182397beffc35984e574fcb64ba85b04b97b877c77a3c40972b690e4eeec",
+      "drydepo_mod.o": "efed334ea1d79702a359ff589976ca1560fa5a5b09dc9f85dbdf01fc5f356d14",
+      "emissions_mod.o": "19df1e2e2a437da46cbd073c03e2b36804921b44302f2e51f786134f7917613d",
+      "erf_mod.o": "4b320a697af250034cc48a90cf396b7930afd47e97289a6d85246c9f5ece2453",
+      "flux_mod.o": "46ce716ab6ea2b70d0e5889ad2b5d62f0f2c02af05b4a763fc53b430421377ad",
+      "getfields_mod.o": "1eab39fe49be933620913cdca8c891a3bca61e1ec159bafea77c23c2a099db80",
+      "initdomain_mod.o": "e47193cfa29bfa150664e3522ee1d11fc4bc4579b5ff619dae652cb7874ce542",
+      "initialise_mod.o": "55ddca65d736954cd96b9b8e9116f0fb4876049c381a6965c746f5dc921f73f9",
+      "interpol_mod.o": "055292cfb91cd463ade7dee8ee7b2c2c6fbe72f5b95ee7466166859f2ef7a1bc",
+      "mean_mod.o": "eaa24b87c6ce0961b5f0209ef9a9a4b824e2d3dc2ca976b76dbcac462628ad70",
+      "netcdf_output_mod.o": "861a1f61e2ae9b18d0e60ea7ee3dd3403fb9528f26ba0d3d75a1fc1ffa838e54",
+      "outgrid_mod.o": "4225812731b9299214d91a85f7a73c4728f43924308c2d9e8c144a1f04290a73",
+      "output_mod.o": "79e6d29c2888884ce7de65c22874f2ab024b9b06037c7037b9d97a77f5c67587",
+      "par_mod.o": "cb1f31294a2377c69b5b20527e402f2629da9627137783cceaba1023d3c30abb",
+      "particle_mod.o": "15100bc36e625380886de5753ec9cb4dfd2887e8feb38395289032daffd72070",
+      "pbl_profile_mod.o": "4e7bbce5a2452ee4a5f990acf0e1e9d3778dc617578e90f1f27478a9ed7ec631",
+      "plume_mod.o": "7ab3cfc0181063aa27b16e4232f81c2680873cbab76ebc44d691592268c6b335",
+      "point_mod.o": "9e612fd5f748482823c52fa32a9580241ae7f6e3c4f00256d6b1d8d212b97d5d",
+      "qvsat_mod.o": "d46a297392dc641840dfd2476e745e8d074400368859b7f8bd5a27e8f0e48e8d",
+      "random_mod.o": "a4b5d65eabac826ffeb333dabf7ca7e5393ae1e84750e547c4f75676469d0b86",
+      "readoptions_mod.o": "780d21454e1e7322667c0887582d58c24e6ec2aa56078835732315d4633edc68",
+      "receptor_mod.o": "0f10bdfc7a9b27e6d2f67b845dd92d2353b17532217bcaf688fdd5bc1b7d5f00",
+      "receptor_netcdf_mod.o": "2f1407f1fd4f08fe660d751db91a070d36cd52634f6f8a8317c8733fc1b5091d",
+      "restart_mod.o": "0881c17b2d77c27e6e4f1651103032b54e32cd4094a80a053063ad304100fcb2",
+      "settling_mod.o": "33d0d780ba91113dc44e49092af609128f66cb4f49e67998b52e5d63bfdae328",
+      "sort_mod.o": "fe9eafa599b20d685202ac1b98c6e85cfbb406a358a96ea4e7ad20f028389e36",
+      "timemanager_mod.o": "21019da2463b4125fde0470e6aca4765940832b11702f9f949968902c59a989f",
+      "totals_mod.o": "ff0e76dcfa11279c08343c64212259f5b26e594ba9969b5de2937f3cbac9c062",
+      "turbulence_mod.o": "ffa5a37ec82ba9faa2547e436c6a92198e1796e09ecbcece4ff00970ce4b1589",
+      "txt_output_mod.o": "9d95f6db7ce321b846392d695e96234da4c482e544c56dde4305e8398fc31237",
+      "unc_mod.o": "20459d736fc26155c02b023edaf28b297e232ca450fd1c93f578f4865968d62d",
+      "verttransform_mod.o": "4b6f9f66dbc31be6b75fc924e0a54a36d0ca64f8dd0ed19cb9c124f283416931",
+      "wetdepo_mod.o": "f13f67abc45975fd613dd1c6e66836c35754e252130a2231a01ab829908765fc",
+      "windfields_mod.o": "da33be9c878686e5a295ed90f45a2ad779eb88963e5f0bbefff1a4e1b8d879b6",
+      "xmass_mod.o": "50545d88ca3b3c187f77809ed451a996e21bbbd1f62eb0edeb7bd7eb327ce223"
+    },
+    "artifacts_sha256": {
+      "input.txt": "28f0cfaa4340a3889463f358fca88cc3a78f07552744cabfefd7519216953fad",
+      "output.txt": "8f129034bf26ea18d311cd247bdab929d04bcb02243392735e85ef9a0cba70d6",
+      "full-build.log": "c2ffa1b1ccd7dea0dccc6a9a6915416fef4e042239166727d41c775645f9f1d7",
+      "driver-build-run.log": "9e2eb2d242d09f3ca6ddaa9ba374625c546ab21f14f5f96226bc2e0888077e23",
+      "build/surface-flux-temporal-oracle": "2a99b356fc4f4350297fb900dd5bd68b939e9ec959aaae5fa1a733c0fd43121e",
+      "build/surface-flux-temporal-oracle-driver.o": "c40dd458db5cb9f24c0093f5615d275288296e6b8cf97760f6651670d2dd1a99",
+      "build/surface-flux-temporal-oracle.nm": "b6a118c199b5b9d5722c36fe1927a8ad3d9c2657b65398264631d2efabfbcbb8",
+      "build/surface-flux-temporal-oracle.call-sites": "e9f9e94205b8cbd9d86859e8e3a839c7c0e1fbf7d9e4778a6ebe16f299119c4e",
+      "build/surface-flux-temporal-oracle.link-map": "3b7e6beebf5702c2ae5ee16d5c9db92470898587c9a2f1c51b1e2fc227f311fd",
+      "build/linked-objects.txt": "388d1f824306df30fc74fbedc6464e86602b6a93ba782e9e1dad20ffacc3327c",
+      "build/compiler-identity.txt": "9e9d4386d9ee356d38035834a85bdc95acd63962aebf458438bc50b4b049afb6"
+    },
+    "verified_call_edges": [
+      {
+        "caller": "MAIN__",
+        "callee": "__interpol_mod_MOD_find_grid_indices",
+        "callee_address": "0x9c850",
+        "verified_in_linked_executable": true
+      },
+      {
+        "caller": "MAIN__",
+        "callee": "__interpol_mod_MOD_find_grid_distances",
+        "callee_address": "0x9bbb0",
+        "verified_in_linked_executable": true
+      },
+      {
+        "caller": "MAIN__",
+        "callee": "__interpol_mod_MOD_find_time_vars",
+        "callee_address": "0x9bb30",
+        "verified_in_linked_executable": true
+      },
+      {
+        "caller": "MAIN__",
+        "callee": "__interpol_mod_MOD_hor_interpol_4d",
+        "callee_address": "0x99eb0",
+        "verified_in_linked_executable": true
+      },
+      {
+        "caller": "MAIN__",
+        "callee": "__interpol_mod_MOD_temporal_interpolation",
+        "callee_address": "0x99b90",
+        "verified_in_linked_executable": true
+      }
+    ]
+  }
+}

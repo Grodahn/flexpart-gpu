@@ -478,6 +478,7 @@ fn cpu_gpu_full_pipeline_timeloop() {
     };
 
     let forcing = ForwardStepForcing {
+        settling_enabled: false,
         dry_deposition_velocity_m_s: vec![flexpart_gpu::simulation::ParticleForcingField::Uniform(
             0.003,
         )],

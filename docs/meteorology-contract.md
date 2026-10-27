@@ -231,7 +231,10 @@ canonical field without an oracle/consumer trace entry fails the contract tests.
   explicit `static` semantics; their timestamp is provenance-only.
 - Surface rate/flux fields (`sensible_heat_flux`, `surface_solar_radiation`, stress components)
   may be instantaneous or explicit interval means; accumulated energy/momentum must be normalized
-  before crossing the boundary.
+  before crossing the boundary. `instantaneous` means a point value at the validity time, such as the
+  flex_extract `dapoly` reconstruction FLEXPART reads. Only that representation may use #74/#89 time
+  sampling ([#120 decision](temporal-interpolation.md#surface-flux-eligibility-120)). Interval means are
+  never relabeled as instantaneous.
 - Precipitation remains an interval amount (`kg/m2`, numerically equivalent to mm water amount)
   with explicit start/end and reset metadata. For `accumulated_since_reset`, schema v1 requires
   `reset_epoch_seconds == interval_start_epoch_seconds`; a different reset origin is ambiguous and

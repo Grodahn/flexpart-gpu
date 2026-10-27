@@ -1277,6 +1277,10 @@ fn test_meteorology_composition_rejects_incompatible_inputs() {
     ));
     let mut flux1 = flux0.clone();
     time(&mut flux1, 3600);
+    let flux_time = &mut flux1.fields.last_mut().unwrap().time;
+    flux_time.kind = TemporalKind::IntervalMean;
+    flux_time.interval_start_epoch_seconds = Some(0);
+    flux_time.interval_end_epoch_seconds = Some(3600);
     assert!(
         CanonicalGpuField::upload(
             &ctx,
@@ -1285,7 +1289,7 @@ fn test_meteorology_composition_rejects_incompatible_inputs() {
             &[None, None]
         )
         .is_err(),
-        "#89 rejects instantaneous surface-flux policy; tracked by #120"
+        "#120 approves instantaneous fluxes only; interval means cannot join that series"
     );
     let mut rain0 = lower.clone();
     time(&mut rain0, 3600);

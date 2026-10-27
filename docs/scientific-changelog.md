@@ -15,6 +15,36 @@ shaders, physics kernels, or advection logic must add an entry here.
 ---
 
 #
+### 2026-10-27 - Admit approved instantaneous surface fluxes to #89 time sampling (#120)
+**Impact**: numerics (eligibility only; no consumer adopted)
+**Files**: `src/meteorology/temporal.rs`, `src/gpu/meteorology.rs`,
+`src/gpu/meteorology/resident.rs`; no shader change
+**Validation**: direct pinned FLEXPART 11.1 memory-slot oracle, #89 and #76 device
+paths on hardware and software WGSL; see [temporal contract](temporal-interpolation.md#surface-flux-eligibility-120).
+
+`sensible_heat_flux`, `surface_solar_radiation` and both stress components stored as
+`Instantaneous` now resolve through the unchanged #74/#89 bracket and blend. Interval
+means, totals and accumulations remain rejected. Deviation from the pinned model:
+FLEXPART never time-interpolates these raw fluxes. It forms `ustar/oli/hmix/wstar/vdep`
+at each memory time and interpolates those (`getfields_mod.f90:976-1067`,
+`interpol_mod.f90:706-737`). A `linear_interior` raw-flux sample is therefore not
+FLEXPART's operation order. Consumers (#113/#114) must request exact source
+timestamps to reproduce it.
+
+### 2026-10-25 - Adopt original ordinary-particle transport top in production (#198)
+**Impact**: physics/numerics (upper transport boundary and Petterssen stage order)
+**Files**: resident advection, typed transport boundary, predictor/corrector WGSL,
+forward/backward production preflight and explicit settling-request rejection.
+**Validation**: [finite real-driver/original-oracle evidence](transport-top.md).
+
+Pinned `advance_mod.f90:287-333,664-779,872-900` supplies the inclusive predicate,
+f32 regional placement and correction of the already adjusted predictor. Both
+production paths bind #184's device endpoint/status and #197's complete vector.
+Native column/member tops may differ. Existing horizontal/lower and downstream
+physics remain unchanged. No CPU scientific fallback or wind sampler is added.
+Settling remains rejected (#203). Non-crossing scenario-8 trajectory precision
+has no approved policy (#204); no tolerance or complete trajectory parity is claimed.
+
 ### 2026-10-21 - Adopt complete prepared winds in both production drivers (#197)
 **Impact**: numerics (consumer handoff and explicit supported-route rejection)
 **Files**: `src/simulation/timeloop/meteorology.rs`, forward/backward drivers,

@@ -19,10 +19,12 @@ use serde::{Deserialize, Serialize};
 pub mod resident;
 mod shared_uv;
 mod shared_w;
+mod transport_boundary;
 use sha2::{Digest, Sha256};
 pub use shared_uv::SharedHeightQueryIdentity;
 pub use shared_w::SharedHeightWQueryIdentity;
 use thiserror::Error;
+pub(crate) use transport_boundary::SharedHeightTransportBoundary;
 
 use super::{
     accumulation::{
@@ -254,6 +256,8 @@ pub struct MeteorologySampleMetadata {
 /// Serializable view of the existing #89 control-plane bracket.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TemporalBracketMetadata {
+    /// Approved field-specific basis for instantaneous sampling (#74/#120).
+    pub sampling_basis: crate::meteorology::temporal::InstantaneousSamplingBasis,
     /// Original source-series index of the lower member.
     pub lower_index: usize,
     /// Original source-series index of the upper member.
@@ -390,58 +394,6 @@ impl<'ctx> CanonicalGpuField<'ctx> {
             .filter_map(|member| member.prepared_w.clone())
             .collect()
     }
-    /// Interim #197 envelope: complete prepared vectors with an invariant native top
-    /// equal to the retained run target. #198 owns upper-boundary action/admission.
-    pub(crate) fn resident_advection_top_m(&self) -> Result<f32, MeteorologyCompositionError> {
-        let mut top: Option<f32> = None;
-        for member in &self.members {
-            let uv = member
-                .prepared_uv
-                .as_ref()
-                .ok_or(MeteorologyCompositionError::Missing(
-                    "production advection requires the #190 prepared U/V/W vector",
-                ))?;
-            if member.prepared_w.is_none() {
-                return Err(MeteorologyCompositionError::Missing(
-                    "production prepared W",
-                ));
-            }
-            let runtime = member
-                .runtime
-                .as_ref()
-                .ok_or(MeteorologyCompositionError::Missing("advection geometry"))?;
-            let (nx, ny, _) = runtime.view.dimensions();
-            for column in 0..nx * ny {
-                let (heights, _) = physical_model_column_from_runtime(
-                    runtime.view,
-                    FieldId::WindU,
-                    &member
-                        .snapshot
-                        .fields
-                        .iter()
-                        .find(|f| f.id == FieldId::WindU)
-                        .ok_or(MeteorologyCompositionError::Missing("native U"))?
-                        .values,
-                    column % nx,
-                    column / nx,
-                )?;
-                let value = *heights
-                    .last()
-                    .ok_or(MeteorologyCompositionError::Missing("advection top height"))?;
-                if top.is_some_and(|previous| previous.to_bits() != value.to_bits()) {
-                    return Err(MeteorologyCompositionError::Unsupported("advection requires an invariant physical top boundary; varying top geometry needs a transport boundary decision"));
-                }
-                top = Some(value);
-            }
-            if top != uv.target().identity().height_m_agl.last().copied() {
-                return Err(MeteorologyCompositionError::Unsupported(
-                    "production native top must equal the run target pending #198",
-                ));
-            }
-        }
-        top.ok_or(MeteorologyCompositionError::Missing("advection top height"))
-    }
-
     /// Use the existing runtime token so source owners can outlive a driver borrow.
     pub(crate) fn belongs_to(&self, ctx: &GpuContext) -> bool {
         std::sync::Arc::ptr_eq(&self.owner_context, &ctx.identity)
@@ -677,6 +629,7 @@ impl<'ctx> CanonicalGpuField<'ctx> {
                 .filter_map(|s| s.runtime.as_ref().and_then(|r| r.motion.clone()))
                 .collect(),
             temporal_bracket: bracket.as_ref().map(|b| TemporalBracketMetadata {
+                sampling_basis: b.sampling_basis,
                 lower_index: b.lower_index,
                 upper_index: b.upper_index,
                 source_timestamps: b.source_timestamps,

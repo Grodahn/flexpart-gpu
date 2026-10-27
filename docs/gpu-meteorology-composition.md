@@ -64,7 +64,7 @@ validated observation sequence needed to identify delta/reset history.
 
 | Source class | Encoded path | Explicit selection |
 | --- | --- | --- |
-| Instantaneous surface scalar supported by #89 | #87 for each bracket member -> #89 | `Instantaneous(RequestedSampleTime)` |
+| Instantaneous surface scalar supported by #89, including the four #120 surface fluxes | #87 for each bracket member -> #89 | `Instantaneous(RequestedSampleTime)` |
 | Instantaneous model-center field | #87 for physical levels of each bracket -> #88 -> #89 | Instantaneous; required AGL/ASL height |
 | Center-staggered normalized W | Model path, with values from the exact #30 motion owner | Instantaneous; required AGL/ASL height |
 | Interface W supported by #80/#88 | #88 remap -> #88 particle-height sample per bracket -> #89 | Instantaneous; single column only |
@@ -110,9 +110,12 @@ The following paths require their own contracts and remain explicit rejections:
 - [#119](https://github.com/Grodahn/flexpart-gpu/issues/119): precipitation
   rate-grid time sampling, including `interpol_rain`'s frozen `dt/3` behavior.
   Explicit interval products are not reported as final wet-deposition forcing.
-- [#120](https://github.com/Grodahn/flexpart-gpu/issues/120): instantaneous
-  surface-flux eligibility. Canonical schema permits it, but #74/#89's temporal
-  policy rejects it. Interval means are supported separately.
+- [#120](https://github.com/Grodahn/flexpart-gpu/issues/120) resolved
+  instantaneous surface-flux eligibility. Sensible heat, solar radiation and both
+  stress components stored as `Instantaneous` use the surface #87 -> #89 path. The
+  bracket metadata records `sampling_basis = point_in_time_surface_flux`.
+  `IntervalMean` fluxes remain on the exact-interval #87 path. They are never
+  blended. [Decision, source trace and evidence](temporal-interpolation.md#surface-flux-eligibility-120).
 - Multi-column interface W remains rejected by #80/#88 because the supported
   oracle omits slope correction; this existing limitation is unchanged.
 
@@ -136,8 +139,8 @@ the authority for field definitions and consumer requirements.
 | Migration | Available handoff | Explicit limits / remaining ownership |
 | --- | --- | --- |
 | [#112 wind/advection](https://github.com/Grodahn/flexpart-gpu/issues/112) | #173 prepares U/V and normalized center W as separate #76 owners with source/#30 provenance; #171 prepares resident scalar queries | #112 owns predictor/corrector query producers and operator adoption. Fractional nonuniform geometry needs #118. The #173 driver handoff rejects interface W; the separate #76 single-column interface path retains #80/#88 limits. Operational decoding remains #32. |
-| [#113 PBL/turbulence](https://github.com/Grodahn/flexpart-gpu/issues/113) | Existing instantaneous thermodynamic/wind fields and surface diagnostics, plus explicitly selected interval-mean fluxes | Instantaneous sensible-heat/stress fluxes need #120; fractional nonuniform model geometry needs #118. Fixed grid-query slices can begin; resident particle queries need #152. Derived diagnostics must be supplied by their existing owners; #76 does not derive absent fields. |
-| [#114 deposition](https://github.com/Grodahn/flexpart-gpu/issues/114) | Canonical temperature/humidity/cloud-water fields when supplied, surface diagnostics, static 13-class land use, interval totals, and distinct #90 amounts/SI rates/mm-h rates | Final precipitation time sampling needs #119; instantaneous solar-radiation eligibility needs #120. Resident particle queries need #152. Missing cloud bounds or other unrepresented consumer inputs remain blockers, never defaults. |
+| [#113 PBL/turbulence](https://github.com/Grodahn/flexpart-gpu/issues/113) | Existing instantaneous thermodynamic/wind fields and surface diagnostics, instantaneous sensible-heat/stress fluxes (#120), plus explicitly selected interval-mean fluxes | FLEXPART consumes fluxes only at source times and time-interpolates derived `ustar/oli/hmix/wstar`. Request exact source timestamps to reproduce that order. Fractional nonuniform model geometry needs #118. Fixed grid-query slices can begin; resident particle queries need #152. Derived diagnostics must be supplied by their existing owners; #76 does not derive absent fields. |
+| [#114 deposition](https://github.com/Grodahn/flexpart-gpu/issues/114) | Canonical temperature/humidity/cloud-water fields when supplied, surface diagnostics, static 13-class land use, interval totals, and distinct #90 amounts/SI rates/mm-h rates | Final precipitation time sampling needs #119. Instantaneous solar radiation is available (#120); FLEXPART forms `vdep` from it at source times before time interpolation. Resident particle queries need #152. Missing cloud bounds or other unrepresented consumer inputs remain blockers, never defaults. |
 | [#115 convection](https://github.com/Grodahn/flexpart-gpu/issues/115) | Existing instantaneous temperature, humidity, pressure and surface thermodynamic fields when supplied | Inventory the actual consumer first. The current simplified host convection chain is not a canonical production path. CAPE, cloud bounds and convection calculations are not supplied or inferred by #76. #118 applies to nonuniform fractional model queries. |
 
 The original host-query API prepares one explicit grid/time/height sample per plan.
@@ -159,7 +162,8 @@ The device test covers surface endpoints/interior, model AGL/ASL and inherited
 bounds, U/V direction identity, temperature/specific-humidity units, center/interface
 W, a later bracket in a three-member series,
 leading/delta/reset accumulated products, interval totals,
-interval means and static scalar/class fields. All producers and minimal downstream
+interval means and static scalar/class fields. The four #120 instantaneous surface
+fluxes have their own paired oracle/device target (`surface_flux_temporal_gpu`). All producers and minimal downstream
 device-copy consumers share one caller submission. Only final consumer outputs are
 read back. Every vertical fixture compares the handoff's geometry identities,
 complete #30 provenance and resolved AGL heights exactly with expectations from

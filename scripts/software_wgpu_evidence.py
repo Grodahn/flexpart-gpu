@@ -38,6 +38,16 @@ VECTOR_STEP = '''name: Prove complete shared-height U/V/W canonical queries (#19
 '''
 
 
+SURFACE_FLUX_STEP = '''name: Prove approved instantaneous surface-flux time sampling (#120)
+        id: surface-flux-temporal-120
+        run: |
+          set -euo pipefail
+          cargo test --test surface_flux_temporal_gpu -- --test-threads=1 --nocapture > target/ci-gate/surface-flux-temporal-gpu.log 2>&1
+          python3 scripts/interpolation/check_surface_flux_temporal_gpu.py target/ci-gate/surface-flux-temporal-gpu/report.json --software
+          python3 scripts/interpolation/test_check_surface_flux_temporal_gpu.py
+          python3 scripts/interpolation/test_surface_flux_temporal_oracle.py
+'''
+
 SHARED_ADVECTION_STEP = '''name: Audit complete prepared-vector production drivers (#197)
         id: shared-advection-197
         run: |
@@ -47,6 +57,12 @@ SHARED_ADVECTION_STEP = '''name: Audit complete prepared-vector production drive
           done
           python3 scripts/transport/test_shared_advection_evidence.py
 '''
+
+
+TRANSPORT_TOP_STEP = 'name: Audit original transport-top action in production drivers (#198)\n        id: transport-top-198\n        run: |\n          set -euo pipefail\n          for mode in validation-0-compaction-0 validation-1-compaction-0 validation-0-compaction-1; do\n            python3 scripts/transport/check_transport_top.py --report "target/ci-gate/transport-top/$mode/report.json" --software\n            cargo run --quiet --example check_gpu_evidence -- "target/ci-gate/transport-top/$mode/fixture-comparison.json"\n          done\n          python3 scripts/transport/test_check_transport_top.py\n'
+
+
+TRANSPORT_TOP_TECHNICAL_STEP = '      - name: Compare production transport-top action with fresh pinned advance (#198)\n        working-directory: flexpart-gpu\n        env:\n          FLEXPART_GPU_VALIDATION: "0"\n          FLEXPART_GPU_COMPACTION: "0"\n        run: |\n          set -euo pipefail\n          python3 scripts/transport/run_top_boundary_oracle.py --checkout ../flexpart --output-dir target/ci-gate/top-production\n          cargo test --lib gpu::meteorology::advection_production_tests::transport_top_tests -- --nocapture --test-threads=1 > target/ci-gate/transport-top.log 2>&1\n          python3 scripts/transport/check_transport_top.py --report target/ci-gate/transport-top/validation-0-compaction-0/report.json --oracle-run target/ci-gate/top-production --software\n          cargo run --quiet --example check_gpu_evidence -- target/ci-gate/transport-top/validation-0-compaction-0/fresh-comparison.json\n          python3 scripts/transport/test_check_transport_top.py\n\n'
 
 
 def require(condition, message):
@@ -69,10 +85,19 @@ def contract():
                            'sha256': hashlib.sha256(coverage.normalized(VECTOR_STEP).encode()).hexdigest()})
     result['artifacts']['gpu-meteorology'].extend([
         'target/ci-gate/shared-height-vector.log', 'target/ci-gate/shared-height-vector/*.json'])
+    result['steps'].append({'name': 'Prove approved instantaneous surface-flux time sampling (#120)',
+                           'block': SURFACE_FLUX_STEP, 'owners': ['gpu-meteorology'],
+                           'sha256': hashlib.sha256(coverage.normalized(SURFACE_FLUX_STEP).encode()).hexdigest()})
+    result['artifacts']['gpu-meteorology'].extend([
+        'target/ci-gate/surface-flux-temporal-gpu.log', 'target/ci-gate/surface-flux-temporal-gpu/*.json'])
     result['steps'].append({'name': 'Audit complete prepared-vector production drivers (#197)',
                            'block': SHARED_ADVECTION_STEP, 'owners': ['gpu-transport-physics'],
                            'sha256': hashlib.sha256(coverage.normalized(SHARED_ADVECTION_STEP).encode()).hexdigest()})
     result['artifacts']['gpu-transport-physics'].append('target/ci-gate/shared-advection/**/*.json')
+    result['steps'].append({'name': 'Audit original transport-top action in production drivers (#198)',
+                           'block': TRANSPORT_TOP_STEP, 'owners': ['gpu-transport-physics'],
+                           'sha256': hashlib.sha256(coverage.normalized(TRANSPORT_TOP_STEP).encode()).hexdigest()})
+    result['artifacts']['gpu-transport-physics'].append('target/ci-gate/transport-top/**/*.json')
     return result
 
 
@@ -285,6 +310,10 @@ def audit_payload(root, domain):
                                  str((root / 'target/ci-gate/shared-height-vector/report.json').resolve()), '--software'],
                                 cwd=root, capture_output=True, text=True)
         require(result.returncode == 0, 'shared-height complete vector: '+result.stderr[-2000:])
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/interpolation/check_surface_flux_temporal_gpu.py'),
+                                 str((root / 'target/ci-gate/surface-flux-temporal-gpu/report.json').resolve()), '--software'],
+                                cwd=root, capture_output=True, text=True)
+        require(result.returncode == 0, 'surface-flux time sampling: '+result.stderr[-2000:])
         paths = [p for p in files if p.startswith('target/ci-gate/accumulation-gpu/') and p.endswith('.json')]
         for prefix in ('large_scale_precipitation', 'convective_precipitation'):
             require(sum(Path(p).name.startswith(prefix+'-cell-') for p in paths) == 12, 'accumulation cell count')
@@ -323,6 +352,10 @@ def audit_payload(root, domain):
                                      'device', '--report', str((root / 'target/ci-gate/shared-advection' / mode / 'report.json').resolve()), '--software'],
                                     cwd=root, capture_output=True, text=True)
             require(result.returncode == 0, 'shared production drivers: '+result.stderr[-2000:])
+            top = subprocess.run([sys.executable, str(ROOT / 'scripts/transport/check_transport_top.py'),
+                                  '--report', str((root / 'target/ci-gate/transport-top' / mode / 'report.json').resolve()), '--software'],
+                                 cwd=root, capture_output=True, text=True)
+            require(top.returncode == 0, 'transport top drivers: '+top.stderr[-2000:])
     require(files == files_for(root, domain), 'required evidence changed during validation')
     return execution
 
@@ -392,6 +425,14 @@ def aggregate(root, results, env):
     return {'state': 'PASS', 'identity': expected, 'domains': execution}
 
 
+def audit_independent_workflow(path, text, expected):
+    """Allow only the exact additive #198 gate; preserve every frozen pre-existing byte."""
+    if path == '.github/workflows/validation-gate.yml':
+        require(text.count(TRANSPORT_TOP_TECHNICAL_STEP) == 1, 'missing/changed transport-top technical gate')
+        text = text.replace(TRANSPORT_TOP_TECHNICAL_STEP, '', 1)
+    require(hashlib.sha256(text.encode()).hexdigest() == expected, 'independent workflow changed: '+path)
+
+
 def prepare_sources(bundle):
     """Expose current source and frozen fixtures to the original validators."""
     for directory in ('src', 'tests', 'fixtures'):
@@ -414,8 +455,7 @@ def main():
         if args.action == 'audit':
             monolithic_view((ROOT / '.github/workflows/software-wgpu.yml').read_text(), strict=True)
             for path, expected in contract()['independent_workflow_sha256'].items():
-                require(hashlib.sha256((ROOT / path).read_text().encode()).hexdigest() == expected,
-                        'independent workflow changed: '+path)
+                audit_independent_workflow(path, (ROOT / path).read_text(), expected)
             report = {'state': 'PASS', 'domains': list(contract()['artifacts'])}
         elif args.action == 'seal':
             seal(os.environ['DOMAIN'], os.environ)

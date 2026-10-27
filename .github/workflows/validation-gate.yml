@@ -203,6 +203,15 @@ jobs:
           python3 scripts/interpolation/check_shared_height_vector.py target/ci-gate/shared-height-vector/report.json --software
           python3 scripts/interpolation/test_check_shared_height_vector.py
 
+      - name: Reproduce surface-flux temporal direct oracle (#120)
+        working-directory: flexpart-gpu
+        run: |
+          set -euo pipefail
+          python3 scripts/interpolation/test_surface_flux_temporal_oracle.py
+          python3 scripts/interpolation/run_surface_flux_temporal_oracle.py \
+            --checkout ../flexpart --flex-extract ../flex_extract \
+            --output-dir target/ci-gate/surface-flux-temporal-oracle
+
       - name: Replay real production-driver samples through genuine #186 routines (#197)
         working-directory: flexpart-gpu
         env:
@@ -214,6 +223,19 @@ jobs:
           cargo test --lib gpu::meteorology::advection_production_tests::test_shared_vector -- --nocapture --test-threads=1 > target/ci-gate/shared-advection.log 2>&1
           python3 scripts/transport/shared_advection_evidence.py replay --report target/ci-gate/shared-advection/validation-0-compaction-0/report.json --oracle-run target/ci-gate/interior-w-first --software
           python3 scripts/transport/shared_advection_evidence.py check --report target/ci-gate/shared-advection/validation-0-compaction-0/report.json --oracle-run target/ci-gate/interior-w-first --software
+
+      - name: Compare production transport-top action with fresh pinned advance (#198)
+        working-directory: flexpart-gpu
+        env:
+          FLEXPART_GPU_VALIDATION: "0"
+          FLEXPART_GPU_COMPACTION: "0"
+        run: |
+          set -euo pipefail
+          python3 scripts/transport/run_top_boundary_oracle.py --checkout ../flexpart --output-dir target/ci-gate/top-production
+          cargo test --lib gpu::meteorology::advection_production_tests::transport_top_tests -- --nocapture --test-threads=1 > target/ci-gate/transport-top.log 2>&1
+          python3 scripts/transport/check_transport_top.py --report target/ci-gate/transport-top/validation-0-compaction-0/report.json --oracle-run target/ci-gate/top-production --software
+          cargo run --quiet --example check_gpu_evidence -- target/ci-gate/transport-top/validation-0-compaction-0/fresh-comparison.json
+          python3 scripts/transport/test_check_transport_top.py
 
       - name: Record dependency cache checksums
         working-directory: flexpart-gpu

@@ -296,7 +296,11 @@ impl<'source> CanonicalMeteorologyResources<'source> {
                 "production vector device context",
             ));
         }
-        self.fields[0].resident_advection_top_m()?;
+        crate::gpu::meteorology::SharedHeightTransportBoundary::new(
+            context,
+            &self.fields,
+            self.bracket.horizontal_grid(),
+        )?;
         Ok(())
     }
     /// Borrow all field owners in the exact U/V/W order declared by the identity.

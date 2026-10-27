@@ -71,6 +71,16 @@ class AggregateTests(unittest.TestCase):
             self.assertNotIn('\\', path)
             self.assertTrue((evidence.ROOT / path).is_file())
 
+    def test_transport_top_addition_preserves_independent_workflow(self):
+        path = '.github/workflows/validation-gate.yml'
+        baseline = json.loads(evidence.CONTRACT.read_text())['independent_workflow_sha256'][path]
+        text = (evidence.ROOT / path).read_text()
+        evidence.audit_independent_workflow(path, text, baseline)
+        for changed in (text.replace(evidence.TRANSPORT_TOP_TECHNICAL_STEP, ''),
+                        text.replace('name: Technical validation gate', 'name: changed old gate')):
+            with self.assertRaises(ValueError):
+                evidence.audit_independent_workflow(path, changed, baseline)
+
     def test_original_cache_namespace_is_required(self):
         baseline = json.loads(evidence.CONTRACT.read_text())
         text = (evidence.ROOT / '.github/workflows/software-wgpu.yml').read_text()
@@ -87,6 +97,18 @@ class AggregateTests(unittest.TestCase):
             self.assertIn('target/ci-gate/shared-height-vector/*.json', baseline['artifacts']['gpu-meteorology'])
             evidence.monolithic_view(text, strict=True)
             changed = text.replace('      - '+evidence.VECTOR_STEP, '')
+            self.assertNotEqual(text, changed)
+            with self.assertRaisesRegex(ValueError, 'protected evidence step missing'):
+                evidence.monolithic_view(changed, strict=True)
+
+    def test_surface_flux_stage_and_artifacts_are_required(self):
+        baseline = REAL_CONTRACT()
+        text = (evidence.ROOT / '.github/workflows/software-wgpu.yml').read_text()
+        with patch.object(evidence, 'contract', return_value=baseline):
+            self.assertIn('surface-flux-temporal-120', evidence.expected_stages('gpu-meteorology'))
+            self.assertIn('target/ci-gate/surface-flux-temporal-gpu/*.json', baseline['artifacts']['gpu-meteorology'])
+            evidence.monolithic_view(text, strict=True)
+            changed = text.replace('      - '+evidence.SURFACE_FLUX_STEP, '')
             self.assertNotEqual(text, changed)
             with self.assertRaisesRegex(ValueError, 'protected evidence step missing'):
                 evidence.monolithic_view(changed, strict=True)

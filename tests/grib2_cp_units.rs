@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 const DECISION_PATH: &str = "fixtures/accumulation/grib2-cp-units-v1.json";
 const EVIDENCE_PATH: &str = "fixtures/accumulation/grib2-cp-units-evidence-v1.json";
 /// Pinned SHA-256 of the canonical LF decision artifact; update deliberately.
-const DECISION_SHA256: &str = "da65b9209ed640a5cd15edbee78ddb9a69034364f47f2954a6750a8383a7147e";
+const DECISION_SHA256: &str = "127be2dec076d3354805c661e31c4d4f63a938dcb0f94ecbbe917fce7c6e6251";
 /// Evidence conversion of the accepted GRIB2 class (ecCodes 2.24.2 producer).
 const ACCEPTED_GRIB2_CONVERSION: &str = "GRIB2";
 /// Evidence conversion of the ecCodes 2.50.0 producer variant.

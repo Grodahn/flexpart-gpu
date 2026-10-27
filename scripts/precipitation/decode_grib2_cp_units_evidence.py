@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import os
+import re
 
 ABSOLUTE_TOLERANCE = 1.0e-6
 RELATIVE_TOLERANCE = 1.0e-5
@@ -25,6 +26,9 @@ FIELDS = (("lsp", LSP_PARAM), ("cp", CP_PARAM))
 # Values below this many mm/h cannot expose a factor of 1000 against the
 # absolute tolerance, so they only enter the exact zero/nonzero accounting.
 RATIO_MIN_MM_PER_HOUR = 1.0e-3
+# gfortran backtrace frames of a stopped run carry ASLR addresses, so they are
+# removed before a reader log is hashed.
+BACKTRACE_FRAME = re.compile(r"^#\d+\s+0x[0-9a-f]+ in ")
 
 
 def require(condition, message):
@@ -38,6 +42,11 @@ def sha256_file(path):
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def read_text(directory, name):
+    with open(os.path.join(directory, name)) as handle:
+        return handle.read()
 
 
 def within_policy(candidate, oracle):
@@ -65,6 +74,13 @@ def read_reader_output(path):
         else:
             meta[fields[0]] = fields[1:]
     return meta, nodes
+
+
+def normalized_log_sha256(path):
+    """SHA-256 of a reader log without its address-randomized backtrace frames."""
+    with open(path) as handle:
+        kept = [line for line in handle if not BACKTRACE_FRAME.match(line.strip())]
+    return hashlib.sha256("".join(kept).encode()).hexdigest()
 
 
 def reader_log_lines(path):
@@ -211,7 +227,7 @@ def main():
                 "grib2_metadata": {str(k): metadata(v) for k, v in grib2.items()},
                 "reader_grib1_output_sha256": sha256_file(out1),
                 "reader_grib2_exit_status": exit2,
-                "reader_grib2_log_sha256": sha256_file(run + "reader.log"),
+                "reader_grib2_log_normalized_sha256": normalized_log_sha256(run + "reader.log"),
                 "reader_grib2_log_diagnostics": reader_log_lines(run + "reader.log"),
             }
             if exit2 != 0:
@@ -238,11 +254,13 @@ def main():
                      "variant": trace["variant"], "variant_control": trace["variant_control"],
                      "eccodes_definitions": trace["eccodes_definitions"]},
         "eccodes_variants": variants,
-        "reader_eccodes": open(os.path.join(args.oracle, "eccodes-version.txt")).read().split("\n")[:2],
-        "reader_compiler": open(os.path.join(args.oracle, "compiler-version.txt")).read().strip(),
-        "reader_checkout": [open(os.path.join(args.oracle, name)).read().split()
+        "reader_eccodes": read_text(args.oracle, "eccodes-version.txt").splitlines(),
+        "reader_compiler": read_text(args.oracle, "compiler-version.txt").strip(),
+        "reader_checkout": [read_text(args.oracle, name).split()
                             for name in ("checkout-before.txt", "checkout-after.txt")],
-        "reader_hashes": open(os.path.join(args.oracle, "hashes.txt")).read().splitlines(),
+        # Raw logs are represented by their normalized digests in each case.
+        "reader_hashes": [line for line in read_text(args.oracle, "hashes.txt").splitlines()
+                          if not line.endswith("-reader.log")],
         "interval_amounts_mm": trace["interval_amounts_mm"],
         "tolerance_policy": {"absolute": ABSOLUTE_TOLERANCE, "relative": RELATIVE_TOLERANCE,
                              "source": "#71 tolerance policy (meteorology::temporal DEFAULT_*_TOL)",

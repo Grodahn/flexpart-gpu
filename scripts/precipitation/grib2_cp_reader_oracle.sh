@@ -38,6 +38,13 @@ if [ ! -f "${UPSTREAM}/windfields_mod.o" ]; then
   (cd "${UPSTREAM}" && make -f makefile_gfortran FC=gfortran eta=no arch=x86-64 -j4) \
     > "${OUT}/full-build.log" 2>&1
 fi
+# A reused build must still come from the pinned sources: compare every file of
+# a fresh archive with the scratch copy before linking its objects.
+PRISTINE=$(mktemp -d)
+git -C "${CHECKOUT}" archive HEAD:src | tar -x -C "${PRISTINE}"
+(cd "${PRISTINE}" && find . -type f -print0 | sort -z | xargs -0 sha256sum) > "${OUT}/pristine-src.sha256"
+(cd "${UPSTREAM}" && sha256sum --quiet -c "${OUT}/pristine-src.sha256")
+rm -rf "${PRISTINE}"
 
 objects=$(find "${UPSTREAM}" -maxdepth 1 -type f -name '*.o' ! -name 'FLEXPART.o' -print | sort)
 BINARY="${OUT}/build/grib2-cp-reader-oracle"

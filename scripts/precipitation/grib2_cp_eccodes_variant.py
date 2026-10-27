@@ -42,6 +42,15 @@ def main():
 
     import eccodes
 
+    # process_output shells out to grib_set; it must come from the same ecCodes
+    # release as the bindings that decode the result.
+    grib_set = shutil.which("grib_set")
+    units_trace.require(grib_set is not None, "grib_set is not on PATH")
+    grib_set_version = subprocess.run([grib_set, "-V"], capture_output=True, text=True,
+                                      check=True).stdout.strip()
+    units_trace.require(grib_set_version.endswith(eccodes.codes_get_api_version()),
+                        "grib_set and Python ecCodes releases differ: " + grib_set_version)
+
     trace_dir = os.path.abspath(args.trace)
     with open(os.path.join(trace_dir, "grib2-cp-units-trace.json")) as handle:
         trace = json.load(handle)
@@ -68,13 +77,11 @@ def main():
         files[name]["sha256"] = units_trace.sha256_file(path)
         files[name]["bytes"] = os.path.getsize(path)
         files[name]["messages"] = units_trace.decode_file(path)
-    grib_set = shutil.which("grib_set")
     variant = {
         "schema": "flexpart-gpu/grib2-cp-units-eccodes-variant/v1",
         "issue": 211,
         "runtime": {"python": sys.version.split()[0], "eccodes": eccodes.codes_get_api_version(),
-                    "grib_set": subprocess.run([grib_set, "-V"], capture_output=True,
-                                               text=True).stdout.strip(),
+                    "grib_set": grib_set_version,
                     "definitions": eccodes.codes_definition_path()},
         "eccodes_definitions": definition_record(eccodes.codes_definition_path()),
         "process_output": process,

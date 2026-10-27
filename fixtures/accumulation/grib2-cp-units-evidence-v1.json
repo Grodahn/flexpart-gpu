@@ -92,7 +92,7 @@
       "parId 141 is6 -1",
       "parId 3063 is6 143"
      ],
-     "reader_grib2_log_sha256": "6b60b7f41d972dd7ee6928f5a92cff16320243e8af517f36fafe2c5ffe2ac737",
+     "reader_grib2_log_normalized_sha256": "6b60b7f41d972dd7ee6928f5a92cff16320243e8af517f36fafe2c5ffe2ac737",
      "reader_grib2_outcome": "STORED",
      "reader_grib2_output_sha256": "880a4883e9237c4cbe02fbc904667bb630534a340ce99fc62a2809a438d6686f",
      "reader_grid": [
@@ -195,7 +195,7 @@
       "parId 141 is6 -1",
       "parId 3063 is6 143"
      ],
-     "reader_grib2_log_sha256": "6b60b7f41d972dd7ee6928f5a92cff16320243e8af517f36fafe2c5ffe2ac737",
+     "reader_grib2_log_normalized_sha256": "6b60b7f41d972dd7ee6928f5a92cff16320243e8af517f36fafe2c5ffe2ac737",
      "reader_grib2_outcome": "STORED",
      "reader_grib2_output_sha256": "3f5109e1b775ccb9fe085e9f46dcb516dd0dd661f3e2b1d28d7a7aefe382acd1",
      "reader_grid": [
@@ -1023,7 +1023,7 @@
       "parId 141 is6 -1",
       "parId 260085 is6 -1"
      ],
-     "reader_grib2_log_sha256": "fc866a1f7dcbc5fb43baa7f31759dba551f79df392dd31300276bac423ab222b",
+     "reader_grib2_log_normalized_sha256": "13ca88c8bec506a8178eeba34ee7ecb4a8f4d78f8c47568dec63629d90ad927b",
      "reader_grib2_outcome": "STOP"
     },
     "prepared-grib2-eccodes-2.50.0:2023110206": {
@@ -1125,7 +1125,7 @@
       "parId 141 is6 -1",
       "parId 260085 is6 -1"
      ],
-     "reader_grib2_log_sha256": "8c9b02852b67cf508af4a9a8320d86dd42518a0624d8266361ecca11d0d0eb6f",
+     "reader_grib2_log_normalized_sha256": "13ca88c8bec506a8178eeba34ee7ecb4a8f4d78f8c47568dec63629d90ad927b",
      "reader_grib2_outcome": "STOP"
     }
    },
@@ -1666,20 +1666,14 @@
   "30ac958d42d53d164193e9f8653e7b281fd641181a17a54db9d778bca7891d93  build/grib2-cp-reader-oracle",
   "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  runs/grib1-EN23110112-exit.txt",
   "bb201614e74f5b9e4aa1358b61818b6ddcd691a2bfd8eb8aaef487e75d926b71  runs/grib1-EN23110112-output.txt",
-  "f65d66bcd2e57bf7f9e34718a5004dffab9c087773321ddcf626d9ccb3baf159  runs/grib1-EN23110112-reader.log",
   "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  runs/grib1-EN23110206-exit.txt",
   "96b4e4a8f2d8660913426d4805238a344aedab05345960da8c1c00f3c95df3a8  runs/grib1-EN23110206-output.txt",
-  "f65d66bcd2e57bf7f9e34718a5004dffab9c087773321ddcf626d9ccb3baf159  runs/grib1-EN23110206-reader.log",
   "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  runs/grib2-EN23110112-exit.txt",
   "880a4883e9237c4cbe02fbc904667bb630534a340ce99fc62a2809a438d6686f  runs/grib2-EN23110112-output.txt",
-  "6b60b7f41d972dd7ee6928f5a92cff16320243e8af517f36fafe2c5ffe2ac737  runs/grib2-EN23110112-reader.log",
   "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa  runs/grib2-EN23110206-exit.txt",
   "3f5109e1b775ccb9fe085e9f46dcb516dd0dd661f3e2b1d28d7a7aefe382acd1  runs/grib2-EN23110206-output.txt",
-  "6b60b7f41d972dd7ee6928f5a92cff16320243e8af517f36fafe2c5ffe2ac737  runs/grib2-EN23110206-reader.log",
   "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865  runs/grib2-eccodes-2.50.0-EN23110112-exit.txt",
-  "fc866a1f7dcbc5fb43baa7f31759dba551f79df392dd31300276bac423ab222b  runs/grib2-eccodes-2.50.0-EN23110112-reader.log",
   "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865  runs/grib2-eccodes-2.50.0-EN23110206-exit.txt",
-  "8c9b02852b67cf508af4a9a8320d86dd42518a0624d8266361ecca11d0d0eb6f  runs/grib2-eccodes-2.50.0-EN23110206-reader.log",
   "440ec62b9a7b8f4534e913b2af2a41aabdf44072b3fe77edbc213866e698e7d1  /workspace/flexpart-gpu/target/issue-211/oracle/build/upstream/windfields_mod.f90",
   "a25dce18fc3d4f3bbbf1b8c64e9b2629fb4e170540d350e555118ab9dd00bab3  /workspace/flexpart-gpu/target/issue-211/oracle/build/upstream/com_mod.f90",
   "3164314b5d7212ff5136b5605634fe3c34426aef1320c9fb499ded31f021a9db  /workspace/flexpart-gpu/target/issue-211/oracle/build/upstream/par_mod.f90",

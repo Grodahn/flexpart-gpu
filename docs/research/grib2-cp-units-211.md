@@ -214,8 +214,11 @@ docker run --rm -v <repo>:/workspace/flexpart-gpu -v <clean FLEXPART pin>:/works
 python -I scripts/precipitation/decode_grib2_cp_units_evidence.py --trace target/issue-211/flex-extract --oracle target/issue-211/oracle --variant prepared-grib2-eccodes-2.50.0 --out fixtures/accumulation/grib2-cp-units-evidence-v1.json
 ```
 
-The prepared files are byte-identical across reruns. The evidence records
-their SHA-256 values, plus those of the reader binary, outputs and logs.
+The prepared files, reader binary and reader outputs are byte-identical
+across reruns, and the evidence records their SHA-256 values. Reader logs are
+hashed after removing the gfortran backtrace frames of stopped runs, because
+those frames carry address-randomized pointers. The runner also checks that a
+reused reader build matches a fresh archive of the pinned sources.
 
 Raw files, logs and the reader build stay locally under `target/issue-211/`;
 they are not CI artifacts.

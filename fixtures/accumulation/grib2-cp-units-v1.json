@@ -5,7 +5,7 @@
   "consumer_issue": 32,
   "related_issues": [29, 90, 119, 202, 207, 212],
   "evidence": "fixtures/accumulation/grib2-cp-units-evidence-v1.json",
-  "evidence_sha256": "b65935777e01359b810a0fdc10c18b5ec26b11ce53cc463b6e661841b2a68757",
+  "evidence_sha256": "ce176db7495cf2a18f5b9efe67925bb22abb316e9145ca1f902957efebe56ed4",
   "research_note": "docs/research/grib2-cp-units-211.md",
   "verdict_statement": "The pinned FLEXPART 11.1 GRIB2 CP divisor of 1000 is a compensation for the ecCodes 2.24.2 GRIB1->GRIB2 concept of ECMWF paramId 143 (discipline 0, category 1, number 10, unitsFactor = 1000), which multiplies the flex_extract mm/h CP values by 1000 and relabels them acpcp (paramId 3063, kg m**-2). For flex_extract 7.1.2 FORMAT=GRIB2 output converted by ecCodes 2.24.2 and read by FLEXPART linked against ecCodes 2.24.2, the reader stores CP and LSP in the mm/h that interpol_rain and wetdepo expect: CORRECT_AS_PREPARED. The result depends on the producer's ecCodes definitions; ecCodes 2.50.0 maps LSP/CP to local 0/1/196 and 0/1/195 without scaling, and the pinned reader then stops in gridcheck_ecmwf. No reference defect is confirmed and none is corrected.",
   "validation_level": [
@@ -19,7 +19,8 @@
     "suitability of GRIB2 precipitation produced or read with any ecCodes release other than the executed ones",
     "RRINT=1 / numpf=3, PUREFC=1, BASETIME, ERA5 class EA, ensemble or nested-domain inputs",
     "snow depth (SD) GRIB2 handling, observed only as an out-of-scope note",
-    "physical correctness of the candidate-created support fields (model-level, surface and orography messages)"
+    "physical correctness of the candidate-created support fields (model-level, surface and orography messages)",
+    "real MARS/ECMWF retrievals: the accumulated LSP/CP inputs are the declared deterministic #202 example (scripts/precipitation/flex_extract_member_trace.py), passed through the unmodified producer"
   ],
   "normative_references": {
     "flexpart": {

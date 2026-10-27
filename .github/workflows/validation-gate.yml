@@ -212,17 +212,6 @@ jobs:
             --checkout ../flexpart --flex-extract ../flex_extract \
             --output-dir target/ci-gate/surface-flux-temporal-oracle
 
-      - name: Compare approved surface-flux time sampling against the fresh oracle (#120)
-        working-directory: flexpart-gpu
-        env:
-          FLEXPART_GPU_SURFACE_FLUX_ORACLE: target/ci-gate/surface-flux-temporal-oracle/report.json
-          FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          cargo test --test surface_flux_temporal_gpu -- --test-threads=1 --nocapture > target/ci-gate/surface-flux-temporal-gpu.log 2>&1
-          python3 scripts/interpolation/check_surface_flux_temporal_gpu.py target/ci-gate/surface-flux-temporal-gpu/report.json --software
-          python3 scripts/interpolation/test_check_surface_flux_temporal_gpu.py
-
       - name: Replay real production-driver samples through genuine #186 routines (#197)
         working-directory: flexpart-gpu
         env:

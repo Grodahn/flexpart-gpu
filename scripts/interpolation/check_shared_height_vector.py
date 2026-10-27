@@ -137,7 +137,7 @@ def check(path,software=False,hardware=False):
             require(selection=={'instantaneous':{'calendar':'gregorian','epoch_seconds':query['time_s']}},'query time')
             sample_time=query['time_s']
             require(metadata['temporal_bracket']=={
-                'lower_index':0, 'upper_index':1,
+                'lower_index':0, 'upper_index':1, 'sampling_basis':'instantaneous_state',
                 'source_timestamps':{'lower_epoch_seconds':0, 'upper_epoch_seconds':3600},
                 'application':{0:'first_endpoint',1800:'linear_interior',3600:'last_endpoint'}[sample_time],
                 'weights':{'dt1_seconds':sample_time,'dt2_seconds':3600-sample_time,

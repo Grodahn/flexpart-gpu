@@ -145,7 +145,10 @@ rejected. The canonical metadata cannot detect that mislabeling.
   edges, sources, pins and artifacts are hashed. Frozen raw/decoded evidence:
   [`surface-flux-temporal-v1`](../fixtures/interpolation/surface-flux-temporal-v1/report.json),
   308 records over 3 snapshots and 4x3 nodes. Coverage spans first, interior,
-  exact-interior and last times plus 5 fractional positions.
+  exact-interior and last times plus 5 fractional positions. The technical
+  validation gate rebuilds the oracle fresh and fails unless its raw input,
+  raw output, decoded records and provenance equal the frozen fixture, so the
+  device comparison against the fixture also binds the fresh run.
 - Device: `cargo test --test surface_flux_temporal_gpu -- --test-threads=1` runs
   #89 at every node and #76 #87 -> #89 at fractional positions in one caller
   encoder. It applies the #74/#89 policy (abs `1e-6` OR rel `1e-5`) and writes

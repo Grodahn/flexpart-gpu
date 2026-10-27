@@ -1,0 +1,242 @@
+{
+  "schema": "flexpart-gpu/precipitation-member-mapping-decision/v1",
+  "version": 1,
+  "issue": 202,
+  "consumer_issue": 119,
+  "follow_up_issue": 207,
+  "verdict": "INCOMPATIBLE",
+  "verdict_statement": "#90 canonical interval-mean mm/h rate resources cannot directly populate the two precipitation members consumed by pinned FLEXPART 11.1 interpol_rain with numpf=1. Those members are flex_extract RRINT=0 darain reconstructions of the precipitation rate at the member timestamp, built from four neighbouring interval means. The reconstruction operation is missing (#207).",
+  "validation_level": [
+    "original-source analysis (pinned FLEXPART 11.1 and flex_extract 7.1.2)",
+    "execution of unmodified pinned flex_extract EcFlexpart.deacc_fluxes on a declared finite accumulated-GRIB example",
+    "direct original-routine oracle (unchanged pinned interpol_rain via scripts/interpolation/direct_oracle.sh)"
+  ],
+  "not_claimed": [
+    "GPU execution",
+    "production-path parity",
+    "full readwind_ecmwf execution on a complete FLEXPART input file (prepared GRIB keys are decoded with the same ecCodes keys the reader requests)",
+    "ERA5 class EA, PUREFC=1, BASETIME, RRINT=1 or numpf=3 suitability"
+  ],
+  "normative_references": {
+    "flexpart": {
+      "manifest": "reference/flexpart-11.1.json",
+      "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+      "configuration": {"eta": "no", "numpf": 1, "numwfmem": 2},
+      "blobs": {
+        "src/interpol_mod.f90": "8620892bf66adcbcf8b1a82982e492c1dc0171b4",
+        "src/windfields_mod.f90": "6998b2a79263dd2b6deedb92380985f842e76c67",
+        "src/getfields_mod.f90": "2e256233c3acceb73c971be7b170691f5f3d0063",
+        "src/wetdepo_mod.f90": "f76aa59124e296c0c9b9e53143e818f9e66e8c9a",
+        "src/par_mod.f90": "98d831a487e77ca0daa596f5aa1c2a6b3a9e9197",
+        "src/readoptions_mod.f90": "9d46837c8f9912d5a3eb5b6f211e3854b57f1dc1"
+      }
+    },
+    "flex_extract": {
+      "manifest": "reference/flex-extract.json",
+      "pinned_tag": "7.1.2",
+      "pinned_commit": "e0005c99ac81d12faa45a8ff799debbd592b0dc0",
+      "blobs": {
+        "Source/Python/Classes/EcFlexpart.py": "65ba97f7e4212e4187accda307d79436bee23231",
+        "Source/Python/Mods/disaggregation.py": "12ec74a7ee4cc0d0fe4555406160fcd7b4b9945e",
+        "Source/Python/Mods/get_mars_data.py": "12259d1c1801c9e7c1e7e667e7e53825055f3a40",
+        "Source/Python/Mods/tools.py": "0286555e38617a01a78fdff51f94f6575d02ab7f"
+      }
+    }
+  },
+  "preprocessing_path": {
+    "tool": "flex_extract 7.1.2 (Python), the preparation tool named by reference/flex-extract.json",
+    "entry": "Mods/prepare_flexpart.py:158-161 -> EcFlexpart.deacc_fluxes (EcFlexpart.py:917-1271)",
+    "relevant_configuration": {"RRINT": 0, "PUREFC": 0, "BASETIME": "unset", "DTIME": "integer hours", "ACCTYPE": "FC", "ACCMAXSTEP": 12},
+    "flux_padding": "get_mars_data.py:299-301 retrieves flux data one day before START_DATE and one day after END_DATE for PUREFC=0 unless BASETIME=0, so every member in the requested period has complete four-interval support.",
+    "output_assembly": "EcFlexpart.py:1739-1765 concatenates flux<YYYYMMDDHH> for time T into the FLEXPART input file <PREFIX><YYMMDDHH> for the same T."
+  },
+  "source_chain": [
+    {
+      "stage": "raw accumulated precipitation",
+      "routine": "MARS flux retrieval (EcFlexpart._create_field_types_fluxes, EcFlexpart.py:312-333)",
+      "member": "LSP (paramId 142) and CP (paramId 143), steps DTIME..ACCMAXSTEP by DTIME from forecast bases ACCTIME",
+      "representation": "accumulated depth since forecast base",
+      "units": "m",
+      "physical_interval": "[base, base + step]",
+      "validity_time": "base + step"
+    },
+    {
+      "stage": "interval-mean rate (deaccumulation)",
+      "routine": "EcFlexpart.deacc_fluxes, EcFlexpart.py:1123-1143",
+      "member": "deac_vals[parId][k]",
+      "representation": "interval-mean rate; first step after a base uses the base-relative accumulation, later steps difference consecutive steps; class EA is never differenced",
+      "units": "mm/h (value * 1000 / DTIME)",
+      "physical_interval": "(t_k - DTIME, t_k]",
+      "validity_time": "t_k = base + step (interval end)",
+      "transformation": "x_k = (A_k - A_{k-1}) * 1000 / DTIME"
+    },
+    {
+      "stage": "point-rate reconstruction (RRINT=0)",
+      "routine": "disaggregation.darain, disaggregation.py:106-157, called at EcFlexpart.py:1180-1185",
+      "member": "darain([x_{k-1}, x_k, x_{k+1}, x_{k+2}])",
+      "representation": "reconstructed precipitation rate at the interval boundary T, documented as the point used for subsequent linear interpolation",
+      "units": "mm/h",
+      "physical_interval": "support [T - 2*DTIME, T + 2*DTIME]; value attributed to the instant T",
+      "validity_time": "T = end of x_k = start of x_{k+1}",
+      "transformation": "clip each x below 0 to 0; xac = xb*xc/(xa+xc) if xa+xc > 0 else 0.5*xb; xbd = xb*xc/(xb+xd) if xb+xd > 0 else 0.5*xc; member = xac + xbd"
+    },
+    {
+      "stage": "prepared GRIB member",
+      "routine": "EcFlexpart.deacc_fluxes, EcFlexpart.py:1201-1211 (file named by t_m2dt = T)",
+      "member": "flux<YYYYMMDDHH of T>, one message per parameter",
+      "grib_metadata": {"dataDate/dataTime": "T", "stepRange": 0},
+      "units": "mm/h"
+    },
+    {
+      "stage": "FLEXPART reader",
+      "routine": "windfields_mod.f90:425-427,538-559 (field count), 2063-2066 (ipf = stepRange + 1), 2335-2348 (copy, negative clip), 2180 (grib_get_real4_array)",
+      "member": "lsprec(:,:,1,1,memind), convprec(:,:,1,1,memind)",
+      "representation": "unchanged prepared value stored as real4; GRIB1 CP conversion_factor = 1",
+      "units": "mm/h (windfields_mod.f90:157-158)",
+      "memory_time": "wftime from the AVAILABLE entry of the file (readoptions_mod.f90 readavailable); the GRIB date/time is never read or checked"
+    },
+    {
+      "stage": "memory assignment",
+      "routine": "getfields_mod.f90:150-203 (rotation), 243-287 (initial pair)",
+      "member": "memind(1), memind(2) with memtime(1) <= itime < memtime(2)",
+      "memory_time": "memtime(i) = wftime of the loaded file = T of its member"
+    },
+    {
+      "stage": "consumer",
+      "routine": "wetdepo_mod.f90:290-327 -> interpol_mod.f90:1302-1316, 1344-1354, 1549-1550",
+      "member": "submember ip=1 of memind(1) and memind(2)",
+      "representation": "(r0*dt2 + r1*dt1)/dtt with dtt = dt/3, evaluated at the unshifted itime",
+      "units": "mm/h"
+    }
+  ],
+  "rrint_numpf_relationship": {
+    "proven": "FLEXPART 11.1 numpf=1 accepts exactly the flex_extract RRINT=0 representation (one LSP and one CP message per file, stepRange 0 -> ipf 1).",
+    "rrint1": "RRINT=1 writes six precipitation messages per file with stepRange 0, 1 and 2 (EcFlexpart.py:1411-1458, observed: 6 messages per file). readwind_ecmwf stops when more than two precipitation fields are present and numpf=1 (windfields_mod.f90:541-548). RRINT=1 is therefore unusable with numpf=1.",
+    "purefc": "PUREFC=1 sets stepRange = max(0, step - 2*DTIME) on precipitation members (EcFlexpart.py:1204-1205), which the reader maps to ipf > 1. Rejected; not executed."
+  },
+  "dt_over_3": {
+    "pinned_formula": "dt1 = itime - memtime(1); dt2 = memtime(2) - itime; dt = memtime(2) - memtime(1); dtt = dt/3; result = (r0*dt2 + r1*dt1)/dtt",
+    "provenance": "Introduced in FLEXPART commit c655930217a164cebfa0c5397636fbfa9e856d60 (2023-07-12, ticket #295, numpf=3 precipitation sub-fields). Before it, v10.4 interpol_rain returned y1(1) without temporal interpolation and the pre-#295 v11 wetdepo used the nearer memory. dtt is the numpf=3 sub-interval width: in each numpf=3 branch dtp1 + dtp2 = dtt (interpol_mod.f90:1318-1340). The numpf=1 branch keeps dtp1 + dtp2 = dt = 3*dtt. Unchanged on upstream master d4e0a86898010f9453453d868d197d3f40a8f1c8.",
+    "observed_effect": "For numpf=1 the pinned result is exactly three times the linear interpolation of the prepared point members (all nonzero decoded node rows, ratio 3 within the tolerance policy). A constant 1 mm/h interval-mean sequence yields prepared members of 1 mm/h and an interpol_rain result of 3 mm/h at every admitted time.",
+    "upstream_compensation": "None found. darain preserves a constant series; the reader applies no scaling to GRIB1 LSP/CP.",
+    "physical_meaning": "None established. The factor is frozen pinned behaviour shared from the numpf=3 path, not an amount-to-rate conversion and not evidence of a one-third interval.",
+    "policy": "#119 must reproduce the pinned arithmetic exactly, including the factor. No removal or compensation is authorized."
+  },
+  "accepted_input_representation": {
+    "quantity": "flex_extract RRINT=0 reconstructed precipitation rate at member time T (LSP and CP separately)",
+    "units": "mm/h",
+    "producer": "#207 GPU reconstruction from #90 interval means, or an equivalent prepared member with the provenance below",
+    "not_accepted": [
+      "#90 interval-mean rate assigned to either interval endpoint",
+      "interval amount or accumulated depth",
+      "flex_extract leading persistence value (first padded flux file = its own interval mean)",
+      "flex_extract BASETIME trailing values (T_last - DTIME duplicates T_last - 2*DTIME; T_last carries a raw interval mean)",
+      "RRINT=1 / IA3 sub-members",
+      "PUREFC=1 members"
+    ]
+  },
+  "member_mapping": {
+    "member_time": "T",
+    "support_intervals": ["(T-2Δ, T-Δ]", "(T-Δ, T]", "(T, T+Δ]", "(T+Δ, T+2Δ]"],
+    "darain_arguments": {"xa": "(T-2Δ, T-Δ]", "xb": "(T-Δ, T]", "xc": "(T, T+Δ]", "xd": "(T+Δ, T+2Δ]"},
+    "delta": "Δ = DTIME, a positive integer number of hours, equal for all support intervals",
+    "grib": {"stepRange": 0, "ipf": 1},
+    "flexpart_memtime": "T (AVAILABLE entry must equal T; FLEXPART does not verify)"
+  },
+  "temporal_coverage": {
+    "interval_sequence": "N >= 5 contiguous intervals (s_0, s_0+Δ], ..., (s_0+(N-1)Δ, s_0+NΔ] with one source/grid/context identity",
+    "member_times": "T_j = s_0 + jΔ for j = 2 .. N-2 (each with four-interval support)",
+    "first_member_time": "T_first = s_0 + 2Δ",
+    "last_member_time": "T_last = s_0 + NΔ - 2Δ",
+    "admitted_itime": "T_first <= itime <= T_last, forward time direction, with at least two members"
+  },
+  "boundary_policies": {
+    "first": "itime = T_first uses pair (T_first, T_first+Δ) with dt1 = 0; pinned result 3*r(T_first).",
+    "interior": "T_j < itime < T_{j+1} uses pair (T_j, T_{j+1}) (getfields_mod.f90:159-160, left-inclusive, right-exclusive).",
+    "exact_interior_boundary": "itime = T_j (j > first): the real caller rotates to pair (T_j, T_{j+1}) with dt1 = 0; result 3*r(T_j). Observed at T_j = 75600 s: oracle cases interior_left (dt2 = 0) and interior (dt1 = 0) return identical LSP and CP.",
+    "last": "itime = T_last: the real caller rotates memtime(1) = memtime(2) = T_last (getfields_mod.f90:167-203) and interpol_rain takes the duplicate-time branch (dt = 1, dt2 = 1, dtt = 1/3); result 3*r(T_last), oracle case final_duplicate_time.",
+    "extrapolation": "The raw routine extrapolates linearly outside [memtime(1), memtime(2)] (oracle rows at -3600 s and +3600 s). The real caller terminates instead (getfields_mod.f90:150-156, nstop = 4). Canonical admission rejects itime < T_first or itime > T_last.",
+    "duplicate_time": "Admitted only as the representation of itime = T_last. Any other duplicate member time is rejected.",
+    "backward": "ldirect = -1 is not established by this evidence and is rejected."
+  },
+  "rejections": [
+    {"code": "interval_mean_as_member", "reason": "#90 interval mean supplied where a reconstructed point member is required"},
+    {"code": "insufficient_support", "reason": "fewer than two supporting intervals before or after a member time, or N < 5"},
+    {"code": "outside_coverage", "reason": "itime < T_first or itime > T_last"},
+    {"code": "gap_or_overlap", "reason": "support intervals not contiguous"},
+    {"code": "unequal_or_non_integer_hour_delta", "reason": "intervals of different length, or Δ not a positive integer number of hours (DTIME is used as int hours, EcFlexpart.py:1068,1138,1143)"},
+    {"code": "member_spacing_mismatch", "reason": "consecutive member times not separated by Δ"},
+    {"code": "missing_member", "reason": "LSP or CP member missing at a required time"},
+    {"code": "identity_mismatch", "reason": "source, grid, context, unit or provenance identity differs between members or from the request"},
+    {"code": "non_finite", "reason": "NaN or infinite interval mean or member"},
+    {"code": "unsupported_preparation", "reason": "RRINT=1, PUREFC=1, BASETIME trailing values, leading persistence value, unknown preparation, or numpf != 1"},
+    {"code": "backward_time", "reason": "ldirect = -1"},
+    {"code": "duplicate_member_time", "reason": "duplicate member time other than the itime = T_last caller state"}
+  ],
+  "fixture_audit": {
+    "rain-layer-fields (fixtures/interpolation/contract-v1.json)": "Arithmetic golden only. It injects already-prepared members at memory times [0, 3600] without preparation provenance; unaffected by this decision.",
+    "rain-layer-fields-bilinear-rates (fixtures/accumulation/contract-v1.json)": {
+      "verdict": "INCOMPATIBLE",
+      "reasons": [
+        "It assigns interval means directly to memory times; flex_extract RRINT=0 never emits an interior interval mean as a member.",
+        "It assigns (0, 1800] to memory time 0, the start of that interval; no flex_extract path stamps an interval mean at its start.",
+        "It assigns (1800, 3600] to memory time 3600, which only matches the excluded BASETIME trailing write.",
+        "Δ = 1800 s is not an integer number of hours and cannot be a flex_extract DTIME.",
+        "Two intervals cannot provide the four-interval support of any member."
+      ],
+      "status": "The 159.75 / 3.0 mm/h golden remains a valid pinned-arithmetic regression. It is not evidence for the interval-to-member mapping and must not be used as #119 production-path evidence."
+    }
+  },
+  "compatibility_with_90": {
+    "verdict": "INCOMPATIBLE",
+    "equivalent_quantity": "The #90 interval-mean mm/h rate and flex_extract deac_vals describe the same quantity for the same interval when both start from the same accumulated sequence; proving numerical equivalence is a #207 obligation.",
+    "missing_operation": "flex_extract RRINT=0 darain four-interval point-rate reconstruction, stamped at the interval boundary T (#207).",
+    "not_missing": "No timestamp shift, amount scaling or dt/3 compensation is required or permitted."
+  },
+  "handoff_119": {
+    "blocked_by": [207],
+    "typed_input": "ordered members {T, lsp_mm_per_h, cp_mm_per_h, delta_seconds, support_start = T - 2Δ, support_end = T + 2Δ, preparation = flex_extract-7.1.2-rrint0-darain, source/grid/context identity}",
+    "sampler": "for admitted itime, select (T_j, T_{j+1}) as in boundary_policies and evaluate the pinned formula with dtt = dt/3 exactly; at itime = T_last evaluate the duplicate-time branch",
+    "output": "time-sampled LSP and CP in mm/h, as interpol_rain yint1/yint2",
+    "evidence": "pinned interpol_rain comparison at first, interior, exact boundary and last times with the #71 tolerance policy; actual device execution; complete negative matrix from rejections",
+    "no_new_semantics": "#119 may not add a timestamp shift, rescaling, reconstruction or tolerance"
+  },
+  "tolerance_policy": {
+    "absolute": 1.0e-6,
+    "relative": 1.0e-5,
+    "rule": "|candidate - oracle| <= absolute + relative * |oracle|",
+    "source": "#71 (src/meteorology/temporal.rs DEFAULT_ABS_TOL / DEFAULT_REL_TOL)"
+  },
+  "evidence": {
+    "decoded": "fixtures/accumulation/precipitation-member-mapping-evidence-v1.json",
+    "decoded_sha256": "039637b50647cd7dcd96be050fe5ebca1c026db9c948ee965bc1d7ad6848eeed",
+    "reproduction": [
+      "scripts/precipitation/flex_extract_member_trace.py (flex-extract container, unmodified pinned deacc_fluxes)",
+      "scripts/precipitation/member_mapping_oracle.sh (flexpart-fortran container, unchanged direct_oracle.sh)",
+      "scripts/precipitation/decode_member_mapping_evidence.py"
+    ],
+    "raw_trace_sha256": "d16ed0dd9085bbd446ae02e55d4de84749fd0ce0e2b63592f24f5fd12d69a621",
+    "raw_oracle_hashes_sha256": "db2fed80f8adea6081e192bcd3ee8ea86f13ac79252f154e2787d8d6c9008a44",
+    "oracle_executable_sha256": "a1c67c59a9eb681eb308ca3eaefd8a5a87eaa4aee17e8c1ae357501ddbd00d73",
+    "images": {
+      "flex-extract": "sha256:717f14dfd25610d2cc54624243610e8f654ba3a746ea973fd2b33f9841f288ec",
+      "flexpart-fortran": "sha256:324bb63d7311b13d9700906f05c98babaa69967c1dbfed124abb135855f80d84"
+    },
+    "compiler": "GNU Fortran (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0",
+    "runtime": {"python": "3.10.12", "numpy": "1.21.5", "eccodes": "2.24.2"}
+  },
+  "rejected_assumptions": [
+    "RRINT=0 is equivalent to numpf=1 merely because both select one member: replaced by the proven reader/writer relationship above.",
+    "A prepared member equals a #90 interval mean: refuted; most nonzero interior members differ from both adjacent interval means.",
+    "dt/3 converts an interval amount or encodes a one-third interval: no source support; it is the numpf=3 sub-interval width.",
+    "An upstream preparation step divides by three: refuted for darain (constant series preserved) and the GRIB1 reader.",
+    "The accumulation fixture's 20-minute lead/offset reading of dtt: not original preprocessing; its derived intervals are 1800 s.",
+    "Interval starts, ends or centres are FLEXPART member timestamps: the member time is the darain reconstruction time T, the boundary between the second and third support intervals.",
+    "GRIB date/time constrains FLEXPART memory time: FLEXPART uses AVAILABLE only."
+  ],
+  "out_of_scope_observations": [
+    "RRINT=1 file stamped T carries IA3 values at T-Δ, T-2Δ/3 and T-Δ/3 (observed), while interpol_rain numpf=3 places submembers at memtime, memtime+dt/3 and memtime+2dt/3. A numpf=3 issue must resolve this one-interval offset before use.",
+    "The GRIB2 CP path divides by conversion_factor = 1000 (windfields_mod.f90:2140-2147); this decision covers GRIB1 flex_extract output only.",
+    "ERA5 class EA skips deaccumulation (EcFlexpart.py:1136-1138); its accumulation convention is not exercised here."
+  ]
+}

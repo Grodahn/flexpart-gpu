@@ -87,3 +87,9 @@ references entirely is the explicit derivation-only report mode.
   `tests/interpolation_contract.rs` conventions and pins the fixture digest.
 - Module unit tests in `src/meteorology/accumulation.rs` cover hand-computed
   sequences for every derivation and rejection rule above.
+- `fixtures/accumulation/precipitation-member-mapping-v1.json` — #202 decision:
+  these interval-mean rates cannot directly populate FLEXPART `numpf=1`
+  precipitation members (verdict INCOMPATIBLE; the missing `RRINT=0`
+  reconstruction is #207). The `rain-layer-fields-bilinear-rates` memory-time
+  association is audited there as arithmetic-only evidence. See
+  [the research note](research/precipitation-interval-mapping-202.md).

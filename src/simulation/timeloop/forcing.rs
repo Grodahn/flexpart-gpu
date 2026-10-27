@@ -70,8 +70,9 @@ impl ParticleForcingField {
 /// unused lanes with zeros.
 #[derive(Debug, Clone)]
 pub struct ForwardStepForcing {
-    /// Requested original `lsettling` route. Production rejects it until #203 and #35/#37
-    /// provide validated settling velocities and sticky per-particle stop ownership.
+    /// Requested original `lsettling` route. Every driver path, including legacy diagnostics,
+    /// rejects it until #203 and #35/#37 provide validated settling velocities and sticky
+    /// per-particle stop ownership.
     pub settling_enabled: bool,
     /// Dry deposition velocity `vdep` [m/s] per species.
     pub dry_deposition_velocity_m_s: Vec<ParticleForcingField>,

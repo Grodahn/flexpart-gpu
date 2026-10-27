@@ -77,7 +77,7 @@ The finite proof and reproduction commands are in [transport-top adoption](trans
 The real-driver test records the private **advection-stage** result before the
 unchanged downstream turbulence; it does not claim whole-timestep trajectory parity.
 Requested `ForwardStepForcing::settling_enabled` fails before release/encoding in
-both production drivers. #203 owns the missing validated flag/velocity and sticky
+both production drivers and their legacy diagnostic paths. #203 owns the missing validated flag/velocity and sticky
 scientific-stop handoff. A scientific stop must never become a fatal meteorology
 batch. No stop state is fabricated by this ordinary-particle implementation.
 

@@ -72,7 +72,8 @@ impl ForwardTimeLoopDriver {
                 .into(),
             );
         }
-        if !legacy_diagnostic && forcing.settling_enabled {
+        // No driver path implements settling; a legacy diagnostic must not silently drop it.
+        if forcing.settling_enabled {
             return Err(crate::gpu::meteorology::MeteorologyCompositionError::Unsupported(
                 "transport settling requires validated settling and sticky particle-stop state (#203; physics #35/#37)",
             ).into());

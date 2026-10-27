@@ -237,6 +237,13 @@ jobs:
           cargo run --quiet --example check_gpu_evidence -- target/ci-gate/transport-top/validation-0-compaction-0/fresh-comparison.json
           python3 scripts/transport/test_check_transport_top.py
 
+      - name: Audit settling/sticky-stop contract against the pinned source (#203)
+        working-directory: flexpart-gpu
+        run: |
+          set -euo pipefail
+          python3 scripts/transport/check_settling_stop_contract.py --checkout ../flexpart
+          python3 scripts/transport/test_check_settling_stop_contract.py
+
       - name: Record dependency cache checksums
         working-directory: flexpart-gpu
         run: python3 scripts/cargo_cache_integrity.py record

@@ -71,8 +71,10 @@ settling flag sets sticky `nstop`; other cases assign the f32 expression
 sampling and after correction, which is applied to the adjusted predictor.
 The preceding schematic trapezoidal formula is equivalent only when boundary
 actions do not intervene. Production #198 implements the ordinary placement and
-ordering. Requested settling remains rejected pending #203; the original scientific
-stop is not a fatal meteorology condition. See [evidence scope](../transport-top.md).
+ordering. Requested settling remains rejected; the original scientific stop is not a
+fatal meteorology condition. The [#203 contract](../research/settling-stop-203.md)
+defines the run-owned flag, step-private sticky stop and termination handoff for a
+later implementation. See [evidence scope](../transport-top.md).
 
 The proof retains 24 boundary and 72 public-advance cases, exact raw/decoded
 observations and two distinct fresh-build provenance inventories. It introduces

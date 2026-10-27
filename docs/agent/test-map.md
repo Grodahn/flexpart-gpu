@@ -146,6 +146,8 @@ Start at the [stable facade](../../src/meteorology/vertical.rs) and select its
 
 - Shared-vector production adoption (#197): `cargo test --lib gpu::meteorology::advection_production_tests -- --nocapture --test-threads=1`; repeat software/hardware and validation/compaction configurations. [Exact commands and supported envelope](../shared-advection.md); [device and genuine replay auditor](../../scripts/transport/shared_advection_evidence.py). Missing device, source or complete status is a failure. #198 adds the separately verified ordinary upper-boundary action.
 
+- Settling/sticky-stop contract (#203): `python scripts/transport/check_settling_stop_contract.py --checkout <pristine-pin>` and `python scripts/transport/test_check_settling_stop_contract.py`; [decision](../research/settling-stop-203.md). Contract consistency only, never settling or transport parity.
+
 - Direct top-boundary research (#180): `python scripts/transport/test_top_boundary_oracle.py`; reproduce two fresh builds with [the launcher](../../scripts/transport/run_top_boundary_oracle.py) and audit with [the paired verifier](../../scripts/transport/compare_top_boundary_builds.py). [Exact commands, scope and precision limitation](../research/transport-top-180.md#reproduction-and-audit); [CI](../../.github/workflows/transport-top-oracle.yml). This is direct pinned-routine evidence, not GPU parity.
 
 - Canonical production adoption: `cargo test --lib gpu::meteorology::advection_production_tests`; repeat with validation and compaction environments, retaining [real-driver evidence](../resident-advection.md). Legacy diagnostic timeloop checks do not replace it. After the real-driver target, run

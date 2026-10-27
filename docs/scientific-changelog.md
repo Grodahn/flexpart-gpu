@@ -15,6 +15,20 @@ shaders, physics kernels, or advection logic must add an entry here.
 ---
 
 #
+### 2026-10-27 - Define settling flag and sticky particle-stop handoff (#203)
+**Impact**: none (architecture contract; no production Rust/WGSL, fixture or tolerance change)
+**Files**: `docs/research/settling-stop-203.md`, `docs/research/settling-stop-203-matrix.json`,
+`scripts/transport/check_settling_stop_contract.py`, `docs/resident-advection.md`.
+**Validation**: source anchors audited against pinned `c70586c2`; matrix selectors
+resolved against frozen #180 rows; no settling, GPU or transport parity claimed.
+
+Records a production deviation without changing it: original `lsettling` defaults to
+`.true.` (`com_mod.f90:175`) and is disabled only for multi-species release points
+(`readoptions_mod.f90:2574-2585`). The backward driver is single-species and applies
+the ordinary top placement. FLEXPART would stop and terminate those particles
+(`advance_mod.f90:889-895`, `timemanager_mod.f90:534-541`). Results match only when no
+backward particle reaches the transport top. #214 owns the fix (genuine rows: #213).
+
 ### 2026-10-27 - Admit approved instantaneous surface fluxes to #89 time sampling (#120)
 **Impact**: numerics (eligibility only; no consumer adopted)
 **Files**: `src/meteorology/temporal.rs`, `src/gpu/meteorology.rs`,

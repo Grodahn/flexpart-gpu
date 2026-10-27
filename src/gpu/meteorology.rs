@@ -16,10 +16,12 @@
 //! [`PreparedMeteorologySample::encode`] never submits, waits, polls, or reads back.
 
 use serde::{Deserialize, Serialize};
+mod interval_rates;
 pub mod resident;
 mod shared_uv;
 mod shared_w;
 mod transport_boundary;
+pub use interval_rates::IntervalRateGrid;
 use sha2::{Digest, Sha256};
 pub use shared_uv::SharedHeightQueryIdentity;
 pub use shared_w::SharedHeightWQueryIdentity;

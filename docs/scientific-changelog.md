@@ -15,6 +15,30 @@ shaders, physics kernels, or advection logic must add an entry here.
 ---
 
 #
+### 2026-10-27 - Reconstruct numpf=1 precipitation members with flex_extract darain (#207)
+**Impact**: numerics (new GPU preprocessing stage; no consumer adopted)
+**Files**: `src/shaders/darain_precipitation_member.wgsl`, `src/gpu/precipitation_members.rs`,
+`src/gpu/meteorology/interval_rates.rs`
+**Validation**: original pinned flex_extract 7.1.2 `darain` (genuine #202 trace and direct
+execution), #71 rule, hardware and software WGSL; see [contract](precipitation-members.md).
+
+Ported from `disaggregation.py:106-157` without deviation in arithmetic or operation order;
+the kernel runs in `f32` against the float64 original. Deviation in admission: #75/#90
+rejects same-run accumulation decreases that flex_extract passes to `darain` (which clips
+them), so GRIB-packed inputs with such jitter fail closed instead of yielding members.
+
+### 2026-10-27 - Make the #198 top placement and predictor decision exact (#198 review)
+**Impact**: numerics (upper transport placement margin and Petterssen stage hand-off)
+**Files**: typed transport boundary, resident advection, predictor/corrector WGSL.
+**Validation**: [transport-top adoption](transport-top.md).
+
+The original f32 margin `100*(nxmax/3.e5)` is now computed once on the host in IEEE
+f32. WGSL division allows 2.5 ULP error and the device may contract the placement
+expression, so the previous device evaluation could differ from the pinned value by
+one ulp. The corrector now consumes the predictor's private raw height instead of
+recomputing it, so both stages share one boundary decision. No scientific semantics,
+fixture or tolerance changes.
+
 ### 2026-10-27 - Admit approved instantaneous surface fluxes to #89 time sampling (#120)
 **Impact**: numerics (eligibility only; no consumer adopted)
 **Files**: `src/meteorology/temporal.rs`, `src/gpu/meteorology.rs`,

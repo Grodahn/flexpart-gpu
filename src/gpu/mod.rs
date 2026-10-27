@@ -25,6 +25,7 @@ pub mod meteorology;
 pub mod particle_step;
 pub mod pbl;
 pub mod pbl_reflection;
+pub mod precipitation_members;
 pub mod preflight;
 pub mod rng;
 pub mod settling;

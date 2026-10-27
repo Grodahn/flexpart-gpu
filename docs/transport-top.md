@@ -47,8 +47,8 @@ PBL routes remain unsupported. Existing constructors reject these routes.
 Requested settling (`ForwardStepForcing::settling_enabled`) rejects before
 release/encoding in both production drivers and their legacy diagnostic paths.
 There is no validated production settling flag/velocity or sticky `nstop` owner.
-[#203](https://github.com/Grodahn/flexpart-gpu/issues/203)
-owns that handoff; #35/#37 retain general physics. Original backward settling is
+The [#203 contract](research/settling-stop-203.md) defines that handoff and its
+[acceptance matrix](research/settling-stop-203-matrix.json) for a later implementation; #35/#37 retain general physics. Original backward settling is
 a scientific particle stop, never a fatal meteorology batch; this PR does not
 fabricate that state or claim to execute the stopped route.
 

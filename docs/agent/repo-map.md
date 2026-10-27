@@ -99,6 +99,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 ## Transport-advection
 
 - Upper transport boundary (#198): [typed device handoff](../../src/gpu/meteorology/transport_boundary.rs), [real-driver matrix](../../src/gpu/meteorology/transport_top_tests.rs), [independent evidence auditor](../../scripts/transport/check_transport_top.py), [supported envelope and precision limits](../transport-top.md). Reuses #184/#197/#190; settling #203 and trajectory precision #204 remain separate.
+- Settling flag and sticky-stop contract (#203): [decision and owner inventory](../research/settling-stop-203.md), [versioned acceptance matrix](../research/settling-stop-203-matrix.json), [contract auditor](../../scripts/transport/check_settling_stop_contract.py). Contract only; no production stop or settling route is implemented.
 
 - Production: [forward operator sequence](../../src/simulation/timeloop/forward/operators.rs), [coordinate/velocity units](../../src/coords/mod.rs).
 - Canonical production: [resident Petterssen](../../src/gpu/advection_resident.rs); [migration inventory](../resident-advection.md).

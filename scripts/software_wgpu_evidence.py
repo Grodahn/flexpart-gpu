@@ -38,6 +38,16 @@ VECTOR_STEP = '''name: Prove complete shared-height U/V/W canonical queries (#19
 '''
 
 
+SURFACE_FLUX_STEP = '''name: Prove approved instantaneous surface-flux time sampling (#120)
+        id: surface-flux-temporal-120
+        run: |
+          set -euo pipefail
+          cargo test --test surface_flux_temporal_gpu -- --test-threads=1 --nocapture > target/ci-gate/surface-flux-temporal-gpu.log 2>&1
+          python3 scripts/interpolation/check_surface_flux_temporal_gpu.py target/ci-gate/surface-flux-temporal-gpu/report.json --software
+          python3 scripts/interpolation/test_check_surface_flux_temporal_gpu.py
+          python3 scripts/interpolation/test_surface_flux_temporal_oracle.py
+'''
+
 SHARED_ADVECTION_STEP = '''name: Audit complete prepared-vector production drivers (#197)
         id: shared-advection-197
         run: |
@@ -69,6 +79,11 @@ def contract():
                            'sha256': hashlib.sha256(coverage.normalized(VECTOR_STEP).encode()).hexdigest()})
     result['artifacts']['gpu-meteorology'].extend([
         'target/ci-gate/shared-height-vector.log', 'target/ci-gate/shared-height-vector/*.json'])
+    result['steps'].append({'name': 'Prove approved instantaneous surface-flux time sampling (#120)',
+                           'block': SURFACE_FLUX_STEP, 'owners': ['gpu-meteorology'],
+                           'sha256': hashlib.sha256(coverage.normalized(SURFACE_FLUX_STEP).encode()).hexdigest()})
+    result['artifacts']['gpu-meteorology'].extend([
+        'target/ci-gate/surface-flux-temporal-gpu.log', 'target/ci-gate/surface-flux-temporal-gpu/*.json'])
     result['steps'].append({'name': 'Audit complete prepared-vector production drivers (#197)',
                            'block': SHARED_ADVECTION_STEP, 'owners': ['gpu-transport-physics'],
                            'sha256': hashlib.sha256(coverage.normalized(SHARED_ADVECTION_STEP).encode()).hexdigest()})
@@ -285,6 +300,10 @@ def audit_payload(root, domain):
                                  str((root / 'target/ci-gate/shared-height-vector/report.json').resolve()), '--software'],
                                 cwd=root, capture_output=True, text=True)
         require(result.returncode == 0, 'shared-height complete vector: '+result.stderr[-2000:])
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/interpolation/check_surface_flux_temporal_gpu.py'),
+                                 str((root / 'target/ci-gate/surface-flux-temporal-gpu/report.json').resolve()), '--software'],
+                                cwd=root, capture_output=True, text=True)
+        require(result.returncode == 0, 'surface-flux time sampling: '+result.stderr[-2000:])
         paths = [p for p in files if p.startswith('target/ci-gate/accumulation-gpu/') and p.endswith('.json')]
         for prefix in ('large_scale_precipitation', 'convective_precipitation'):
             require(sum(Path(p).name.startswith(prefix+'-cell-') for p in paths) == 12, 'accumulation cell count')

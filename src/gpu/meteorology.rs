@@ -254,6 +254,8 @@ pub struct MeteorologySampleMetadata {
 /// Serializable view of the existing #89 control-plane bracket.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TemporalBracketMetadata {
+    /// Approved field-specific basis for instantaneous sampling (#74/#120).
+    pub sampling_basis: crate::meteorology::temporal::InstantaneousSamplingBasis,
     /// Original source-series index of the lower member.
     pub lower_index: usize,
     /// Original source-series index of the upper member.
@@ -677,6 +679,7 @@ impl<'ctx> CanonicalGpuField<'ctx> {
                 .filter_map(|s| s.runtime.as_ref().and_then(|r| r.motion.clone()))
                 .collect(),
             temporal_bracket: bracket.as_ref().map(|b| TemporalBracketMetadata {
+                sampling_basis: b.sampling_basis,
                 lower_index: b.lower_index,
                 upper_index: b.upper_index,
                 source_timestamps: b.source_timestamps,

@@ -1289,11 +1289,13 @@ pub fn default_comparison_policy() -> Result<ComparisonPolicy, GpuTemporalError>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::meteorology::temporal::InstantaneousSamplingBasis;
 
     #[test]
     fn blend_params_reject_empty_bracket() {
         let bracket = TemporalBracket {
             field_id: FieldId::WindU,
+            sampling_basis: InstantaneousSamplingBasis::InstantaneousState,
             request: RequestedSampleTime::new(Calendar::Gregorian, 0),
             application: TemporalApplication::FirstEndpoint,
             source_timestamps: SourceTimestamps {

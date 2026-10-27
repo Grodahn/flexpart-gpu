@@ -91,6 +91,18 @@ class AggregateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'protected evidence step missing'):
                 evidence.monolithic_view(changed, strict=True)
 
+    def test_surface_flux_stage_and_artifacts_are_required(self):
+        baseline = REAL_CONTRACT()
+        text = (evidence.ROOT / '.github/workflows/software-wgpu.yml').read_text()
+        with patch.object(evidence, 'contract', return_value=baseline):
+            self.assertIn('surface-flux-temporal-120', evidence.expected_stages('gpu-meteorology'))
+            self.assertIn('target/ci-gate/surface-flux-temporal-gpu/*.json', baseline['artifacts']['gpu-meteorology'])
+            evidence.monolithic_view(text, strict=True)
+            changed = text.replace('      - '+evidence.SURFACE_FLUX_STEP, '')
+            self.assertNotEqual(text, changed)
+            with self.assertRaisesRegex(ValueError, 'protected evidence step missing'):
+                evidence.monolithic_view(changed, strict=True)
+
     def test_shared_height_query_stage_and_artifacts_are_required(self):
         baseline = REAL_CONTRACT()
         text = (evidence.ROOT / '.github/workflows/software-wgpu.yml').read_text()

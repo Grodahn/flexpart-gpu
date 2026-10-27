@@ -93,3 +93,7 @@ references entirely is the explicit derivation-only report mode.
   reconstruction is #207). The `rain-layer-fields-bilinear-rates` memory-time
   association is audited there as arithmetic-only evidence. See
   [the research note](research/precipitation-interval-mapping-202.md).
+- [Precipitation members (#207)](precipitation-members.md): GPU `darain`
+  reconstruction that consumes the complete #90 mm/h rate grid in place. The
+  genuine #202 GRIB example contains packing-induced same-run decreases that
+  this contract rejects ([#216](https://github.com/Grodahn/flexpart-gpu/issues/216)).

@@ -147,6 +147,41 @@ jobs:
             grep -q '"calculation_path": "wgsl_device"' "$evidence"
             grep -q '"adapter_class": "software_wgsl"' "$evidence"
           done
+      - name: Prove numpf=1 precipitation member reconstruction against pinned darain (#207)
+        id: precipitation-members-207
+        run: |
+          set -euo pipefail
+          cargo test --lib precipitation_members > target/ci-gate/precipitation-members-unit.log 2>&1
+          cargo test --test precipitation_members_gpu -- --test-threads=1 --nocapture > target/ci-gate/precipitation-members-gpu.log 2>&1
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("target/ci-gate/precipitation-members")
+          reports = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in root.glob("*.json")}
+          assert sorted(reports) == ["direct-darain", "fail-closed", "genuine-darain",
+                                     "genuine-input-equivalence", "production-handoff"], sorted(reports)
+          equivalence = reports.pop("genuine-input-equivalence")
+          assert (equivalence["admitted_series"], equivalence["rejected_series"]) == (15, 3)
+          assert equivalence["adapter"]["adapter_class"] == "software_wgsl"
+          for name, report in reports.items():
+              assert report["verdict"] == "passed", name
+          lanes = [lane["lane"] for lane in reports["genuine-darain"]["lanes"] + reports["direct-darain"]["lanes"]]
+          lanes += [lane["members"] for lane in reports["production-handoff"]["lanes"]]
+          assert len(lanes) == 6
+          for lane in lanes:
+              evidence = lane["gpu_evidence"]
+              assert lane["verdict"] == "passed" and all(r["verdict"] == "passed" for r in lane["rows"])
+              assert evidence["execution"]["calculation_path"] == "wgsl_device"
+              assert evidence["execution"]["adapter"]["adapter_class"] == "software_wgsl"
+              assert evidence["candidate"]["revision"] == os.environ["FLEXPART_GPU_CANDIDATE_REVISION"]
+              assert evidence["oracle"]["revision"] == "e0005c99ac81d12faa45a8ff799debbd592b0dc0"
+              assert evidence["comparison"]["verdict"] == "passed"
+          assert reports["production-handoff"]["submissions"] == 1
+          assert len(reports["production-handoff"]["stages"]) == 4
+          assert len(reports["fail-closed"]["rows"]) >= 20
+          PY
       - name: Prove temporal interpolation against the pinned FLEXPART oracle
         id: original-10
         run: |

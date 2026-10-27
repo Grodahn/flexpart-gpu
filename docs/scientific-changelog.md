@@ -29,6 +29,18 @@ the ordinary top placement. FLEXPART would stop and terminate those particles
 (`advance_mod.f90:889-895`, `timemanager_mod.f90:534-541`). Results match only when no
 backward particle reaches the transport top. #214 owns the fix (genuine rows: #213).
 
+### 2026-10-27 - Reconstruct numpf=1 precipitation members with flex_extract darain (#207)
+**Impact**: numerics (new GPU preprocessing stage; no consumer adopted)
+**Files**: `src/shaders/darain_precipitation_member.wgsl`, `src/gpu/precipitation_members.rs`,
+`src/gpu/meteorology/interval_rates.rs`
+**Validation**: original pinned flex_extract 7.1.2 `darain` (genuine #202 trace and direct
+execution), #71 rule, hardware and software WGSL; see [contract](precipitation-members.md).
+
+Ported from `disaggregation.py:106-157` without deviation in arithmetic or operation order;
+the kernel runs in `f32` against the float64 original. Deviation in admission: #75/#90
+rejects same-run accumulation decreases that flex_extract passes to `darain` (which clips
+them), so GRIB-packed inputs with such jitter fail closed instead of yielding members.
+
 ### 2026-10-27 - Make the #198 top placement and predictor decision exact (#198 review)
 **Impact**: numerics (upper transport placement margin and Petterssen stage hand-off)
 **Files**: typed transport boundary, resident advection, predictor/corrector WGSL.

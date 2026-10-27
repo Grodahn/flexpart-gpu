@@ -99,8 +99,9 @@ original preprocessing:
   member is never an interval mean.
 - It assigns `(0,1800]` to memory time 0, the start of that interval. No path
   stamps an interval mean at its start.
-- It assigns `(1800,3600]` to 3600, which matches only the rejected BASETIME
-  trailing write.
+- It assigns `(1800,3600]` to 3600, its end. flex_extract stamps an interval
+  mean at its end only in the rejected boundary writes: the leading persistence
+  value and the BASETIME trailing write.
 - `Δ = 1800 s` is not an integer-hour `DTIME`.
 - Two intervals cannot supply the four-interval support of any member.
 

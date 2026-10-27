@@ -180,7 +180,7 @@
       "reasons": [
         "It assigns interval means directly to memory times; flex_extract RRINT=0 never emits an interior interval mean as a member.",
         "It assigns (0, 1800] to memory time 0, the start of that interval; no flex_extract path stamps an interval mean at its start.",
-        "It assigns (1800, 3600] to memory time 3600, which only matches the excluded BASETIME trailing write.",
+        "It assigns (1800, 3600] to memory time 3600, its end; flex_extract stamps an interval mean at its end only in the rejected boundary writes (leading persistence value, EcFlexpart.py:1193-1199; BASETIME trailing write, EcFlexpart.py:1218-1234).",
         "Δ = 1800 s is not an integer number of hours and cannot be a flex_extract DTIME.",
         "Two intervals cannot provide the four-interval support of any member."
       ],

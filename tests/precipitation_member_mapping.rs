@@ -15,8 +15,8 @@ use sha2::{Digest, Sha256};
 const DECISION_PATH: &str = "fixtures/accumulation/precipitation-member-mapping-v1.json";
 const EVIDENCE_PATH: &str = "fixtures/accumulation/precipitation-member-mapping-evidence-v1.json";
 /// Pinned SHA-256 of the canonical LF decision artifact; update deliberately.
-const DECISION_SHA256: &str = "fea6591751eedcbaea83384ca3a2547fb60a7216a9196b347c9ed2d8e85e0025";
-/// Interval length of the declared flex_extract example (DTIME = 3 h).
+const DECISION_SHA256: &str = "7851210604855a7a7e39094603ad906cf654c103ca09a58a23c8eb812c8e78d5";
+/// Interval length of the declared `flex_extract` example (DTIME = 3 h).
 const EXAMPLE_DELTA_SECONDS: i64 = 10_800;
 /// First and last member times with complete four-interval support in the
 /// 16-interval example starting at the trace epoch.
@@ -24,6 +24,9 @@ const EXAMPLE_FIRST_MEMBER_SECONDS: i64 = 2 * EXAMPLE_DELTA_SECONDS;
 const EXAMPLE_LAST_MEMBER_SECONDS: i64 = 14 * EXAMPLE_DELTA_SECONDS;
 /// Ratio of pinned `numpf=1` output to the linear blend of the prepared members.
 const PINNED_NUMPF1_SCALE: f64 = 3.0;
+/// Pinned `interpol_rain` divisor of the member-pair length, `dtt = dt/3`
+/// (`interpol_mod.f90:1309`).
+const PINNED_DTT_DIVISOR: f64 = 3.0;
 /// Linear blends below this value are excluded from the ratio check because
 /// f32 member rounding dominates the quotient.
 const RATIO_MIN_LINEAR_MM_PER_HOUR: f64 = 1.0e-3;
@@ -61,6 +64,13 @@ fn within_policy(candidate: f64, oracle: f64) -> bool {
     (candidate - oracle).abs() <= DEFAULT_ABS_TOL + DEFAULT_REL_TOL * oracle.abs()
 }
 
+/// Asserts an exactly representable decoded value, such as a zero weight or a
+/// zero reproduction difference, without a tolerance.
+#[allow(clippy::float_cmp)]
+fn assert_exact(actual: f64, expected: f64, what: &str) {
+    assert_eq!(actual, expected, "{what}");
+}
+
 fn number(value: &Value, key: &str) -> f64 {
     value[key]
         .as_f64()
@@ -72,6 +82,33 @@ fn pinned_commit(manifest: &str) -> String {
         .as_str()
         .expect("manifest pinned_commit")
         .to_owned()
+}
+
+/// Recomputes the pinned `interpol_rain` `numpf=1` result from the decoded
+/// members and the oracle-reported weights instead of trusting the decoder.
+fn recomputed_pinned(row: &Value, key: &str) -> f64 {
+    let members = &row[format!("{key}_members_mm_per_h")];
+    let (r0, r1) = (
+        members[0].as_f64().expect("member r0"),
+        members[1].as_f64().expect("member r1"),
+    );
+    (r0 * number(row, "dt2") + r1 * number(row, "dt1")) / number(row, "dtt")
+}
+
+/// Checks that the oracle-reported weights are the pinned `interpol_rain`
+/// definitions for an ordinary member pair, including `dtt = dt/3`.
+fn assert_pinned_weights(case: &str, row: &Value) {
+    let itime = number(row, "itime");
+    let memtime_start = row["memtime_s"][0].as_f64().expect("memtime start");
+    let memtime_end = row["memtime_s"][1].as_f64().expect("memtime end");
+    let pair_seconds = memtime_end - memtime_start;
+    assert!(pair_seconds > 0.0, "{case}: not an ordinary member pair");
+    assert!(within_policy(number(row, "dt1"), itime - memtime_start));
+    assert!(within_policy(number(row, "dt2"), memtime_end - itime));
+    assert!(
+        within_policy(number(row, "dtt"), pair_seconds / PINNED_DTT_DIVISOR),
+        "{case}: dtt is not dt/3"
+    );
 }
 
 fn node_rows(evidence: &Value, case: &str) -> Vec<Value> {
@@ -181,7 +218,11 @@ fn test_precipitation_mapping_rrint_representations_match_reader() {
     assert_eq!(counts["rrint0"], serde_json::json!([2]));
     assert_eq!(counts["rrint1"], serde_json::json!([6]));
     assert_eq!(evidence["basetime_trailing_duplicate"], true);
-    assert_eq!(number(&evidence, "max_abs_member_minus_darain_result"), 0.0);
+    assert_exact(
+        number(&evidence, "max_abs_member_minus_darain_result"),
+        0.0,
+        "darain reproduction",
+    );
 }
 
 #[test]
@@ -220,13 +261,20 @@ fn test_precipitation_mapping_interpol_rain_rows_match_pinned_arithmetic() {
         let rows = node_rows(&evidence, case);
         assert!(!rows.is_empty(), "{case}: no node rows");
         for row in rows {
+            if case != "final_duplicate_time" {
+                assert_pinned_weights(case, &row);
+            }
             for key in ["lsp", "cp"] {
                 let oracle = number(&row, key);
-                let expected = number(&row, &format!("{key}_pinned_expected"));
+                let expected = recomputed_pinned(&row, key);
                 assert!(
                     within_policy(expected, oracle),
                     "{case} {key}: {expected} vs {oracle}"
                 );
+                assert!(within_policy(
+                    number(&row, &format!("{key}_pinned_expected")),
+                    expected
+                ));
                 let linear = number(&row, &format!("{key}_linear_point_blend"));
                 if linear > RATIO_MIN_LINEAR_MM_PER_HOUR {
                     assert!(
@@ -251,8 +299,8 @@ fn test_precipitation_mapping_coverage_endpoints_match_example() {
         assert_eq!(row["memtime_s"][0], EXAMPLE_LAST_MEMBER_SECONDS);
         assert_eq!(row["memtime_s"][1], EXAMPLE_LAST_MEMBER_SECONDS);
         // Real-caller state at T_last: dt = 1, dt2 = 1, dtt = 1/3.
-        assert_eq!(number(&row, "dt1"), 0.0);
-        assert_eq!(number(&row, "dt2"), 1.0);
+        assert_exact(number(&row, "dt1"), 0.0, "duplicate-time dt1");
+        assert_exact(number(&row, "dt2"), 1.0, "duplicate-time dt2");
         assert!(within_policy(number(&row, "dtt"), 1.0 / 3.0));
     }
 }
@@ -276,8 +324,8 @@ fn test_precipitation_mapping_exact_interior_boundary_is_continuous() {
     assert!(!left.is_empty() && left.len() == right.len());
     for (left_row, right_row) in left.iter().zip(&right) {
         assert_eq!(left_row["node"], right_row["node"]);
-        assert_eq!(number(left_row, "dt2"), 0.0);
-        assert_eq!(number(right_row, "dt1"), 0.0);
+        assert_exact(number(left_row, "dt2"), 0.0, "left pair dt2");
+        assert_exact(number(right_row, "dt1"), 0.0, "right pair dt1");
         for key in ["lsp", "cp"] {
             assert!(within_policy(number(left_row, key), number(right_row, key)));
         }

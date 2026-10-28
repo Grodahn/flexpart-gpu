@@ -130,14 +130,21 @@ docker run --rm -v <repo>:/workspace/flexpart-gpu -v <flex_extract clone>:/works
 The genuine example has three same-run accumulations that decrease by GRIB
 24-bit packing jitter: LSP cell (1,0) at 30 h and CP cells (1,0) at 30 h and
 (2,1) at 45 h (−7.8e-8 and −1.9e-8 mm/h after deaccumulation). They remain
-decreasing after canonical `f32` conversion. flex_extract deaccumulates them and
-`darain` clips them to zero. #75/#90 rejects same-run decreases, so the whole
-genuine LSP and CP fields fail closed at `CanonicalGpuField::upload`. Changing
-that policy is new #75 deaccumulation semantics and is outside #207; it is
-tracked by [#216](https://github.com/Grodahn/flexpart-gpu/issues/216). The
-production test therefore uses a declared dyadic sequence with the direct
-original-routine oracle; the genuine reconstruction is proven through the raw
-kernel path.
+decreasing after canonical `f32` conversion (4, 4 and 2 ulp). flex_extract
+deaccumulates them and `darain` clips them to zero. #75/#90 rejects same-run
+decreases, so the whole genuine LSP and CP fields fail closed at
+`CanonicalGpuField::upload`.
+
+[#216](research/grib-packing-accumulation-216.md) decided `ADMIT_BOUNDED`. A
+decrease inside a bound derived from both messages' GRIB packing metadata
+becomes a `+0.0` #90 interval, which leaves the original `darain` result
+unchanged. The canonical schema does not yet carry that metadata.
+[#219](https://github.com/Grodahn/flexpart-gpu/issues/219) owns the carrier, the
+#75/#90 change and the genuine #202 → #90 → #207 device replay that closes #207.
+
+Until then, the production test uses a declared dyadic sequence with the direct
+original-routine oracle, and the genuine reconstruction is proven only through
+the raw kernel path. This stage needs no change.
 
 ## Not supported
 

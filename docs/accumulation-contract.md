@@ -47,6 +47,9 @@ Given a monotonically increasing sequence of observations
 - Contiguous declared reset at `R_i == t_{i-1}`: interval `[t_{i-1}, t_i]`
   carries amount `a_i` as a fresh run.
 - Non-finite or negative amounts, and negative same-run deltas, fail closed.
+  #216 decided one bounded exception for GRIB-packed LSP/CP; it is not active
+  until [#219](https://github.com/Grodahn/flexpart-gpu/issues/219) (see
+  [below](#same-run-decreases-from-grib-packing-216)).
 - For a single-run sequence the sum of derived interval amounts telescopes to
   the final accumulated source value, so interval-integrated precipitation is
   preserved to `1e-6` relative in canonical tests.
@@ -73,6 +76,57 @@ sequence, incomplete oracle-reference coverage, or any failed derivation or
 requested oracle comparison makes the report fail closed. Omitting oracle
 references entirely is the explicit derivation-only report mode.
 
+## Same-run decreases from GRIB packing (#216)
+
+Decision: **`ADMIT_BOUNDED`, not implemented.** See the
+[research note](research/grib-packing-accumulation-216.md) and the
+[decision artifact](../fixtures/accumulation/grib-packing-decrease-decision-v1.json).
+The canonical schema does not yet carry the packing metadata the rule needs, so
+the "same-run negative delta" rejection above still applies to every input.
+[#219](https://github.com/Grodahn/flexpart-gpu/issues/219) owns the carrier, the
+#75/#90 change and the genuine #202 → #90 → #207 replay.
+
+Independent per-message GRIB quantization can make a flat accumulation decrease.
+Pinned flex_extract differences such a pair, and every consumer of the result
+clips it to zero (`darain`, the FLEXPART reader). The rule #219 implements:
+
+- **Supported class:** LSP/CP `AccumulatedSinceReset` in kg/m2, from GRIB1
+  table 128 paramId 142/143 in metres, `grid_simple`, `bitsPerValue >= 1`,
+  `decimalScaleFactor` 0, no bitmap, explicitly declared MARS class `OD`.
+  The canonical value is
+  `f32_nearest(Y * 1000)` computed in double.
+- **Required provenance**, on both observations: message SHA-256, `paramId`
+  (LSP 142, CP 143), `mars_class = OD`, E, D, R, `bitsPerValue`, bitmap flag,
+  forecast reference `== R_i`, reference + step `== t_i`, source unit, scale and
+  conversion path.
+  Nothing may be defaulted.
+  MARS class is provider/control provenance, not inferred from the packing
+  keys. Missing or other classes remain `UNRESOLVED`: pinned flex_extract
+  skips differencing for `EA` (`EcFlexpart.py:1136-1138`).
+- **Pair:** consecutive declared observations of one cell with
+  `R_{i-1} == R_i < t_{i-1}`.
+- **Bound** in kg/m2: `B = 1000 (2^E_prev + 2^E_cur) + r_prev + r_cur`, with
+  `r_k = ulp_f32(c_k)/2 + 2^-50 (|c_k| + ulp_f32(c_k))`. It holds for any
+  quantizer that returns one of the two levels bracketing the true value. It
+  depends only on the two messages and the two canonical values; it is not a
+  tolerance.
+- **Admission:** `d = c_i - c_{i-1} < 0`, (R, E, D) differ between the messages,
+  and `-d < B`. Identical (R, E, D) cannot produce a decrease, so such a pair is
+  rejected. So are `-d >= B` and any identity, time, reset, unit, message or
+  `paramId` inconsistency. Missing provenance (all current inputs), other
+  encodings, D != 0 and GRIB2 remain unresolved and are rejected.
+- **Representation:** an admitted interval has amount and rates `+0.0`; no #90
+  buffer holds a negative value.
+  - The next interval uses the unmodified lower `c_i`, as flex_extract does. The
+    run total exceeds the final value by the admitted decreases, each below its `B`.
+  - The signed difference and `B` are kept as typed diagnostics outside the
+    cell-invariant interval metadata.
+  - #76 and #207 consume the result unchanged.
+
+For the genuine #202 example this admits all three rows, at 0.29–0.31 of `B`.
+Packing causation is proven there by construction. For operational GRIB a
+decrease inside `B` is only consistent with packing.
+
 ## Evidence
 
 - `fixtures/accumulation/contract-v1.json` — canonical fixture: per-cell
@@ -96,4 +150,7 @@ references entirely is the explicit derivation-only report mode.
 - [Precipitation members (#207)](precipitation-members.md): GPU `darain`
   reconstruction that consumes the complete #90 mm/h rate grid in place. The
   genuine #202 GRIB example contains packing-induced same-run decreases that
-  this contract rejects ([#216](https://github.com/Grodahn/flexpart-gpu/issues/216)).
+  this contract rejects until #219 implements the #216 decision.
+- `fixtures/accumulation/grib-packing-decrease-decision-v1.json` — #216
+  decision, raw GRIB metadata, offending rows, bound and negative controls;
+  locked by `tests/grib_packing_decision.rs`.

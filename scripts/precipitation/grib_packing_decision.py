@@ -61,6 +61,9 @@ F64_PATH_RELATIVE = Fraction(1, 2 ** 50)
 # Declared canonical conversion of the supported class: IEEE double decode, unit
 # scale by 1000 (or division by 0.001) in double, one round-to-nearest to f32.
 CANONICAL_CONVERSION = "f64_decode_unit_scale_then_f32_nearest"
+# The #202 trace explicitly configures marsclass="OD". This is provider/control
+# provenance, not a packing key inferred from these synthetic GRIB messages.
+SUPPORTED_MARS_CLASS = "OD"
 
 ECCODES_KEYS = [
     "editionNumber", "centre", "table2Version", "indicatorOfParameter", "paramId",
@@ -406,6 +409,8 @@ def classify(pair):
         packing = side["packing"]
         if packing is None:
             return "UNRESOLVED", "missing_packing_provenance"
+        if packing.get("mars_class") != SUPPORTED_MARS_CLASS:
+            return "UNRESOLVED", "unsupported_source_class"
         if (packing["encoding"] != "grib1_grid_simple" or packing["bitsPerValue"] < 1
                 or packing["bitmap_present"] or packing["decimalScaleFactor"] != 0):
             return "UNRESOLVED", "unsupported_packing"
@@ -789,6 +794,7 @@ def build(args):
 def packing_record(message):
     return {
         "encoding": "grib1_grid_simple",
+        "mars_class": SUPPORTED_MARS_CLASS,
         "message_sha256": message["message_sha256"],
         "paramId": message["pds"]["indicatorOfParameter"],
         "bitsPerValue": message["bds"]["bitsPerValue"],
@@ -871,6 +877,12 @@ def negative_controls(rows, sequences):
         "message reference time is the 36 h restart", pair)
 
     mutations = [
+        ("unsupported_source_class_ea", "ERA5 EA skips differencing in pinned flex_extract",
+         lambda p: p["current"]["packing"].update(mars_class="EA")),
+        ("unsupported_source_class_other", "unexercised MARS class RD",
+         lambda p: p["current"]["packing"].update(mars_class="RD")),
+        ("missing_source_class_provenance", "source class absent; no OD default permitted",
+         lambda p: p["current"]["packing"].pop("mars_class")),
         ("identical_packing_parameters", "previous message re-declared with the current "
          "message's scale factors (monotone quantizer)",
          lambda p: p["previous"]["packing"].update(
@@ -985,6 +997,11 @@ def assemble(args, repo, evidence, oracle, keys, file_records, messages, offendi
             "eccodes_keys_sha256": sha256_file(os.path.join(repo, ECCODES_KEYS_PATH)),
             "eccodes_version": keys["eccodes"],
             "flex_extract_image": FLEX_EXTRACT_IMAGE,
+            "source_class": {
+                "mars_class": SUPPORTED_MARS_CLASS,
+                "basis": "scripts/precipitation/flex_extract_member_trace.py run_deacc_fluxes "
+                         "explicitly configures control.marsclass=OD; not inferred from GRIB",
+            },
         },
         "decoding": {
             "edition": 1,
@@ -1064,7 +1081,8 @@ def decision_section():
             "canonical_unit": "kilogram_per_square_meter",
             "sign": "non_negative",
             "source": "GRIB edition 1 ECMWF table 128 paramId 142 (LSP) / 143 (CP) "
-                      "(m water equivalent), regular lat/lon grid-point data",
+                      "(m water equivalent), regular lat/lon grid-point data; explicitly "
+                      "declared MARS class OD (the exercised #202 deaccumulation path)",
             "packing": "BDS simple packing (grid_simple), bitsPerValue >= 1, "
                        "decimalScaleFactor 0, no bitmap, "
                        "floating-point data flag; exercised: bitsPerValue 24, D = 0",
@@ -1137,15 +1155,17 @@ def decision_section():
                       "decimalScaleFactor != 0, bitmap",
              "verdict": "UNRESOLVED"},
             {"class": "GRIB2 any template (incl. JPEG/CCSDS), NetCDF scale/offset packing, "
-                      "ERA5 class EA, other conversion paths", "verdict": "UNRESOLVED"},
+                      "ERA5 class EA, any other or absent MARS class, other conversion paths",
+             "verdict": "UNRESOLVED"},
         ],
         "prerequisite": {
             "owner": "#29 schema field (smallest) populated by #32 providers",
             "missing_now": "the canonical Field carries only unit, sign, time and f32 values; "
                            "Snapshot provenance is the schema identity only",
             "required_record": "optional per-Field source quantization: encoding, message sha256, "
-                               "paramId, bitsPerValue, E, D, R, bitmap flag, forecast reference, "
-                               "step, source unit, canonical scale, conversion path",
+                               "paramId, mars_class (explicit OD), bitsPerValue, E, D, R, bitmap "
+                               "flag, forecast reference, step, source unit, canonical scale, "
+                               "conversion path",
             "rule": "#75 must not infer or default any of these keys",
         },
         "follow_up": "one implementation issue: canonical packing provenance + #75/#90 bounded "

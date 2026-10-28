@@ -92,12 +92,17 @@ clips it to zero (`darain`, the FLEXPART reader). The rule #219 implements:
 
 - **Supported class:** LSP/CP `AccumulatedSinceReset` in kg/m2, from GRIB1
   table 128 paramId 142/143 in metres, `grid_simple`, `bitsPerValue >= 1`,
-  `decimalScaleFactor` 0, no bitmap. The canonical value is
+  `decimalScaleFactor` 0, no bitmap, explicitly declared MARS class `OD`.
+  The canonical value is
   `f32_nearest(Y * 1000)` computed in double.
 - **Required provenance**, on both observations: message SHA-256, `paramId`
-  (LSP 142, CP 143), E, D, R, `bitsPerValue`, bitmap flag, forecast reference
-  `== R_i`, reference + step `== t_i`, source unit, scale and conversion path.
+  (LSP 142, CP 143), `mars_class = OD`, E, D, R, `bitsPerValue`, bitmap flag,
+  forecast reference `== R_i`, reference + step `== t_i`, source unit, scale and
+  conversion path.
   Nothing may be defaulted.
+  MARS class is provider/control provenance, not inferred from the packing
+  keys. Missing or other classes remain `UNRESOLVED`: pinned flex_extract
+  skips differencing for `EA` (`EcFlexpart.py:1136-1138`).
 - **Pair:** consecutive declared observations of one cell with
   `R_{i-1} == R_i < t_{i-1}`.
 - **Bound** in kg/m2: `B = 1000 (2^E_prev + 2^E_cur) + r_prev + r_cur`, with

@@ -151,7 +151,7 @@ epsilon reproduces it.
 | --- | --- | --- | --- |
 | A. Strict rejection (current #75) | LSP and CP uploads fail; 0 of 18 series reach #207 | None, but it rejects decreases that faithful independent packing must produce | Rejected as a permanent policy; kept for every input outside the admitted class |
 | B. Evidence-bounded | All 18 series; 3 rows admitted | A real decrease below `B` is admitted as 0. It is below the encoding resolution, and the original chain uses 0 as well | **Selected** |
-| C. Unconditional (flex_extract) | All 18 series | Admits 15 of the 29 controls that B rejects or leaves unresolved. These include a hidden 36 h restart (−9 mm, silently clipped by `darain`), a decrease of twice `B`, identical packing parameters and missing provenance | Rejected |
+| C. Unconditional (flex_extract) | All 18 series | Admits 18 of the 32 controls that B rejects or leaves unresolved. These include a hidden 36 h restart (−9 mm, silently clipped by `darain`), a decrease of twice `B`, identical packing parameters and missing provenance | Rejected |
 
 flex_extract trusts message order and differences any pair. Under C, an
 undeclared restart or a corrupt message becomes a negative rate that `darain` or
@@ -197,12 +197,12 @@ Consumer audit:
 
 | Class | Verdict |
 | --- | --- |
-| LSP/CP `AccumulatedSinceReset`, kg/m2, GRIB1 table 128 paramId 142/143 `grid_simple`, `bitsPerValue ≥ 1`, D = 0, no bitmap, declared conversion, consistent run/message/paramId provenance, (R, E, D) differ, −d < B | `ADMIT_BOUNDED` |
+| LSP/CP `AccumulatedSinceReset`, kg/m2, declared MARS class OD, GRIB1 table 128 paramId 142/143 `grid_simple`, `bitsPerValue ≥ 1`, D = 0, no bitmap, declared conversion, consistent run/message/paramId provenance, (R, E, D) differ, −d < B | `ADMIT_BOUNDED` |
 | Any input without canonical packing provenance (all current inputs) | `UNRESOLVED`; runtime rejects (`NegativeDelta` today, fail closed after #219) |
 | Identical (R, E, D); −d ≥ B; identity, time, reset, unit, finiteness, message or paramId provenance inconsistency; non-precipitation fields | `REJECT` |
-| GRIB1 second-order/complex/spherical, `bitsPerValue` 0, D ≠ 0, bitmap; GRIB2 (any template), NetCDF scale/offset, ERA5 class `EA`, other conversion paths | `UNRESOLVED` (runtime: reject) |
+| GRIB1 second-order/complex/spherical, `bitsPerValue` 0, D ≠ 0, bitmap; GRIB2 (any template), NetCDF scale/offset, ERA5 class `EA`, other or missing MARS class, other conversion paths | `UNRESOLVED` (runtime: reject) |
 
-All three genuine rows are `ADMIT_BOUNDED`. The 29 controls (each mutating one
+All three genuine rows are `ADMIT_BOUNDED`. The 32 controls (each mutating one
 genuine pair) cover:
 
 - the exact bound: 12 `f32` steps are admitted and 13 are rejected against
@@ -212,6 +212,7 @@ genuine pair) cover:
 - identical packing; missing provenance, provenance for another message, and a
   provenance `paramId` that does not match the field;
 - D ≠ 0 and unsupported encodings;
+- ERA5 class `EA`, an unexercised class, and absent source-class provenance;
 - reversed or missing time and reset ambiguity;
 - mixed grid or source, a missing observation, wrong units, NaN/∞ and negative
   amounts.
@@ -226,6 +227,11 @@ optional per-`Field` source-quantization record:
 - `bitsPerValue`, E, D, R and the bitmap flag;
 - forecast reference and step;
 - source unit, canonical scale and conversion path.
+- explicit MARS class `OD` from provider/control provenance. The #202 trace's
+  `run_deacc_fluxes` sets `control.marsclass = "OD"`; this value is not inferred
+  from the synthetic GRIB messages. Pinned `EcFlexpart.py:1136-1138` skips
+  differencing for `EA`. Missing and other classes remain unresolved, so the
+  classifier must check this field before applying the packing bound.
 
 #75 must not infer or default any key. #32 populates the record when it decodes
 GRIB. [#219](https://github.com/Grodahn/flexpart-gpu/issues/219) owns the record,

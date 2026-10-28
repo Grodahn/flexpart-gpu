@@ -27,7 +27,7 @@ const GRIB_DIR: &str = "fixtures/accumulation/precipitation-202-accumulated-grib
 /// #202 evidence and the decision key the files by the original trace name.
 const GRIB_SUFFIX: &str = ".grib";
 /// Pinned SHA-256 of the canonical LF decision artifact; update deliberately.
-const DECISION_SHA256: &str = "b601951c18abf1c9588a947ded0787b7f92c79309615ccc6de2c7491d3fdadf0";
+const DECISION_SHA256: &str = "83059dcbce88544aa141ffcb9fb8e2ec96cc3ec2eca9ef76873e9b84bf3ddfa1";
 /// `flex_extract` divides GRIB metres by `fak = 1/1000` (`EcFlexpart.py:1123-1131`);
 /// the #207 harness builds canonical kg/m2 with the same quotient.
 const FLEX_EXTRACT_METRE_FACTOR: f64 = 1.0 / 1000.0;
@@ -46,7 +46,10 @@ const NY: usize = 3;
 const DYADIC_SCALE: i32 = 120;
 const SUPPORTED_FIELDS: [&str; 2] = ["large_scale_precipitation", "convective_precipitation"];
 /// Negative-control classes the #216 decision must cover.
-const REQUIRED_CONTROLS: [&str; 15] = [
+const REQUIRED_CONTROLS: [&str; 18] = [
+    "unsupported_source_class_ea",
+    "unsupported_source_class_other",
+    "missing_source_class_provenance",
     "bound_smallest_rejected",
     "decrease_twice_bound",
     "undeclared_reset_consistent_provenance",
@@ -536,6 +539,9 @@ fn classify(pair: &Value) -> (&'static str, &'static str) {
         if packing.is_null() {
             return ("UNRESOLVED", "missing_packing_provenance");
         }
+        if packing["mars_class"].as_str() != Some("OD") {
+            return ("UNRESOLVED", "unsupported_source_class");
+        }
         if text(packing, "encoding") != "grib1_grid_simple"
             || integer(packing, "bitsPerValue") < 1
             || packing["bitmap_present"].as_bool().expect("bitmap flag")
@@ -603,6 +609,7 @@ fn genuine_pair(name: &str, prev: &Observation<'_>, cur: &Observation<'_>) -> Va
             "source_message_sha256": ob.message.sha256,
             "packing": {
                 "encoding": "grib1_grid_simple",
+                "mars_class": "OD",
                 "message_sha256": ob.message.sha256,
                 "paramId": ob.message.param,
                 "bitsPerValue": ob.message.bits,
@@ -1114,6 +1121,52 @@ fn test_grib_packing_negative_controls_match_independent_policy() {
         "undeclared_reset_consistent_provenance",
     ] {
         assert!(misclassified_by_c.contains(&id), "{id}");
+    }
+}
+
+#[test]
+fn test_grib_packing_source_class_requires_declared_od_provenance() {
+    let messages = grib_messages();
+    let oracle = parse(ORACLE_PATH);
+    let obs = sequence(&oracle, &messages, "lsp", 1);
+    let pair = genuine_pair("lsp", &obs[8], &obs[9]);
+    for side in ["previous", "current"] {
+        for source_class in [
+            serde_json::json!("EA"),
+            serde_json::json!("RD"),
+            Value::Null,
+        ] {
+            let mut unsupported = pair.clone();
+            unsupported[side]["packing"]["mars_class"] = source_class;
+            assert_eq!(
+                classify(&unsupported),
+                ("UNRESOLVED", "unsupported_source_class"),
+                "{side}: only the exercised OD deaccumulation path is resolved"
+            );
+        }
+    }
+    let decision = parse(DECISION_PATH);
+    assert_eq!(
+        text(&decision["consumed"]["source_class"], "mars_class"),
+        "OD"
+    );
+    for id in [
+        "unsupported_source_class_ea",
+        "unsupported_source_class_other",
+        "missing_source_class_provenance",
+    ] {
+        let control = decision["negative_controls"]
+            .as_array()
+            .expect("controls")
+            .iter()
+            .find(|control| text(control, "id") == id)
+            .expect("source-class control");
+        assert_eq!(text(control, "expected_verdict"), "UNRESOLVED", "{id}");
+        assert_eq!(
+            text(control, "expected_code"),
+            "unsupported_source_class",
+            "{id}"
+        );
     }
 }
 

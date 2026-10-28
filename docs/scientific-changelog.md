@@ -15,6 +15,13 @@ shaders, physics kernels, or advection logic must add an entry here.
 ---
 
 #
+### 2026-10-28 - Enforce the #216 source-class boundary in decision tooling
+**Impact**: decision/provenance correction only; no production or tolerance change.
+**Validation**: regression reproduces the prior admission of an excluded EA pair;
+both decision classifiers now require declared OD provenance, matching the #202
+trace control. Missing, EA and unexercised classes remain unresolved. Pinned
+EcFlexpart.py:1136-1138 skips differencing for EA; #219 must carry the class.
+
 ### 2026-10-27 - Decide bounded admission of GRIB-packing accumulation decreases (#216)
 **Impact**: none (decision only; no production Rust/WGSL, tolerance or #75/#90 behaviour change)
 **Files**: `docs/research/grib-packing-accumulation-216.md`, `docs/accumulation-contract.md`,

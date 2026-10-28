@@ -28,6 +28,13 @@ jobs:
           python3 scripts/transport/run_top_boundary_oracle.py --checkout target/pristine-flexpart --output-dir target/ci-gate/top-second
           python3 scripts/transport/compare_top_boundary_builds.py --first target/ci-gate/top-first --second target/ci-gate/top-second --output target/ci-gate/top-reproducibility.json
           python3 scripts/transport/test_top_boundary_oracle.py
+      - name: Execute two flagged gas-carrier original builds (#213)
+        run: |
+          set -euo pipefail
+          python3 scripts/transport/run_flagged_top_boundary_oracle.py --checkout target/pristine-flexpart --output-dir target/ci-gate/flagged-top-first
+          python3 scripts/transport/run_flagged_top_boundary_oracle.py --checkout target/pristine-flexpart --output-dir target/ci-gate/flagged-top-second
+          python3 scripts/transport/compare_top_boundary_builds.py --first target/ci-gate/flagged-top-first --second target/ci-gate/flagged-top-second --output target/ci-gate/flagged-top-reproducibility.json
+          python3 scripts/transport/verify_flagged_top_boundary_oracle.py --fixture fixtures/transport/top-boundary-v2
       - name: Audit settling/sticky-stop contract against the pristine pin (#203)
         run: |
           set -euo pipefail

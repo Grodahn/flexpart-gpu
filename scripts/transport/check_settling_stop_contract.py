@@ -65,6 +65,8 @@ def check_reference(case_id: str, reference: dict, tables: dict, top_m: float) -
     expect = reference.get('expect', {})
     require(set(expect) <= ALLOWED_EXPECT, f'{case_id}: expectation carries invented oracle values {sorted(set(expect) - ALLOWED_EXPECT)}')
     require('count' in expect, f'{case_id}: oracle reference must declare a row count')
+    require(isinstance(expect['count'], int) and expect['count'] > 0, f'{case_id}: oracle selector must resolve rows')
+    require(bool(reference.get('where')), f'{case_id}: oracle selector must be explicit')
     rows = select(tables[reference['table']], reference.get('where', {}))
     require(len(rows) == expect['count'], f'{case_id}: expected {expect["count"]} rows, found {len(rows)}')
     for row in rows:
@@ -156,7 +158,11 @@ def check(matrix_path: Path = MATRIX, checkout: Path | None = None) -> dict:
     require(digest(raw) == authority['frozen_raw_output_sha256'], 'frozen #180 raw output changed')
     fixture = json.loads((ROOT / authority['frozen_fixture']).read_text(encoding='utf-8'))
     require(fixture['provenance']['pinned_commit'] == authority['pinned_commit'], 'fixture pin differs')
+    from verify_flagged_top_boundary_oracle import audit_fixture, FIXTURE as flagged_fixture
+    audit_fixture(flagged_fixture)
+    flagged = json.loads((flagged_fixture / 'report.json').read_text(encoding='utf-8'))
     tables = fixture_tables(fixture)
+    tables['FLAGGED_ADVANCE_V2'] = flagged['science']['cases']
     top_m = fixture['science']['target_top_m_agl']
 
     anchor_ids = [anchor['id'] for anchor in matrix['source_anchors']]

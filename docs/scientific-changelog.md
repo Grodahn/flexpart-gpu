@@ -15,6 +15,15 @@ shaders, physics kernels, or advection logic must add an entry here.
 ---
 
 #
+### 2026-10-29 - Record genuine flagged gas-carrier transport-top rows (#213)
+**Impact**: none (original-reference evidence only; no production Rust/WGSL or tolerance change).
+**Files**: sibling original driver/observers, `fixtures/transport/top-boundary-v2/`, #203 matrix.
+**Validation**: two independently archived pinned public-advance builds, exact raw/decoded
+comparison, observation-free controls, v1 byte immutability and fail-closed mutation tests.
+The original density<=0 branch retains exactly zero settling while the backward inclusive
+stop remains enabled, including inward correction after a predictor stop. No deviation
+from original physics is introduced; #214 remains the production owner.
+
 ### 2026-10-28 - Enforce the #216 source-class boundary in decision tooling
 **Impact**: decision/provenance correction only; no production or tolerance change.
 **Validation**: regression reproduces the prior admission of an excluded EA pair;

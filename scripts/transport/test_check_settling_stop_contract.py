@@ -71,7 +71,19 @@ class SettlingStopContract(unittest.TestCase):
         self.mutate(lambda m: self.case(m, 'C18')['nstop'].update(final=True))
 
     def test_oracle_blocked_without_gap(self):
-        self.mutate(lambda m: self.case(m, 'C07')['evidence'].update(oracle_gap=None))
+        self.mutate(lambda m: self.case(m, 'C07').update(status='oracle_blocked'))
+
+    def test_unresolved_flagged_selector(self):
+        self.mutate(lambda m: self.case(m, 'C07')['evidence']['oracle_rows'][0]['where'].update(scenario=99))
+
+    def test_invented_flagged_selector(self):
+        self.mutate(lambda m: self.case(m, 'C07')['evidence']['oracle_rows'][0].update(table='INVENTED_ADVANCE'))
+
+    def test_empty_selector_cannot_claim_evidence(self):
+        self.mutate(lambda m: self.case(m, 'C07')['evidence']['oracle_rows'][0]['expect'].update(count=0))
+
+    def test_flagged_rows_cannot_claim_no_stop(self):
+        self.mutate(lambda m: self.case(m, 'C07')['evidence']['oracle_rows'][0]['expect'].update(nstop=False))
 
     def test_unknown_status(self):
         self.mutate(lambda m: self.case(m, 'C12').update(status='done'))

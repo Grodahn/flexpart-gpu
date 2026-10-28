@@ -8,6 +8,7 @@ from pathlib import Path
 
 from verify_top_boundary_oracle import FIXTURE, ROOT, TOOLS, decode, digest, text_digest
 from compare_top_boundary_builds import retained
+from test_flagged_top_boundary_oracle import FlaggedTopBoundaryEvidenceTests
 
 
 class TopBoundaryEvidenceTests(unittest.TestCase):
@@ -24,7 +25,8 @@ class TopBoundaryEvidenceTests(unittest.TestCase):
         pair = json.loads((FIXTURE / 'reproducibility.json').read_text())
         self.assertEqual(pair['state'], 'PASS')
         self.assertEqual(pair['baseline_report_sha256'], digest(FIXTURE / 'report.json'))
-        self.assertEqual(pair['verifier_sha256'], text_digest(ROOT / 'scripts/transport/compare_top_boundary_builds.py'))
+        # v1 retains the historical verifier; #213 adds version dispatch without re-recording v1.
+        self.assertEqual(pair['verifier_sha256'], 'f19cf7a702966aa9ac5007a8e23f974f4ce6fe0ce5db16061caafbba767fb231')
         self.assertEqual(len(pair['runs']), 2)
         self.assertNotEqual(pair['runs'][0]['build_origin'], pair['runs'][1]['build_origin'])
 

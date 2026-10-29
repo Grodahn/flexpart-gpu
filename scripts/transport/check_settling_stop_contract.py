@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Audit the #203 settling/sticky-stop contract matrix without running scientific validation.
 
-The matrix may only reference frozen #180 rows; it never carries oracle values. This checker
+The matrix references frozen #180/v1 and #213/v2 rows; it never carries oracle values. This checker
 confirms that every reference resolves to genuine rows with the stated stop classification,
 that cited pinned source lines contain the cited statements, and that every named repository
 owner still exists. A PASS is contract consistency, never settling or transport parity.
@@ -29,6 +29,7 @@ OWNER_FIELDS = ('component', 'path', 'symbol', 'owner', 'invariant', 'gap', 'pro
 ALLOWED_EXPECT = {'count', 'nstop', 'settling_nonzero', 'f32_representable'}
 TOP_OFFSET_COLUMN = 'input_top_offset_0.0001_m'
 TOP_OFFSET_M = 1.0e-4
+REQUIRED_FLAGGED_CASES = {'C03', 'C05', 'C06', 'C07', 'C08', 'C09', 'C11'}
 
 
 def digest(data: bytes) -> str:
@@ -65,6 +66,8 @@ def check_reference(case_id: str, reference: dict, tables: dict, top_m: float) -
     expect = reference.get('expect', {})
     require(set(expect) <= ALLOWED_EXPECT, f'{case_id}: expectation carries invented oracle values {sorted(set(expect) - ALLOWED_EXPECT)}')
     require('count' in expect, f'{case_id}: oracle reference must declare a row count')
+    require(isinstance(expect['count'], int) and expect['count'] > 0, f'{case_id}: oracle selector must resolve rows')
+    require(bool(reference.get('where')), f'{case_id}: oracle selector must be explicit')
     rows = select(tables[reference['table']], reference.get('where', {}))
     require(len(rows) == expect['count'], f'{case_id}: expected {expect["count"]} rows, found {len(rows)}')
     for row in rows:
@@ -77,6 +80,37 @@ def check_reference(case_id: str, reference: dict, tables: dict, top_m: float) -
             incoming = top_m + row[TOP_OFFSET_COLUMN] * TOP_OFFSET_M
             require(f32_representable(incoming) == expect['f32_representable'], f'{case_id}: representability disagrees')
     return len(rows)
+
+
+def check_flagged_encounters(case: dict, rows: list[dict], top_m: float) -> None:
+    """Bind a named matrix encounter to the observed original stage transitions."""
+    case_id = case['id']
+    if case_id in REQUIRED_FLAGGED_CASES:
+        require(bool(rows), f'{case_id}: missing required flagged public-advance evidence')
+    for row in rows:
+        require(row['direction'] == case['input']['direction'] and
+                row['settling_enabled'] is case['input']['lsettling'],
+                f'{case_id}: flagged selector disagrees with the case route')
+        predictor = row['predictor_encounter']
+        corrector = row['corrector_encounter']
+        matches = {
+            'predictor_or_corrector': predictor or corrector,
+            'predictor_exact_top': row['stages']['PREDICTOR_RAW']['z_m'] == top_m,
+            'predictor_above': row['stages']['PREDICTOR_RAW']['z_m'] > top_m,
+            'corrector_only': not predictor and corrector,
+            'predictor_then_inward': predictor and not corrector and
+                                     row['returned_z_m'] < top_m and row['nstop'],
+            'both_stages': predictor and corrector,
+            'predictor': predictor,
+        }
+        encounter = case['input']['encounter']
+        if encounter in matches:
+            require(matches[encounter], f'{case_id}: selected row does not prove {encounter}')
+        if isinstance(case['nstop']['final'], bool):
+            require(row['nstop'] is case['nstop']['final'], f'{case_id}: selected final stop disagrees')
+    if rows and case['input']['encounter'] == 'mixed':
+        require({row['nstop'] for row in rows} == {False, True},
+                f'{case_id}: mixed evidence needs stopped and continuing rows')
 
 
 def check_case(case: dict, anchors: set, matrix: dict, tables: dict, top_m: float) -> int:
@@ -109,7 +143,11 @@ def check_case(case: dict, anchors: set, matrix: dict, tables: dict, top_m: floa
         require(final_stop in (False, None), f'{case_id}: disabled settling cannot stop at the top')
     if case['gpu_classification'].startswith(('device_fatal', 'host_reject')):
         require(final_stop is not True, f'{case_id}: a fatal or rejected step publishes no stop')
-    return sum(check_reference(case_id, reference, tables, top_m) for reference in references)
+    count = sum(check_reference(case_id, reference, tables, top_m) for reference in references)
+    flagged_rows = [row for reference in references if reference['table'] == 'FLAGGED_ADVANCE_V2'
+                    for row in select(tables['FLAGGED_ADVANCE_V2'], reference['where'])]
+    check_flagged_encounters(case, flagged_rows, top_m)
+    return count
 
 
 def check_owner(owner: dict) -> None:
@@ -156,7 +194,11 @@ def check(matrix_path: Path = MATRIX, checkout: Path | None = None) -> dict:
     require(digest(raw) == authority['frozen_raw_output_sha256'], 'frozen #180 raw output changed')
     fixture = json.loads((ROOT / authority['frozen_fixture']).read_text(encoding='utf-8'))
     require(fixture['provenance']['pinned_commit'] == authority['pinned_commit'], 'fixture pin differs')
+    from verify_flagged_top_boundary_oracle import audit_fixture, FIXTURE as flagged_fixture
+    audit_fixture(flagged_fixture)
+    flagged = json.loads((flagged_fixture / 'report.json').read_text(encoding='utf-8'))
     tables = fixture_tables(fixture)
+    tables['FLAGGED_ADVANCE_V2'] = flagged['science']['cases']
     top_m = fixture['science']['target_top_m_agl']
 
     anchor_ids = [anchor['id'] for anchor in matrix['source_anchors']]

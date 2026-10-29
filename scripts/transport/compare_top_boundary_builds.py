@@ -12,6 +12,9 @@ from verify_top_boundary_oracle import ARTIFACTS, ROOT, FIXTURE, TOOLS, decode, 
 def retained(run):
     """Verify retained bytes and executable call evidence, not just report status."""
     report = json.loads((run / 'report.json').read_text())
+    if report.get('issue') == 213:
+        from verify_flagged_top_boundary_oracle import retained as flagged_retained
+        return flagged_retained(run)
     require(report['state'] == 'PASS', 'record-only execution is not regression verification')
     require(report['science'] == decode(run / 'output.txt'), 'decoded report/raw disagreement')
     require(digest(run / 'output.txt') == digest(FIXTURE / 'output.txt'), 'frozen raw output changed')
@@ -53,9 +56,15 @@ def compare(first, second):
     require(a['science'] == b['science'] and digest(first / 'output.txt') == digest(second / 'output.txt'),
             'fresh output did not reproduce exactly')
     require(a['provenance']['image_id'] == b['provenance']['image_id'], 'different immutable images')
-    return {'schema': {'id': 'flexpart-gpu.top-boundary-reproducibility', 'version': 1},
+    fixture = FIXTURE
+    version = 1
+    if a.get('issue') == 213:
+        from verify_flagged_top_boundary_oracle import FIXTURE as fixture
+        version = 2
+    require(a.get('issue') == b.get('issue'), 'cannot compare different oracle versions')
+    return {'schema': {'id': 'flexpart-gpu.top-boundary-reproducibility', 'version': version},
             'state': 'PASS', 'comparison': 'exact raw bytes and decoded observations; distinct fresh source builds',
-            'baseline_report_sha256': digest(FIXTURE / 'report.json'),
+            'baseline_report_sha256': digest(fixture / 'report.json'),
             'verifier_sha256': text_digest(Path(__file__)), 'raw_output_sha256': digest(first / 'output.txt'),
             'runs': [{'report_sha256': digest(run / 'report.json'), 'build_origin': origin,
                       'provenance': r['provenance']} for run, r, origin in ((first,a,origin_a),(second,b,origin_b))]}
@@ -69,7 +78,7 @@ def main():
     args = parser.parse_args()
     result = compare(args.first, args.second)
     args.output.write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8', newline='\n')
-    print(json.dumps({'state': result['state'], 'push_cases': 24, 'advance_cases': 72,
+    print(json.dumps({'state': result['state'], 'push_cases': 24, 'advance_cases': 64 if result['schema']['version'] == 2 else 72,
                       'builds': 2, 'report': str(args.output)}))
 
 

@@ -210,14 +210,17 @@ default-flag gap, multi-species disable, forward with the flag, PBL substeps, ho
 exit and f64-only probes. Each case names its original anchors and branch, input state,
 predictor/corrector behavior, `nstop` transition, downstream eligibility, GPU classification,
 evidence surface and status. Oracle evidence is recorded only as **selectors** into the frozen
-#180 rows (count, `nstop`, nonzero settling, f32 representability). The auditor resolves them
+#180/v1 rows and the genuine [#213/v2 rows](../../fixtures/transport/top-boundary-v2/report.json) (count, `nstop`, nonzero settling, f32 representability). The auditor resolves them
 and rejects any numeric expectation. Status summary:
 
 - **Supported now:** C01, C02 (ordinary action; C02 holds only when the run genuinely derives `.false.`).
 - **Rejected now:** C16. **Unsupported:** C15, C23–C25. **Unreachable in the original:** C10.
 - **Implementation-blocked** (semantics frozen): C12–C14, C17–C21.
-- **Oracle-blocked:** C03, C05–C09, C11. Only private `pushpartdown` rows carry the flag. No
-  public-advance row combines the flag with a density≤0 carrier or with the crossing scenarios 4–7.
+- **Original evidence supplied by #213; implementation-blocked by #214:** C03, C05–C09, C11.
+  `FLAGGED_ADVANCE_V2` selects genuine v2 public-advance rows for all eight frozen scenarios,
+  both directions, geometries and epochs. Original lane values also support C12–C14, C17,
+  C18 and C20; their structural/device/driver proof obligations remain unchanged. C22 gains
+  forward zero-carrier evidence; its nonzero coupling remains producer-blocked.
 - **Producer-blocked:** C04 (genuine backward scenario-9 rows exist; they need #35 plus backward
   coupling) and C22 (#37).
 
@@ -230,7 +233,8 @@ and rejects any numeric expectation. Status summary:
 - **#38** owns the ledger category for mass on terminated particles.
 - **Oracle extension, [#213](https://github.com/Grodahn/flexpart-gpu/issues/213).** It produces genuine flagged zero-velocity public-advance rows
   for scenarios 1–8 in both directions from the unchanged #180 driver/launcher, as a new fixture
-  version. v1 stays frozen.
+  version. v1 stays frozen. The [executed proof and #214 consumption instructions](flagged-top-213.md)
+  document the 64 genuine rows and observation boundaries.
 - **Implementation, [#214](https://github.com/Grodahn/flexpart-gpu/issues/214).** It covers the run-owned route, `ZeroByCarrier`, the step-private
   stop word, both actions, guard termination, atomic publication and the C20 production gap. It
   is a **separate issue that blocks #37's backward enablement**, not a child of #37. The stop

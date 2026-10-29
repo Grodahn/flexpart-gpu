@@ -76,6 +76,29 @@ class SettlingStopContract(unittest.TestCase):
     def test_unresolved_flagged_selector(self):
         self.mutate(lambda m: self.case(m, 'C07')['evidence']['oracle_rows'][0]['where'].update(scenario=99))
 
+    def test_resolved_selector_must_prove_the_named_encounter(self):
+        for case_id, scenario in (('C03', [1, 2, 3, 4, 5, 6]), ('C05', 3),
+                                  ('C06', [2, 4]), ('C07', 6), ('C08', 6), ('C09', 4)):
+            with self.subTest(case_id=case_id):
+                self.mutate(lambda m: self.case(m, case_id)['evidence']['oracle_rows'][0]['where'].update(scenario=scenario))
+
+    def test_required_flagged_case_cannot_drop_its_original_rows(self):
+        self.mutate(lambda m: self.case(m, 'C08')['evidence'].update(oracle_rows=[]))
+
+    def test_flagged_selector_must_match_the_case_direction(self):
+        def mutate(matrix):
+            reference = self.case(matrix, 'C07')['evidence']['oracle_rows'][0]
+            reference['where']['direction'] = 1
+            reference['expect']['nstop'] = False
+        self.mutate(mutate)
+
+    def test_mixed_case_requires_stopped_and_continuing_rows(self):
+        def mutate(matrix):
+            reference = self.case(matrix, 'C11')['evidence']['oracle_rows'][0]
+            reference['where']['scenario'] = 6
+            reference['expect']['count'] = 4
+        self.mutate(mutate)
+
     def test_invented_flagged_selector(self):
         self.mutate(lambda m: self.case(m, 'C07')['evidence']['oracle_rows'][0].update(table='INVENTED_ADVANCE'))
 

@@ -45,6 +45,17 @@ V1_HASHES = {
     'reproducibility.json': '6726664dfbe2d21a741346ed62f81ba9b2c44316a15112e8f1a0b182412abbe1',
 }
 V2_RAW_SHA256 = '427809dfaaea7d57cb8719fed97b3fa2b13c31106b822e8756f4c4e89444369b'
+SCENARIO_DECLARATIONS = {
+    'schema': {'id': 'flexpart-gpu.flagged-top-scenarios', 'version': 2},
+    'declared_combinations': 64,
+    'directions': [-1, 1],
+    'geometries': [0, 1],
+    'epochs_1200_s': [0, 1],
+    'scenario_ids': list(range(1, 9)),
+    'signed_step_s': '600 * direction',
+    'source_times_s': '[0,3600 * direction]',
+    'species_selection': 'nspec=1, release_point=1, selected_species=1, xmass=1, density=-1',
+}
 
 
 def audit_v1(fixture=V1):
@@ -79,6 +90,8 @@ def audit_fixture(fixture=FIXTURE):
     require(science==report['science'], 'decoded/raw mismatch')
     require(science_digest(science)==manifest['decoded_science_sha256'], 'changed decoded output hash')
     scenarios=json.loads((fixture/'scenarios.json').read_text())
+    for key, expected in SCENARIO_DECLARATIONS.items():
+        require(scenarios.get(key) == expected, 'scenario declaration disagrees with original execution: '+key)
     require(scenarios['cases']==[{k:c[k] for k in ('id','geometry','direction','epoch_1200_s','scenario','initial_z_m','old_w_unsigned_m_s','end_w_unsigned_m_s','x_slope_unsigned_m_s')} for c in science['cases']], 'scenario manifest coverage/inputs changed')
     require(scenarios['expected_fields']==list(science['cases'][0]), 'expected field identities changed')
     pair=json.loads((fixture/'reproducibility.json').read_text())
@@ -136,7 +149,9 @@ def decode(path):
             require(all(v in ('T', 'F') for v in f[8:10]), 'malformed observation flags')
             for value, bits, form in zip(values, f[10:], ['d','d','d','f','f']):
                 require(re.fullmatch('[0-9A-F]{' + ('16' if form=='d' else '8') + '}', bits), 'malformed raw bits')
-                require(struct.pack('>' + form, value).hex().upper() == bits, 'decimal/raw bit disagreement')
+                require(struct.pack('>' + form, value).hex().upper() == bits and
+                        struct.unpack('>' + form, bytes.fromhex(bits))[0] == value,
+                        'decimal/raw bit disagreement')
             table = observations.setdefault(row_id, {})
             require(stage not in table, 'duplicate observation identity')
             table[stage] = dict(zip(['x_cells','y_cells','z_m','settling_m_s','w_m_s'], values))

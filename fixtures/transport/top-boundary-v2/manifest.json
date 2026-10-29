@@ -8,9 +8,9 @@
     "input.txt": "a8cce6b7bfafebb60acafe2bf5d9389f21d90fbe58b918bdebbf14fa07bdc4a1",
     "output-unwrapped.txt": "64fcfdb953b1aca4f44d9a41ed7ee2be0252c7e85c55aba3fd935a96a734dfcc",
     "output.txt": "427809dfaaea7d57cb8719fed97b3fa2b13c31106b822e8756f4c4e89444369b",
-    "README.md": "f19b7a0201153e7336241790c390441fe761a55abd168fd927d001bbfa0e7f32",
-    "report.json": "d7607c0fc4242d96fe6d57ffc889f163661fbe6a474445e4804bdcbbe85b6e9a",
-    "reproducibility.json": "bb6aafbbf1d071a7d043cbf8aa097754b1f1d8ab469839bac289fc6082f2f485",
+    "README.md": "141b2aac8ba86864dae596b5b5d07e98cb1778bdd5a36d28c666e0cfae1f6d9c",
+    "report.json": "36c84838cc45b7c040231cbea3e0f783ff6596f6a55e5414cf7e5447acd4c33c",
+    "reproducibility.json": "d45b3ded9c5f9991bbabd78a081218dbd8a0a00ce118aa3c2dec55596fd92e22",
     "scenarios.json": "1b1d61b8ae53230ae5b0617c0e81e6092c7d7bb892cee280a00a04d793f26ccc"
   },
   "decoded_science_sha256": "fe58354beee26687feb671442404f4c44bd98f5689270e26f0feeb530b0732fa",
@@ -18,5 +18,13 @@
     "output.txt": "b10df540cc86ebb1afaccba6f9178deabbf4af1135c76adfc582868e2c957be2",
     "report.json": "1354922d5e37c17f9b5b4c57fbb40a4e11401f912bbf180e2f064be3ae0b09c9",
     "reproducibility.json": "6726664dfbe2d21a741346ed62f81ba9b2c44316a15112e8f1a0b182412abbe1"
+  },
+  "audit_revision": {
+    "reason": "Pre-merge review: enforce named encounter evidence, scenario declarations and exact decimal/raw-bit agreement; scientific expectations unchanged.",
+    "previous_capture_commit": "4b1e397fe78e387e1d79d142d4d7597310767f4a",
+    "previous_report_sha256": "d7607c0fc4242d96fe6d57ffc889f163661fbe6a474445e4804bdcbbe85b6e9a",
+    "previous_reproducibility_sha256": "bb6aafbbf1d071a7d043cbf8aa097754b1f1d8ab469839bac289fc6082f2f485",
+    "previous_verifier_sha256": "73bd7b3293f9f66a33fa260e4fbd69fc5fc951f47ee575972ec2cd6dbe5d7455",
+    "current_verifier_sha256": "88452bd7f4a20716824bad9dc5c698138ab74358b7abff9624e6ce232e7a607d"
   }
 }

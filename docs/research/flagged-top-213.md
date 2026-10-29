@@ -178,16 +178,16 @@ a named table resolving only to v2 `science.cases` after the full fixture audit.
 
 | Evidence | Identity/result |
 | --- | --- |
-| Independent build 1 | `/tmp/flexpart-top-research.gAnMnv6Q/build/upstream`; report SHA-256 `2d7cace01a99192baf4d40df9297ac5e659d3555634bafea7c0e621f7d53715a` |
-| Independent build 2 | `/tmp/flexpart-top-research.k9pdjZYM/build/upstream`; report SHA-256 `18207d2d40891e8bf5e36df3605edc6d480229211e58469cd48a88f269beabda` |
+| Independent build 1 | `/tmp/flexpart-top-research.gAnMnv6Q/build/upstream`; report SHA-256 `c3a7bd609b1c5030637c1dd77d905f0c6d8772f75f79ecdf6154e4fb38e16abe` |
+| Independent build 2 | `/tmp/flexpart-top-research.k9pdjZYM/build/upstream`; report SHA-256 `7bde87b5069911e56e6b43b0951da8af9a9dc4c6ef0bde02863639c711dc95ff` |
 | Raw observed output SHA-256 | `427809dfaaea7d57cb8719fed97b3fa2b13c31106b822e8756f4c4e89444369b` |
-| Decoded baseline report SHA-256 | `d7607c0fc4242d96fe6d57ffc889f163661fbe6a474445e4804bdcbbe85b6e9a` |
+| Decoded baseline report SHA-256 | `36c84838cc45b7c040231cbea3e0f783ff6596f6a55e5414cf7e5447acd4c33c` |
 | Canonical decoded science SHA-256 | `fe58354beee26687feb671442404f4c44bd98f5689270e26f0feeb530b0732fa` |
 | Independent comparison | PASS, exact raw bytes and decoded observations, two distinct clean scratch origins. |
 | Original carriers/flags | All 64 rows: selected species 1, density -1, `lsettling=true`, settling exactly `+0.0` / `00000000`. |
 | Frozen v1 audit | PASS for all three historical files, unchanged bytes and digests. |
-| Oracle regression suite | 19 tests PASS, including copied-evidence mutations. |
-| #203 auditor regression suite | 22 tests PASS. |
+| Oracle regression suite | 21 tests PASS, including copied-evidence mutations. |
+| #203 auditor regression suite | 26 tests PASS. |
 | Navigation | 12 surfaces PASS; 26 checker regression tests PASS. |
 | Pinned #203 contract audit | PASS: 25 cases, 23 original source anchors, 22 owner symbols, 310 resolved referenced rows. |
 
@@ -199,6 +199,25 @@ mismatched source-file identities and was not reused. This is separate from the
 successful original-only gates; no device validation is claimed. Local Python
 mutation tests used workspace-local TMP/TEMP because desktop sandbox permissions
 prevented use of the default Windows temporary directory.
+
+## Pre-merge review hardening
+
+The contract auditor now requires each flagged selector to prove the named
+predictor/corrector encounter, not merely the same final stop and row count.
+Required flagged cases cannot discard their genuine rows, and mixed cases must
+include both stopped and continuing original trajectories. The fixture auditor
+also verifies the declared scenario product, signed times and carrier selection,
+and requires decoded decimal f32 observations to equal the recorded bits exactly.
+
+Regression mutations first reproduced all three audit gaps, then passed after
+repair. Both retained independent builds were re-audited against the clean pin
+and compared exactly with the hardened verifier. Raw output, canonical decoded
+science, original sources/driver/binaries and build identities are unchanged.
+Only verifier provenance and its report/pair/manifest hashes were refreshed;
+`manifest.json` records the previous capture commit and hashes. No scientific
+expectation or trajectory tolerance changed, so the fixture remains version 2.
+Only the touched oracle/contract test suites and artifact checks were rerun;
+unchanged navigation regression evidence was reused.
 
 ## Exact #214 handoff
 

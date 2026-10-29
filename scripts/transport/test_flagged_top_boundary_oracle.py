@@ -64,6 +64,14 @@ class FlaggedTopBoundaryEvidenceTests(unittest.TestCase):
             rows[index] = ' '.join(fields)
         self.reject_raw(mutate)
 
+    def test_decimal_f32_value_must_equal_the_observed_bits_exactly(self):
+        def mutate(rows):
+            index = next(i for i,r in enumerate(rows) if r.startswith('OBS 1 INPUT '))
+            fields = rows[index].split()
+            fields[8] = '1e-50'
+            rows[index] = ' '.join(fields)
+        self.reject_raw(mutate)
+
     def test_reordered_original_stage_sequence_is_rejected(self):
         def mutate(rows):
             first = next(i for i,r in enumerate(rows) if r.startswith('OBS 1 CURRENT_IN '))
@@ -142,6 +150,20 @@ class FlaggedTopBoundaryEvidenceTests(unittest.TestCase):
             manifest['version_explanation'] = 'unexplained changed expectations'
             path.write_text(json.dumps(manifest))
         self.mutate_fixture(mutate)
+
+    def test_scenario_declarations_must_match_executed_cases(self):
+        mutations = {'declared_combinations': 0, 'directions': [-1], 'geometries': [0],
+                     'epochs_1200_s': [0], 'scenario_ids': [1], 'signed_step_s': '600',
+                     'source_times_s': 'invented', 'species_selection': 'species 2',
+                     'schema': {'id': 'invented', 'version': 2}}
+        for key, value in mutations.items():
+            def mutate(fixture):
+                path = fixture / 'scenarios.json'
+                scenarios = json.loads(path.read_text())
+                scenarios[key] = value
+                path.write_text(json.dumps(scenarios))
+            with self.subTest(field=key):
+                self.mutate_fixture(mutate)
 
     def test_v1_cannot_change_even_with_a_recomputed_digest(self):
         with tempfile.TemporaryDirectory() as tmp:

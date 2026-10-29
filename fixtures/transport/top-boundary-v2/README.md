@@ -36,3 +36,9 @@ execution reports must independently pass the full audit against it before paire
 verification accepts them. Missing or record-only runs cannot satisfy reproducibility.
 Do not edit expected values in place: a changed result requires a new version and
 scientific explanation. Every v1 file remains byte-identical.
+
+Pre-merge review hardened selector-stage, declared-matrix and decimal/raw-bit audits.
+Both retained original executions were re-audited with that verifier. Only audit
+provenance and its hashes were refreshed; raw outputs, decoded scientific values,
+scenario inputs, driver/source bytes and independent build identities are unchanged.
+The manifest records the prior capture identity for this audit-only revision.

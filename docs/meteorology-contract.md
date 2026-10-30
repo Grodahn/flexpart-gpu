@@ -39,6 +39,15 @@ and derived runtime geometry retain their existing domain modules.
   faces, and `vertical_velocity` on level interfaces. Scalar face staggering, cross-axis wind
   staggering, surface-field vertical staggering, and scalar interface staggering fail closed.
 - Units and sign conventions are part of the field contract and are validated.
+- A field may carry an optional `source_quantization` record (#219, owner
+  `src/meteorology/quantization.rs`): `source_id`, `source_message_sha256` and the
+  frozen #216 `packing` keys of the original message. It is omitted when absent, so
+  existing serialized bytes are unchanged. Validation rejects a malformed record
+  (digest format, non-finite reference value, GRIB format ranges, empty or padded
+  identities, unknown keys). Supported-class membership is not a schema rule; only the
+  #216 classifier in [the accumulation contract](accumulation-contract.md#same-run-decreases-from-grib-packing-216)
+  decides it. Providers must not synthesize the record; #32 populates it when it
+  decodes GRIB1 LSP/CP.
 - Surface sensible heat flux is positive upward at the canonical boundary. This matches
   the PBL API in src/io/pbl_params.rs; ECMWF/provider conventions must be converted by
   the adapter.

@@ -10,6 +10,7 @@
 mod coordinate;
 mod field;
 mod grid;
+mod quantization;
 mod schema;
 mod snapshot;
 mod time;
@@ -29,6 +30,12 @@ pub use field::{
     SignConvention, StorageOrder, TemporalPolicy, Unit, FIELD_SPECS, FLEXPART_LAND_USE_CLASS_COUNT,
 };
 pub use grid::{HorizontalGrid, LongitudeDomain};
+pub use quantization::{
+    GribPackingProvenance, SourceQuantization, CANONICAL_KG_PER_SQUARE_METER_PER_METRE,
+    CONVECTIVE_PRECIPITATION_PARAM_ID, F64_DECODE_UNIT_SCALE_THEN_F32_NEAREST,
+    GRIB1_GRID_SIMPLE_ENCODING, LARGE_SCALE_PRECIPITATION_PARAM_ID, MARS_CLASS_OPERATIONAL,
+    SOURCE_UNIT_METRE,
+};
 pub use schema::{ContractError, SchemaIdentity, SCHEMA_ID, SCHEMA_VERSION};
 pub use snapshot::{Provenance, Snapshot};
 pub use time::{Accumulation, Calendar, FieldTime, TemporalKind};

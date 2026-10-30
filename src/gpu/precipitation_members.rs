@@ -42,6 +42,7 @@ use thiserror::Error;
 use wgpu::util::DeviceExt;
 
 use crate::meteorology::{
+    accumulation::PackingDecreaseAdmission,
     accumulation::RATE_HANDOFF_UNIT,
     temporal::{Tolerance, DEFAULT_ABS_TOL, DEFAULT_REL_TOL},
     Calendar, FieldId, FieldTime, HorizontalGrid, SignConvention, Unit,
@@ -303,6 +304,10 @@ pub struct PrecipitationSourceIdentity {
     pub source_sign: SignConvention,
     /// Original observation times.
     pub source_times: Vec<FieldTime>,
+    /// #216 admissions propagated from #90 (#219); omitted from serialization
+    /// when empty so manifests of sources without admissions are unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub quantization_admissions: Vec<PackingDecreaseAdmission>,
 }
 
 /// Immutable typed handoff for #119: everything needed without reconstructing rates or times.
@@ -693,6 +698,7 @@ fn source_identity(grid: &IntervalRateGrid<'_>) -> PrecipitationSourceIdentity {
         source_unit: grid.source_unit,
         source_sign: grid.source_sign,
         source_times: grid.source_times.clone(),
+        quantization_admissions: grid.quantization_admissions.to_vec(),
     }
 }
 

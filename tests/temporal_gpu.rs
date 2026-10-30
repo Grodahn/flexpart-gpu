@@ -115,6 +115,7 @@ fn wind_snapshot(epoch_seconds: i64, value: f32) -> Snapshot {
             epoch_seconds,
         ),
         values: vec![value],
+        source_quantization: None,
     })
 }
 
@@ -134,6 +135,7 @@ fn temperature_snapshot(epoch_seconds: i64, values: Vec<f32>) -> Snapshot {
             epoch_seconds,
         ),
         values,
+        source_quantization: None,
     })
 }
 

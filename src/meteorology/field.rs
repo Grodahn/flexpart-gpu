@@ -3,7 +3,7 @@
 //! This is the sole owner of field units, signs, time policies, supported
 //! staggering and physical value domains; it performs no sampling.
 
-use super::{ContractError, FieldTime, VerticalStaggering};
+use super::{ContractError, FieldTime, SourceQuantization, VerticalStaggering};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -467,6 +467,13 @@ pub struct Field {
     pub vertical_staggering: VerticalStaggering,
     pub time: FieldTime,
     pub values: Vec<f32>,
+    /// Optional original-source quantization provenance (#219).
+    ///
+    /// Absent for every existing provider; omitted from serialization when
+    /// absent so previously serialized field bytes are unchanged. Never
+    /// synthesized from canonical values.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_quantization: Option<SourceQuantization>,
 }
 
 /// Selects fields that must exist for a declared physics consumer.

@@ -550,3 +550,60 @@ fn canonical_serialized_bytes_are_preserved() {
         assert_eq!(format!("{:x}", Sha256::digest(&pretty)), expected_pretty);
     }
 }
+
+#[path = "support/grib202.rs"]
+mod grib202;
+
+/// #219: the optional source-quantization record leaves records-free bytes
+/// unchanged, round-trips when present and fails closed when malformed.
+#[test]
+fn test_meteorology_source_quantization_is_optional_validated_and_byte_stable() {
+    let source = include_str!("../fixtures/meteorology/synthetic-v1.json");
+    let snapshot: Snapshot = serde_json::from_str(source).expect("parse canonical fixture");
+    // Exact compact/pretty bytes are pinned by `canonical_serialized_bytes_are_preserved`.
+    assert!(!serde_json::to_string(&snapshot)
+        .expect("compact")
+        .contains("source_quantization"));
+
+    let genuine = grib202::snapshots(&grib202::observations());
+    let requirements = Requirements {
+        required_fields: [
+            FieldId::LargeScalePrecipitation,
+            FieldId::ConvectivePrecipitation,
+        ]
+        .into_iter()
+        .collect(),
+    };
+    for snapshot in &genuine {
+        snapshot
+            .validate(&requirements)
+            .expect("genuine records validate");
+        let encoded = serde_json::to_string(snapshot).expect("serialize");
+        let decoded: Snapshot = serde_json::from_str(&encoded).expect("roundtrip");
+        assert_eq!(&decoded, snapshot);
+    }
+    let mut malformed = genuine[9].clone();
+    let lsp = malformed
+        .fields
+        .iter_mut()
+        .find(|f| f.id == FieldId::LargeScalePrecipitation)
+        .expect("LSP");
+    lsp.source_quantization
+        .as_mut()
+        .expect("record")
+        .packing
+        .reference_value = f64::NAN;
+    assert_eq!(
+        malformed.validate(&requirements),
+        Err(ContractError::InvalidSourceQuantization(
+            FieldId::LargeScalePrecipitation
+        ))
+    );
+    let mut value = serde_json::to_value(&genuine[9]).expect("value");
+    value["fields"][1]["source_quantization"]["packing"]["inferred_class"] =
+        serde_json::Value::Bool(true);
+    assert!(
+        serde_json::from_value::<Snapshot>(value).is_err(),
+        "unknown record keys are rejected"
+    );
+}

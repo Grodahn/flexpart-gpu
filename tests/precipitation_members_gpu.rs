@@ -8,8 +8,11 @@
 
 use std::path::PathBuf;
 
+#[path = "support/grib202.rs"]
+mod grib202;
+
 use flexpart_gpu::gpu::{
-    accumulation::transform_accumulated_intervals_gpu,
+    accumulation::{accumulated_shader_sha256, transform_accumulated_intervals_gpu},
     download_buffer_typed,
     meteorology::CanonicalGpuField,
     precipitation_members::{
@@ -19,11 +22,14 @@ use flexpart_gpu::gpu::{
         PrecipitationMemberStage, MINIMUM_INTERVAL_COUNT, PRECIPITATION_MEMBER_PREPARATION,
         STATUS_NON_FINITE_MEMBER,
     },
-    GpuAccumulationError, GpuAdapterEvidence, GpuCalculationEvidence, GpuContext,
+    transform_classified_intervals_gpu, AccumulatedTransformInput, AccumulatedTransformInputs,
+    ClassifiedTransformInputs, GpuAccumulationError, GpuAdapterEvidence, GpuCalculationEvidence,
+    GpuContext, TRANSFORM_MODE_PACKING_ADMISSION,
 };
 use flexpart_gpu::meteorology::{
-    accumulation::{validate_interval_sequence, AccumulatedObservation, AccumulationError},
-    Accumulation, Calendar, Field, FieldId, FieldTime, Snapshot, TemporalKind, Unit,
+    accumulation::{AccumulatedObservation, AccumulatedSeries, AccumulationError},
+    Accumulation, Calendar, Field, FieldId, FieldTime, Snapshot, SourceQuantization, TemporalKind,
+    Unit,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -34,8 +40,6 @@ const PARAMETERS: [(&str, FieldId); 2] = [
     ("lsp", FieldId::LargeScalePrecipitation),
     ("cp", FieldId::ConvectivePrecipitation),
 ];
-/// flex_extract `deacc_fluxes` divides GRIB metres by `fak = 1/1000` (EcFlexpart.py:1124-1131).
-const FLEX_EXTRACT_METRE_FACTOR: f64 = 1.0 / 1000.0;
 
 fn oracle() -> Value {
     assert_eq!(
@@ -231,6 +235,15 @@ fn production_observations(case: &Value) -> Vec<Observation> {
         .collect()
 }
 
+fn lsp_record(snapshot: &mut Snapshot) -> &mut SourceQuantization {
+    snapshot
+        .fields
+        .iter_mut()
+        .find(|f| f.id == FieldId::LargeScalePrecipitation)
+        .and_then(|f| f.source_quantization.as_mut())
+        .expect("genuine LSP record")
+}
+
 fn upload<'c>(ctx: &'c GpuContext, id: FieldId, sources: &[Snapshot]) -> CanonicalGpuField<'c> {
     try_upload(ctx, id, sources).expect("canonical accumulated upload")
 }
@@ -244,105 +257,381 @@ fn try_upload<'c>(
     CanonicalGpuField::upload(ctx, id, &refs, &vec![None; refs.len()])
 }
 
-fn genuine_observations(genuine: &Value, name: &str, cell: usize) -> Vec<AccumulatedObservation> {
-    genuine["accumulated"][name]
-        .as_array()
-        .expect("observations")
-        .iter()
-        .map(|o| {
-            let metres = f64s(&o["values_m"])[cell];
-            // Canonical totals are f32 kg/m2; mirror flex_extract's m -> mm division exactly.
-            #[allow(clippy::cast_possible_truncation)]
-            let canonical = (metres / FLEX_EXTRACT_METRE_FACTOR) as f32;
-            AccumulatedObservation {
-                valid_time_epoch_seconds: o["valid_s"].as_i64().expect("valid"),
-                reset_epoch_seconds: o["reset_s"].as_i64().expect("reset"),
-                accumulated_amount_kg_per_square_meter: f64::from(canonical),
-            }
-        })
-        .collect()
+// --- Phase 1: #90 versus flex_extract deac_vals (#216 admission, #219) --------
+
+/// `max(deac_vals, 0)`, the representation every original consumer uses (#216).
+fn projected_deac(deac: f64) -> f64 {
+    if deac < 0.0 {
+        0.0
+    } else {
+        deac
+    }
 }
 
-// --- Phase 1: #90 versus flex_extract deac_vals --------------------------------
+fn genuine_series(
+    observations: &[grib202::Observation],
+    parameter: usize,
+    cell: usize,
+) -> (Vec<AccumulatedObservation>, Vec<SourceQuantization>) {
+    observations
+        .iter()
+        .map(|o| {
+            (
+                AccumulatedObservation {
+                    valid_time_epoch_seconds: o.valid_s,
+                    reset_epoch_seconds: o.reset_s,
+                    accumulated_amount_kg_per_square_meter: f64::from(
+                        o.parameters[parameter].0[cell],
+                    ),
+                },
+                o.parameters[parameter].1.clone(),
+            )
+        })
+        .unzip()
+}
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn test_precipitation_members_genuine_input_equivalence_matches_deac_vals() {
-    let oracle = oracle();
+    let decision = grib202::decision();
+    let oracle = grib202::oracle();
     let genuine = &oracle["genuine"];
     let ctx = context();
     let dtime_s = genuine["dtime_hours"].as_i64().expect("dtime") * 3_600;
-    let negatives = genuine["negative_interval_means"].as_array().expect("list");
+    let admitted_rows = grib202::admitted_rows(&decision);
+    let observations = grib202::observations();
     let mut series = Vec::new();
-    let (mut admitted, mut rejected) = (0, 0);
-    for (name, _) in PARAMETERS {
+    let mut admitted = 0;
+    for (parameter, (name, field_id)) in PARAMETERS.into_iter().enumerate() {
         let ends = i64s(&genuine["interval_means"][name]["interval_end_s"]);
         let means = genuine["interval_means"][name]["values_mm_per_h"]
             .as_array()
             .expect("means");
         for cell in 0..9 {
-            let observations = genuine_observations(genuine, name, cell);
-            let expected_negative = negatives
+            let (accumulated, records) = genuine_series(&observations, parameter, cell);
+            let expected_admission = admitted_rows
                 .iter()
-                .find(|n| n["parameter"] == name && n["cell"].as_u64() == Some(cell as u64));
-            let result =
-                pollster::block_on(transform_accumulated_intervals_gpu(&ctx, &observations));
-            if let Some(negative) = expected_negative {
-                // #75 fails closed on a same-run decrease that flex_extract passes to darain.
-                let end = negative["interval_end_s"].as_i64().expect("end");
-                let index = ends.iter().position(|e| *e == end).expect("interval");
-                match result {
+                .find(|(p, c, _)| (*p, *c) == (parameter, cell))
+                .map(|(_, _, index)| *index);
+            // Without source records the #75 rejection is unchanged.
+            let strict =
+                pollster::block_on(transform_accumulated_intervals_gpu(&ctx, &accumulated));
+            match (expected_admission, &strict) {
+                (
+                    Some(index),
                     Err(GpuAccumulationError::Validation(AccumulationError::NegativeDelta {
-                        index: rejected_index,
+                        index: rejected,
                         ..
-                    })) => assert_eq!(rejected_index, index, "{name} cell {cell}"),
-                    other => panic!("{name} cell {cell}: expected NegativeDelta, got {other:?}"),
+                    })),
+                ) => {
+                    assert_eq!(*rejected, index, "{name} cell {cell}");
                 }
-                rejected += 1;
-                series.push(
-                    json!({"parameter": name, "cell": cell, "status": "rejected_by_75",
-                    "reason": "same-run negative delta", "interval_end_s": end,
-                    "flex_extract_deac_vals_mm_per_h": negative["value_mm_per_h"]}),
-                );
-                continue;
+                (None, Ok(_)) => {}
+                (_, other) => panic!("{name} cell {cell}: strict path {other:?}"),
             }
-            let (amounts, _, rates) = result.expect("admitted #90 series");
-            let metadata = validate_interval_sequence(&observations).expect("metadata");
+            let sources: Vec<_> = records.iter().map(Some).collect();
+            let classified = ClassifiedTransformInputs::from_series(&AccumulatedSeries {
+                field_id,
+                canonical_unit: Unit::KilogramPerSquareMeter,
+                grid_id: "regular_ll_3x3_lat52_lon10_step1",
+                cell_index: cell,
+                observations: &accumulated,
+                sources: &sources,
+            })
+            .expect("genuine series classified");
+            let (amounts, rates_si, rates) =
+                pollster::block_on(transform_classified_intervals_gpu(&ctx, &classified))
+                    .expect("device transform");
             let mut rows = Vec::new();
-            for (k, interval) in metadata.iter().enumerate() {
+            for (k, interval) in classified.intervals().iter().enumerate() {
                 let deac = f64s(&means[k])[cell];
-                assert_eq!(interval.interval_end_epoch_seconds, ends[k]);
+                assert_eq!(
+                    interval.interval_end_epoch_seconds,
+                    ends[k] + grib202::ORACLE_EPOCH_UNIX_S
+                );
                 assert_eq!(interval.duration_seconds, dtime_s, "interval duration");
                 let hours = f64::from(u16::try_from(dtime_s / 3_600).expect("hours"));
-                let rate_ok = member_matches_oracle(f64::from(rates[k]), deac);
-                let amount_ok = member_matches_oracle(f64::from(amounts[k]), deac * hours);
+                let is_admitted = expected_admission == Some(k);
+                let mode = classified.inputs()[k].reset_applied;
+                assert_eq!(
+                    mode == TRANSFORM_MODE_PACKING_ADMISSION,
+                    is_admitted,
+                    "{name} cell {cell} interval {k}: mode {mode}"
+                );
+                let expected = projected_deac(deac);
+                if is_admitted {
+                    for value in [amounts[k], rates_si[k], rates[k]] {
+                        assert_eq!(value.to_bits(), 0, "{name} cell {cell}: +0.0 projection");
+                    }
+                }
+                let rate_ok = member_matches_oracle(f64::from(rates[k]), expected);
+                let amount_ok = member_matches_oracle(f64::from(amounts[k]), expected * hours);
                 assert!(
-                    rate_ok && amount_ok,
-                    "{name} cell {cell} interval {k}: #90 {} vs deac {deac}",
+                    rate_ok && amount_ok && rates[k].to_bits() != (-0.0_f32).to_bits(),
+                    "{name} cell {cell} interval {k}: #90 {} vs max(deac, 0) {expected}",
                     rates[k]
                 );
                 rows.push(json!({"interval_end_s": ends[k], "start_s": interval.interval_start_epoch_seconds,
                     "duration_s": interval.duration_seconds, "reset_applied": interval.reset_applied,
-                    "source_accumulated_kg_per_m2": observations[k].accumulated_amount_kg_per_square_meter,
-                    "gpu_amount_mm": amounts[k], "flex_extract_amount_mm": deac * hours,
+                    "transform_mode": mode,
+                    "source_accumulated_kg_per_m2": accumulated[k].accumulated_amount_kg_per_square_meter,
+                    "gpu_amount_mm": amounts[k], "gpu_rate_si": rates_si[k],
                     "gpu_rate_mm_per_h": rates[k], "flex_extract_deac_vals_mm_per_h": deac,
-                    "verdict": "passed"}));
+                    "expected_rate_mm_per_h": expected, "verdict": "passed"}));
             }
-            admitted += 1;
+            admitted += classified.admissions().len();
             series.push(
-                json!({"parameter": name, "cell": cell, "status": "equivalent", "intervals": rows}),
+                json!({"parameter": name, "cell": cell, "status": "equivalent",
+                "admissions": classified.admissions(), "intervals": rows}),
             );
         }
     }
-    assert_eq!((admitted, rejected), (15, 3));
+    assert_eq!((series.len(), admitted), (18, 3));
     write_report(
         "genuine-input-equivalence",
-        &json!({"issue": 207, "case": "genuine-input-equivalence",
+        &json!({"issue": 219, "case": "genuine-input-equivalence",
             "adapter": GpuAdapterEvidence::from_context(&ctx),
-            "oracle_sha256": ORACLE_SHA256, "trace_sha256": oracle["consumed"]["trace_sha256"],
-            "admitted_series": admitted, "rejected_series": rejected,
-            "verdict": "blocked",
-            "blocker": "#75/#90 rejects GRIB-packing same-run decreases that flex_extract deaccumulates (#216); see docs/precipitation-members.md",
-            "series": series}),
+            "oracle_sha256": ORACLE_SHA256, "decision_sha256": grib202::DECISION_SHA256,
+            "trace_sha256": oracle["consumed"]["trace_sha256"],
+            "equivalent_series": series.len(), "admitted_intervals": admitted,
+            "rule": "#90 rate = max(deac_vals, 0): +0.0 for the three #216 admissions, #71 policy elsewhere",
+            "verdict": "passed", "series": series}),
+    );
+}
+
+// --- Phase 1b: genuine #202 -> #90 -> #207 production replay (#219) ------------
+
+fn git(args: &[&str]) -> String {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("git");
+    String::from_utf8(output.stdout)
+        .expect("utf8")
+        .trim()
+        .to_owned()
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn test_precipitation_members_genuine_production_replay_same_encoder() {
+    let decision = grib202::decision();
+    let oracle = grib202::oracle();
+    let genuine = &oracle["genuine"];
+    let observations = grib202::observations();
+    let sources = grib202::snapshots(&observations);
+    let ctx = context();
+    let adapter = GpuAdapterEvidence::from_context(&ctx);
+
+    // 1-3: both genuine fields enter through the production upload.
+    let lsp = upload(&ctx, FieldId::LargeScalePrecipitation, &sources);
+    let cp = upload(&ctx, FieldId::ConvectivePrecipitation, &sources);
+    let expected_rows = grib202::admitted_rows(&decision);
+    let frozen_rows = decision["offending_rows"].as_array().expect("rows");
+    let mut admissions = Vec::new();
+    for (parameter, field) in [&lsp, &cp].into_iter().enumerate() {
+        for admission in field.quantization_admissions() {
+            let position = expected_rows
+                .iter()
+                .position(|row| *row == (parameter, admission.cell_index, admission.interval_index))
+                .expect("only the #216 rows are admitted");
+            let frozen = &frozen_rows[position];
+            assert_eq!(
+                admission.bound_exact,
+                frozen["bounds"]["canonical_kg_per_m2"]["exact"]
+                    .as_str()
+                    .expect("B")
+            );
+            assert_eq!(
+                admission.signed_difference_exact,
+                frozen["signed_difference"]["canonical_kg_per_m2"]["exact"]
+                    .as_str()
+                    .expect("d")
+            );
+            admissions.push(admission.clone());
+        }
+    }
+    assert_eq!(admissions.len(), 3, "exactly the three #216 rows");
+
+    // 4-6: #90 (LSP, CP) and #207 (LSP, CP) in one caller-owned encoder.
+    let kernels = PrecipitationMemberKernels::new(&ctx).expect("kernels");
+    let mut prepared = prepare_precipitation_members(
+        &ctx,
+        &lsp,
+        &cp,
+        PrecipitationMemberPreparation::flex_extract_rrint0(),
+    )
+    .expect("genuine envelope");
+    let metadata = prepared.metadata().clone();
+    assert_eq!(
+        metadata.large_scale.quantization_admissions,
+        lsp.quantization_admissions()
+    );
+    assert_eq!(
+        metadata.convective.quantization_admissions,
+        cp.quantization_admissions()
+    );
+    let mut stripped = metadata.clone();
+    stripped.large_scale.quantization_admissions.clear();
+    assert_ne!(
+        stripped.input_sha256().expect("hash"),
+        metadata.input_sha256().expect("hash"),
+        "the admission provenance is part of the member input identity"
+    );
+    let mut encoder = ctx
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("issue_219_genuine_same_encoder"),
+        });
+    let stages = prepared
+        .encode(&ctx, &kernels, &mut encoder)
+        .expect("encode")
+        .stages
+        .to_vec();
+    assert_eq!(
+        stages,
+        vec![
+            PrecipitationMemberStage::AccumulatedTransform(FieldId::LargeScalePrecipitation),
+            PrecipitationMemberStage::AccumulatedTransform(FieldId::ConvectivePrecipitation),
+            PrecipitationMemberStage::DarainReconstruction(FieldId::LargeScalePrecipitation),
+            PrecipitationMemberStage::DarainReconstruction(FieldId::ConvectivePrecipitation),
+        ]
+    );
+    // 7: the only submission.
+    ctx.queue.submit(Some(encoder.finish()));
+
+    // 8-9: status, then validation-boundary readback only.
+    let readback = pollster::block_on(prepared.download(&ctx)).expect("readback");
+    readback
+        .require_valid_status()
+        .expect("device status valid");
+    assert_eq!(
+        readback.input_sha256(),
+        metadata.input_sha256().expect("hash")
+    );
+    let dtime_s = genuine["dtime_hours"].as_i64().expect("dtime") * 3_600;
+    let s0 = genuine["sequence_start_s"].as_i64().expect("s0") + grib202::ORACLE_EPOCH_UNIX_S;
+    assert_eq!(
+        (
+            metadata.delta_seconds,
+            metadata.sequence_start_epoch_seconds
+        ),
+        (dtime_s, s0)
+    );
+    assert_eq!(metadata.intervals.len(), 16, "no interval is missing");
+    for pair in metadata.intervals.windows(2) {
+        assert_eq!(
+            pair[0].end_epoch_seconds, pair[1].start_epoch_seconds,
+            "contiguous"
+        );
+    }
+    let mut lanes = Vec::new();
+    let mut series_pass = 0;
+    let mut member_values = 0;
+    for (parameter, ((name, field_id), (members, source))) in PARAMETERS
+        .into_iter()
+        .zip([
+            (readback.large_scale_mm_per_h().expect("lsp"), &lsp),
+            (readback.convective_mm_per_h().expect("cp"), &cp),
+        ])
+        .enumerate()
+    {
+        let grid_view = source.interval_rate_grid().expect("rate grid");
+        assert_eq!(grid_view.field_id, field_id);
+        let rates: Vec<f32> = pollster::block_on(download_buffer_typed(
+            &ctx,
+            grid_view.rates_mm_per_h,
+            16 * 9,
+            "issue_90_rates",
+        ))
+        .expect("#90 rates");
+        let means = &genuine["interval_means"][name]["values_mm_per_h"];
+        let mut rate_rows = Vec::new();
+        for cell in 0..9 {
+            let mut series_ok = true;
+            for k in 0..16 {
+                let deac = f64s(&means[k])[cell];
+                let rate = rates[k * 9 + cell];
+                let admitted = expected_rows.contains(&(parameter, cell, k));
+                let expected = projected_deac(deac);
+                let ok = member_matches_oracle(f64::from(rate), expected)
+                    && rate.to_bits() != (-0.0_f32).to_bits()
+                    && (!admitted || rate.to_bits() == 0);
+                series_ok &= ok;
+                rate_rows.push(
+                    json!({"cell": cell, "interval": k, "gpu_rate_mm_per_h": rate,
+                    "gpu_rate_bits": format!("{:08x}", rate.to_bits()),
+                    "flex_extract_deac_vals_mm_per_h": deac, "expected_mm_per_h": expected,
+                    "admitted_216": admitted, "verdict": if ok { "passed" } else { "failed" }}),
+                );
+            }
+            assert!(series_ok, "{name} cell {cell}: #90 series");
+            series_pass += 1;
+        }
+        let oracle_members = genuine["darain_members"][name].as_array().expect("members");
+        assert_eq!(metadata.members.len(), oracle_members.len());
+        for (member, expected) in metadata.members.iter().zip(oracle_members) {
+            let t = member.valid_time_epoch_seconds;
+            assert_eq!(
+                t,
+                expected["member_time_s"].as_i64().expect("T") + grib202::ORACLE_EPOCH_UNIX_S,
+                "exact member timestamp"
+            );
+            assert_eq!(
+                (
+                    member.support_start_epoch_seconds,
+                    member.support_end_epoch_seconds
+                ),
+                (t - 2 * dtime_s, t + 2 * dtime_s),
+                "four-interval support"
+            );
+        }
+        let oracle_values = member_results(&genuine["darain_members"][name]);
+        assert_eq!(oracle_values.len(), 117);
+        member_values += oracle_values.len();
+        let case_id = format!("genuine-production-replay-{name}");
+        let lane = lane_evidence(
+            &case_id,
+            readback.evidence(&case_id, field_id, &oracle_values),
+            &oracle_values,
+            members,
+        );
+        lanes.push(json!({"parameter": name, "interval_rates_90": rate_rows,
+            "admissions_216": source.quantization_admissions(), "members": lane}));
+    }
+    assert_eq!((series_pass, member_values), (18, 234));
+    let class = serde_json::to_value(adapter.adapter_class).expect("class");
+    let class = class.as_str().expect("class token");
+    let grib_inputs: serde_json::Map<String, Value> = grib202::grib_file_hashes(&decision)
+        .into_iter()
+        .map(|(name, sha)| (name, Value::String(sha)))
+        .collect();
+    let references = &decision["references"];
+    write_report(
+        &format!("genuine-production-replay-{class}"),
+        &json!({"schema": {"id": "flexpart-gpu.genuine-production-replay-219", "version": 1},
+            "issue": 219, "closes_gate_of": 207, "case": "genuine-production-replay",
+            "candidate": {"revision": std::env::var("FLEXPART_GPU_CANDIDATE_REVISION")
+                    .unwrap_or_else(|_| git(&["rev-parse", "HEAD"])),
+                "worktree_clean": git(&["status", "--porcelain"]).is_empty()},
+            "references": {"flex_extract": references["flex_extract"]["pinned_commit"],
+                "flexpart": references["flexpart"]["pinned_commit"]},
+            "decision": {"schema": decision["schema"], "sha256": grib202::DECISION_SHA256,
+                "verdict": decision["decision"]["verdict"]},
+            "inputs": {"grib_files_sha256": grib_inputs, "darain_oracle_sha256": ORACLE_SHA256,
+                "source_snapshot_sha256": metadata.source_snapshot_sha256,
+                "horizontal_grid": metadata.horizontal_grid, "input_sha256": metadata.input_sha256().expect("hash")},
+            "adapter": adapter,
+            "shaders": {"accumulated_interval": accumulated_shader_sha256(), "darain": darain_shader_sha256()},
+            "path": ["CanonicalGpuField::upload(LSP)", "CanonicalGpuField::upload(CP)",
+                "prepare_precipitation_members", "encode #90 LSP/CP + #207 darain LSP/CP", "submit", "status", "readback"],
+            "stages": stages, "encoders": 1, "submissions": 1, "host_transfers_between_stages": 0,
+            "admissions_216": admissions,
+            "counts": {"interval_series": series_pass, "interval_series_required": 18,
+                "darain_members": member_values, "darain_members_required": 234, "admissions": 3},
+            "comparison_policy": {"absolute_tolerance": 1e-6, "relative_tolerance": 1e-5},
+            "metadata": metadata, "lanes": lanes, "verdict": "passed"}),
     );
 }
 
@@ -899,45 +1188,85 @@ fn test_precipitation_members_fail_closed_matrix() {
     );
     rows.push(json!({"case": "device_overflow_status", "code": "non_finite", "status": overflow.status()}));
 
-    // Genuine #202 example on the production path: blocked by #75 (see Phase 1).
-    let oracle = oracle();
-    let genuine = &oracle["genuine"];
-    let cells = |name: &str, k: usize| -> Vec<f32> {
-        (0..9)
-            .map(|cell| {
-                genuine_observations(genuine, name, cell)[k].accumulated_amount_kg_per_square_meter
-            })
-            .collect::<Vec<f64>>()
-            .iter()
-            .map(|v| as_f32(&[*v])[0])
-            .collect()
+    // Genuine #202 example on the production path (#216/#219): without source
+    // records the #75 rejection is unchanged; malformed, mismatched, reassociated
+    // or unsupported records fail closed at `CanonicalGpuField::upload`.
+    let genuine = grib202::observations();
+    let (parameter, cell, index) = grib202::admitted_rows(&grib202::decision())[0];
+    assert_eq!((parameter, cell), (0, 1), "LSP row of the #216 artifact");
+    type GenuineMutation = fn(&mut [Snapshot], usize);
+    let mutations: [(&str, &str, GenuineMutation); 6] = [
+        ("genuine_202_without_provenance", "decreased", |s, _| {
+            for snapshot in s.iter_mut() {
+                for field in &mut snapshot.fields {
+                    field.source_quantization = None;
+                }
+            }
+        }),
+        (
+            "genuine_202_wrong_message_hash",
+            "PackingProvenanceMismatch",
+            |s, i| {
+                lsp_record(&mut s[i]).packing.message_sha256 = "0".repeat(64);
+            },
+        ),
+        (
+            "genuine_202_era5_class",
+            "UnsupportedSourceClass",
+            |s, i| {
+                lsp_record(&mut s[i]).packing.mars_class = Some("EA".to_owned());
+            },
+        ),
+        (
+            "genuine_202_missing_class",
+            "UnsupportedSourceClass",
+            |s, i| {
+                lsp_record(&mut s[i - 1]).packing.mars_class = None;
+            },
+        ),
+        (
+            "genuine_202_cp_record_on_lsp",
+            "IdentityMismatch",
+            |s, i| {
+                let cp = s[i]
+                    .fields
+                    .iter()
+                    .find(|f| f.id == FieldId::ConvectivePrecipitation)
+                    .and_then(|f| f.source_quantization.clone());
+                *lsp_record(&mut s[i]) = cp.expect("CP record");
+            },
+        ),
+        (
+            "genuine_202_malformed_record",
+            "malformed source-quantization",
+            |s, i| {
+                lsp_record(&mut s[i])
+                    .packing
+                    .message_sha256
+                    .make_ascii_uppercase();
+            },
+        ),
+    ];
+    for (case, expected, mutate) in mutations {
+        let mut snapshots = grib202::snapshots(&genuine);
+        mutate(&mut snapshots, index);
+        let error = try_upload(&ctx, FieldId::LargeScalePrecipitation, &snapshots)
+            .err()
+            .unwrap_or_else(|| panic!("{case}: upload must fail closed"));
+        assert!(error.to_string().contains(expected), "{case}: {error}");
+        rows.push(json!({"case": case, "code": expected, "stage": "canonical upload", "error": error.to_string()}));
+    }
+    // A forged admission mode never reaches the device.
+    let forged = AccumulatedTransformInput {
+        curr_amount_kg_per_square_meter: 0.5,
+        prev_amount_kg_per_square_meter: 1.0,
+        duration_seconds: 10_800.0,
+        reset_applied: TRANSFORM_MODE_PACKING_ADMISSION,
     };
-    let times = genuine_observations(genuine, "lsp", 0);
-    let genuine_obs: Vec<Observation> = times
-        .iter()
-        .enumerate()
-        .map(|(k, o)| {
-            (
-                o.reset_epoch_seconds,
-                o.valid_time_epoch_seconds,
-                cells("lsp", k),
-                cells("cp", k),
-            )
-        })
-        .collect();
-    let genuine_error = try_upload(
-        &ctx,
-        FieldId::LargeScalePrecipitation,
-        &snapshots((3, 3, 10.0, 50.0), &genuine_obs),
-    )
-    .err()
-    .expect("genuine LSP blocked by #75");
-    assert!(
-        genuine_error.to_string().contains("negative")
-            || genuine_error.to_string().contains("decreas"),
-        "{genuine_error}"
-    );
-    rows.push(json!({"case": "genuine_202_production_path", "code": "blocked_by_75", "error": genuine_error.to_string()}));
+    let forged_error = AccumulatedTransformInputs::from_inputs(&ctx, &[forged])
+        .err()
+        .expect("forged admission mode rejected");
+    rows.push(json!({"case": "forged_admission_mode", "code": "invalid_transform_input", "stage": "#90 upload", "error": forged_error.to_string()}));
 
     write_report(
         "fail-closed",

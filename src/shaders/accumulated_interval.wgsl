@@ -11,6 +11,15 @@
 //   rate_si[i] = amount[i] / duration_seconds[i]
 //   rate_mmh[i] = rate_si[i] * 3600.0
 //
+// except for reset_applied[i] == 2u, the #216 ADMIT_BOUNDED projection (#219):
+//
+//   amount[i] = max(curr[i] - prev[i], 0.0) = +0.0,  rate_si[i] = rate_mmh[i] = +0.0
+//
+// Mode 2 is set only by the host #216 classifier for a same-run decrease
+// (curr < prev) that is compatible with the GRIB1 packing bound; it is never a
+// reset. The max is written as a select against a literal +0.0 so that a
+// flushed or signed-zero difference cannot produce -0.0.
+//
 // where `curr/prev` are source accumulated totals in kg/m2 (numerically equal
 // to mm water depth), `duration_seconds` is the host-validated strictly
 // positive interval length in seconds, and `reset_applied` selects the fresh
@@ -83,13 +92,22 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
 
     let entry = transform_inputs[idx];
     var amount: f32 = 0.0;
-    if (entry.reset_applied == 1u) {
-        amount = entry.curr_amount_kg_per_square_meter;
+    var rate_si: f32 = 0.0;
+    var rate_mmh: f32 = 0.0;
+    if (entry.reset_applied == 2u) {
+        let delta = entry.curr_amount_kg_per_square_meter - entry.prev_amount_kg_per_square_meter;
+        amount = select(delta, 0.0, delta <= 0.0);
+        rate_si = 0.0;
+        rate_mmh = 0.0;
     } else {
-        amount = entry.curr_amount_kg_per_square_meter - entry.prev_amount_kg_per_square_meter;
+        if (entry.reset_applied == 1u) {
+            amount = entry.curr_amount_kg_per_square_meter;
+        } else {
+            amount = entry.curr_amount_kg_per_square_meter - entry.prev_amount_kg_per_square_meter;
+        }
+        rate_si = amount / entry.duration_seconds;
+        rate_mmh = rate_si * 3600.0;
     }
-    let rate_si = amount / entry.duration_seconds;
-    let rate_mmh = rate_si * 3600.0;
 
     interval_amounts[idx] = amount;
     interval_rates_si[idx] = rate_si;

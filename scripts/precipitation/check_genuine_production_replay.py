@@ -52,6 +52,18 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def harness_digests(path):
+    """Recognize exactly LF/CRLF encodings of unchanged tracked driver content.
+
+    Raw executed-byte digests remain in the oracle records. Git autocrlf can
+    change only the repository harness checkout encoding; pinned upstream
+    sources and scientific input/output byte checks remain strict.
+    """
+    canonical = path.read_bytes().replace(b'\r\n', b'\n')
+    return {hashlib.sha256(canonical).hexdigest(),
+            hashlib.sha256(canonical.replace(b'\n', b'\r\n')).hexdigest()}
+
+
 def f32_from_bits(text):
     require(isinstance(text, str) and len(text) == 8, 'f32 bit pattern')
     return struct.unpack('<f', bytes.fromhex(text)[::-1])[0]
@@ -250,7 +262,7 @@ def check_temporal(path, software=False, hardware=False, matched=None):
                'precipitation_temporal': ROOT / 'src/shaders/precipitation_temporal.wgsl'}
     require(r['shaders'] == {k: digest(p) for k, p in shaders.items()}, 'temporal shader hashes')
     for name, sha in fixture['harness_sha256'].items():
-        require(digest(ROOT / 'scripts/interpolation' / name) == sha, 'modified original harness')
+        require(sha in harness_digests(ROOT / 'scripts/interpolation' / name), 'modified original harness')
     require(r['encoders'] == r['submissions'] == 1 and r['host_transfers_between_stages'] == 0,
             'temporal residency')
     require(r['stage_order'] == ['#90 LSP', '#90 CP', '#207 LSP', '#207 CP', '#87 selected planes', '#119'], 'temporal stages')
@@ -385,8 +397,11 @@ def check_temporal_residency_sources():
 def check_matched_temporal(report, fixture, matched):
     """Require unchanged original execution with exactly matched input member bits."""
     import temporal_oracle as original
-    for key in ('schema', 'units', 'darain_oracle_sha256', 'flexpart_revision', 'flex_extract_revision', 'source_sha256', 'harness_sha256', 'compiler'):
+    for key in ('schema', 'units', 'darain_oracle_sha256', 'flexpart_revision', 'flex_extract_revision', 'source_sha256', 'compiler'):
         require(matched[key] == fixture[key], 'fresh original identity '+key)
+    require(matched['harness_sha256'].keys() == fixture['harness_sha256'].keys(), 'fresh harness set')
+    for name, sha in matched['harness_sha256'].items():
+        require(sha in harness_digests(ROOT / 'scripts/interpolation' / name), 'fresh modified harness')
     require(len(matched['executable_sha256']) == 64, 'fresh executable hash')
     expected_cases = list(original.cases(report))
     require(len(matched['cases']) == len(expected_cases), 'matched pair count')

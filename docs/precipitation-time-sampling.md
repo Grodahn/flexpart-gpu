@@ -99,6 +99,9 @@ then the final duplicate at 12 positions. This gives 588 queries / 1,176 LSP/CP
 comparisons, covering every node, fractional spatial gradients, non-midpoint
 times, exact boundaries, zeros and wet/dry transitions. Raw matched inputs and
 outputs, source/driver/executable hashes, timestamps and units are retained.
+Raw harness hashes retain the executed bytes. The auditor recognizes only LF
+and CRLF checkout encodings of identical harness content, for Windows/Linux
+portability; upstream source and scientific input/output hashes stay exact.
 
 The historical `rain-layer-fields` golden and five probes
 `(9.75,1.5)`, `(84.75,2.25)`, `(159.75,3)`, `(234.75,3.75)`, `(309.75,4.5)`

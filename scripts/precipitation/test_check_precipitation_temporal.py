@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from check_genuine_production_replay import ROOT, check_temporal, check_temporal_both
+from check_genuine_production_replay import ROOT, check_temporal, check_temporal_both, harness_digests
 
 
 class TemporalEvidenceTests(unittest.TestCase):
@@ -25,6 +25,15 @@ class TemporalEvidenceTests(unittest.TestCase):
     def test_complete_actual_device_execution(self):
         self.write(self.source)
         check_temporal(self.path)
+
+    def test_harness_encoding_preserves_content_identity(self):
+        path = Path(self.temporary.name) / 'driver.f90'
+        path.write_bytes(b'program oracle\nend program oracle\n')
+        expected = harness_digests(path)
+        path.write_bytes(b'program oracle\r\nend program oracle\r\n')
+        self.assertEqual(harness_digests(path), expected)
+        path.write_bytes(b'program modified\nend program modified\n')
+        self.assertTrue(harness_digests(path).isdisjoint(expected))
 
     def test_missing_or_wrong_adapter_execution(self):
         with self.assertRaises(ValueError):

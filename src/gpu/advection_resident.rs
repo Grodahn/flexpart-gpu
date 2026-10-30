@@ -37,19 +37,19 @@ impl ResidentAdvectionKernels {
                 ctx,
                 "Petterssen predictor query",
                 include_str!("../shaders/advection_predictor_query.wgsl"),
-                &[true, true, true, false, true, true, false],
+                &[true, true, true, false, true, true, false, false],
             ),
             corrector: QueryPass::new(
                 ctx,
                 "Petterssen private corrector",
                 include_str!("../shaders/advection_corrector.wgsl"),
-                &[true, true, false, false, true, true, true],
+                &[true, true, false, false, true, true, true, false],
             ),
             guard: QueryPass::new(
                 ctx,
                 "Petterssen downstream eligibility",
                 include_str!("../shaders/advection_step_guard.wgsl"),
-                &[false, true],
+                &[false, true, true],
             ),
             commit: QueryPass::new(
                 ctx,
@@ -77,13 +77,18 @@ pub(crate) struct ResidentAdvectionStep {
     // Deferred checkpoints retain the complete run target and all source uploads.
     _prepared_sources: Vec<std::sync::Arc<super::shared_height_w::PreparedSharedHeightW>>,
     pub(crate) status: wgpu::Buffer,
+    pub(crate) stop_words: wgpu::Buffer,
     pub(crate) values: wgpu::Buffer,
     #[cfg(test)]
     pub(crate) queries: wgpu::Buffer,
     #[cfg(test)]
     pub(crate) corrected_particles: wgpu::Buffer,
+    #[cfg(test)]
+    pub(crate) settling_provenance_sha256: String,
+    #[cfg(test)]
+    pub(crate) settling_provenance_json: String,
     boundary: SharedHeightTransportBoundary,
-    predictor_heights: wgpu::Buffer,
+    pub(crate) predictor_heights: wgpu::Buffer,
     params: wgpu::Buffer,
     capacity: u32,
     pub(crate) metadata: Vec<ResidentSampleMetadata>,
@@ -95,11 +100,13 @@ impl ResidentAdvectionStep {
         ctx: &GpuContext,
         original: &ParticleBuffers,
         staged: &ParticleBuffers,
+        settling: &crate::simulation::timeloop::settling::TransportSettlingRoute,
         fields: &[CanonicalGpuField<'_>; 3],
         grid: &HorizontalGrid,
         signed_dt: f32,
         scale: VelocityToGridScale,
     ) -> Result<Self, MeteorologyCompositionError> {
+        let stop_route = settling.stop_route(ctx, signed_dt)?;
         let invalid = |reason| MeteorologyCompositionError::Incompatible(reason);
         if !original.belongs_to(ctx)
             || !staged.belongs_to(ctx)
@@ -155,12 +162,16 @@ impl ResidentAdvectionStep {
             scale.y_grid_per_meter.to_bits(),
             boundary.levels,
             boundary.top_margin_m.to_bits(),
-            0,
+            u32::from(stop_route),
             0,
             0,
         ];
         let result = Self {
             predictor_heights: allocation(u64::from(capacity), "Petterssen raw predictor height")?,
+            #[cfg(test)]
+            settling_provenance_sha256: settling.provenance_sha256.clone(),
+            #[cfg(test)]
+            settling_provenance_json: settling.provenance_json.clone(),
             boundary,
             _prepared_sources: fields[0].prepared_advection_sources(),
             #[cfg(test)]
@@ -169,6 +180,10 @@ impl ResidentAdvectionStep {
             corrected_particles: allocation(
                 24 * u64::from(capacity),
                 "Petterssen pre-physics evidence",
+            )?,
+            stop_words: allocation(
+                u64::from(capacity),
+                "Petterssen step-private scientific stops",
             )?,
             status: allocation(
                 6 * (u64::from(capacity) + 1) + 1,
@@ -194,6 +209,7 @@ impl ResidentAdvectionStep {
         ctx: &GpuContext,
         original: &ParticleBuffers,
         staged: &ParticleBuffers,
+        settling: &crate::simulation::timeloop::settling::TransportSettlingRoute,
         fields: &[CanonicalGpuField<'_>; 3],
         grid: &HorizontalGrid,
         times: [MeteorologyTimeSelection; 2],
@@ -204,7 +220,9 @@ impl ResidentAdvectionStep {
         resident: &ResidentQueryKernels<'_>,
         encoder: &mut wgpu::CommandEncoder,
     ) -> Result<Self, MeteorologyCompositionError> {
-        let mut result = Self::prepare(ctx, original, staged, fields, grid, signed_dt, scale)?;
+        let mut result = Self::prepare(
+            ctx, original, staged, settling, fields, grid, signed_dt, scale,
+        )?;
         #[cfg(test)]
         let query_fault = TEST_QUERY_FAULT.with(std::cell::Cell::take);
         let capacity = result.capacity;
@@ -219,6 +237,7 @@ impl ResidentAdvectionStep {
             original.particle_buffer.size(),
         );
         encoder.clear_buffer(&result.status, 0, None);
+        encoder.clear_buffer(&result.stop_words, 0, None);
         for (time_stage, time) in times.into_iter().enumerate() {
             for (component, field) in fields.iter().enumerate() {
                 let index = time_stage * 3 + component;
@@ -237,6 +256,7 @@ impl ResidentAdvectionStep {
                             result.boundary.target.heights(),
                             result.boundary.target.status(),
                             &result.predictor_heights,
+                            &result.stop_words,
                             &result.params,
                         ],
                         capacity,
@@ -293,6 +313,7 @@ impl ResidentAdvectionStep {
                 result.boundary.target.heights(),
                 result.boundary.target.status(),
                 &result.predictor_heights,
+                &result.stop_words,
                 &result.params,
             ],
             capacity,
@@ -309,7 +330,12 @@ impl ResidentAdvectionStep {
         // A separate dispatch observes failures from every workgroup before downstream physics.
         kernels.guard.encode(
             ctx,
-            &[&staged.particle_buffer, &result.status, &result.params],
+            &[
+                &staged.particle_buffer,
+                &result.status,
+                &result.stop_words,
+                &result.params,
+            ],
             capacity,
             encoder,
         );

@@ -15,6 +15,20 @@ shaders, physics kernels, or advection logic must add an entry here.
 ---
 
 #
+### 2026-10-30 - Integrate original zero-carrier settling stop in resident Petterssen (#214)
+**Impact**: physics (scientific particle fate and eligibility).
+**Files**: resident advection owner, predictor/corrector/guard shaders, run routes and both drivers.
+**Validation**: genuine #213 v2 forward/backward matrix, v1 disabled controls,
+three-workgroup mixed lanes, two real backward steps, fatal-peer atomicity and
+fail-closed evidence mutations. Actual results and limitations are retained in
+issue-214 logs and the PR validation report; missing execution never counts as a pass.
+The original `advance_mod.f90:889-895` inclusive predicate retains height and
+sticky stop through correction; `timemanager_mod.f90:534-541` terminates before
+later physics. No new settling velocity or tolerance. The supported f32 state
+still excludes f64-only predicate probes; #204 retains trajectory precision.
+No deviation from the frozen stop lifecycle is intended. #35/#37 retain velocity
+physics and coupling; no whole-FLEXPART parity claim. Provenance: **GPT6.1 Sol**.
+
 ### 2026-10-29 - Record genuine flagged gas-carrier transport-top rows (#213)
 **Impact**: none (original-reference evidence only; no production Rust/WGSL or tolerance change).
 **Files**: sibling original driver/observers, `fixtures/transport/top-boundary-v2/`, #203 matrix.

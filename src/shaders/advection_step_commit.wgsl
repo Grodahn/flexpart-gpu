@@ -1,7 +1,7 @@
 // Publish the completed scientific timestep only when every required sample succeeded.
 struct Params { capacity: u32, active_count: u32, nx: u32, ny: u32,
     dt: f32, x_scale: f32, y_scale: f32, target_levels: u32,
-    top_margin_m: f32, pad0: u32, pad1: u32, pad2: u32 };
+    top_margin_m: f32, stop_route: u32, pad1: u32, pad2: u32 };
 @group(0) @binding(0) var<storage, read> staged: array<u32>;
 @group(0) @binding(1) var<storage, read> status: array<u32>;
 @group(0) @binding(2) var<storage, read_write> particles: array<u32>;

@@ -78,6 +78,19 @@ impl ForwardTimeLoopDriver {
                 "transport settling requires validated settling and sticky particle-stop state (#203; physics #35/#37)",
             ).into());
         }
+        if !legacy_diagnostic {
+            let route = self.transport_settling.as_ref().ok_or(
+                crate::gpu::meteorology::MeteorologyCompositionError::Missing(
+                    "run-owned transport settling/carrier route",
+                ),
+            )?;
+            route.stop_route(
+                &self.gpu_context,
+                crate::simulation::timeloop::time::timestep_seconds_f32(
+                    self.config.timestep_seconds,
+                )?,
+            )?;
+        }
         if let Some(canonical) = met.canonical {
             canonical.validate_production(&self.gpu_context)?;
             let grid = canonical.bracket().horizontal_grid();

@@ -242,3 +242,14 @@ unchanged navigation regression evidence was reused.
    execution and production-path gates; no tolerance is added here. Do not treat
    #180's f64-only private probes as representable GPU cases or infer complete
    GPU/production parity from this evidence.
+
+
+## Production implementation follow-up (#214)
+
+The frozen findings, matrix classifications and original fixtures above retain
+their historical meaning. The zero-by-carrier route, step-private stop lifecycle
+and both production drivers are now implemented in the
+[#214 integration](../transport-top.md#settling-stop-integration-214).
+Acceptance requires the extended real-device matrix and independent evidence
+auditor; this implementation-status link does not promote nonzero velocity,
+#204 trajectory diagnostics or whole-FLEXPART parity.

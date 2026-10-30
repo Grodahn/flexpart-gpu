@@ -31,6 +31,15 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::sync::Arc;
+fn gas_settling(species_count: usize) -> crate::simulation::TransportSettlingConfig {
+    crate::simulation::TransportSettlingConfig {
+        species: (0..species_count).map(|i| serde_json::from_value(json!({
+            "name":format!("original-gas-{i}"), "particle_density_kg_m3":-1.0, "raw":{ "pdensity":"-1" }
+        })).unwrap()).collect(),
+        ..Default::default()
+    }
+}
+
 const START_SECONDS: i64 = 1_704_067_200;
 fn snapshot(seconds: i64, offset: f32) -> Snapshot {
     let mut snapshot: Snapshot = serde_json::from_str(include_str!(
@@ -243,10 +252,12 @@ fn test_production_forward_backward_resident_petterssen_atomicity() {
                     let (particles, status, metadata, values, queries, initial, adapter, failed) =
                         if backward {
                             let mut config = BackwardTimeLoopConfig {
+                                transport_settling: Some(gas_settling(1)),
                                 start_timestamp: "20240101000001".into(),
                                 end_timestamp: "20240101000000".into(),
                                 timestep_seconds: 1,
                                 receptors: vec![BackwardReceptorConfig {
+                                    species_masses_kg: None,
                                     name: "probe".into(),
                                     lon: 6.5625,
                                     lat: 50.25,
@@ -326,6 +337,7 @@ fn test_production_forward_backward_resident_petterssen_atomicity() {
                             )
                         } else {
                             let config = ForwardTimeLoopConfig {
+                                transport_settling: Some(gas_settling(1)),
                                 start_timestamp: "20240101000000".into(),
                                 end_timestamp: "20240101000001".into(),
                                 timestep_seconds: 1,
@@ -653,6 +665,7 @@ fn test_forward_interior_time_deferred_failure_and_top_boundary() {
         let input_sha256 = format!("{:x}", Sha256::digest(&inputs));
         std::fs::write(root.join(&input_file), &inputs).unwrap();
         let config = ForwardTimeLoopConfig {
+            transport_settling: Some(gas_settling(1)),
             start_timestamp: "20240101000001".into(),
             end_timestamp: "20240101000002".into(),
             timestep_seconds: 1,
@@ -874,6 +887,7 @@ fn test_shared_vector_real_drivers_oracle_replay_and_reuse() {
             Some(
                 pollster::block_on(ForwardTimeLoopDriver::new(
                     ForwardTimeLoopConfig {
+                        transport_settling: Some(gas_settling(1)),
                         start_timestamp: start.clone(),
                         end_timestamp: end.clone(),
                         timestep_seconds: 1,
@@ -890,12 +904,14 @@ fn test_shared_vector_real_drivers_oracle_replay_and_reuse() {
             Some(
                 pollster::block_on(BackwardTimeLoopDriver::new(
                     BackwardTimeLoopConfig {
+                        transport_settling: Some(gas_settling(1)),
                         start_timestamp: start.clone(),
                         end_timestamp: end.clone(),
                         timestep_seconds: 1,
                         receptors: heights
                             .into_iter()
                             .map(|z| BackwardReceptorConfig {
+                                species_masses_kg: None,
                                 name: format!("height-{z}"),
                                 lon: -2.0 + 0.7 * 0.25,
                                 lat: 48.0 + 0.6 * 0.4,
@@ -1179,6 +1195,7 @@ fn test_shared_vector_driver_preparation_failures() {
                 Some(
                     pollster::block_on(ForwardTimeLoopDriver::new(
                         ForwardTimeLoopConfig {
+                            transport_settling: Some(gas_settling(1)),
                             start_timestamp: start.into(),
                             end_timestamp: end.into(),
                             timestep_seconds: 1,
@@ -1195,10 +1212,12 @@ fn test_shared_vector_driver_preparation_failures() {
                 Some(
                     pollster::block_on(BackwardTimeLoopDriver::new(
                         BackwardTimeLoopConfig {
+                            transport_settling: Some(gas_settling(1)),
                             start_timestamp: start.into(),
                             end_timestamp: end.into(),
                             timestep_seconds: 1,
                             receptors: vec![BackwardReceptorConfig {
+                                species_masses_kg: None,
                                 name: "fault".into(),
                                 lon: 6.6875,
                                 lat: 50.25,

@@ -12,5 +12,5 @@ pub use timeloop::{
     CanonicalMeteorologySlot, CanonicalMeteorologyStepTimes, ForwardSpatialSortConfig,
     ForwardStepForcing, ForwardStepReport, ForwardTimeLoopConfig, ForwardTimeLoopDriver,
     MetTimeBracket, ParticleForcingField, PreparedCanonicalMeteorology, StepTimingReport,
-    TimeDirection, TimeLoopError, CANONICAL_WIND_FIELDS,
+    TimeDirection, TimeLoopError, TransportSettlingConfig, CANONICAL_WIND_FIELDS,
 };

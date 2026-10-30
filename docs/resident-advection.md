@@ -76,39 +76,27 @@ an f32 margin unable to place strictly below it fails atomically.
 The finite proof and reproduction commands are in [transport-top adoption](transport-top.md).
 The real-driver test records the private **advection-stage** result before the
 unchanged downstream turbulence; it does not claim whole-timestep trajectory parity.
-Requested `ForwardStepForcing::settling_enabled` fails before release/encoding in
-both production drivers and their legacy diagnostic paths. A scientific stop must
-never become a fatal meteorology batch. No stop state is fabricated by this
-ordinary-particle implementation.
+Canonical production requires explicit run-owned species/carrier options; missing
+ownership fails before release. The original flag is derived once from the
+normalized release inventory, independently of velocity. Enabled gas carriers
+(density <= 0) use the zero-velocity route. Positive-density velocity production
+remains rejected pending #35/#37. The compatibility per-step settling request
+continues to reject instead of overriding the derived run flag.
 
-## Settling flag and sticky-stop contract (#203)
+## Settling stop ownership (#214)
 
-The [#203 decision](research/settling-stop-203.md) and its
-[versioned acceptance matrix](research/settling-stop-203-matrix.json) define the
-handoff for future implementation. **No production behavior changes here.**
-
-- Original `lsettling` is run-global and defaults to `.true.`. Only a release point
-  with more than one species (or MQUASILAG with `nspec>1`) disables it. It is never
-  derived from velocity. A future `TransportSettlingRoute` is built once per run from
-  the normalized release inventory and #10 carriers. It replaces the per-step
-  rejection-only `settling_enabled` request.
-- Velocity is `Disabled`, `ZeroByCarrier` (density≤0, adds nothing) or `Produced`
-  (#35 kernel plus #37 coupling, rejected until available).
-- `nstop` becomes a step-private `u32` per lane in `ResidentAdvectionStep`, cleared
-  at encode and OR-written by the predictor (bit 0) and corrector (bit 1). It is not
-  in the particle ABI and is never a status word. Backward with the route enabled:
-  `z >= top` keeps z unplaced, the corrector runs from the retained predictor, and
-  nothing clears the stop.
-- On success the guard clears `FLAG_ACTIVE` on stopped lanes (the original
-  `terminate_particle`) before downstream physics. The existing all-or-nothing commit
-  publishes them inactive. Mass and position are kept. Backward attribution already
-  skips inactive lanes. Any fatal status still inactivates every private lane and
-  publishes nothing, including stop words.
-- Forward never stops. Backward compaction stays unsupported.
-- **Known gap.** Backward receptors are single-species, so the original derives
-  `.true.` and stops particles at the top. The current ordinary action matches only
-  particles that never reach the top. [#214](https://github.com/Grodahn/flexpart-gpu/issues/214) owns deriving the
-  flag (oracle rows: [#213](https://github.com/Grodahn/flexpart-gpu/issues/213)); it must not keep the silent `false` default.
+The [original #203 lifecycle](research/settling-stop-203.md) is integrated through
+both real Petterssen drivers. [Transport-top details](transport-top.md#settling-stop-integration-214)
+document the exact supported envelope, original flag derivation, receptor bindings
+and evidence. A step-private GPU word carries OR-only predictor bit 0 and
+corrector bit 1. The backward inclusive predicate retains height and permits
+correction, including inward correction after a predictor stop. Forward never
+acquires this stop rule. The guard clears `FLAG_ACTIVE` before downstream physics;
+commit publishes corrected state and unchanged mass on success only. Persistence
+across timesteps is in the inactive particle, while every new step clears its
+private stop words. Source collections exclude stopped particles. A fatal query
+blocks publication of the complete batch, including stopped peers and tail bytes.
+No particle ABI, resident query or raw-word commit layout changes.
 
 Production requires the complete typed vector; the older #173 center-W handoff
 is diagnostic-only. Unready target/U/V/W dependencies reject the entire vector,

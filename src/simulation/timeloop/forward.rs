@@ -41,6 +41,7 @@ pub struct ForwardTimeLoopDriver {
     step_index: usize,
     philox_counter: PhiloxCounter,
     release_manager: ReleaseManager,
+    transport_settling: Option<super::settling::TransportSettlingRoute>,
     release_grid: GridDomain,
     particle_store: ParticleStore,
     gpu_context: GpuContext,
@@ -149,6 +150,18 @@ impl ForwardTimeLoopDriver {
         let release_manager = ReleaseManager::new(releases, release_grid.clone())?;
         let particle_store = ParticleStore::with_capacity(particle_capacity);
         let gpu_context = GpuContext::new().await?;
+        let transport_settling = config
+            .transport_settling
+            .as_ref()
+            .map(|options| {
+                super::settling::TransportSettlingRoute::new(
+                    &gpu_context,
+                    options,
+                    releases,
+                    super::config::TimeDirection::Forward,
+                )
+            })
+            .transpose()?;
         let particle_buffers = ParticleBuffers::from_store(&gpu_context, &particle_store);
         let staged_particles = ParticleBuffers::from_store(&gpu_context, &particle_store);
         let resident_advection_kernels = ResidentAdvectionKernels::new(&gpu_context)?;
@@ -217,6 +230,7 @@ impl ForwardTimeLoopDriver {
             step_index: 0,
             philox_counter: initial_philox_counter,
             release_manager,
+            transport_settling,
             release_grid,
             particle_store,
             decay_dispatch_kernel: DecayDispatchKernel::new(&gpu_context),
@@ -279,6 +293,56 @@ impl ForwardTimeLoopDriver {
             .download_particles(&self.gpu_context)
             .await
             .expect("test particle snapshot")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_prime_releases(&mut self) {
+        self.release_manager
+            .inject_and_upload_for_time(
+                &self.config.start_timestamp,
+                &mut self.particle_store,
+                &self.particle_buffers,
+                &self.gpu_context,
+            )
+            .expect("test initial source state");
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_predictor_heights(&self) -> Vec<f32> {
+        let step = self.latest_advection.as_ref().expect("encoded step");
+        crate::gpu::download_buffer_typed(
+            &self.gpu_context,
+            &step.predictor_heights,
+            self.particle_buffers.capacity(),
+            "test predictor heights",
+        )
+        .await
+        .expect("predictor readback")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_settling_provenance(&self) -> (&str, &str) {
+        let step = self.latest_advection.as_ref().expect("encoded step");
+        (
+            &step.settling_provenance_sha256,
+            &step.settling_provenance_json,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_stop_words(&self) -> Vec<u32> {
+        let step = self
+            .latest_advection
+            .as_ref()
+            .expect("production advection");
+        crate::gpu::download_buffer_typed(
+            &self.gpu_context,
+            &step.stop_words,
+            self.particle_buffers.capacity(),
+            "test scientific stop evidence",
+        )
+        .await
+        .expect("stop readback")
     }
 
     #[cfg(test)]

@@ -216,6 +216,7 @@ impl SourceReceptorConsistencyHarness {
             time_bounds_behavior: TimeBoundsBehavior::Strict,
             velocity_to_grid_scale: VelocityToGridScale::IDENTITY,
             receptors: vec![BackwardReceptorConfig {
+                species_masses_kg: None,
                 name: "receptor_a".to_string(),
                 lon: RECEPTOR_X_LON,
                 lat: RECEPTOR_Y_LAT,

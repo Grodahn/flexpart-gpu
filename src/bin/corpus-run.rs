@@ -843,6 +843,7 @@ fn run_driver_case(
         raw: BTreeMap::new(),
     }];
     let config = ForwardTimeLoopConfig {
+        transport_settling: None, // Explicit legacy diagnostic; no production carrier claim.
         start_timestamp: start.to_string(),
         end_timestamp: end.clone(),
         timestep_seconds: dt,

@@ -89,6 +89,52 @@ class TransportTopEvidence(unittest.TestCase):
             row['final_bytes'][0] ^= 1
         self.mutate(change)
 
+    def flagged_mutation(self, callback):
+        def change(report):
+            row=report['flagged_rows'][3]
+            path=self.root/row['device_file']
+            device=json.loads(path.read_text())
+            callback(device)
+            raw=json.dumps(device).encode();path.write_bytes(raw);row['device_sha256']=digest(raw)
+        self.mutate(change)
+
+    def test_missing_flagged_row(self):
+        self.mutate(lambda r:r['flagged_rows'].pop())
+
+    def test_wrong_flagged_oracle_hash(self):
+        self.mutate(lambda r:r.update(flagged_oracle_fixture_sha256='0'*64))
+
+    def test_wrong_stop_bit(self):
+        self.flagged_mutation(lambda d:d['stop_words'].__setitem__(0,0))
+
+    def test_missing_route_provenance(self):
+        self.flagged_mutation(lambda d:d.pop('settling_provenance_sha256'))
+
+    def test_missing_two_step(self):
+        self.flagged_mutation(lambda d:d.update(second_step=None))
+
+    def test_missing_flagged_software_execution(self):
+        def change(r):r['flagged_rows'][0]['adapter'].update(device_type='cpu',adapter_class='hardware_gpu')
+        self.mutate(change)
+
+    def test_flagged_mass_loss(self):
+        self.flagged_mutation(lambda d:d['published_bytes'].__setitem__(24,d['published_bytes'][24]^1))
+
+    def test_partial_fatal_termination(self):
+        self.mutate(lambda r:r['lifecycle'][1]['published_bytes'].__setitem__(66*96+20,0))
+
+    def test_missing_mixed_batch(self):
+        self.mutate(lambda r:r['lifecycle'].pop())
+
+    def test_second_step_changed_stopped_lane(self):
+        self.mutate(lambda r:r['lifecycle'][0]['second_step']['published_bytes'].__setitem__(2*96+8,0))
+
+    def test_inactive_tail_stop(self):
+        self.mutate(lambda r:r['lifecycle'][0]['stop_words'].__setitem__(129,1))
+
+    def test_unsupported_marked_pass(self):
+        self.mutate(lambda r:r['rows'][-1].update(settling_rejected=False))
+
 
 if __name__ == '__main__':
     unittest.main()

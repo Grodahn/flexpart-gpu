@@ -5,7 +5,11 @@ use anyhow::{ensure, Context, Result};
 use flexpart_gpu::{
     config::ReleaseConfig,
     coords::{dx_meters_at_latitude, GridDomain},
-    gpu::{GpuAdapterClass, GpuAdapterEvidence},
+    gpu::{
+        shared_height::{SharedHeightInitialization, SharedHeightPreparer, SharedHeightSource},
+        shared_height_w::{SharedHeightWPreparer, SharedHeightWSource},
+        GpuAdapterClass, GpuAdapterEvidence, GpuContext,
+    },
     meteorology::{
         vertical::{
             reconstruct_vertical_geometry_with_motion, NativeVerticalMotion,
@@ -121,6 +125,26 @@ fn source(s: &Scenario, seconds: i64) -> Result<(Snapshot, VerticalTransformResu
             .iter()
             .find(|f| f.id == id)
             .context("field spec")?;
+        field.id = id;
+        field.unit = spec.unit;
+        field.sign = spec.sign;
+        field.values.fill(value);
+        snapshot.fields.push(field);
+    }
+    // The shared-height vector anchors its surface level on 10 m winds. The paired
+    // synthetic GRIB writes uniform 10U/10V equal to the model-level wind.
+    let surface_template = snapshot
+        .fields
+        .iter()
+        .find(|f| f.id == FieldId::Temperature2m)
+        .context("surface template")?
+        .clone();
+    for (id, value) in [(FieldId::WindU10m, s.u_m_s), (FieldId::WindV10m, s.v_m_s)] {
+        let mut field = surface_template.clone();
+        let spec = FIELD_SPECS
+            .iter()
+            .find(|f| f.id == id)
+            .context("surface wind spec")?;
         field.id = id;
         field.unit = spec.unit;
         field.sign = spec.sign;
@@ -320,6 +344,51 @@ async fn measure_driver(
     })
 }
 
+/// Build the #190 production vector that both drivers require (#198 transport boundary).
+/// One regional-mother shared-height target is initialized from the first source and
+/// reused for both bracket members; all preparation runs on the driver's own context.
+async fn shared_height_bracket<'a>(
+    ctx: &GpuContext,
+    snapshots: [&'a Snapshot; 2],
+    runtimes: [&'a VerticalTransformResult; 2],
+) -> Result<CanonicalMeteorologyBracket<'a>> {
+    let views = [runtimes[0].runtime_view()?, runtimes[1].runtime_view()?];
+    let uv_preparer = SharedHeightPreparer::new(ctx).await?;
+    let w_preparer = SharedHeightWPreparer::new(ctx).await?;
+    let sources = [
+        SharedHeightSource::upload(ctx, snapshots[0], views[0])?,
+        SharedHeightSource::upload(ctx, snapshots[1], views[1])?,
+    ];
+    let mut encoder = ctx
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("benchmark shared-height preparation"),
+        });
+    let target = uv_preparer.initialize(
+        ctx,
+        &sources[0],
+        SharedHeightInitialization::RegionalMother,
+        &mut encoder,
+    )?;
+    let uv = [
+        Arc::new(uv_preparer.prepare(ctx, &sources[0], &target, &mut encoder)?),
+        Arc::new(uv_preparer.prepare(ctx, &sources[1], &target, &mut encoder)?),
+    ];
+    let w_sources = [
+        SharedHeightWSource::upload(ctx, snapshots[0], views[0], Arc::clone(&uv[0]))?,
+        SharedHeightWSource::upload(ctx, snapshots[1], views[1], Arc::clone(&uv[1]))?,
+    ];
+    let w = [
+        Arc::new(w_preparer.prepare(ctx, &w_sources[0], &mut encoder)?),
+        Arc::new(w_preparer.prepare(ctx, &w_sources[1], &mut encoder)?),
+    ];
+    // Preparation precedes every timestep in queue order; device status is revalidated per query.
+    ctx.queue.submit(Some(encoder.finish()));
+    Ok(CanonicalMeteorologyBracket::from_shared_height_vector(
+        snapshots, views, uv, w,
+    )?)
+}
+
 fn canonical_top(
     view: flexpart_gpu::meteorology::vertical::VerticalRuntimeView<'_>,
 ) -> Result<f32> {
@@ -362,10 +431,9 @@ async fn run(manifest: &Path, count: usize, output: &Path) -> Result<()> {
     let init_seconds = init.elapsed().as_secs_f64();
     let upload = Instant::now();
     let mut slot = CanonicalMeteorologySlot::default();
-    let prepared = driver.prepare_canonical_meteorology(
-        CanonicalMeteorologyBracket::new([&s0, &s1], [r0.runtime_view()?, r1.runtime_view()?])?,
-        &mut slot,
-    )?;
+    let bracket =
+        shared_height_bracket(driver.meteorology_context(), [&s0, &s1], [&r0, &r1]).await?;
+    let prepared = driver.prepare_canonical_meteorology(bracket, &mut slot)?;
     let adapter = GpuAdapterEvidence::from_context(prepared.context());
     adapter.validate()?;
     ensure!(

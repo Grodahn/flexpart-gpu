@@ -25,7 +25,10 @@ class CoverageTests(unittest.TestCase):
         result = coverage.audit()
         self.assertEqual(result['forward_invocations'], [12, 4])
         self.assertEqual(result['full_forward_targets'], [6, 2])
-        self.assertLess(result['after_invocations'], result['baseline_invocations'])
+        # #214 adds one required host preflight suite beyond the frozen #177 selection.
+        route_gate = 'cargo test --lib simulation::timeloop::settling::tests'
+        self.assertEqual(self.workflows()[coverage.WORKFLOWS[0]].count(route_gate), 1)
+        self.assertLess(result['after_invocations'] - 1, result['baseline_invocations'])
 
     def test_missing_secondary_validation_cell_fails(self):
         texts = self.workflows()

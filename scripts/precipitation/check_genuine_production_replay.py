@@ -39,6 +39,8 @@ STAGES = [{'accumulated_transform': 'large_scale_precipitation'},
 BACKENDS = ('vulkan', 'dx12', 'metal', 'gl', 'browser_webgpu')
 REPORT_NAMES = {'hardware': 'genuine-production-replay-hardware_gpu.json',
                 'software': 'genuine-production-replay-software_wgsl.json'}
+TEMPORAL_FIXTURE = ROOT / 'fixtures/interpolation/precipitation-temporal-v1.json'
+TEMPORAL_FIXTURE_SHA256 = '8654e238cfe94293bb69e681eb4a4a29000bf83d46fe76a34bcaba62d19c8488'
 
 
 def require(condition, message):
@@ -220,6 +222,200 @@ def check_both(directory):
     return hardware, software
 
 
+def check_temporal(path, software=False, hardware=False, matched=None):
+    """Extend the #219 auditor through #87/#119; recheck every original row.
+
+    ``matched`` additionally requires a fresh original execution using the exact
+    post-submission member bytes. Without it this audits the frozen independent
+    original fixture only, never the fresh matched-input acceptance gate.
+    """
+    import temporal_oracle as original
+    check_temporal_residency_sources()
+    require(path.is_file(), 'missing temporal report')
+    r = json.loads(path.read_text())
+    fixture = json.loads(TEMPORAL_FIXTURE.read_text())
+    require(r['schema'] == 'flexpart-gpu.precipitation-temporal-device.v1', 'temporal schema')
+    revision = os.environ.get('FLEXPART_GPU_CANDIDATE_REVISION') or subprocess.check_output(
+        ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    require(r['candidate'] == {'revision': revision, 'worktree_clean': True}, 'stale temporal candidate')
+    require(r['fixture_sha256'] == digest(TEMPORAL_FIXTURE) == TEMPORAL_FIXTURE_SHA256, 'original fixture identity')
+    require(fixture['flexpart_revision'] == FLEXPART_PIN and fixture['flex_extract_revision'] == FLEX_EXTRACT_PIN,
+            'temporal original pins')
+    require(fixture['darain_oracle_sha256'] == r['darain_oracle_sha256'] == digest(ORACLE), 'member oracle')
+    require(r['decision_216_sha256'] == digest(DECISION), '#216 decision')
+    decision = json.loads(DECISION.read_text())
+    require(dict(r['grib_files_sha256']) == {k: v['sha256'] for k, v in decision['consumed']['grib_files'].items()},
+            'temporal GRIB identities')
+    shaders = {**SHADERS, 'horizontal': ROOT / 'src/shaders/horizontal_interpolation.wgsl',
+               'precipitation_temporal': ROOT / 'src/shaders/precipitation_temporal.wgsl'}
+    require(r['shaders'] == {k: digest(p) for k, p in shaders.items()}, 'temporal shader hashes')
+    for name, sha in fixture['harness_sha256'].items():
+        require(digest(ROOT / 'scripts/interpolation' / name) == sha, 'modified original harness')
+    require(r['encoders'] == r['submissions'] == 1 and r['host_transfers_between_stages'] == 0,
+            'temporal residency')
+    require(r['stage_order'] == ['#90 LSP', '#90 CP', '#207 LSP', '#207 CP', '#87 selected planes', '#119'], 'temporal stages')
+    adapter = r['adapter']
+    require(adapter['name'] and adapter['backend'] in BACKENDS, 'temporal adapter')
+    adapter_class = 'software_wgsl' if adapter['device_type'] == 'cpu' else 'hardware_gpu'
+    require(adapter['adapter_class'] == adapter_class, 'temporal adapter classification')
+    require(not software or adapter_class == 'software_wgsl', 'temporal software execution')
+    require(not hardware or adapter_class == 'hardware_gpu', 'temporal hardware execution')
+    require(r['status'] == 0 and r['verdict'] == 'passed', 'fatal temporal status/verdict')
+    require(r['unit'] == r['metadata']['unit'] == 'millimeter_per_hour', 'temporal units')
+    require(r['comparison_policy'] == {'absolute': ABS_TOL, 'relative': REL_TOL}, 'temporal policy')
+    sources = {'temporal': 'src/gpu/precipitation_temporal.rs', 'test': 'tests/precipitation_temporal_gpu.rs',
+               'member': 'src/gpu/precipitation_members.rs', 'spatial': 'src/gpu/horizontal.rs',
+               'rate': 'src/gpu/meteorology/interval_rates.rs'}
+    require(r['source_sha256'] == {k: digest(ROOT / p) for k, p in sources.items()}, 'temporal source identity')
+    evidence = r['gpu_evidence']
+    require(evidence['schema'] == {'id': 'flexpart-gpu.gpu-execution-evidence', 'version': 1}
+            and evidence['candidate']['revision'] == revision
+            and evidence['candidate']['shader_sha256'] == r['shaders']['precipitation_temporal'], '#91 temporal candidate')
+    require(evidence['execution'] == {'status': 'passed', 'calculation_path': 'wgsl_device', 'adapter': adapter,
+                                     'failure': None, 'skip_reason': None}, '#91 temporal execution')
+    require(evidence['comparison']['verdict'] == 'passed' and evidence['comparison']['compared_value_count'] == 1176
+            and evidence['comparison']['policy'] == {'absolute_tolerance': ABS_TOL, 'relative_tolerance': REL_TOL},
+            '#91 temporal comparison')
+    require(evidence['oracle']['revision'] == FLEXPART_PIN
+            and evidence['oracle']['executable_sha256'] == fixture['executable_sha256']
+            and evidence['oracle']['output_sha256'] == digest(TEMPORAL_FIXTURE), '#91 original identity')
+    require(json.loads(r['input_manifest']) == r['metadata'] and
+            hashlib.sha256(r['input_manifest'].encode()).hexdigest() == evidence['candidate']['input_sha256'], 'temporal input manifest')
+    metadata = r['metadata']['members']
+    require(metadata['calendar'] == 'gregorian' and metadata['cell_count'] == 9 and
+            metadata['horizontal_grid'] == {'nx': 3, 'ny': 3, 'dx_deg': 1.0, 'dy_deg': 1.0,
+                'xlon0_deg': 10.0, 'ylat0_deg': 50.0, 'longitude_domain': 'minus180_to180'}, 'genuine grid/calendar')
+    require(metadata['gpu_adapter'] == adapter, 'member adapter identity')
+    require(metadata['preparation'] == {'rrint': 0, 'purefc': 0, 'basetime_hour': None, 'numpf': 1, 'method': 'darain'}
+            and metadata['representation'] == 'flex_extract-7.1.2-rrint0-darain'
+            and metadata['unit'] == 'millimeter_per_hour', 'point-member preparation')
+    admissions = metadata['large_scale']['quantization_admissions'] + metadata['convective']['quantization_admissions']
+    check_admissions({'admissions_216': admissions}, decision)
+    genuine = json.loads(ORACLE.read_text())['genuine']
+    times = [m['member_time_s'] + EPOCH_UNIX_S for m in genuine['darain_members']['lsp']]
+    require([m['valid_time_epoch_seconds'] for m in metadata['members']] == times, 'complete temporal member timestamps')
+    require(metadata['delta_seconds'] == 10800 and metadata['sequence_start_epoch_seconds'] == EPOCH_UNIX_S,
+            'time reference')
+    intervals = metadata['intervals']
+    require(len(intervals) == 16, 'complete temporal interval support')
+    for k, interval in enumerate(intervals):
+        require(interval['start_epoch_seconds'] == EPOCH_UNIX_S + k*10800 and
+                interval['end_epoch_seconds'] == EPOCH_UNIX_S + (k+1)*10800 and interval['duration_seconds'] == 10800,
+                'temporal interval identity')
+    for slot, m in enumerate(metadata['members']):
+        require(m['slot'] == slot and m['support_intervals'] == intervals[slot:slot+4]
+                and m['support_start_epoch_seconds'] == times[slot]-21600
+                and m['support_end_epoch_seconds'] == times[slot]+21600, 'temporal four-interval support')
+    require(len(metadata['source_snapshot_sha256']) == 16, 'complete source identity')
+    for p, field in PARAMETERS:
+        source = metadata['large_scale' if p == 'lsp' else 'convective']
+        require(source['field_id'] == field and source['source_unit'] == 'kilogram_per_square_meter'
+                and len(source['source_times']) == 16, 'distinct source rate identity')
+        for time, observation in zip(source['source_times'], genuine['accumulated'][p]):
+            require(time['calendar'] == 'gregorian' and time['kind'] == 'accumulated_since_reset'
+                    and time['valid_time_epoch_seconds'] == observation['valid_s'] + EPOCH_UNIX_S
+                    and time['interval_start_epoch_seconds'] == observation['reset_s'] + EPOCH_UNIX_S
+                    and time['accumulation']['reset_epoch_seconds'] == observation['reset_s'] + EPOCH_UNIX_S,
+                    'source observation time')
+        planes, bits = r['member_values_mm_per_h'][p], r['member_bits'][p]
+        require(len(planes) == len(bits) == 13, 'complete member values')
+        for plane, raw, oracle_member in zip(planes, bits, genuine['darain_members'][p]):
+            require(len(plane) == len(raw) == 9, 'complete member plane')
+            for v, b, expected in zip(plane, raw, oracle_member['result_mm_per_h']):
+                require(f32_from_bits(b) == v and within_policy(v, expected), 'genuine reconstructed member')
+    expected_cases = list(original.cases())
+    require(len(fixture['cases']) == len(expected_cases) == 14, 'original pair set')
+    for c, expected in zip(fixture['cases'], expected_cases):
+        for key in ('id', 'slots', 'memtime_s', 'planes', 'queries', 'nx', 'ny'):
+            require(c[key] == expected[key], 'modified original inputs: '+key)
+        require(c['raw_input'] == original.driver_input(expected) and
+                hashlib.sha256(c['raw_input'].encode()).hexdigest() == c['input_sha256'], 'original input bytes')
+        require(hashlib.sha256(c['raw_output'].encode()).hexdigest() == c['output_sha256'] and
+                original.parse_output(c['raw_output']) == c['rows'], 'original output bytes')
+    golden = fixture['cases'][-1]['rows']
+    require([[row['lsp'], row['cp']] for row in golden] ==
+            [[9.75, 1.5], [84.75, 2.25], [159.75, 3.0], [234.75, 3.75], [309.75, 4.5]], 'frozen arithmetic control')
+    pairs = r['metadata']['memory_pairs']
+    queries = r['metadata']['queries']
+    rows = r['rows']
+    expected_rows = [(c, row) for c in fixture['cases'][:-1] for row in c['rows']]
+    require(len(rows) == len(pairs) == len(queries) == len(expected_rows) == 588, 'complete temporal comparisons')
+    for index, (row, query, pair, (case, oracle_row)) in enumerate(zip(rows, queries, pairs, expected_rows)):
+        x, y, t = oracle_row['query']
+        require(query == row['query'] == {'xt': x, 'yt': y, 'itime_epoch_seconds': t + EPOCH_UNIX_S}
+                and row['index'] == index and row['case'] == case['id'], 'query identity')
+        left, right = case['slots']
+        require(pair == {'left': metadata['members'][left], 'right': metadata['members'][right]}, 'selected memory pair')
+        require(row['original'] == [oracle_row['lsp'], oracle_row['cp']], 'temporal original outputs')
+        require(len(row['candidate']) == len(row['candidate_bits']) == 2, 'both precipitation fields')
+        for c, b, o, difference in zip(row['candidate'], row['candidate_bits'], row['original'], row['absolute_differences']):
+            require(f32_from_bits(b) == c and within_policy(c, o) and difference == abs(c-o), 'temporal mismatch')
+        require(row['verdict'] == 'passed', 'row verdict')
+    if matched is not None:
+        fresh = json.loads(matched.read_text())
+        require(fresh['device_report_sha256'] == digest(path) and fresh['candidate'] == r['candidate'], 'fresh candidate attribution')
+        check_matched_temporal(r, fixture, fresh)
+    return r
+
+
+def check_temporal_residency_sources():
+    """Extend #76's bounded no-host-completion audit to the actual called stages."""
+    functions = {
+        'src/gpu/precipitation_temporal.rs': ["pub fn encode<'s>", 'fn encode_time('],
+        'src/gpu/precipitation_members.rs': ["pub fn encode<'s>", 'fn encode_darain('],
+        'src/gpu/meteorology/interval_rates.rs': ['pub fn encode_interval_rates('],
+        'src/gpu/horizontal.rs': ['pub fn encode_horizontal_samples('],
+        'src/gpu/accumulation.rs': ['pub fn encode_accumulated_intervals_gpu_with_kernel('],
+    }
+    for path, names in functions.items():
+        source = (ROOT / path).read_text()
+        for name in names:
+            start = source.index('{', source.index(name))
+            level = 1
+            end = start + 1
+            while level:
+                require(end < len(source), 'missing encode body')
+                level += (source[end] == '{') - (source[end] == '}')
+                end += 1
+            body = source[start:end]
+            for forbidden in ('.submit(', '.poll(', 'block_on(', 'download_', '.download(', 'map_async(', '.write_buffer('):
+                require(forbidden not in body, 'intermediate host completion in '+path+': '+forbidden)
+
+
+def check_matched_temporal(report, fixture, matched):
+    """Require unchanged original execution with exactly matched input member bits."""
+    import temporal_oracle as original
+    for key in ('schema', 'units', 'darain_oracle_sha256', 'flexpart_revision', 'flex_extract_revision', 'source_sha256', 'harness_sha256', 'compiler'):
+        require(matched[key] == fixture[key], 'fresh original identity '+key)
+    require(len(matched['executable_sha256']) == 64, 'fresh executable hash')
+    expected_cases = list(original.cases(report))
+    require(len(matched['cases']) == len(expected_cases), 'matched pair count')
+    outputs = []
+    for case, expected in zip(matched['cases'], expected_cases):
+        require(case['raw_input'] == original.driver_input(expected), 'matched original member bytes')
+        for key in ('id', 'slots', 'memtime_s', 'planes', 'queries', 'nx', 'ny'):
+            require(case[key] == expected[key], 'matched input '+key)
+        require(hashlib.sha256(case['raw_input'].encode()).hexdigest() == case['input_sha256'] and
+                hashlib.sha256(case['raw_output'].encode()).hexdigest() == case['output_sha256'], 'matched raw hashes')
+        require(case['rows'] == original.parse_output(case['raw_output']) and
+                [r['query'] for r in case['rows']] == case['queries'], 'matched output queries')
+        if case['id'] != 'arithmetic-control':
+            outputs.extend([row['lsp'], row['cp']] for row in case['rows'])
+    require(len(outputs) == len(report['rows']) == 588, 'matched output count')
+    for candidate, oracle in zip(report['rows'], outputs):
+        require(all(within_policy(c, o) for c, o in zip(candidate['candidate'], oracle)), 'fresh matched original mismatch')
+
+
+def check_temporal_both(directory):
+    """Require hardware and software plus both fresh exact-input original runs."""
+    hardware = check_temporal(directory / 'hardware_gpu.json', hardware=True,
+                              matched=directory / 'matched-hardware.json')
+    software = check_temporal(directory / 'software_wgsl.json', software=True,
+                              matched=directory / 'matched-software.json')
+    require(hardware['candidate'] == software['candidate'], 'same temporal candidate on both adapters')
+    return hardware, software
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -227,8 +423,18 @@ if __name__ == '__main__':
     parser.add_argument('--software', action='store_true')
     parser.add_argument('--hardware', action='store_true')
     parser.add_argument('--both', type=Path, metavar='DIR')
+    parser.add_argument('--temporal', action='store_true')
+    parser.add_argument('--matched', type=Path)
     args = parser.parse_args()
-    if args.both:
+    if args.temporal and args.both:
+        check_temporal_both(args.both)
+        print('#119 temporal sampling: hardware and software PASS, fresh matched original (1176 outputs each)')
+    elif args.temporal:
+        require(args.report is not None, 'temporal report required')
+        check_temporal(args.report, args.software, args.hardware, args.matched)
+        print('#119 temporal sampling: PASS (588 queries, 1176 original comparisons' +
+              (', fresh matched inputs)' if args.matched else ', frozen original fixture)'))
+    elif args.both:
         check_both(args.both)
         print('#219 genuine replay: hardware and software PASS (18/18 series, 234/234 members)')
     else:

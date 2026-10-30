@@ -30,6 +30,8 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## Meteorology
 
+- Precipitation time sampling (#119): [owner](../../src/gpu/precipitation_temporal.rs), [kernel](../../src/shaders/precipitation_temporal.wgsl), [contract and lifecycle](../precipitation-time-sampling.md), [genuine device proof](../../tests/precipitation_temporal_gpu.rs), [original-routine fixture](../../fixtures/interpolation/precipitation-temporal-v1.json), [original replay](../../scripts/precipitation/temporal_oracle.py), [extended #219 auditor](../../scripts/precipitation/check_genuine_production_replay.py). Reuses [#207 members](../../src/gpu/precipitation_members.rs), #90 and #87; #114 owns consumer migration. [Focused checks](test-map.md#meteorology).
+
 - Shared-height W preparation (#188): [owner](../../src/gpu/shared_height_w.rs), [interface remap](../../src/shaders/shared_height_w_remap.wgsl), [interior slopes](../../src/shaders/interior_w_slope.wgsl), [handoff](../shared-height-w-preparation.md), [device proof](../../tests/shared_height_w_gpu.rs). Reuses #184; #190 owns adoption.
 
 - Shared-height U/V preparation (#184): [owner](../../src/gpu/shared_height.rs), [kernel](../../src/shaders/shared_height_uv.wgsl), [lifecycle](../shared-height-preparation.md), [device proof](../../tests/shared_height_gpu.rs). Preparation only; #185 owns adoption.

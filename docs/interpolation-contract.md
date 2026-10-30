@@ -440,6 +440,11 @@ admitted pair the result is three times the linear blend of the members. See
 the [decision](research/precipitation-interval-mapping-202.md) and
 [#207](https://github.com/Grodahn/flexpart-gpu/issues/207).
 
+[#119's device composition](precipitation-time-sampling.md) now consumes those
+members through #87 and a precipitation-specific WGSL time stage. The final
+genuine timestamp uses the original duplicate-time `dt=1, dt2=1, dtt=1/3`
+branch; outside the finite reconstructed-member coverage it fails closed.
+
 ## 6. Real #29/#30 ERA5/ETEX oracle-sampled column
 
 The contract now contains both the real source descriptor

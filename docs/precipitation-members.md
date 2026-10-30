@@ -10,8 +10,9 @@ Decision basis: [#202 note](research/precipitation-interval-mapping-202.md) and
 #90 interval-mean rate grids -> #207 darain -> members at T -> #119 time sampling
 ```
 
-#207 produces reconstructed members only. It does not sample them in time,
-reproduce `interpol_rain`'s `dt/3`, or adopt them in wet deposition (#119, #114).
+#207 produces reconstructed members only. [#119](precipitation-time-sampling.md)
+samples them through #87 and the original `interpol_rain` time arithmetic;
+#114 separately owns adoption in wet deposition.
 
 ## Algorithm
 
@@ -172,5 +173,6 @@ python scripts/precipitation/check_genuine_production_replay.py --both target/ci
 RRINT=1/`numpf=3` (#212), GRIB2 CP scaling (#211), PUREFC=1, BASETIME
 boundaries, ERA5 class `EA` / interval-total sources, #216 admissions outside
 GRIB1 `grid_simple`/OD (GRIB2, `D != 0`, other packings), alternate
-disaggregation, backward time, `interpol_rain` sampling (#119) and deposition
-adoption (#114). No FLEXPART 11.1 precipitation or wet-deposition parity is claimed.
+disaggregation and backward time. `interpol_rain` sampling is separately owned
+by [#119](precipitation-time-sampling.md); deposition adoption remains #114.
+No full FLEXPART 11.1 precipitation or wet-deposition parity is claimed.

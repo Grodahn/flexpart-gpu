@@ -2,8 +2,11 @@
 
 Status: **decided — INCOMPATIBLE**. #90 interval-mean rates cannot directly
 populate the members read by pinned FLEXPART 11.1 `interpol_rain`. The missing
-operation is tracked by [#207](https://github.com/Grodahn/flexpart-gpu/issues/207);
-[#119](https://github.com/Grodahn/flexpart-gpu/issues/119) stays blocked on it.
+operation is implemented by [#207](https://github.com/Grodahn/flexpart-gpu/issues/207),
+with genuine GPU production replay completed by #219. The former #119 blocker
+is resolved; [#119 temporal sampling](../precipitation-time-sampling.md) consumes
+those reconstructed point members. The frozen decision artifact records the
+historical handoff, not current implementation status.
 Inspected from main revision `79442a3` on 2026-10-27.
 
 Machine-readable decision: [precipitation-member-mapping-v1.json](../../fixtures/accumulation/precipitation-member-mapping-v1.json).

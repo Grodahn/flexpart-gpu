@@ -65,6 +65,10 @@ TRANSPORT_TOP_STEP = 'name: Audit original transport-top action in production dr
 TRANSPORT_TOP_TECHNICAL_STEP = '      - name: Compare production transport-top action with fresh pinned advance (#198)\n        working-directory: flexpart-gpu\n        env:\n          FLEXPART_GPU_VALIDATION: "0"\n          FLEXPART_GPU_COMPACTION: "0"\n        run: |\n          set -euo pipefail\n          python3 scripts/transport/run_top_boundary_oracle.py --checkout ../flexpart --output-dir target/ci-gate/top-production\n          cargo test --lib gpu::meteorology::advection_production_tests::transport_top_tests -- --nocapture --test-threads=1 > target/ci-gate/transport-top.log 2>&1\n          python3 scripts/transport/check_transport_top.py --report target/ci-gate/transport-top/validation-0-compaction-0/report.json --oracle-run target/ci-gate/top-production --software\n          cargo run --quiet --example check_gpu_evidence -- target/ci-gate/transport-top/validation-0-compaction-0/fresh-comparison.json\n          python3 scripts/transport/test_check_transport_top.py\n\n'
 
 
+PRECIPITATION_TEMPORAL_STEP = 'name: Prove reconstructed precipitation temporal sampling (#119)\n        id: precipitation-temporal-119\n        run: |\n          set -euo pipefail\n          cargo test --lib precipitation_temporal -- --test-threads=1 > target/ci-gate/precipitation-temporal-unit.log 2>&1\n          cargo test --test precipitation_temporal_gpu -- --test-threads=1 > target/ci-gate/precipitation-temporal.log 2>&1\n          python3 scripts/precipitation/check_genuine_production_replay.py --temporal target/ci-gate/precipitation-temporal/software_wgsl.json --software\n          python3 scripts/precipitation/test_check_precipitation_temporal.py\n'
+
+PRECIPITATION_TEMPORAL_TECHNICAL_STEP = '      - name: Compare precipitation temporal sampling with fresh original inputs (#119)\n        working-directory: flexpart-gpu\n        run: |\n          set -euo pipefail\n          cargo test --test precipitation_temporal_gpu -- --test-threads=1 > target/ci-gate/precipitation-temporal.log 2>&1\n          python3 scripts/precipitation/temporal_oracle.py run target/ci-gate/precipitation-temporal/original-software --checkout ../flexpart --device-report target/ci-gate/precipitation-temporal/software_wgsl.json --output target/ci-gate/precipitation-temporal/matched-software.json\n          python3 scripts/precipitation/check_genuine_production_replay.py --temporal target/ci-gate/precipitation-temporal/software_wgsl.json --software --matched target/ci-gate/precipitation-temporal/matched-software.json\n          python3 scripts/precipitation/test_check_precipitation_temporal.py\n\n'
+
 def require(condition, message):
     """Fail closed on incomplete execution or provenance."""
     if not condition:
@@ -98,6 +102,12 @@ def contract():
                            'block': TRANSPORT_TOP_STEP, 'owners': ['gpu-transport-physics'],
                            'sha256': hashlib.sha256(coverage.normalized(TRANSPORT_TOP_STEP).encode()).hexdigest()})
     result['artifacts']['gpu-transport-physics'].extend(['target/ci-gate/transport-top/**/*.json','target/ci-gate/transport-route.log'])
+    result['steps'].append({'name': 'Prove reconstructed precipitation temporal sampling (#119)',
+                           'block': PRECIPITATION_TEMPORAL_STEP, 'owners': ['gpu-meteorology'],
+                           'sha256': hashlib.sha256(coverage.normalized(PRECIPITATION_TEMPORAL_STEP).encode()).hexdigest()})
+    result['artifacts']['gpu-meteorology'].extend([
+        'target/ci-gate/precipitation-temporal-unit.log', 'target/ci-gate/precipitation-temporal.log',
+        'target/ci-gate/precipitation-temporal/*.json'])
     return result
 
 
@@ -314,6 +324,10 @@ def audit_payload(root, domain):
                                  str((root / 'target/ci-gate/surface-flux-temporal-gpu/report.json').resolve()), '--software'],
                                 cwd=root, capture_output=True, text=True)
         require(result.returncode == 0, 'surface-flux time sampling: '+result.stderr[-2000:])
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/precipitation/check_genuine_production_replay.py'),
+                                 '--temporal', str((root / 'target/ci-gate/precipitation-temporal/software_wgsl.json').resolve()), '--software'],
+                                cwd=root, capture_output=True, text=True)
+        require(result.returncode == 0, 'precipitation temporal sampling: '+result.stderr[-2000:])
         paths = [p for p in files if p.startswith('target/ci-gate/accumulation-gpu/') and p.endswith('.json')]
         for prefix in ('large_scale_precipitation', 'convective_precipitation'):
             require(sum(Path(p).name.startswith(prefix+'-cell-') for p in paths) == 12, 'accumulation cell count')
@@ -430,6 +444,8 @@ def audit_independent_workflow(path, text, expected):
     if path == '.github/workflows/validation-gate.yml':
         require(text.count(TRANSPORT_TOP_TECHNICAL_STEP) == 1, 'missing/changed transport-top technical gate')
         text = text.replace(TRANSPORT_TOP_TECHNICAL_STEP, '', 1)
+        require(text.count(PRECIPITATION_TEMPORAL_TECHNICAL_STEP) == 1, 'missing/changed precipitation temporal gate')
+        text = text.replace(PRECIPITATION_TEMPORAL_TECHNICAL_STEP, '', 1)
     require(hashlib.sha256(text.encode()).hexdigest() == expected, 'independent workflow changed: '+path)
 
 

@@ -751,6 +751,17 @@ impl MemberResources {
 }
 
 impl PreparedPrecipitationMembers<'_, '_> {
+    pub(crate) fn belongs_to(&self, ctx: &GpuContext) -> bool {
+        Arc::ptr_eq(&self.owner_context, &ctx.identity)
+    }
+
+    pub(crate) async fn validation_status(
+        &self,
+        ctx: &GpuContext,
+    ) -> Result<u32, PrecipitationMemberError> {
+        Ok(download_status(ctx, &self.status).await?)
+    }
+
     /// Typed handoff metadata, available before encoding.
     #[must_use]
     pub const fn metadata(&self) -> &PrecipitationMemberMetadata {

@@ -237,6 +237,15 @@ jobs:
           cargo run --quiet --example check_gpu_evidence -- target/ci-gate/transport-top/validation-0-compaction-0/fresh-comparison.json
           python3 scripts/transport/test_check_transport_top.py
 
+      - name: Compare precipitation temporal sampling with fresh original inputs (#119)
+        working-directory: flexpart-gpu
+        run: |
+          set -euo pipefail
+          cargo test --test precipitation_temporal_gpu -- --test-threads=1 > target/ci-gate/precipitation-temporal.log 2>&1
+          python3 scripts/precipitation/temporal_oracle.py run target/ci-gate/precipitation-temporal/original-software --checkout ../flexpart --device-report target/ci-gate/precipitation-temporal/software_wgsl.json --output target/ci-gate/precipitation-temporal/matched-software.json
+          python3 scripts/precipitation/check_genuine_production_replay.py --temporal target/ci-gate/precipitation-temporal/software_wgsl.json --software --matched target/ci-gate/precipitation-temporal/matched-software.json
+          python3 scripts/precipitation/test_check_precipitation_temporal.py
+
       - name: Record dependency cache checksums
         working-directory: flexpart-gpu
         run: python3 scripts/cargo_cache_integrity.py record

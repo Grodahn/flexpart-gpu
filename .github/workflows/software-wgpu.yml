@@ -133,6 +133,14 @@ jobs:
           python3 scripts/interpolation/check_surface_flux_temporal_gpu.py target/ci-gate/surface-flux-temporal-gpu/report.json --software
           python3 scripts/interpolation/test_check_surface_flux_temporal_gpu.py
           python3 scripts/interpolation/test_surface_flux_temporal_oracle.py
+      - name: Prove reconstructed precipitation temporal sampling (#119)
+        id: precipitation-temporal-119
+        run: |
+          set -euo pipefail
+          cargo test --lib precipitation_temporal -- --test-threads=1 > target/ci-gate/precipitation-temporal-unit.log 2>&1
+          cargo test --test precipitation_temporal_gpu -- --test-threads=1 > target/ci-gate/precipitation-temporal.log 2>&1
+          python3 scripts/precipitation/check_genuine_production_replay.py --temporal target/ci-gate/precipitation-temporal/software_wgsl.json --software
+          python3 scripts/precipitation/test_check_precipitation_temporal.py
       - name: Prove accumulated-field GPU oracle parity
         id: original-9
         run: |

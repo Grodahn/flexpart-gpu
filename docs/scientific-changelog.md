@@ -14,6 +14,21 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ---
 
+### 2026-10-31 - Sample reconstructed numpf=1 precipitation point members on GPU (#119)
+**Impact**: numerics (new precipitation temporal stage and genuine composition).
+**Files**: `src/gpu/precipitation_temporal.rs`, `src/shaders/precipitation_temporal.wgsl`.
+**Validation**: unchanged pinned FLEXPART 11.1 `interpol_rain`, 13 genuine memory
+configurations, 588 queries / 1,176 LSP/CP comparisons, independent original
+fixture plus exact matched-member replay. Hardware Vulkan and software WGSL
+are separate required gates; results are retained under
+`target/ci-gate/precipitation-temporal/` and in the PR.
+Original `dt/3` and rounded final duplicate-time division are preserved.
+#90/#207/#87 science, #216 admission and #71 tolerance are unchanged. Outside
+genuine four-interval coverage, fail closed rather than extrapolate. No
+deviation within the admitted #202 window is intended. PR #205's historical
+blocker is superseded; #114 retains consumer migration. No full wet-deposition
+or FLEXPART parity claim. Provenance: **GPT6.1 Sol**.
+
 #
 ### 2026-10-30 - Integrate original zero-carrier settling stop in resident Petterssen (#214)
 **Impact**: physics (scientific particle fate and eligibility).

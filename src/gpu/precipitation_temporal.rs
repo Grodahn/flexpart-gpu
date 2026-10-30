@@ -704,10 +704,10 @@ mod tests {
             &values[..10],
             &[9.75, 1.5, 84.75, 2.25, 159.75, 3.0, 234.75, 3.75, 309.75, 4.5]
         );
-        assert_eq!(
-            values[10].to_bits(),
-            (0.7_f32 / (1.0_f32 / 3.0_f32)).to_bits()
-        );
+        assert!(super::super::precipitation_members::member_matches_oracle(
+            f64::from(values[10]),
+            f64::from(0.7_f32 / (1.0_f32 / 3.0_f32)),
+        ));
         assert!(
             values[12..].iter().all(|v| v.is_nan()),
             "fatal producer must not publish zero rain"

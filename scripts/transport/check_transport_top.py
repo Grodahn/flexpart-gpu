@@ -345,6 +345,7 @@ def check_lifecycle(report, software, hardware):
     for row in rows:
         adapter_class(row['adapter'],software,hardware)
         require(row['active_prefix']==130 and row['capacity']==133 and row['workgroups']==3, 'mixed workgroup coverage')
+        require(row['downstream_forcing']=={'dry_velocity_m_s':0.1,'wet_lambda_s_inv':0.001,'wet_fraction':0.5,'decay_s_inv':0.001}, 'downstream exclusion forcing missing')
         initial=bytes(row['initial_bytes']); corrected=bytes(row['corrected_bytes']); published=bytes(row['published_bytes'])
         require(len(initial)==len(corrected)==len(published)==133*96, 'mixed particle shape')
         stops=row['stop_words']; require(len(stops)==133 and stops[129:]==[0]*4, 'fabricated inactive/tail stops')
@@ -362,7 +363,10 @@ def check_lifecycle(report, software, hardware):
                 if lane>=129 or stops[lane]:
                     require(published[lane*96:(lane+1)*96]==after[lane*96:(lane+1)*96] and second['stop_words'][lane]==0, 'stopped lane changed next timestep')
                 if lane<129:
-                    require(initial[lane*96+24:lane*96+40]==published[lane*96+24:lane*96+40], 'mixed mass loss')
+                    if stops[lane]:
+                        require(initial[lane*96+24:lane*96+40]==published[lane*96+24:lane*96+40], 'mixed stopped mass loss')
+                    else:
+                        require(0<particle_field(published,lane,24,'f')<particle_field(initial,lane,24,'f'), 'active downstream physics not executed')
                     require(bool(particle_field(published,lane,20,'I')&1)==(stops[lane]==0), 'mixed active flag')
                     if stops[lane]:
                         expected=bytearray(corrected[lane*96:(lane+1)*96]);struct.pack_into('<I',expected,20,particle_field(corrected,lane,20,'I')&~1)

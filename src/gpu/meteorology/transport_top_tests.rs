@@ -652,7 +652,18 @@ fn mixed_lifecycle(
             time_t1_seconds: START_SECONDS,
         };
         crate::gpu::advection_resident::TEST_QUERY_FAULT.with(|f| f.set(fault));
-        let result = pollster::block_on(driver.run_timestep(&met, &ForwardStepForcing::default()));
+        let forcing = ForwardStepForcing {
+            dry_deposition_velocity_m_s: vec![crate::simulation::ParticleForcingField::Uniform(
+                0.1,
+            )],
+            wet_scavenging_coefficient_s_inv: vec![
+                crate::simulation::ParticleForcingField::Uniform(0.001),
+            ],
+            wet_precipitating_fraction: crate::simulation::ParticleForcingField::Uniform(0.5),
+            decay_constant_s_inv: vec![0.001],
+            ..Default::default()
+        };
+        let result = pollster::block_on(driver.run_timestep(&met, &forcing));
         assert_eq!(result.is_err(), fault.is_some());
         let (published, status, metadata, values, queries) =
             pollster::block_on(driver.test_advection_state());
@@ -673,7 +684,11 @@ fn mixed_lifecycle(
                 let expected = [0, 2, 3, 3][i % 4];
                 assert_eq!(stops[i], expected);
                 assert_eq!(published[i].flags & 1, u32::from(expected == 0));
-                assert_eq!(initial[i].mass, published[i].mass);
+                if expected == 0 {
+                    assert!(published[i].mass[0] < initial[i].mass[0]);
+                } else {
+                    assert_eq!(initial[i].mass, published[i].mass);
+                }
                 if expected != 0 {
                     let mut expected_particle = corrected[i];
                     expected_particle.flags &= !1;
@@ -683,9 +698,7 @@ fn mixed_lifecycle(
                     );
                 }
             }
-            let next =
-                pollster::block_on(driver.run_timestep(&met, &ForwardStepForcing::default()))
-                    .unwrap();
+            let next = pollster::block_on(driver.run_timestep(&met, &forcing)).unwrap();
             let after = pollster::block_on(driver.test_raw_particles());
             let next_stops = pollster::block_on(driver.test_stop_words());
             for i in 0..133 {
@@ -724,7 +737,7 @@ fn mixed_lifecycle(
             assert_eq!(stops[i], 0);
         }
         evidence.push(json!({"adapter":adapter,"fault":fault,"active_prefix":130,"capacity":133,"workgroups":3,
-            "preflight":preflight,"controls":controls,"initial_bytes":bytemuck::cast_slice::<_,u8>(&initial),"published_bytes":bytemuck::cast_slice::<_,u8>(&published),
+            "downstream_forcing":{"dry_velocity_m_s":0.1,"wet_lambda_s_inv":0.001,"wet_fraction":0.5,"decay_s_inv":0.001},"preflight":preflight,"controls":controls,"initial_bytes":bytemuck::cast_slice::<_,u8>(&initial),"published_bytes":bytemuck::cast_slice::<_,u8>(&published),
             "corrected_bytes":bytemuck::cast_slice::<_,u8>(&corrected),"stop_words":stops,"status":status,"metadata":metadata,"values":values,"queries":queries,"second_step":second}));
     }
     evidence

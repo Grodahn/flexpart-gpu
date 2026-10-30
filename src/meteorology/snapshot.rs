@@ -7,6 +7,7 @@
 use super::coordinate::validate_vertical;
 use super::field::validate_domain;
 use super::grid::validate_grid;
+use super::quantization::validate_source_quantization;
 use super::time::validate_time;
 use super::{
     Axis, Calendar, ContractError, Field, FieldId, HorizontalGrid, HorizontalStaggering,
@@ -165,6 +166,9 @@ impl Snapshot {
         }
         validate_time(field.id, &field.time)?;
         validate_domain(field)?;
+        if let Some(record) = &field.source_quantization {
+            validate_source_quantization(field.id, record)?;
+        }
         Ok(())
     }
 }
@@ -210,6 +214,7 @@ mod tests {
             vertical_staggering: VerticalStaggering::LevelCenter,
             time: instant(),
             values,
+            source_quantization: None,
         }
     }
 
@@ -295,6 +300,7 @@ mod tests {
             vertical_staggering: VerticalStaggering::NotApplicable,
             time: static_time(),
             values: fractions,
+            source_quantization: None,
         });
         value
             .validate(&Requirements {
@@ -337,6 +343,7 @@ mod tests {
                 accumulation: None,
             },
             values: vec![100.0, 100.0],
+            source_quantization: None,
         });
         assert_eq!(
             value.validate(&Requirements::advection()),
@@ -494,6 +501,7 @@ mod tests {
                 accumulation: None,
             },
             values: vec![100.0, 120.0],
+            source_quantization: None,
         });
         value
             .validate(&Requirements::advection())
@@ -736,6 +744,7 @@ mod tests {
                 }),
             },
             values: vec![0.1, 0.2],
+            source_quantization: None,
         });
 
         assert_eq!(
@@ -769,6 +778,7 @@ mod tests {
                 }),
             },
             values: vec![0.1, 0.2],
+            source_quantization: None,
         });
 
         assert_eq!(
@@ -816,6 +826,7 @@ mod tests {
                 accumulation: None,
             },
             values: vec![0.1, 0.2],
+            source_quantization: None,
         });
         assert_eq!(
             value.validate(&Requirements::advection()),

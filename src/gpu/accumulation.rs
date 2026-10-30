@@ -39,6 +39,17 @@
 //! rate_mmh = rate_si * 3600.0                       [mm/h]
 //! ```
 //!
+//! ## #216 admitted decreases (`reset_applied = 2`, #219)
+//!
+//! [`TRANSFORM_MODE_PACKING_ADMISSION`] marks a same-run decrease that the host
+//! classified `ADMIT_BOUNDED` with the frozen #216 rule
+//! ([`crate::meteorology::accumulation::classify_packing_decrease`]) from the
+//! exact `f32` values uploaded here. It is not a reset. WGSL writes
+//! `max(curr - prev, 0) = +0.0` amount and `+0.0` rates for it, so no #90 buffer
+//! holds a negative value. Mode 2 can only enter a device buffer through
+//! [`ClassifiedTransformInputs`], whose constructor runs the classifier; raw
+//! [`AccumulatedTransformInputs::from_inputs`] rejects it.
+//!
 //! ## Composition contract
 //!
 //! - Reuses the existing [`crate::gpu::GpuContext`].
@@ -69,8 +80,9 @@ use thiserror::Error;
 use wgpu::util::DeviceExt;
 
 use crate::meteorology::accumulation::{
-    validate_interval_sequence, AccumulatedObservation, AccumulationError, RATE_HANDOFF_UNIT,
-    RATE_SI_UNIT, RELATIVE_TOLERANCE, SOURCE_UNIT,
+    validate_interval_sequence, validate_interval_sequence_with_sources,
+    AccumulatedIntervalMetadata, AccumulatedObservation, AccumulatedSeries, AccumulationError,
+    PackingDecreaseAdmission, RATE_HANDOFF_UNIT, RATE_SI_UNIT, RELATIVE_TOLERANCE, SOURCE_UNIT,
 };
 
 use super::{
@@ -128,7 +140,8 @@ pub const ACCUMULATED_GPU_EVIDENCE_SCHEMA_VERSION: u32 = 1;
 /// `prev_amount_kg_per_square_meter` is the previous source total in the same
 /// run (zeroed when `reset_applied` is set), `duration_seconds` is the
 /// host-validated strictly positive interval length, and `reset_applied` is
-/// `1` for a fresh-run amount versus `0` for a within-run delta.
+/// `1` for a fresh-run amount, `0` for a within-run delta, or `2` for a
+/// host-classified #216 admitted decrease ([`TRANSFORM_MODE_PACKING_ADMISSION`]).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 pub struct AccumulatedTransformInput {
@@ -138,7 +151,7 @@ pub struct AccumulatedTransformInput {
     pub prev_amount_kg_per_square_meter: f32,
     /// Host-validated interval duration in seconds, strictly positive.
     pub duration_seconds: f32,
-    /// `1` when the interval amount is the fresh-run value, else `0`.
+    /// Transform mode: `0` delta, `1` fresh run, `2` #216 admitted decrease.
     pub reset_applied: u32,
 }
 
@@ -191,10 +204,39 @@ impl AccumulatedTransformInputs {
         ctx: &GpuContext,
         inputs: &[AccumulatedTransformInput],
     ) -> Result<Self, GpuAccumulationError> {
+        Self::upload(ctx, inputs, &[], 1, 0)
+    }
+
+    /// Upload host-classified inputs, including #216 admitted decreases.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GpuAccumulationError`] for empty input, an inconsistent
+    /// admission, oversized counts, or buffer allocation failure.
+    pub fn from_classified(
+        ctx: &GpuContext,
+        classified: &ClassifiedTransformInputs,
+    ) -> Result<Self, GpuAccumulationError> {
+        Self::upload(
+            ctx,
+            &classified.inputs,
+            &classified.admissions,
+            classified.cell_count,
+            classified.first_cell,
+        )
+    }
+
+    fn upload(
+        ctx: &GpuContext,
+        inputs: &[AccumulatedTransformInput],
+        admissions: &[PackingDecreaseAdmission],
+        cell_count: usize,
+        first_cell: usize,
+    ) -> Result<Self, GpuAccumulationError> {
         if inputs.is_empty() {
             return Err(GpuAccumulationError::EmptySequence);
         }
-        validate_transform_inputs(inputs)?;
+        validate_classified_inputs(inputs, admissions, cell_count, first_cell)?;
         let interval_count = inputs.len();
         let _count_u32 =
             u32::try_from(interval_count).map_err(|_| GpuAccumulationError::ValueTooLarge {
@@ -453,6 +495,13 @@ impl AccumulatedIntervalKernel {
     }
 }
 
+/// Transform mode: within-run delta `curr - prev`.
+pub const TRANSFORM_MODE_DELTA: u32 = 0;
+/// Transform mode: fresh-run amount `curr` (declared reset or leading interval).
+pub const TRANSFORM_MODE_RESET: u32 = 1;
+/// Transform mode reserved for a #216 `ADMIT_BOUNDED` decrease; never a reset.
+pub const TRANSFORM_MODE_PACKING_ADMISSION: u32 = 2;
+
 /// Errors for GPU accumulated-field transformation.
 #[derive(Debug, Error)]
 pub enum GpuAccumulationError {
@@ -554,7 +603,6 @@ fn finish_device_error_scopes(
 /// Returns [`AccumulationError`] when the source sequence violates the frozen
 /// #75 fail-closed rules, or [`GpuAccumulationError`] for empty input and
 /// non-finite `f32` conversion.
-#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
 pub fn build_transform_inputs(
     observations: &[AccumulatedObservation],
 ) -> Result<Vec<AccumulatedTransformInput>, GpuAccumulationError> {
@@ -562,9 +610,138 @@ pub fn build_transform_inputs(
         return Err(GpuAccumulationError::EmptySequence);
     }
     let metadata = validate_interval_sequence(observations)?;
+    let inputs = control_plane(observations, &metadata, &[])?;
+    validate_transform_inputs(&inputs)?;
+    Ok(inputs)
+}
+
+/// Host-classified #90 transform inputs and their #216 admissions.
+///
+/// The fields are private: the only constructors run the #75 validation and the
+/// #216 classifier on the exact `f32` values uploaded, so a caller cannot
+/// manufacture [`TRANSFORM_MODE_PACKING_ADMISSION`]. Layout is interval-major,
+/// `[interval * cell_count + (cell - first_cell)]`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassifiedTransformInputs {
+    inputs: Vec<AccumulatedTransformInput>,
+    admissions: Vec<PackingDecreaseAdmission>,
+    intervals: Vec<AccumulatedIntervalMetadata>,
+    cell_count: usize,
+    /// Cell index of the first column (a single series keeps its own cell).
+    first_cell: usize,
+}
+
+impl ClassifiedTransformInputs {
+    /// Validate and classify one cell series (cell count 1).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GpuAccumulationError`] for empty input, #75/#216 rejection or
+    /// non-finite `f32` conversion.
+    pub fn from_series(series: &AccumulatedSeries<'_>) -> Result<Self, GpuAccumulationError> {
+        if series.observations.is_empty() {
+            return Err(GpuAccumulationError::EmptySequence);
+        }
+        let validated = validate_interval_sequence_with_sources(series)?;
+        let inputs = control_plane(
+            series.observations,
+            &validated.intervals,
+            &validated.quantization_admissions,
+        )?;
+        let classified = Self {
+            inputs,
+            admissions: validated.quantization_admissions,
+            intervals: validated.intervals,
+            cell_count: 1,
+            first_cell: series.cell_index,
+        };
+        validate_classified_inputs(
+            &classified.inputs,
+            &classified.admissions,
+            1,
+            classified.first_cell,
+        )?;
+        Ok(classified)
+    }
+
+    /// Interleave single-cell series, in cell order, into one interval-major grid.
+    ///
+    /// # Errors
+    ///
+    /// Rejects an empty list, a multi-cell part, a cell index out of order and
+    /// interval metadata that differs between cells.
+    pub fn interval_major(cells: &[Self]) -> Result<Self, GpuAccumulationError> {
+        let invalid = |reason| GpuAccumulationError::InvalidTransformInput { index: 0, reason };
+        let Some(first) = cells.first() else {
+            return Err(GpuAccumulationError::EmptySequence);
+        };
+        let intervals = first.intervals.clone();
+        let cell_count = cells.len();
+        let mut inputs = Vec::with_capacity(intervals.len() * cell_count);
+        let mut admissions = Vec::new();
+        for (cell, part) in cells.iter().enumerate() {
+            if part.cell_count != 1 || part.intervals != intervals {
+                return Err(invalid("interval metadata differs across cells"));
+            }
+            if part.first_cell != cell || part.admissions.iter().any(|a| a.cell_index != cell) {
+                return Err(invalid("series cell index differs from its grid position"));
+            }
+        }
+        for interval in 0..intervals.len() {
+            inputs.extend(cells.iter().map(|part| part.inputs[interval]));
+            admissions.extend(
+                cells
+                    .iter()
+                    .flat_map(|part| &part.admissions)
+                    .filter(|a| a.interval_index == interval)
+                    .cloned(),
+            );
+        }
+        validate_classified_inputs(&inputs, &admissions, cell_count, 0)?;
+        Ok(Self {
+            inputs,
+            admissions,
+            intervals,
+            cell_count,
+            first_cell: 0,
+        })
+    }
+
+    /// Transform inputs, interval-major.
+    #[must_use]
+    pub fn inputs(&self) -> &[AccumulatedTransformInput] {
+        &self.inputs
+    }
+
+    /// #216 admissions in interval, then cell order.
+    #[must_use]
+    pub fn admissions(&self) -> &[PackingDecreaseAdmission] {
+        &self.admissions
+    }
+
+    /// Cell-invariant #75 interval metadata.
+    #[must_use]
+    pub fn intervals(&self) -> &[AccumulatedIntervalMetadata] {
+        &self.intervals
+    }
+
+    /// Cells per interval plane.
+    #[must_use]
+    pub const fn cell_count(&self) -> usize {
+        self.cell_count
+    }
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+fn control_plane(
+    observations: &[AccumulatedObservation],
+    metadata: &[AccumulatedIntervalMetadata],
+    admissions: &[PackingDecreaseAdmission],
+) -> Result<Vec<AccumulatedTransformInput>, GpuAccumulationError> {
     let mut inputs = Vec::with_capacity(observations.len());
     for (index, observation) in observations.iter().enumerate() {
         let interval = metadata[index];
+        let admitted = admissions.iter().any(|a| a.interval_index == index);
         let curr = observation.accumulated_amount_kg_per_square_meter;
         let prev = if interval.reset_applied {
             0.0
@@ -588,18 +765,86 @@ pub fn build_transform_inputs(
         if !duration_f32.is_finite() || duration_f32 <= 0.0 {
             return Err(GpuAccumulationError::NonPositiveDuration);
         }
+        let mode = if admitted {
+            TRANSFORM_MODE_PACKING_ADMISSION
+        } else if interval.reset_applied {
+            TRANSFORM_MODE_RESET
+        } else {
+            TRANSFORM_MODE_DELTA
+        };
         inputs.push(AccumulatedTransformInput {
             curr_amount_kg_per_square_meter: curr_f32,
             prev_amount_kg_per_square_meter: prev_f32,
             duration_seconds: duration_f32,
-            reset_applied: u32::from(interval.reset_applied),
+            reset_applied: mode,
         });
     }
-    validate_transform_inputs(&inputs)?;
     Ok(inputs)
 }
 
+/// Raw inputs carry no admission, so mode 2 is rejected.
 fn validate_transform_inputs(
+    inputs: &[AccumulatedTransformInput],
+) -> Result<(), GpuAccumulationError> {
+    validate_classified_inputs(inputs, &[], 1, 0)
+}
+
+/// Mode 2 at `[interval * cell_count + (cell - first_cell)]` is valid only with
+/// exactly one admission for that position whose uploaded `f32` values match
+/// and decrease; every admission must address a mode-2 input.
+fn validate_classified_inputs(
+    inputs: &[AccumulatedTransformInput],
+    admissions: &[PackingDecreaseAdmission],
+    cell_count: usize,
+    first_cell: usize,
+) -> Result<(), GpuAccumulationError> {
+    let invalid = |index, reason| GpuAccumulationError::InvalidTransformInput { index, reason };
+    let mut positioned = std::collections::BTreeMap::new();
+    for admission in admissions {
+        let position = admission
+            .cell_index
+            .checked_sub(first_cell)
+            .filter(|column| *column < cell_count)
+            .and_then(|column| {
+                admission
+                    .interval_index
+                    .checked_mul(cell_count)?
+                    .checked_add(column)
+            })
+            .filter(|position| *position < inputs.len())
+            .ok_or(invalid(0, "admission does not address a transform input"))?;
+        if positioned.insert(position, admission).is_some() {
+            return Err(invalid(position, "duplicate #216 admission for one input"));
+        }
+    }
+    for (index, input) in inputs.iter().enumerate() {
+        let admission = positioned.get(&index);
+        let is_admission_mode = input.reset_applied == TRANSFORM_MODE_PACKING_ADMISSION;
+        match (is_admission_mode, admission) {
+            (true, Some(a))
+                if a.previous_canonical_kg_per_square_meter.to_bits()
+                    == input.prev_amount_kg_per_square_meter.to_bits()
+                    && a.current_canonical_kg_per_square_meter.to_bits()
+                        == input.curr_amount_kg_per_square_meter.to_bits() => {}
+            (true, _) => {
+                return Err(invalid(
+                    index,
+                    "admission mode requires exactly one matching #216 admission",
+                ));
+            }
+            (false, Some(_)) => {
+                return Err(invalid(
+                    index,
+                    "#216 admission addresses a non-admission transform input",
+                ));
+            }
+            (false, None) => {}
+        }
+    }
+    validate_transform_values(inputs)
+}
+
+fn validate_transform_values(
     inputs: &[AccumulatedTransformInput],
 ) -> Result<(), GpuAccumulationError> {
     for (index, input) in inputs.iter().enumerate() {
@@ -625,24 +870,37 @@ fn validate_transform_inputs(
                 reason: "duration must be finite and strictly positive",
             });
         }
-        if input.reset_applied > 1 {
-            return Err(GpuAccumulationError::InvalidTransformInput {
-                index,
-                reason: "reset_applied must be 0 or 1",
-            });
-        }
-        if input.reset_applied == 0 {
-            if input.curr_amount_kg_per_square_meter < input.prev_amount_kg_per_square_meter {
+        match input.reset_applied {
+            TRANSFORM_MODE_DELTA => {
+                if input.curr_amount_kg_per_square_meter < input.prev_amount_kg_per_square_meter {
+                    return Err(GpuAccumulationError::InvalidTransformInput {
+                        index,
+                        reason: "same-run accumulated amount must not decrease",
+                    });
+                }
+            }
+            TRANSFORM_MODE_RESET => {
+                if input.prev_amount_kg_per_square_meter != 0.0 {
+                    return Err(GpuAccumulationError::InvalidTransformInput {
+                        index,
+                        reason: "fresh-run inputs must zero the ignored previous amount",
+                    });
+                }
+            }
+            TRANSFORM_MODE_PACKING_ADMISSION => {
+                if input.curr_amount_kg_per_square_meter >= input.prev_amount_kg_per_square_meter {
+                    return Err(GpuAccumulationError::InvalidTransformInput {
+                        index,
+                        reason: "admission mode requires a same-run decrease",
+                    });
+                }
+            }
+            _ => {
                 return Err(GpuAccumulationError::InvalidTransformInput {
                     index,
-                    reason: "same-run accumulated amount must not decrease",
+                    reason: "reset_applied must be 0, 1 or 2",
                 });
             }
-        } else if input.prev_amount_kg_per_square_meter != 0.0 {
-            return Err(GpuAccumulationError::InvalidTransformInput {
-                index,
-                reason: "fresh-run inputs must zero the ignored previous amount",
-            });
         }
     }
     Ok(())
@@ -811,6 +1069,29 @@ pub async fn transform_accumulated_intervals_gpu(
 ) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>), GpuAccumulationError> {
     let readback = execute_accumulated_intervals_gpu(ctx, observations).await?;
     Ok((readback.amounts, readback.rates_si, readback.rates_mmh))
+}
+
+/// Isolated validation readback of one classified series (#216 admissions included).
+///
+/// Same convenience status as [`transform_accumulated_intervals_gpu`]; production
+/// composition uses [`CanonicalGpuField`](crate::gpu::meteorology::CanonicalGpuField).
+///
+/// # Errors
+///
+/// Forwards classification, dispatch and readback failures.
+pub async fn transform_classified_intervals_gpu(
+    ctx: &GpuContext,
+    classified: &ClassifiedTransformInputs,
+) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>), GpuAccumulationError> {
+    let inputs = AccumulatedTransformInputs::from_classified(ctx, classified)?;
+    let outputs = AccumulatedIntervalBuffers::new(ctx, inputs.interval_count())?;
+    let kernel = AccumulatedIntervalKernel::new(ctx)?;
+    dispatch_accumulated_intervals_gpu_with_kernel(ctx, &inputs, &outputs, &kernel)?;
+    Ok((
+        outputs.download_amounts(ctx).await?,
+        outputs.download_rates_si(ctx).await?,
+        outputs.download_rates_millimeter_per_hour(ctx).await?,
+    ))
 }
 
 struct AccumulatedGpuReadback {

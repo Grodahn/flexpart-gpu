@@ -4,7 +4,10 @@ Versioned pass/fail gates for evaluation reports. Thresholds live here, not
 in `scripts/evaluate/`, so a code change cannot silently move a gate.
 
 - Current file: `scientific-thresholds-v1.json` (`version: v1`).
-- Report schema: `1.0.0` (see `docs/evaluation.md`).
+- Report schema: `1.0.0`; the additive `1.1.0` report (Issue #54
+  deterministic invariants, see `docs/evaluation.md`) evaluates the same v1
+  criteria unchanged. The invariant contract references `MASS_BUDGET_CLOSE`
+  and `MASS_POSITIVITY` by id and never copies or moves their values.
 - Change policy: any threshold change requires a new versioned file with
   date and scientific justification. Loosening a threshold because a
   candidate fails is prohibited.

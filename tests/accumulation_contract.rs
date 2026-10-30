@@ -208,6 +208,8 @@ fn error_variant_name(error: &AccumulationError) -> &'static str {
         AccumulationError::NegativeAmount { .. } => "negative_amount",
         AccumulationError::NonFiniteAmount { .. } => "non_finite_amount",
         AccumulationError::IntervalDurationOutOfRange { .. } => "interval_duration_out_of_range",
+        AccumulationError::PackingDecreaseRejected { .. } => "packing_decrease_rejected",
+        AccumulationError::SourceCountMismatch { .. } => "source_count_mismatch",
     }
 }
 
@@ -492,4 +494,476 @@ fn fail_closed_cases_report_matching_errors() {
     // The fixture's fail-closed suite must cover every canonical rejection the
     // contract promises for ambiguous/negative metadata.
     assert_eq!(checked, 5);
+}
+
+// --- #216 bounded admission of GRIB-packing decreases (#219) -----------------
+
+#[path = "support/grib202.rs"]
+mod grib202;
+
+mod packing_216 {
+    use super::grib202;
+    use flexpart_gpu::meteorology::accumulation::{
+        build_accumulation_report_with_sources, classify_packing_decrease,
+        resolve_interval_sequence, resolve_interval_sequence_with_sources, AccumulatedObservation,
+        AccumulatedSeries, AccumulationError, PackingDecreaseCode, PackingDecreasePair,
+        PackingDecreaseVerdict, PackingObservation, Verdict,
+    };
+    use flexpart_gpu::meteorology::{FieldId, GribPackingProvenance, SourceQuantization, Unit};
+    use serde_json::Value;
+
+    const GRID_ID: &str = "regular_ll_3x3_lat52_lon10_step1";
+
+    fn token<T: serde::de::DeserializeOwned>(text: &str) -> T {
+        serde_json::from_value(Value::String(text.to_owned())).expect("frozen token")
+    }
+
+    /// Control field tokens; the non-precipitation control names the canonical
+    /// `sensible_heat_flux` field with its GRIB-style long name.
+    fn field_id(text: &str) -> FieldId {
+        match text {
+            "surface_sensible_heat_flux" => FieldId::SensibleHeatFlux,
+            other => token(other),
+        }
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    fn canonical_value(value: &Value) -> Option<f32> {
+        let number = match value {
+            Value::Null => return None,
+            Value::String(text) => match text.as_str() {
+                "NaN" => f64::NAN,
+                "Infinity" => f64::INFINITY,
+                "-Infinity" => f64::NEG_INFINITY,
+                other => panic!("unknown token {other}"),
+            },
+            other => other.as_f64().expect("number"),
+        };
+        let narrowed = number as f32;
+        assert!(
+            !number.is_finite() || f64::from(narrowed) == number,
+            "control values are f32"
+        );
+        Some(narrowed)
+    }
+
+    fn packing(side: &Value) -> Option<GribPackingProvenance> {
+        (!side["packing"].is_null()).then(|| {
+            serde_json::from_value(side["packing"].clone())
+                .expect("frozen packing keys deserialize into the production carrier")
+        })
+    }
+
+    fn observation<'a>(
+        side: &'a Value,
+        packing: Option<&'a GribPackingProvenance>,
+    ) -> PackingObservation<'a> {
+        PackingObservation {
+            canonical_value: canonical_value(&side["canonical_value"]),
+            valid_time_epoch_seconds: side["valid_time_s"].as_i64(),
+            reset_epoch_seconds: side["reset_s"].as_i64(),
+            grid_id: side["grid_id"].as_str().expect("grid"),
+            source_id: side["source_id"].as_str(),
+            source_message_sha256: side["source_message_sha256"].as_str(),
+            packing,
+        }
+    }
+
+    #[test]
+    fn test_accumulation_216_all_controls_match_production_classifier() {
+        let decision = grib202::decision();
+        let controls = decision["negative_controls"].as_array().expect("controls");
+        assert_eq!(controls.len(), 32, "the complete #216 control set");
+        let mut admitted = 0;
+        for control in controls {
+            let id = control["id"].as_str().expect("id");
+            let pair = &control["pair"];
+            let (prev, cur) = (packing(&pair["previous"]), packing(&pair["current"]));
+            let classification = classify_packing_decrease(&PackingDecreasePair {
+                field_id: field_id(pair["field"].as_str().expect("field")),
+                canonical_unit: token::<Unit>(pair["canonical_unit"].as_str().expect("unit")),
+                previous: observation(&pair["previous"], prev.as_ref()),
+                current: observation(&pair["current"], cur.as_ref()),
+            });
+            assert_eq!(
+                classification.verdict,
+                token::<PackingDecreaseVerdict>(control["expected_verdict"].as_str().expect("v")),
+                "{id}"
+            );
+            assert_eq!(
+                classification.code,
+                token::<PackingDecreaseCode>(control["expected_code"].as_str().expect("c")),
+                "{id}"
+            );
+            assert_eq!(
+                classification.admitted.is_some(),
+                classification.verdict == PackingDecreaseVerdict::AdmitBounded,
+                "{id}: a bound accompanies exactly the admissions"
+            );
+            admitted += usize::from(classification.admitted.is_some());
+        }
+        assert_eq!(admitted, 1, "only bound_largest_admitted is admitted");
+    }
+
+    struct Series {
+        observations: Vec<AccumulatedObservation>,
+        sources: Vec<SourceQuantization>,
+    }
+
+    fn series(parameter: usize, cell: usize) -> Series {
+        let observations = grib202::observations();
+        Series {
+            observations: observations
+                .iter()
+                .map(|o| AccumulatedObservation {
+                    valid_time_epoch_seconds: o.valid_s,
+                    reset_epoch_seconds: o.reset_s,
+                    accumulated_amount_kg_per_square_meter: f64::from(
+                        o.parameters[parameter].0[cell],
+                    ),
+                })
+                .collect(),
+            sources: observations
+                .iter()
+                .map(|o| o.parameters[parameter].1.clone())
+                .collect(),
+        }
+    }
+
+    fn with_sources<'a>(
+        parameter: usize,
+        cell: usize,
+        series: &'a Series,
+        sources: &'a [Option<&'a SourceQuantization>],
+    ) -> AccumulatedSeries<'a> {
+        AccumulatedSeries {
+            field_id: [
+                FieldId::LargeScalePrecipitation,
+                FieldId::ConvectivePrecipitation,
+            ][parameter],
+            canonical_unit: Unit::KilogramPerSquareMeter,
+            grid_id: GRID_ID,
+            cell_index: cell,
+            observations: &series.observations,
+            sources,
+        }
+    }
+
+    fn assert_run_telescoping(
+        observations: &[AccumulatedObservation],
+        resolved: &flexpart_gpu::meteorology::accumulation::IntervalSequence,
+    ) {
+        let (mut run_sum, mut run_projected) = (0.0, 0.0);
+        for (k, product) in resolved.intervals.iter().enumerate() {
+            run_sum += product.amount_kg_per_square_meter.0;
+            if let Some(admission) = resolved
+                .quantization_admissions
+                .iter()
+                .find(|a| a.interval_index == k)
+            {
+                run_projected -= admission.signed_difference_kg_per_square_meter;
+            }
+            let run_end = k + 1 == observations.len()
+                || observations[k + 1].reset_epoch_seconds != observations[k].reset_epoch_seconds;
+            if run_end {
+                let total = observations[k].accumulated_amount_kg_per_square_meter;
+                assert!(
+                    (run_sum - (total + run_projected)).abs() <= 1e-12 * total.max(1.0),
+                    "final total + projected decreases"
+                );
+                (run_sum, run_projected) = (0.0, 0.0);
+            }
+        }
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn test_accumulation_216_genuine_rows_admitted_with_exact_bound() {
+        let decision = grib202::decision();
+        let rows = decision["offending_rows"].as_array().expect("rows");
+        let admitted_rows = grib202::admitted_rows(&decision);
+        assert_eq!(admitted_rows.len(), 3);
+        let mut admissions = Vec::new();
+        for parameter in 0..2 {
+            for cell in 0..9 {
+                let data = series(parameter, cell);
+                let sources: Vec<_> = data.sources.iter().map(Some).collect();
+                let resolved = resolve_interval_sequence_with_sources(&with_sources(
+                    parameter, cell, &data, &sources,
+                ))
+                .expect("genuine series admitted");
+                let strict = resolve_interval_sequence(&data.observations);
+                let expected: Vec<_> = admitted_rows
+                    .iter()
+                    .filter(|(p, c, _)| (*p, *c) == (parameter, cell))
+                    .collect();
+                assert_eq!(resolved.quantization_admissions.len(), expected.len());
+                if let Some((_, _, index)) = expected.first() {
+                    assert!(
+                        matches!(strict, Err(AccumulationError::NegativeDelta { index: i, .. }) if i == *index),
+                        "without records the decrease remains NegativeDelta"
+                    );
+                } else {
+                    let strict = strict.expect("unchanged series");
+                    assert_eq!(
+                        strict.intervals, resolved.intervals,
+                        "normal intervals unchanged"
+                    );
+                }
+                assert_run_telescoping(&data.observations, &resolved);
+                for admission in resolved.quantization_admissions {
+                    let product = resolved.intervals[admission.interval_index];
+                    for value in [
+                        product.amount_kg_per_square_meter.0,
+                        product.rate_kg_per_square_meter_per_second.0,
+                        product.rate_millimeter_per_hour.0,
+                    ] {
+                        assert_eq!(value.to_bits(), 0.0_f64.to_bits(), "+0.0 projection");
+                    }
+                    admissions.push(admission);
+                }
+            }
+        }
+        assert_eq!(admissions.len(), 3);
+        for (admission, row) in admissions.iter().zip(rows) {
+            let exact =
+                |path: [&str; 2], key: &str| -> Value { row[path[0]][path[1]][key].clone() };
+            assert_eq!(
+                Some(admission.cell_index as u64),
+                row["canonical_cell"].as_u64()
+            );
+            assert_eq!(
+                admission.interval_end_epoch_seconds,
+                row["interval_end_s"].as_i64().expect("end") + grib202::ORACLE_EPOCH_UNIX_S
+            );
+            assert_eq!(
+                admission.bound_exact,
+                exact(["bounds", "canonical_kg_per_m2"], "exact")
+            );
+            assert_eq!(
+                Some(admission.bound_kg_per_square_meter),
+                exact(["bounds", "canonical_kg_per_m2"], "float").as_f64()
+            );
+            assert_eq!(
+                admission.signed_difference_exact,
+                exact(["signed_difference", "canonical_kg_per_m2"], "exact")
+            );
+            assert_eq!(
+                Some(admission.signed_difference_kg_per_square_meter),
+                exact(["signed_difference", "canonical_kg_per_m2"], "float").as_f64()
+            );
+            assert_eq!(
+                admission.message_sha256(),
+                (
+                    row["previous"]["message_sha256"].as_str().expect("prev"),
+                    row["current"]["message_sha256"].as_str().expect("cur")
+                )
+            );
+            assert_eq!(
+                admission.decision,
+                "flexpart-gpu/grib-packing-decrease-decision/v1"
+            );
+        }
+    }
+
+    #[test]
+    fn test_accumulation_216_report_records_admission_instead_of_failure() {
+        let (parameter, cell, index) = grib202::admitted_rows(&grib202::decision())[0];
+        let data = series(parameter, cell);
+        let sources: Vec<_> = data.sources.iter().map(Some).collect();
+        let report = build_accumulation_report_with_sources(
+            "large_scale_precipitation",
+            &with_sources(parameter, cell, &data, &sources),
+            None,
+        );
+        assert_eq!(report.verdict, Verdict::Passed);
+        let row = &report.intervals[index];
+        assert_eq!(row.verdict, Verdict::Passed);
+        assert_eq!(
+            row.derived_amount_kg_per_square_meter.map(f64::to_bits),
+            Some(0)
+        );
+        assert!(row.quantization_admission.is_some());
+        let serialized = serde_json::to_value(&report.intervals[0]).expect("row");
+        assert!(
+            serialized.get("quantization_admission").is_none(),
+            "an absent admission is not serialized"
+        );
+        let short = &sources[..sources.len() - 1];
+        let mismatched = build_accumulation_report_with_sources(
+            "large_scale_precipitation",
+            &with_sources(parameter, cell, &data, short),
+            None,
+        );
+        assert!(
+            matches!(mismatched.verdict, Verdict::Failed(_)),
+            "a source-count mismatch fails closed"
+        );
+    }
+
+    type Mutation = fn(&mut [SourceQuantization], &mut [AccumulatedObservation], usize);
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_accumulation_216_provenance_mutations_fail_closed() {
+        use PackingDecreaseCode as Code;
+        use PackingDecreaseVerdict as V;
+        let (parameter, cell, index) = grib202::admitted_rows(&grib202::decision())[0];
+        let cases: Vec<(&str, Mutation, V, Code)> = vec![
+            (
+                "wrong message hash",
+                |s, _, i| s[i].packing.message_sha256 = "0".repeat(64),
+                V::Reject,
+                Code::PackingProvenanceMismatch,
+            ),
+            (
+                "wrong param",
+                |s, _, i| s[i].packing.param_id = 143,
+                V::Reject,
+                Code::PackingProvenanceMismatch,
+            ),
+            (
+                "era5 class",
+                |s, _, i| s[i].packing.mars_class = Some("EA".into()),
+                V::Unresolved,
+                Code::UnsupportedSourceClass,
+            ),
+            (
+                "absent class",
+                |s, _, i| s[i - 1].packing.mars_class = None,
+                V::Unresolved,
+                Code::UnsupportedSourceClass,
+            ),
+            (
+                "grib2",
+                |s, _, i| s[i].packing.encoding = "grib2_grid_simple".into(),
+                V::Unresolved,
+                Code::UnsupportedPacking,
+            ),
+            (
+                "bitmap",
+                |s, _, i| s[i].packing.bitmap_present = true,
+                V::Unresolved,
+                Code::UnsupportedPacking,
+            ),
+            (
+                "D != 0",
+                |s, _, i| s[i].packing.decimal_scale_factor = 1,
+                V::Unresolved,
+                Code::UnsupportedPacking,
+            ),
+            (
+                "bits 0",
+                |s, _, i| s[i].packing.bits_per_value = 0,
+                V::Unresolved,
+                Code::UnsupportedPacking,
+            ),
+            (
+                "conversion",
+                |s, _, i| s[i].packing.canonical_conversion = "f32_decode".into(),
+                V::Unresolved,
+                Code::UnsupportedConversion,
+            ),
+            (
+                "source unit",
+                |s, _, i| s[i].packing.source_unit = "mm".into(),
+                V::Reject,
+                Code::UnitMismatch,
+            ),
+            (
+                "scale",
+                |s, _, i| s[i].packing.canonical_per_source_unit = 1,
+                V::Reject,
+                Code::UnitMismatch,
+            ),
+            (
+                "time reassociation",
+                |s, _, i| s[i].packing.step_seconds += 10_800,
+                V::Reject,
+                Code::RunIdentityMismatch,
+            ),
+            (
+                "identical packing",
+                |s, _, i| s[i - 1].packing.binary_scale_factor = s[i].packing.binary_scale_factor,
+                V::Reject,
+                Code::IdenticalPackingParameters,
+            ),
+            (
+                "bound exceeded",
+                |_, o, i| {
+                    o[i].accumulated_amount_kg_per_square_meter = f64::from(0.899_998_6_f32);
+                },
+                V::Reject,
+                Code::DecreaseExceedsQuantizationBound,
+            ),
+            (
+                "source identity",
+                |s, _, i| s[i].source_id = "ecmf-table128-param143".into(),
+                V::Reject,
+                Code::IdentityMismatch,
+            ),
+            (
+                "not an f32",
+                |_, o, i| o[i].accumulated_amount_kg_per_square_meter += 1e-12,
+                V::Unresolved,
+                Code::UnsupportedConversion,
+            ),
+        ];
+        for (what, mutate, verdict, code) in cases {
+            let mut data = series(parameter, cell);
+            mutate(&mut data.sources, &mut data.observations, index);
+            let sources: Vec<_> = data.sources.iter().map(Some).collect();
+            let error = resolve_interval_sequence_with_sources(&with_sources(
+                parameter, cell, &data, &sources,
+            ))
+            .expect_err(what);
+            assert!(
+                matches!(error, AccumulationError::PackingDecreaseRejected { index: i, verdict: v, code: c, .. }
+                    if i == index && v == verdict && c == code),
+                "{what}: {error:?}"
+            );
+        }
+        // Field reassociation: the CP records attached to the LSP series.
+        let data = series(parameter, cell);
+        let other = series(1, cell).sources;
+        let sources: Vec<_> = other.iter().map(Some).collect();
+        let error =
+            resolve_interval_sequence_with_sources(&with_sources(parameter, cell, &data, &sources))
+                .expect_err("CP records on LSP");
+        assert!(
+            matches!(
+                error,
+                AccumulationError::PackingDecreaseRejected {
+                    code: Code::PackingProvenanceMismatch,
+                    ..
+                }
+            ),
+            "{error:?}"
+        );
+        // Missing provenance on one or both observations.
+        let mut sources: Vec<_> = data.sources.iter().map(Some).collect();
+        sources[index - 1] = None;
+        let error =
+            resolve_interval_sequence_with_sources(&with_sources(parameter, cell, &data, &sources))
+                .expect_err("one-sided record");
+        assert!(
+            matches!(
+                error,
+                AccumulationError::PackingDecreaseRejected {
+                    verdict: V::Reject,
+                    code: Code::IdentityMismatch,
+                    ..
+                }
+            ),
+            "{error:?}"
+        );
+        let none = vec![None; data.observations.len()];
+        let error =
+            resolve_interval_sequence_with_sources(&with_sources(parameter, cell, &data, &none))
+                .expect_err("no records");
+        assert!(
+            matches!(error, AccumulationError::NegativeDelta { index: i, .. } if i == index),
+            "{error:?}"
+        );
+    }
 }

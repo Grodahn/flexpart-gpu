@@ -1428,3 +1428,88 @@ fn test_meteorology_encode_surface_has_no_host_completion() {
         }
     }
 }
+
+// --- #216 consumer safety of admitted intervals (#219) -----------------------
+
+#[path = "support/grib202.rs"]
+mod grib202;
+
+/// #76 `prepare_sample` sees an admitted (interval, cell) as `+0.0` for the
+/// amount, SI rate and mm/h rate, with the typed admission exposed separately.
+#[test]
+fn test_meteorology_216_admitted_intervals_sample_positive_zero() {
+    let ctx = pollster::block_on(GpuContext::new()).expect("real GPU execution; no skip");
+    let kernels = MeteorologyCompositionKernels::new(&ctx).unwrap();
+    let decision = grib202::decision();
+    let snapshots = grib202::snapshots(&grib202::observations());
+    let refs: Vec<&Snapshot> = snapshots.iter().collect();
+    let fields = [
+        FieldId::LargeScalePrecipitation,
+        FieldId::ConvectivePrecipitation,
+    ]
+    .map(|id| CanonicalGpuField::upload(&ctx, id, &refs, &vec![None; refs.len()]).unwrap());
+    assert_eq!(
+        fields.each_ref().map(|f| f.quantization_admissions().len()),
+        [1, 2]
+    );
+    let mut plans = Vec::new();
+    for (parameter, cell, index) in grib202::admitted_rows(&decision) {
+        let admission = fields[parameter]
+            .quantization_admissions()
+            .iter()
+            .find(|a| (a.cell_index, a.interval_index) == (cell, index))
+            .expect("typed admission");
+        assert!(admission.signed_difference_kg_per_square_meter < 0.0);
+        for quantity in [
+            IntervalQuantity::Amount,
+            IntervalQuantity::RateSi,
+            IntervalQuantity::RateMillimeterPerHour,
+        ] {
+            #[allow(clippy::cast_precision_loss)]
+            let (xt, yt) = ((cell % grib202::NX) as f64, (cell / grib202::NX) as f64);
+            let selection = MeteorologyTimeSelection::AccumulatedInterval {
+                start_epoch_seconds: admission.interval_start_epoch_seconds,
+                end_epoch_seconds: admission.interval_end_epoch_seconds,
+                quantity,
+            };
+            let plan = fields[parameter]
+                .prepare_sample(&ctx, request(xt, yt, selection, None))
+                .unwrap();
+            plans.push(((parameter, cell, index, quantity), plan));
+        }
+    }
+    let mut encoder = ctx
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("#219 consumer encoder"),
+        });
+    let mut consumers = Vec::new();
+    for (key, plan) in &mut plans {
+        let handoff = plan.encode(&ctx, &kernels, &mut encoder).unwrap();
+        assert_eq!(
+            stage_sequence(handoff.stages),
+            vec![
+                MeteorologyStage::AccumulatedTransform,
+                MeteorologyStage::Horizontal
+            ]
+        );
+        let consumer = ctx.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("#219 consumer"),
+            size: 4,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        ctx.queue
+            .write_buffer(&consumer, 0, bytemuck::cast_slice(&[f32::NAN]));
+        encoder.copy_buffer_to_buffer(handoff.values, 0, &consumer, 0, 4);
+        consumers.push((*key, consumer));
+    }
+    ctx.queue.submit(Some(encoder.finish()));
+    for (key, consumer) in consumers {
+        let value: Vec<f32> =
+            pollster::block_on(download_buffer_typed(&ctx, &consumer, 1, "consumer")).unwrap();
+        assert_eq!(value[0].to_bits(), 0, "{key:?}: admitted interval is +0.0");
+    }
+}

@@ -13,8 +13,8 @@ use super::{
     AccumulatedIntervalMetadataRecord, CanonicalGpuField, GpuContext, MeteorologyCompositionError,
 };
 use crate::meteorology::{
-    Calendar, FieldId, FieldTime, HorizontalGrid, SignConvention, TemporalKind, Unit,
-    VerticalStaggering,
+    accumulation::PackingDecreaseAdmission, Calendar, FieldId, FieldTime, HorizontalGrid,
+    SignConvention, TemporalKind, Unit, VerticalStaggering,
 };
 
 /// Device-resident #90 interval-mean rate grid with its validated identity.
@@ -43,6 +43,9 @@ pub struct IntervalRateGrid<'a> {
     pub source_times: Vec<FieldTime>,
     /// Hashes of the complete canonical source snapshots in source order.
     pub source_snapshot_sha256: Vec<String>,
+    /// #216 admissions (#219): their `[interval * cell_count + cell]` rates are
+    /// `+0.0`; the signed difference exists only in this diagnostic.
+    pub quantization_admissions: &'a [PackingDecreaseAdmission],
 }
 
 impl CanonicalGpuField<'_> {
@@ -94,7 +97,20 @@ impl CanonicalGpuField<'_> {
                 .iter()
                 .map(|m| m.snapshot_sha256.clone())
                 .collect(),
+            quantization_admissions: &source.admissions,
         })
+    }
+
+    /// #216 admitted decreases of this accumulated field (#219).
+    ///
+    /// Empty for every other field and for sources without a decrease. Each
+    /// admitted (interval, cell) has `+0.0` amount and rates in every #90 buffer;
+    /// the diagnostic signed difference is never a precipitation amount or rate.
+    #[must_use]
+    pub fn quantization_admissions(&self) -> &[PackingDecreaseAdmission] {
+        self.accumulation
+            .as_ref()
+            .map_or(&[], |source| source.admissions.as_slice())
     }
 
     /// Encode this field's existing #90 transform into the caller's encoder.

@@ -161,10 +161,14 @@ jobs:
           root = Path("target/ci-gate/precipitation-members")
           reports = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in root.glob("*.json")}
           assert sorted(reports) == ["direct-darain", "fail-closed", "genuine-darain",
-                                     "genuine-input-equivalence", "production-handoff"], sorted(reports)
+                                     "genuine-input-equivalence",
+                                     "genuine-production-replay-software_wgsl",
+                                     "production-handoff"], sorted(reports)
           equivalence = reports.pop("genuine-input-equivalence")
-          assert (equivalence["admitted_series"], equivalence["rejected_series"]) == (15, 3)
+          assert (equivalence["equivalent_series"], equivalence["admitted_intervals"]) == (18, 3)
           assert equivalence["adapter"]["adapter_class"] == "software_wgsl"
+          assert equivalence["verdict"] == "passed"
+          reports.pop("genuine-production-replay-software_wgsl")  # audited below
           for name, report in reports.items():
               assert report["verdict"] == "passed", name
           lanes = [lane["lane"] for lane in reports["genuine-darain"]["lanes"] + reports["direct-darain"]["lanes"]]
@@ -182,6 +186,8 @@ jobs:
           assert len(reports["production-handoff"]["stages"]) == 4
           assert len(reports["fail-closed"]["rows"]) >= 20
           PY
+          python3 scripts/precipitation/check_genuine_production_replay.py target/ci-gate/precipitation-members/genuine-production-replay-software_wgsl.json --software
+          python3 scripts/precipitation/test_check_genuine_production_replay.py
       - name: Prove temporal interpolation against the pinned FLEXPART oracle
         id: original-10
         run: |

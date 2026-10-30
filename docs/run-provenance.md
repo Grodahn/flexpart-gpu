@@ -147,7 +147,11 @@ workflow — no expensive oracle/model reruns:
 `scripts/evaluate/evaluate_case.py` consumes v1 manifests through
 `run_provenance.verify_artifact_set` (dispatched by explicit version
 check; legacy manifests keep the legacy path). Reports verify consumed
-artifacts before use; partial attribution is never promoted.
+artifacts before use; partial attribution is never promoted. The #54
+deterministic-invariant gate then calls
+`run_provenance.executions_for_artifact` to bind each realization to
+exactly one execution record of its role (case id, case-manifest hash and
+`seed_index` must agree); it adds no second verifier.
 
 ## Non-scope (owned elsewhere)
 

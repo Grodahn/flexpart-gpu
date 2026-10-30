@@ -70,6 +70,7 @@ pub(super) fn hybrid_snapshot(ordering: VerticalOrdering) -> Snapshot {
                 vertical_staggering: VerticalStaggering::NotApplicable,
                 time: field_time(TemporalKind::Instantaneous),
                 values: vec![100_000.0, 90_000.0],
+                source_quantization: None,
             },
             Field {
                 id: FieldId::Orography,
@@ -82,6 +83,7 @@ pub(super) fn hybrid_snapshot(ordering: VerticalOrdering) -> Snapshot {
                 vertical_staggering: VerticalStaggering::NotApplicable,
                 time: field_time(TemporalKind::Static),
                 values: vec![100.0, -20.0],
+                source_quantization: None,
             },
         ],
     }
@@ -115,6 +117,7 @@ pub(super) fn geometry_snapshot(ordering: VerticalOrdering) -> Snapshot {
             vertical_staggering: VerticalStaggering::LevelCenter,
             time: field_time(TemporalKind::Instantaneous),
             values: temperature,
+            source_quantization: None,
         },
         Field {
             id: FieldId::SpecificHumidity,
@@ -127,6 +130,7 @@ pub(super) fn geometry_snapshot(ordering: VerticalOrdering) -> Snapshot {
             vertical_staggering: VerticalStaggering::LevelCenter,
             time: field_time(TemporalKind::Instantaneous),
             values: specific_humidity,
+            source_quantization: None,
         },
         Field {
             id: FieldId::Temperature2m,
@@ -139,6 +143,7 @@ pub(super) fn geometry_snapshot(ordering: VerticalOrdering) -> Snapshot {
             vertical_staggering: VerticalStaggering::NotApplicable,
             time: field_time(TemporalKind::Instantaneous),
             values: vec![292.0, 294.0],
+            source_quantization: None,
         },
         Field {
             id: FieldId::Dewpoint2m,
@@ -151,6 +156,7 @@ pub(super) fn geometry_snapshot(ordering: VerticalOrdering) -> Snapshot {
             vertical_staggering: VerticalStaggering::NotApplicable,
             time: field_time(TemporalKind::Instantaneous),
             values: vec![285.0, 286.0],
+            source_quantization: None,
         },
     ]);
     snapshot
@@ -205,6 +211,7 @@ pub(super) fn eta_dot_snapshot(ordering: VerticalOrdering) -> Snapshot {
             vertical_staggering: VerticalStaggering::NotApplicable,
             time: field_time(TemporalKind::Instantaneous),
             values: vec![100_000.0],
+            source_quantization: None,
         }],
     }
 }

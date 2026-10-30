@@ -1,7 +1,8 @@
 # Precipitation point members for `numpf=1` (#207)
 
-Status: GPU reconstruction stage implemented; the genuine #202 accumulated
-example cannot yet enter it through #90 (see [Blocker](#blocker-75-negative-deltas)).
+Status: GPU reconstruction stage implemented. Since #219 the genuine #202
+accumulated example enters it through #90 on the production path (see
+[#216 admissions](#genuine-202-production-replay-216219)).
 Decision basis: [#202 note](research/precipitation-interval-mapping-202.md) and
 [decision artifact](../fixtures/accumulation/precipitation-member-mapping-v1.json).
 
@@ -78,7 +79,11 @@ Owner: [`src/gpu/precipitation_members.rs`](../src/gpu/precipitation_members.rs)
    - `metadata`: representation `flex_extract-7.1.2-rrint0-darain`, unit,
      calendar, `Δ`, `s0`, grid, cell count, source snapshot hashes, #75
      intervals, LSP/CP source identities, adapter, and every member's slot,
-     `T`, support bounds and four support intervals.
+     `T`, support bounds and four support intervals. Each source identity also
+     carries the #90 `quantization_admissions` (#216/#219): the typed record of
+     every `(interval, cell)` projected to `+0.0`. It is omitted when empty and
+     is part of `input_sha256`. #119 must treat it as provenance; the signed
+     difference it holds is never a precipitation rate.
 
 #119 selects members with `metadata.member_at(T)` and binds planes with
 `metadata.plane_byte_range(member)`. It must not reconstruct rates, shift
@@ -109,11 +114,12 @@ reports in `target/ci-gate/precipitation-members/`.
 
 | Report | Proves |
 | --- | --- |
-| `genuine-input-equivalence` | #90 GPU interval amount, duration and mm/h rate equal `deac_vals` for 15 of 18 series; the other 3 fail closed (verdict `blocked`) |
+| `genuine-input-equivalence` | Per series with #216 records: #90 GPU amount, duration and mm/h rate equal `max(deac_vals, 0)` for 18 of 18 series, exact `+0.0` for the 3 admissions; without records those 3 still fail closed |
+| `genuine-production-replay-<adapter class>` | #219 gate: genuine `CanonicalGpuField::upload` (LSP, CP), #90 + #207 in one encoder and one submission, 18/18 series and 234/234 members, identities and hashes; audited by [`check_genuine_production_replay.py`](../scripts/precipitation/check_genuine_production_replay.py) |
 | `genuine-darain` | WGSL `darain` on the genuine `deac_vals` matches all 234 original results |
 | `direct-darain` | All branch, negative and minimum-support cases |
 | `production-handoff` | #90 → #207 in one encoder and one submission; #90 rates equal the oracle inputs; members match; typed metadata; device-only pair copy for #119 |
-| `fail-closed` | Rejection matrix and device status on overflow |
+| `fail-closed` | Rejection matrix, device status on overflow, and genuine #202 uploads without, with malformed, mismatched, reassociated or unsupported records; forged mode 2 |
 
 Executed 2026-10-27 on Intel UHD Graphics 620 (Vulkan, `hardware_gpu`) and
 Microsoft Basic Render Driver (dx12, `software_wgsl`). Genuine max absolute
@@ -125,30 +131,46 @@ Regenerate the oracle:
 docker run --rm -v <repo>:/workspace/flexpart-gpu -v <flex_extract clone>:/workspace/flex_extract:ro -v <#202 trace dir>:/workspace/trace:ro --entrypoint python3 flex-extract:latest -I /workspace/flexpart-gpu/scripts/precipitation/darain_member_oracle.py --trace /workspace/trace/flex-extract-trace.json --flex-extract-git /workspace/flex_extract --repo /workspace/flexpart-gpu --out /workspace/flexpart-gpu/fixtures/accumulation/precipitation-darain-oracle-v1.json
 ```
 
-## Blocker: #75 negative deltas
+## Genuine #202 production replay (#216/#219)
 
 The genuine example has three same-run accumulations that decrease by GRIB
 24-bit packing jitter: LSP cell (1,0) at 30 h and CP cells (1,0) at 30 h and
-(2,1) at 45 h (−7.8e-8 and −1.9e-8 mm/h after deaccumulation). They remain
-decreasing after canonical `f32` conversion (4, 4 and 2 ulp). flex_extract
-deaccumulates them and `darain` clips them to zero. #75/#90 rejects same-run
-decreases, so the whole genuine LSP and CP fields fail closed at
-`CanonicalGpuField::upload`.
+(2,1) at 45 h (4, 4 and 2 canonical `f32` ulp). flex_extract deaccumulates them
+and `darain` clips them to zero. [#216](research/grib-packing-accumulation-216.md)
+decided `ADMIT_BOUNDED`; #219 implements it in #75/#90
+([contract](accumulation-contract.md#same-run-decreases-from-grib-packing-216)).
 
-[#216](research/grib-packing-accumulation-216.md) decided `ADMIT_BOUNDED`. A
-decrease inside a bound derived from both messages' GRIB packing metadata
-becomes a `+0.0` #90 interval, which leaves the original `darain` result
-unchanged. The canonical schema does not yet carry that metadata.
-[#219](https://github.com/Grodahn/flexpart-gpu/issues/219) owns the carrier, the
-#75/#90 change and the genuine #202 → #90 → #207 device replay that closes #207.
+The test provider [`tests/support/grib202.rs`](../tests/support/grib202.rs) reads
+every record key from the committed GRIB1 bytes, verifies file and message hashes,
+packing keys and decoded values against the #216 artifact and the oracle, and takes
+`mars_class = OD` from the #202 control provenance recorded in the artifact. The
+production test then runs:
 
-Until then, the production test uses a declared dyadic sequence with the direct
-original-routine oracle, and the genuine reconstruction is proven only through
-the raw kernel path. This stage needs no change.
+1. `CanonicalGpuField::upload` for LSP and for CP (both succeed; 1 and 2 admissions);
+2. `prepare_precipitation_members` and one `encode` into a caller-owned encoder:
+   #90 LSP, #90 CP, `darain` LSP, `darain` CP, with the #90 buffers bound in place;
+3. one submission, the device status check, then readback for evidence only.
+
+Results: every #90 rate equals `max(deac_vals, 0)` under the #71 policy (exact
+`+0.0` bits for the 3 admissions, no `-0.0`); 18/18 series; all 13 member
+timestamps, four-interval supports and 16 contiguous intervals are exact; 234/234
+members equal `genuine.darain_members`. The `darain` kernel is unchanged and adds
+no clip. Executed 2026-10-30 on Intel UHD Graphics 620 (Vulkan, `hardware_gpu`;
+max member difference 2.6e-7 mm/h) and Microsoft Basic Render Driver (dx12,
+`software_wgsl`; 3.2e-7 mm/h).
+
+This end-to-end replay is the #207 closing gate set by #219. The earlier
+`genuine-darain` report runs the raw kernel on the oracle `deac_vals` and does
+not satisfy that gate. Audit both adapters on a clean commit with:
+
+```bash
+python scripts/precipitation/check_genuine_production_replay.py --both target/ci-gate/precipitation-members
+```
 
 ## Not supported
 
 RRINT=1/`numpf=3` (#212), GRIB2 CP scaling (#211), PUREFC=1, BASETIME
-boundaries, ERA5 class `EA` / interval-total sources, alternate
+boundaries, ERA5 class `EA` / interval-total sources, #216 admissions outside
+GRIB1 `grid_simple`/OD (GRIB2, `D != 0`, other packings), alternate
 disaggregation, backward time, `interpol_rain` sampling (#119) and deposition
 adoption (#114). No FLEXPART 11.1 precipitation or wet-deposition parity is claimed.

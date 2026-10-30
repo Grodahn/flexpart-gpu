@@ -919,6 +919,37 @@ def verify_artifact_set(
             "missing": [], "notes": [f"{len(verified)} consumed artifacts hash-verified"]}
 
 
+def executions_for_artifact(
+    document: dict,
+    path: Path | str,
+    role: str,
+    *,
+    search_roots: list[Path | str] | None = None,
+) -> list[dict]:
+    """Return the execution records of ``role`` that recorded ``path``'s exact bytes.
+
+    Consumers call this only after :func:`verify_artifact_set` succeeded,
+    to bind a consumed artifact to its concrete execution instance (#54
+    per-realization identity). Exactly one record is the only unambiguous
+    result; zero or several must be treated as missing or ambiguous
+    attribution by the caller. Name resolution follows the same portable
+    rules as :func:`verify_artifact_set`.
+    """
+    if role not in ("candidate", "oracle", "validation"):
+        raise ProvenanceError(f"unknown consumed-artifact role: {role!r}")
+    actual = digest(path)
+    roots = [Path(r) for r in (search_roots or [])]
+    matches = []
+    for record in document.get("executions", []):
+        if record.get("role") != role:
+            continue
+        expected = _resolve_consumed_artifact(
+            record.get("outputs_sha256") or {}, Path(path), roots)
+        if expected == actual:
+            matches.append(record)
+    return matches
+
+
 def _normalize_key(key: str) -> str:
     return Path(key).name or str(key)
 

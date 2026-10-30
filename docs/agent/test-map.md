@@ -56,9 +56,10 @@ Keep the final checks and owner-specific pinned-oracle gates described below.
 
 - Precipitation member mapping (#202): `cargo test --test precipitation_member_mapping` locks the decision and its decoded evidence offline. It is research evidence only, not a GPU or production check. Regenerating the original evidence follows [the decision note](../research/precipitation-interval-mapping-202.md#phase-4--executed-example).
 
-- GRIB-packing decreases (#216): `cargo test --test grib_packing_decision` locks the decision offline: three independent GRIB1 decoders, exact bound, policy controls and the unchanged #75 rejection. It is research evidence only, not a GPU or production check. Regeneration is in [the decision note](../research/grib-packing-accumulation-216.md#reproduction).
+- GRIB-packing decreases (#216): `cargo test --test grib_packing_decision` locks the decision offline: three independent GRIB1 decoders, exact bound, policy controls and the unchanged #75 rejection without records. It is research evidence only, not a GPU or production check. Regeneration is in [the decision note](../research/grib-packing-accumulation-216.md#reproduction).
+- #216 admission (#219): `cargo test --test accumulation_contract packing_216` replays all 32 controls through the production classifier and the genuine #75 admissions; `cargo test --test accumulation_gpu packing_216` and `cargo test --test meteorology_composition test_meteorology_216 -- --test-threads=1` prove mode 2 and #76 `+0.0` on the device. The genuine replay is `test_precipitation_members_genuine_production_replay_same_encoder` below; audit both adapters with `python scripts/precipitation/check_genuine_production_replay.py --both target/ci-gate/precipitation-members` after running each adapter on a clean commit.
 
-- Precipitation members (#207): `cargo test --lib precipitation_members`, then `cargo test --test precipitation_members_gpu -- --test-threads=1` on software (`FLEXPART_GPU_SOFTWARE=1`) and hardware adapters; reports in `target/ci-gate/precipitation-members/`. Oracle regeneration and the #75 blocker are in [the contract](../precipitation-members.md#evidence).
+- Precipitation members (#207): `cargo test --lib precipitation_members`, then `cargo test --test precipitation_members_gpu -- --test-threads=1` on software (`FLEXPART_GPU_SOFTWARE=1`) and hardware adapters; reports in `target/ci-gate/precipitation-members/`, including `genuine-production-replay-<adapter class>.json` (#219). Oracle regeneration and the #216 admission evidence are in [the contract](../precipitation-members.md#evidence).
 - GRIB2 CP units (#211): `cargo test --test grib2_cp_units` locks the decision and its decoded producer/reader evidence offline. Research evidence only, not a GPU or production check; regeneration follows [the decision note](../research/grib2-cp-units-211.md#reproduction).
 
 - Shared-height W preparation: `cargo test --test shared_height_w_gpu`; then `python scripts/interpolation/check_shared_height_w_gpu.py target/ci-gate/interior-w-gpu/comparison.json --hardware` for the hardware proof. Required software CI uses `--software`; direct oracle/reproducibility and unsupported routes are defined in [the preparation handoff](../shared-height-w-preparation.md).
@@ -221,6 +222,7 @@ Choose the artifact contract being changed.
 - Focused wrapper: `python scripts/test_agent_validation.py`.
 - Input equivalence: `python scripts/corpus/test_audit_corpus_inputs.py`.
 - Corpus manifest: `python scripts/corpus/test_write_corpus_manifest_v1.py`; shared provenance: `python scripts/provenance/test_run_provenance.py`.
+- Evaluation report and deterministic invariants (#54): `python scripts/evaluate/test_evaluate.py` and `python scripts/evaluate/test_invariants.py` (positive, adversarial, contract-mutation and CLI exit-code cases).
 - Canonical case validation: `cargo test --lib validation::case::` (all eight private responsibility modules).
 - Focused case checks: choose the owner below; use [shared fixtures/schema helper](../../src/validation/case/test_support.rs) only when needed to interpret a test.
 

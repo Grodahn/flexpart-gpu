@@ -30,8 +30,8 @@ pub(crate) use transport_boundary::SharedHeightTransportBoundary;
 
 use super::{
     accumulation::{
-        build_transform_inputs, encode_accumulated_intervals_gpu_with_kernel,
-        AccumulatedIntervalBuffers, AccumulatedIntervalKernel, AccumulatedTransformInputs,
+        encode_accumulated_intervals_gpu_with_kernel, AccumulatedIntervalBuffers,
+        AccumulatedIntervalKernel, AccumulatedTransformInputs, ClassifiedTransformInputs,
         GpuAccumulationError,
     },
     horizontal::{
@@ -61,8 +61,8 @@ use super::{
 const VALUE_BYTES: u64 = std::mem::size_of::<f32>() as u64;
 use crate::meteorology::{
     accumulation::{
-        validate_interval_sequence, AccumulatedIntervalMetadata, AccumulatedObservation,
-        AccumulationError,
+        AccumulatedIntervalMetadata, AccumulatedObservation, AccumulatedSeries, AccumulationError,
+        PackingDecreaseAdmission,
     },
     horizontal::{horizontal_sample_geometry, HorizontalError, HorizontalSampleGeometry},
     temporal::{resolve_temporal_bracket, RequestedSampleTime, TemporalBracket, TemporalError},
@@ -363,6 +363,8 @@ struct AccumulatedSource {
     inputs: AccumulatedTransformInputs,
     outputs: AccumulatedIntervalBuffers,
     intervals: Vec<AccumulatedIntervalMetadata>,
+    /// #216 admissions whose #90 products are `+0.0` (#219).
+    admissions: Vec<PackingDecreaseAdmission>,
 }
 
 /// Canonical source resources with source/bracket lifetime, explicitly uploaded once.
@@ -477,7 +479,7 @@ impl<'ctx> CanonicalGpuField<'ctx> {
             | TemporalKind::Static => {}
         }
         let accumulation = if members[0].field.time.kind == TemporalKind::AccumulatedSinceReset {
-            Some(upload_accumulation(ctx, &members)?)
+            Some(upload_accumulation(ctx, field_id, &members)?)
         } else {
             None
         };
@@ -795,13 +797,29 @@ pub(crate) fn validate_runtime_binding(
     Ok(())
 }
 
+/// Canonical identity of a horizontal grid for #216 pair identity checks.
+fn horizontal_grid_identity(grid: &HorizontalGrid) -> Result<String, MeteorologyCompositionError> {
+    let bytes = serde_json::to_vec(grid)
+        .map_err(|_| MeteorologyCompositionError::Unsupported("grid identity serialization"))?;
+    Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
+/// Validate, classify (#75/#216) and upload every cell series of one field.
+///
+/// Admission is classified on the host from the exact canonical `f32` values
+/// uploaded; the transform itself runs only in WGSL.
 fn upload_accumulation(
     ctx: &GpuContext,
+    field_id: FieldId,
     members: &[SourceMember],
 ) -> Result<AccumulatedSource, MeteorologyCompositionError> {
     let cells = members[0].field.values.len();
-    let mut inputs = vec![Vec::with_capacity(cells); members.len()];
-    let mut intervals = Vec::new();
+    let grid_id = horizontal_grid_identity(&members[0].snapshot.horizontal_grid)?;
+    let sources: Vec<_> = members
+        .iter()
+        .map(|member| member.field.source_quantization.as_ref())
+        .collect();
+    let mut series_inputs = Vec::with_capacity(cells);
     for cell in 0..cells {
         let observations = members
             .iter()
@@ -816,26 +834,31 @@ fn upload_accumulation(
                 })
             })
             .collect::<Result<Vec<_>, MeteorologyCompositionError>>()?;
-        let metadata = validate_interval_sequence(&observations)?;
-        if cell == 0 {
-            intervals = metadata;
-        } else if intervals != metadata {
-            return Err(MeteorologyCompositionError::Incompatible(
-                "interval metadata differs across cells",
-            ));
+        let series = AccumulatedSeries {
+            field_id,
+            canonical_unit: members[0].field.unit,
+            grid_id: &grid_id,
+            cell_index: cell,
+            observations: &observations,
+            sources: &sources,
+        };
+        let classified = ClassifiedTransformInputs::from_series(&series)?;
+        if let Some(first) = series_inputs.first() {
+            let first: &ClassifiedTransformInputs = first;
+            if first.intervals() != classified.intervals() {
+                return Err(MeteorologyCompositionError::Incompatible(
+                    "interval metadata differs across cells",
+                ));
+            }
         }
-        for (plane, input) in inputs
-            .iter_mut()
-            .zip(build_transform_inputs(&observations)?)
-        {
-            plane.push(input);
-        }
+        series_inputs.push(classified);
     }
-    let inputs: Vec<_> = inputs.into_iter().flatten().collect();
+    let classified = ClassifiedTransformInputs::interval_major(&series_inputs)?;
     Ok(AccumulatedSource {
-        outputs: AccumulatedIntervalBuffers::new(ctx, inputs.len())?,
-        inputs: AccumulatedTransformInputs::from_inputs(ctx, &inputs)?,
-        intervals,
+        outputs: AccumulatedIntervalBuffers::new(ctx, classified.inputs().len())?,
+        inputs: AccumulatedTransformInputs::from_classified(ctx, &classified)?,
+        intervals: classified.intervals().to_vec(),
+        admissions: classified.admissions().to_vec(),
     })
 }
 

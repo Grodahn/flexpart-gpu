@@ -40,6 +40,10 @@ fn git(args: &[&str]) -> String {
         .to_owned()
 }
 
+fn candidate_revision() -> String {
+    std::env::var("FLEXPART_GPU_CANDIDATE_REVISION").unwrap_or_else(|_| git(&["rev-parse", "HEAD"]))
+}
+
 fn upload<'ctx>(
     ctx: &'ctx GpuContext,
     id: FieldId,
@@ -199,7 +203,7 @@ fn test_precipitation_temporal_genuine_same_encoder_original_comparison() {
         case_id: "genuine-precipitation-temporal-119".to_owned(),
         candidate: GpuCandidateEvidence {
             implementation_id: "precipitation-temporal-gpu-119".to_owned(),
-            revision: git(&["rev-parse", "HEAD"]),
+            revision: candidate_revision(),
             shader_sha256: precipitation_temporal_shader_sha256(),
             input_sha256: grib202::sha256_hex(input_manifest.as_bytes()),
         },
@@ -231,7 +235,7 @@ fn test_precipitation_temporal_genuine_same_encoder_original_comparison() {
     };
     evidence.require_paired_pass().expect("#91 paired evidence");
     let report = json!({"schema": "flexpart-gpu.precipitation-temporal-device.v1",
-        "candidate": {"revision": git(&["rev-parse", "HEAD"]), "worktree_clean": git(&["status", "--porcelain"]).is_empty()},
+        "candidate": {"revision": candidate_revision(), "worktree_clean": git(&["status", "--porcelain"]).is_empty()},
         "adapter": adapter, "metadata": metadata, "status": members.status(),
         "fixture_sha256": grib202::sha256_hex(ORIGINAL.as_bytes()),
         "darain_oracle_sha256": grib202::ORACLE_SHA256, "decision_216_sha256": grib202::DECISION_SHA256,

@@ -31,6 +31,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# The #53 library is needed by provenance_context; make the module usable
+# by downstream consumers that import it without evaluate_case.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "provenance"))
 
 import metrics
 import report as report_lib
@@ -68,6 +71,10 @@ CONTRACT_KEYS = frozenset({
     "downstream_handoff", "change_policy",
 })
 CONDITION_OPS = ("equals", "present")
+
+# Comparison operators the implementation applies to referenced criteria; a
+# threshold file that changes the operator must not be applied silently.
+REQUIRED_CRITERION_OPERATORS = {"INV-MASS-CLOSURE": "abs_lt"}
 
 # Enabled-process -> artifact reservoir name used by the mass identity.
 PROCESS_RESERVOIRS = (
@@ -254,6 +261,11 @@ def _resolve_thresholds(document, repo_root):
         comparison = definition["comparison"]
         if isinstance(comparison.get("threshold"), dict):
             resolved[definition["id"]] = resolve(comparison["threshold"])
+            required = REQUIRED_CRITERION_OPERATORS.get(definition["id"])
+            if required and resolved[definition["id"]].get("operator") != required:
+                raise InvariantContractError(
+                    f"{definition['id']} implements operator {required}, threshold source "
+                    f"declares {resolved[definition['id']].get('operator')!r}")
         if comparison.get("thresholds"):
             resolved[definition["id"]] = {
                 component: resolve(reference)
@@ -716,7 +728,13 @@ def check_analytic_uniform_advection(ctx, evidence):
     worst = {component: {"residual_m": 0.0, "particle": None, "actual_m": None}
              for component in expected}
     for index, (lon, lat, z) in enumerate(zip(lons, lats, zs)):
-        if not all(_is_number(v) and math.isfinite(v) for v in (lon, lat, z)):
+        if not all(_is_number(v) for v in (lon, lat, z)):
+            return _record(ctx, invariant, INTEGRITY_ERROR, error_id="MALFORMED_FIELD",
+                           detail=f"particle {index} position is not numeric",
+                           offenders=[{"particle": index, "value": [json_number(lon),
+                                       json_number(lat), json_number(z)]}],
+                           applicability_reason=reason)
+        if not all(math.isfinite(v) for v in (lon, lat, z)):
             return _record(ctx, invariant, INTEGRITY_ERROR, error_id="NONFINITE_VALUE",
                            detail=f"particle {index} position is not finite",
                            offenders=[{"particle": index, "value": [json_number(lon),

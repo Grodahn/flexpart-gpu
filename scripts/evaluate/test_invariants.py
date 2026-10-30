@@ -354,6 +354,31 @@ class ContractTest(unittest.TestCase):
             self.assertEqual(inv.load_contract(lf)["_sha256"], inv.load_contract(crlf)["_sha256"])
             self.assertEqual(inv.load_contract(lf)["_sha256"], CONTRACT["_sha256"])
 
+    def test_threshold_operator_drift_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for source in ("evaluation/thresholds/scientific-thresholds-v1.json",
+                           "fixtures/corpus/thresholds.json"):
+                target = root / source
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((REPO / source).read_bytes())
+            thresholds = root / "evaluation/thresholds/scientific-thresholds-v1.json"
+            body = json.loads(thresholds.read_text(encoding="utf-8"))
+            for criterion in body["criteria"]:
+                if criterion["id"] == "MASS_BUDGET_CLOSE":
+                    criterion["operator"] = "abs_le"
+            thresholds.write_text(json.dumps(body), encoding="utf-8")
+            with self.assertRaisesRegex(inv.InvariantContractError, "operator abs_lt"):
+                inv.load_contract(inv.DEFAULT_CONTRACT, repo_root=root)
+
+    def test_module_is_importable_without_evaluate_case(self):
+        code = ("import sys; sys.path.insert(0, sys.argv[1]); import invariants; "
+                "print(invariants.provenance_context({'schema': {}}, None, [])['mode'])")
+        completed = subprocess.run([sys.executable, "-c", code, str(HERE)],
+                                   capture_output=True, text=True)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout.strip(), "legacy")
+
     def test_emitting_undeclared_error_class_is_rejected(self):
         ctx = inv._Context(CONTRACT, None, None)
         with self.assertRaises(inv.InvariantContractError):
@@ -610,6 +635,18 @@ class DisabledAndAnalyticNegativeTest(unittest.TestCase):
             positions=adv_positions(4, z_offsets=[0.0, 0.02, 0.0, 0.0])))
         self.assertEqual(record(vertical, "INV-ANALYTIC-UNIFORM-ADVECTION")["offenders"][0]
                          ["component"], "vertical_m")
+
+    def test_non_numeric_position_is_malformed(self):
+        positions = adv_positions(4)
+        positions["z_m"][1] = None
+        item = record(evaluate(adv_case(), particle_ev(positions=positions)),
+                      "INV-ANALYTIC-UNIFORM-ADVECTION")
+        self.assertEqual((item["verdict"], item["error_id"]),
+                         (inv.INTEGRITY_ERROR, "MALFORMED_FIELD"))
+        positions["z_m"][1] = float("nan")
+        item = record(evaluate(adv_case(), particle_ev(positions=positions)),
+                      "INV-ANALYTIC-UNIFORM-ADVECTION")
+        self.assertEqual(item["error_id"], "NONFINITE_VALUE")
 
     def test_analytic_case_outside_threshold_scope_is_blocked(self):
         case = adv_case()

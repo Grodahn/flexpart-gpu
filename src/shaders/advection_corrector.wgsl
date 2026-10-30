@@ -57,11 +57,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     let raw_predictor_z = predictor_z[lane];
     // Retain the existing lower boundary; only the upper action changes the correction base.
     var base_z = raw_predictor_z;
-    if (params.stop_route == 0u) {
+    // A stopped predictor retains its raw state. Only the ordinary route can place it.
+    // On the stop route, consume bit 0 without repeating the predictor predicate.
+    let predictor_stopped = (stops[lane] & 1u) != 0u;
+    if (!predictor_stopped && params.stop_route == 0u) {
         base_z = select(raw_predictor_z, placed_z, raw_predictor_z >= top);
-    } else if ((stops[lane] & 1u) != 0u) {
-        // One authoritative predictor decision, consumed without re-testing its predicate.
-        base_z = raw_predictor_z;
     }
     let correction_m = ((w1 - w0) * 0.5) * params.dt;
     let corrected_z = base_z + correction_m;

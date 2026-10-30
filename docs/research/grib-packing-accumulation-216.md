@@ -1,11 +1,12 @@
 # GRIB-packing same-run accumulation decreases (#216)
 
-Status: **decided — `ADMIT_BOUNDED`, not implemented.** A same-run decrease of a
+Status: **decided — `ADMIT_BOUNDED`; implemented by
+[#219](https://github.com/Grodahn/flexpart-gpu/issues/219).** A same-run decrease of a
 GRIB1 simple-packed LSP/CP accumulation is admissible only inside a bound derived
-from both messages' packing metadata, and only as a `+0.0` interval amount. The
-canonical schema does not carry that metadata yet. Until
-[#219](https://github.com/Grodahn/flexpart-gpu/issues/219) lands, #75/#90 keep
-rejecting every same-run decrease, and #207's genuine-input path stays blocked.
+from both messages' packing metadata, and only as a `+0.0` interval amount. This note
+and the frozen artifact remain the unchanged decision; the artifact's
+`implementation_status` records the state at decision time. The implemented envelope
+and evidence are in [the accumulation contract](../accumulation-contract.md#same-run-decreases-from-grib-packing-216).
 
 Machine-readable decision: [grib-packing-decrease-decision-v1.json](../../fixtures/accumulation/grib-packing-decrease-decision-v1.json).
 ecCodes 2.24.2 keys: [grib-packing-eccodes-keys-v1.json](../../fixtures/accumulation/grib-packing-eccodes-keys-v1.json).

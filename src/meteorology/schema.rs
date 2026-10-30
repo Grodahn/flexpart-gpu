@@ -54,4 +54,7 @@ pub enum ContractError {
     InconsistentSnapshotTime(FieldId),
     #[error("invalid value domain for {0:?}")]
     InvalidValueDomain(FieldId),
+    /// The optional source-quantization record is malformed (#219).
+    #[error("malformed source-quantization provenance for {0:?}")]
+    InvalidSourceQuantization(FieldId),
 }

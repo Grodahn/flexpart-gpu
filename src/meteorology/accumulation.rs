@@ -44,9 +44,34 @@
 //! **amount** (`kg/m2`, numerically equal to mm water depth) and **rate**
 //! (`kg/(m2 s)` plus the `mm/h` handoff value). No global reset cadence is
 //! assumed; reset metadata is always an explicit input.
+//!
+//! ## Same-run decreases from GRIB packing (#216, implemented by #219)
+//!
+//! A same-run decrease is admitted only through the `*_with_sources` entry
+//! points, only when both observations carry a [`SourceQuantization`] record and
+//! the frozen #216 rule ([`classify_packing_decrease`]) classifies the pair
+//! `ADMIT_BOUNDED`. The admitted interval has amount and rates `+0.0`; the signed
+//! difference and its bound are kept as a typed [`PackingDecreaseAdmission`],
+//! never inside an amount or rate newtype. The next interval differences from the
+//! unmodified lower value, so the summed interval amounts equal the final total
+//! plus the projected decreases. Without a record on either observation the
+//! decrease remains [`AccumulationError::NegativeDelta`]; with a record that does
+//! not admit it, [`AccumulationError::PackingDecreaseRejected`] carries the #216
+//! verdict and code. Interval metadata is unchanged by an admission and remains
+//! cell-invariant.
 
 use serde::Serialize;
 use thiserror::Error;
+
+use super::{FieldId, SourceQuantization, Unit};
+
+mod packing_decrease;
+
+pub use packing_decrease::{
+    classify_packing_decrease, AdmittedPackingBound, PackingClassification,
+    PackingDecreaseAdmission, PackingDecreaseCode, PackingDecreasePair, PackingDecreaseVerdict,
+    PackingObservation, GRIB_PACKING_DECISION_SCHEMA,
+};
 
 /// Seconds in one hour used for the #71 `mm/h` rate handoff conversion.
 const SECONDS_PER_HOUR: f64 = 3600.0;
@@ -165,12 +190,15 @@ pub struct IntervalSequence {
     /// Number of newly declared reset boundaries detected from the source
     /// metadata (`R_i > R_{i-1}` for `i > 0`).
     pub detected_reset_count: usize,
+    /// #216 admissions; their intervals carry `+0.0` amount and rates.
+    pub quantization_admissions: Vec<PackingDecreaseAdmission>,
 }
 
 impl IntervalSequence {
     /// Sum of all derived interval amounts in kg/m2.
     ///
-    /// For a single-run sequence this telescopes to the final source amount.
+    /// For a single-run sequence this telescopes to the final source amount plus
+    /// [`Self::projected_decrease_kg_per_square_meter`].
     #[must_use]
     pub fn total_amount_kg_per_square_meter(&self) -> f64 {
         self.intervals
@@ -178,6 +206,53 @@ impl IntervalSequence {
             .map(|product| product.amount_kg_per_square_meter.0)
             .sum()
     }
+
+    /// Sum of the admitted decreases projected to `+0.0`, in kg/m2 (`>= 0`).
+    #[must_use]
+    pub fn projected_decrease_kg_per_square_meter(&self) -> f64 {
+        self.quantization_admissions
+            .iter()
+            .map(|admission| -admission.signed_difference_kg_per_square_meter)
+            .sum()
+    }
+}
+
+/// Validated interval metadata plus the #216 admissions of one cell series.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValidatedIntervalSequence {
+    /// Cell-invariant #75 metadata, identical to [`validate_interval_sequence`].
+    pub intervals: Vec<AccumulatedIntervalMetadata>,
+    /// Admitted same-run decreases of this series, in interval order.
+    pub quantization_admissions: Vec<PackingDecreaseAdmission>,
+}
+
+/// One cell's accumulated observations with the identity the #216 rule needs.
+///
+/// `sources[i]` is the optional source record of `observations[i]`'s field. No
+/// record may be synthesized; pass `None` when the provider supplied none.
+#[derive(Debug, Clone, Copy)]
+pub struct AccumulatedSeries<'a> {
+    /// Canonical field of every observation.
+    pub field_id: FieldId,
+    /// Canonical unit of every accumulated value.
+    pub canonical_unit: Unit,
+    /// Shared horizontal grid identity.
+    pub grid_id: &'a str,
+    /// Horizontal cell index, recorded in admissions.
+    pub cell_index: usize,
+    /// Observations in source order.
+    pub observations: &'a [AccumulatedObservation],
+    /// One optional source record per observation.
+    pub sources: &'a [Option<&'a SourceQuantization>],
+}
+
+/// How a same-run decrease is treated.
+#[derive(Clone, Copy)]
+enum DecreasePolicy<'a> {
+    /// Every decrease is `NegativeDelta` (the original #75 rule).
+    Strict,
+    /// Decreases are classified with the #216 rule.
+    Provenance(&'a AccumulatedSeries<'a>),
 }
 
 /// Why an accumulated sequence cannot be resolved (all fail-closed cases).
@@ -241,6 +316,20 @@ pub enum AccumulationError {
         previous: f64,
         current: f64,
     },
+    /// A same-run decrease with source records that the #216 rule does not admit.
+    #[error(
+        "observation {index}: same-run accumulated amount decreased from {previous} to {current}; #216 classification {verdict:?}/{code:?} does not admit it"
+    )]
+    PackingDecreaseRejected {
+        index: usize,
+        previous: f64,
+        current: f64,
+        verdict: PackingDecreaseVerdict,
+        code: PackingDecreaseCode,
+    },
+    /// The series supplies a different number of source records than observations.
+    #[error("{sources} source records for {observations} observations")]
+    SourceCountMismatch { observations: usize, sources: usize },
     /// Source amounts are non-negative by the canonical sign contract.
     #[error("observation {index}: source amount {amount} is negative")]
     NegativeAmount { index: usize, amount: f64 },
@@ -306,6 +395,9 @@ pub struct IntervalEvidence {
     /// (None when either side is absent).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub matches_oracle_within_relative_tolerance: Option<bool>,
+    /// #216 admission of this row; its derived values are `+0.0`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quantization_admission: Option<PackingDecreaseAdmission>,
     /// Passed, or Failed with the canonical reason.
     pub verdict: Verdict,
 }
@@ -343,23 +435,58 @@ pub struct AccumulationReport {
 pub fn resolve_interval_sequence(
     observations: &[AccumulatedObservation],
 ) -> Result<IntervalSequence, AccumulationError> {
+    resolve_with_policy(observations, DecreasePolicy::Strict)
+}
+
+/// [`resolve_interval_sequence`] with the #216 admission of same-run decreases.
+///
+/// # Errors
+///
+/// Returns [`AccumulationError`] on the first violating observation, including
+/// [`AccumulationError::PackingDecreaseRejected`] for a decrease that carries
+/// source records but is not `ADMIT_BOUNDED`.
+pub fn resolve_interval_sequence_with_sources(
+    series: &AccumulatedSeries<'_>,
+) -> Result<IntervalSequence, AccumulationError> {
+    check_source_count(series)?;
+    resolve_with_policy(series.observations, DecreasePolicy::Provenance(series))
+}
+
+fn resolve_with_policy(
+    observations: &[AccumulatedObservation],
+    policy: DecreasePolicy<'_>,
+) -> Result<IntervalSequence, AccumulationError> {
     if observations.is_empty() {
         return Err(AccumulationError::EmptySequence);
     }
-    let derived = derive_all(observations);
+    let derived = derive_all(observations, policy);
     let mut intervals = Vec::with_capacity(derived.len());
     let mut detected_reset_count = 0;
+    let mut quantization_admissions = Vec::new();
     for result in derived {
-        let (product, detected_reset) = result?;
-        if detected_reset {
+        let derived = result?;
+        if derived.detected_reset {
             detected_reset_count += 1;
         }
-        intervals.push(product);
+        intervals.push(derived.product);
+        quantization_admissions.extend(derived.admission);
     }
     Ok(IntervalSequence {
         intervals,
         detected_reset_count,
+        quantization_admissions,
     })
+}
+
+fn check_source_count(series: &AccumulatedSeries<'_>) -> Result<(), AccumulationError> {
+    if series.sources.len() == series.observations.len() {
+        Ok(())
+    } else {
+        Err(AccumulationError::SourceCountMismatch {
+            observations: series.observations.len(),
+            sources: series.sources.len(),
+        })
+    }
 }
 
 /// Validate accumulated observations and derive interval/reset metadata only.
@@ -378,8 +505,44 @@ pub fn validate_interval_sequence(
         return Err(AccumulationError::EmptySequence);
     }
     (0..observations.len())
-        .map(|index| validate_interval_metadata(observations, index))
+        .map(|index| {
+            validate_interval_metadata(observations, index, DecreasePolicy::Strict)
+                .map(|(metadata, _)| metadata)
+        })
         .collect()
+}
+
+/// [`validate_interval_sequence`] with the #216 admission of same-run decreases.
+///
+/// This is the production host boundary of #90 for fields that may carry
+/// source-quantization records. The returned metadata is identical to the strict
+/// path for every admitted sequence; admissions are returned separately.
+///
+/// # Errors
+///
+/// Returns [`AccumulationError`] on the first violating observation.
+pub fn validate_interval_sequence_with_sources(
+    series: &AccumulatedSeries<'_>,
+) -> Result<ValidatedIntervalSequence, AccumulationError> {
+    check_source_count(series)?;
+    if series.observations.is_empty() {
+        return Err(AccumulationError::EmptySequence);
+    }
+    let mut intervals = Vec::with_capacity(series.observations.len());
+    let mut quantization_admissions = Vec::new();
+    for index in 0..series.observations.len() {
+        let (metadata, admission) = validate_interval_metadata(
+            series.observations,
+            index,
+            DecreasePolicy::Provenance(series),
+        )?;
+        intervals.push(metadata);
+        quantization_admissions.extend(admission);
+    }
+    Ok(ValidatedIntervalSequence {
+        intervals,
+        quantization_admissions,
+    })
 }
 
 /// Build a machine-readable report over `observations` without failing: rows
@@ -399,7 +562,49 @@ pub fn build_accumulation_report(
     observations: &[AccumulatedObservation],
     oracle_reference_rate_mm_per_hour: Option<&[f64]>,
 ) -> AccumulationReport {
-    let derived = derive_all(observations);
+    report_with_policy(
+        field_identity,
+        observations,
+        oracle_reference_rate_mm_per_hour,
+        DecreasePolicy::Strict,
+    )
+}
+
+/// [`build_accumulation_report`] with the #216 admission of same-run decreases.
+///
+/// An admitted row passes with `+0.0` derived values and records its typed
+/// admission. A source-count mismatch fails the report closed.
+#[must_use]
+pub fn build_accumulation_report_with_sources(
+    field_identity: &str,
+    series: &AccumulatedSeries<'_>,
+    oracle_reference_rate_mm_per_hour: Option<&[f64]>,
+) -> AccumulationReport {
+    if let Err(error) = check_source_count(series) {
+        let mut report = report_with_policy(
+            field_identity,
+            series.observations,
+            oracle_reference_rate_mm_per_hour,
+            DecreasePolicy::Strict,
+        );
+        report.verdict = Verdict::Failed(error.to_string());
+        return report;
+    }
+    report_with_policy(
+        field_identity,
+        series.observations,
+        oracle_reference_rate_mm_per_hour,
+        DecreasePolicy::Provenance(series),
+    )
+}
+
+fn report_with_policy(
+    field_identity: &str,
+    observations: &[AccumulatedObservation],
+    oracle_reference_rate_mm_per_hour: Option<&[f64]>,
+    policy: DecreasePolicy<'_>,
+) -> AccumulationReport {
+    let derived = derive_all(observations, policy);
     let first_failure = derived.iter().position(Result::is_err);
     let oracle_comparison_requested = oracle_reference_rate_mm_per_hour.is_some();
     let intervals = observations
@@ -463,9 +668,8 @@ pub fn build_accumulation_report(
 /// How one report row relates to the resolution outcome.
 #[derive(Clone, Copy)]
 enum RowOutcome<'a> {
-    /// The row's own source values derive an interval product; the flag
-    /// records whether the source declared a new run.
-    Derived(&'a (IntervalProduct, bool)),
+    /// The row's own source values derive an interval product.
+    Derived(&'a DerivedInterval),
     /// The row's own source values violate the contract.
     Rejected(&'a AccumulationError),
     /// An earlier row failed closed, so this row derives nothing rather than
@@ -483,12 +687,16 @@ fn interval_evidence(
     let declared_interval_start_epoch_seconds = observation.reset_epoch_seconds;
     let declared_interval_end_epoch_seconds = observation.valid_time_epoch_seconds;
 
+    let mut quantization_admission = None;
     let (detected_reset, reset_applied, derived, mut verdict) = match outcome {
-        RowOutcome::Derived((product, detected)) => {
-            let detected_reset = *detected;
-            let reset_applied = product.reset_applied;
-            let verdict = Verdict::Passed;
-            (detected_reset, reset_applied, Some(*product), verdict)
+        RowOutcome::Derived(derived) => {
+            quantization_admission.clone_from(&derived.admission);
+            (
+                derived.detected_reset,
+                derived.product.reset_applied,
+                Some(derived.product),
+                Verdict::Passed,
+            )
         }
         RowOutcome::Rejected(error) => (false, false, None, Verdict::Failed(error.to_string())),
         RowOutcome::Blocked { failed } => (
@@ -554,15 +762,25 @@ fn interval_evidence(
         oracle_reference_rate_millimeter_per_hour: oracle_reference.copied(),
         candidate_rate_millimeter_per_hour,
         matches_oracle_within_relative_tolerance,
+        quantization_admission,
         verdict,
     }
 }
 
+/// One derived row: product, declared-reset flag and optional #216 admission.
+#[derive(Debug, Clone, PartialEq)]
+struct DerivedInterval {
+    product: IntervalProduct,
+    detected_reset: bool,
+    admission: Option<PackingDecreaseAdmission>,
+}
+
 fn derive_all(
     observations: &[AccumulatedObservation],
-) -> Vec<Result<(IntervalProduct, bool), AccumulationError>> {
+    policy: DecreasePolicy<'_>,
+) -> Vec<Result<DerivedInterval, AccumulationError>> {
     (0..observations.len())
-        .map(|index| derive_interval(observations, index))
+        .map(|index| derive_interval(observations, index, policy))
         .collect()
 }
 
@@ -570,10 +788,14 @@ fn derive_all(
 fn derive_interval(
     observations: &[AccumulatedObservation],
     index: usize,
-) -> Result<(IntervalProduct, bool), AccumulationError> {
-    let metadata = validate_interval_metadata(observations, index)?;
+    policy: DecreasePolicy<'_>,
+) -> Result<DerivedInterval, AccumulationError> {
+    let (metadata, admission) = validate_interval_metadata(observations, index, policy)?;
     let observation = observations[index];
-    let interval_amount = if metadata.reset_applied {
+    let interval_amount = if admission.is_some() {
+        // #216 projection: the admitted decrease is +0.0, never a signed amount.
+        0.0
+    } else if metadata.reset_applied {
         observation.accumulated_amount_kg_per_square_meter
     } else {
         observation.accumulated_amount_kg_per_square_meter
@@ -582,8 +804,8 @@ fn derive_interval(
     let duration = metadata.duration_seconds as f64;
     let rate_si = interval_amount / duration;
     let rate_millimeter_per_hour = rate_si * SECONDS_PER_HOUR;
-    Ok((
-        IntervalProduct {
+    Ok(DerivedInterval {
+        product: IntervalProduct {
             interval_start_epoch_seconds: metadata.interval_start_epoch_seconds,
             interval_end_epoch_seconds: metadata.interval_end_epoch_seconds,
             amount_kg_per_square_meter: AmountKgPerSquareMeter(interval_amount),
@@ -591,14 +813,106 @@ fn derive_interval(
             rate_millimeter_per_hour: RateMillimeterPerHour(rate_millimeter_per_hour),
             reset_applied: metadata.reset_applied,
         },
-        metadata.detected_reset,
-    ))
+        detected_reset: metadata.detected_reset,
+        admission,
+    })
+}
+
+/// The canonical `f32` a value was uploaded as, when it is exactly one.
+#[allow(clippy::cast_possible_truncation, clippy::float_cmp)] // exact identity check
+fn exact_f32(value: f64) -> Option<f32> {
+    let narrowed = value as f32;
+    (f64::from(narrowed) == value).then_some(narrowed)
+}
+
+/// Classify a same-run decrease of `observations[index]` (#216).
+fn admit_decrease(
+    observations: &[AccumulatedObservation],
+    index: usize,
+    policy: DecreasePolicy<'_>,
+) -> Result<PackingDecreaseAdmission, AccumulationError> {
+    let (previous, current) = (observations[index - 1], observations[index]);
+    let negative_delta = AccumulationError::NegativeDelta {
+        index,
+        previous: previous.accumulated_amount_kg_per_square_meter,
+        current: current.accumulated_amount_kg_per_square_meter,
+    };
+    let DecreasePolicy::Provenance(series) = policy else {
+        return Err(negative_delta);
+    };
+    let (previous_source, current_source) = (series.sources[index - 1], series.sources[index]);
+    if previous_source.is_none() && current_source.is_none() {
+        return Err(negative_delta);
+    }
+    let rejected = |verdict, code| AccumulationError::PackingDecreaseRejected {
+        index,
+        previous: previous.accumulated_amount_kg_per_square_meter,
+        current: current.accumulated_amount_kg_per_square_meter,
+        verdict,
+        code,
+    };
+    // #216 classifies the exact uploaded f32 values; any other value did not take
+    // the declared f32-nearest conversion.
+    let (Some(c_prev), Some(c_cur)) = (
+        exact_f32(previous.accumulated_amount_kg_per_square_meter),
+        exact_f32(current.accumulated_amount_kg_per_square_meter),
+    ) else {
+        return Err(rejected(
+            PackingDecreaseVerdict::Unresolved,
+            PackingDecreaseCode::UnsupportedConversion,
+        ));
+    };
+    let observation = |value, observation: AccumulatedObservation, source| {
+        PackingObservation::canonical(
+            value,
+            observation.valid_time_epoch_seconds,
+            observation.reset_epoch_seconds,
+            series.grid_id,
+            source,
+        )
+    };
+    let classification = classify_packing_decrease(&PackingDecreasePair {
+        field_id: series.field_id,
+        canonical_unit: series.canonical_unit,
+        previous: observation(c_prev, previous, previous_source),
+        current: observation(c_cur, current, current_source),
+    });
+    let (Some(bound), Some(previous_source), Some(current_source)) =
+        (classification.admitted, previous_source, current_source)
+    else {
+        return Err(rejected(classification.verdict, classification.code));
+    };
+    Ok(PackingDecreaseAdmission {
+        decision: GRIB_PACKING_DECISION_SCHEMA.to_string(),
+        verdict: classification.verdict,
+        code: classification.code,
+        field_id: series.field_id,
+        interval_index: index,
+        cell_index: series.cell_index,
+        interval_start_epoch_seconds: previous.valid_time_epoch_seconds,
+        interval_end_epoch_seconds: current.valid_time_epoch_seconds,
+        previous_canonical_kg_per_square_meter: c_prev,
+        current_canonical_kg_per_square_meter: c_cur,
+        signed_difference_kg_per_square_meter: bound.signed_difference_kg_per_square_meter,
+        signed_difference_exact: bound.signed_difference_exact,
+        bound_kg_per_square_meter: bound.bound_kg_per_square_meter,
+        bound_exact: bound.bound_exact,
+        previous_source: previous_source.clone(),
+        current_source: current_source.clone(),
+    })
 }
 
 fn validate_interval_metadata(
     observations: &[AccumulatedObservation],
     index: usize,
-) -> Result<AccumulatedIntervalMetadata, AccumulationError> {
+    policy: DecreasePolicy<'_>,
+) -> Result<
+    (
+        AccumulatedIntervalMetadata,
+        Option<PackingDecreaseAdmission>,
+    ),
+    AccumulationError,
+> {
     let observation = observations[index];
     let amount = observation.accumulated_amount_kg_per_square_meter;
     if !amount.is_finite() {
@@ -615,6 +929,7 @@ fn validate_interval_metadata(
         });
     }
 
+    let mut admission = None;
     let (interval_start, reset_applied, detected_reset) = if index == 0 {
         (observation.reset_epoch_seconds, true, false)
     } else {
@@ -635,11 +950,7 @@ fn validate_interval_metadata(
         }
         if observation.reset_epoch_seconds == previous.reset_epoch_seconds {
             if amount < previous.accumulated_amount_kg_per_square_meter {
-                return Err(AccumulationError::NegativeDelta {
-                    index,
-                    previous: previous.accumulated_amount_kg_per_square_meter,
-                    current: amount,
-                });
+                admission = Some(admit_decrease(observations, index, policy)?);
             }
             (previous.valid_time_epoch_seconds, false, false)
         } else {
@@ -676,13 +987,16 @@ fn validate_interval_metadata(
             end: interval_end,
         });
     }
-    Ok(AccumulatedIntervalMetadata {
-        interval_start_epoch_seconds: interval_start,
-        interval_end_epoch_seconds: interval_end,
-        duration_seconds,
-        reset_applied,
-        detected_reset,
-    })
+    Ok((
+        AccumulatedIntervalMetadata {
+            interval_start_epoch_seconds: interval_start,
+            interval_end_epoch_seconds: interval_end,
+            duration_seconds,
+            reset_applied,
+            detected_reset,
+        },
+        admission,
+    ))
 }
 
 /// `1e-6`-relative closeness used for interval-preservation verdicts in the

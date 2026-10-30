@@ -108,6 +108,7 @@ fn wind_snapshot(epoch_seconds: i64, value: f32) -> Snapshot {
             epoch_seconds,
         ),
         values: vec![value],
+        source_quantization: None,
     })
 }
 
@@ -127,6 +128,7 @@ fn temperature_snapshot(epoch_seconds: i64, values: Vec<f32>) -> Snapshot {
             epoch_seconds,
         ),
         values,
+        source_quantization: None,
     })
 }
 
@@ -490,6 +492,7 @@ fn test_temporal_fail_closed_cases() {
         vertical_staggering: VerticalStaggering::NotApplicable,
         time: field_time(Calendar::Gregorian, TemporalKind::Static, 0),
         values: vec![250.0],
+        source_quantization: None,
     });
     let static_series = [static_spec, wind_snapshot(3600, 20.0)];
     let static_refs: Vec<&Snapshot> = static_series.iter().collect();

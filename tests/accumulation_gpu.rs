@@ -709,3 +709,224 @@ fn gpu_evidence_fails_closed_without_valid_execution() {
         "passed WGSL without adapter must fail"
     );
 }
+
+// --- #216 admitted decreases on the device (#219) ----------------------------
+
+#[path = "support/grib202.rs"]
+mod grib202;
+
+mod packing_216_gpu {
+    use super::grib202;
+    use flexpart_gpu::gpu::{
+        accumulation::{accumulated_inputs_sha256, accumulated_shader_sha256},
+        transform_accumulated_intervals_gpu, transform_classified_intervals_gpu,
+        AccumulatedTransformInput, AccumulatedTransformInputs, ClassifiedTransformInputs,
+        GpuAccumulationError, GpuAdapterEvidence, GpuContext, TRANSFORM_MODE_DELTA,
+        TRANSFORM_MODE_PACKING_ADMISSION, TRANSFORM_MODE_RESET,
+    };
+    use flexpart_gpu::meteorology::accumulation::{
+        resolve_interval_sequence_with_sources, AccumulatedObservation, AccumulatedSeries,
+        AccumulationError,
+    };
+    use flexpart_gpu::meteorology::{FieldId, SourceQuantization, Unit};
+    use serde_json::json;
+
+    const GRID_ID: &str = "regular_ll_3x3_lat52_lon10_step1";
+    const NEGATIVE_ZERO_BITS: u32 = 0x8000_0000;
+
+    fn context() -> GpuContext {
+        pollster::block_on(GpuContext::new()).expect("#219 requires real GPU execution; no skip")
+    }
+
+    fn series(
+        parameter: usize,
+        cell: usize,
+    ) -> (Vec<AccumulatedObservation>, Vec<SourceQuantization>) {
+        grib202::observations()
+            .iter()
+            .map(|o| {
+                (
+                    AccumulatedObservation {
+                        valid_time_epoch_seconds: o.valid_s,
+                        reset_epoch_seconds: o.reset_s,
+                        accumulated_amount_kg_per_square_meter: f64::from(
+                            o.parameters[parameter].0[cell],
+                        ),
+                    },
+                    o.parameters[parameter].1.clone(),
+                )
+            })
+            .unzip()
+    }
+
+    fn classify(
+        parameter: usize,
+        cell: usize,
+        observations: &[AccumulatedObservation],
+        records: &[SourceQuantization],
+    ) -> Result<ClassifiedTransformInputs, GpuAccumulationError> {
+        let sources: Vec<_> = records.iter().map(Some).collect();
+        ClassifiedTransformInputs::from_series(&AccumulatedSeries {
+            field_id: [
+                FieldId::LargeScalePrecipitation,
+                FieldId::ConvectivePrecipitation,
+            ][parameter],
+            canonical_unit: Unit::KilogramPerSquareMeter,
+            grid_id: GRID_ID,
+            cell_index: cell,
+            observations,
+            sources: &sources,
+        })
+    }
+
+    #[test]
+    fn test_accumulation_gpu_216_admitted_decreases_are_positive_zero_on_device() {
+        let ctx = context();
+        let decision = grib202::decision();
+        let mut rows = Vec::new();
+        for (parameter, cell, index) in grib202::admitted_rows(&decision) {
+            let (observations, records) = series(parameter, cell);
+            let classified =
+                classify(parameter, cell, &observations, &records).expect("classified");
+            assert_eq!(classified.admissions().len(), 1);
+            let modes: Vec<u32> = classified
+                .inputs()
+                .iter()
+                .map(|i| i.reset_applied)
+                .collect();
+            for (k, mode) in modes.iter().enumerate() {
+                let expected = if k == index {
+                    TRANSFORM_MODE_PACKING_ADMISSION
+                } else if k % 4 == 0 {
+                    TRANSFORM_MODE_RESET
+                } else {
+                    TRANSFORM_MODE_DELTA
+                };
+                assert_eq!(*mode, expected, "interval {k}");
+            }
+            let (amounts, rates_si, rates_mmh) =
+                pollster::block_on(transform_classified_intervals_gpu(&ctx, &classified))
+                    .expect("device transform");
+            let sources: Vec<_> = records.iter().map(Some).collect();
+            let reference = resolve_interval_sequence_with_sources(&AccumulatedSeries {
+                field_id: [
+                    FieldId::LargeScalePrecipitation,
+                    FieldId::ConvectivePrecipitation,
+                ][parameter],
+                canonical_unit: Unit::KilogramPerSquareMeter,
+                grid_id: GRID_ID,
+                cell_index: cell,
+                observations: &observations,
+                sources: &sources,
+            })
+            .expect("#75 reference");
+            for (k, product) in reference.intervals.iter().enumerate() {
+                for value in [amounts[k], rates_si[k], rates_mmh[k]] {
+                    assert!(
+                        value >= 0.0 && value.to_bits() != NEGATIVE_ZERO_BITS,
+                        "no negative or -0.0 output"
+                    );
+                }
+                if k == index {
+                    for value in [amounts[k], rates_si[k], rates_mmh[k]] {
+                        assert_eq!(value.to_bits(), 0, "admitted interval is exactly +0.0");
+                    }
+                } else {
+                    super::assert_close_f32(
+                        amounts[k],
+                        product.amount_kg_per_square_meter.0,
+                        "amount",
+                    );
+                    super::assert_close_f32(
+                        rates_mmh[k],
+                        product.rate_millimeter_per_hour.0,
+                        "rate",
+                    );
+                }
+            }
+            rows.push(
+                json!({"parameter": parameter, "cell": cell, "interval": index,
+                "transform_mode": modes[index],
+                "amount_bits": format!("{:08x}", amounts[index].to_bits()),
+                "rate_si_bits": format!("{:08x}", rates_si[index].to_bits()),
+                "rate_mm_per_h_bits": format!("{:08x}", rates_mmh[index].to_bits()),
+                "admission": classified.admissions()[0],
+                "input_sha256": accumulated_inputs_sha256(classified.inputs())}),
+            );
+        }
+        let adapter = GpuAdapterEvidence::from_context(&ctx);
+        let class = serde_json::to_value(adapter.adapter_class).expect("class");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target/ci-gate/accumulation-gpu-216");
+        std::fs::create_dir_all(&dir).expect("report directory");
+        std::fs::write(
+            dir.join(format!(
+                "packing-admission-216-{}.json",
+                class.as_str().expect("class")
+            )),
+            serde_json::to_string_pretty(
+                &json!({"issue": 219, "validation_level": "isolated kernel",
+                "adapter": adapter, "shader_sha256": accumulated_shader_sha256(),
+                "decision_sha256": grib202::DECISION_SHA256, "rows": rows, "verdict": "passed"}),
+            )
+            .expect("serialize"),
+        )
+        .expect("report");
+    }
+
+    #[test]
+    fn test_accumulation_gpu_216_forged_or_inconsistent_modes_fail_closed() {
+        let ctx = context();
+        let input = |curr: f32, prev: f32, mode: u32| AccumulatedTransformInput {
+            curr_amount_kg_per_square_meter: curr,
+            prev_amount_kg_per_square_meter: prev,
+            duration_seconds: 10_800.0,
+            reset_applied: mode,
+        };
+        for (what, raw) in [
+            (
+                "forged admission",
+                input(0.5, 1.0, TRANSFORM_MODE_PACKING_ADMISSION),
+            ),
+            (
+                "admission without decrease",
+                input(1.0, 1.0, TRANSFORM_MODE_PACKING_ADMISSION),
+            ),
+            ("unknown mode", input(1.0, 0.5, 3)),
+            ("negative delta", input(0.5, 1.0, TRANSFORM_MODE_DELTA)),
+        ] {
+            assert!(
+                matches!(
+                    AccumulatedTransformInputs::from_inputs(&ctx, &[raw]),
+                    Err(GpuAccumulationError::InvalidTransformInput { .. })
+                ),
+                "{what}"
+            );
+        }
+        let (parameter, cell, index) = grib202::admitted_rows(&grib202::decision())[0];
+        let (observations, records) = series(parameter, cell);
+        // An admission classified for another cell cannot be re-addressed.
+        let misplaced = classify(parameter, cell, &observations, &records).expect("classified");
+        let error = ClassifiedTransformInputs::interval_major(&[misplaced.clone(), misplaced])
+            .expect_err("cell 1 admission at position 0");
+        assert!(
+            matches!(error, GpuAccumulationError::InvalidTransformInput { .. }),
+            "{error}"
+        );
+        // Strict (no-record) GPU path keeps NegativeDelta.
+        let strict = pollster::block_on(transform_accumulated_intervals_gpu(&ctx, &observations));
+        assert!(matches!(
+            strict,
+            Err(GpuAccumulationError::Validation(AccumulationError::NegativeDelta { index: i, .. })) if i == index
+        ));
+        // Incorrect bound application: one more f32 step below the admitted value.
+        let mut beyond = observations.clone();
+        beyond[index].accumulated_amount_kg_per_square_meter = f64::from(0.899_998_6_f32);
+        assert!(matches!(
+            classify(parameter, cell, &beyond, &records),
+            Err(GpuAccumulationError::Validation(
+                AccumulationError::PackingDecreaseRejected { .. }
+            ))
+        ));
+    }
+}

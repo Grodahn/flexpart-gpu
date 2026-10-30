@@ -98,6 +98,7 @@ fn snapshot_ordered(ordering: VerticalOrdering, nz: usize) -> Snapshot {
             vertical_staggering: VerticalStaggering::NotApplicable,
             time,
             values,
+            source_quantization: None,
         };
     Snapshot {
         schema: SchemaIdentity::default(),
@@ -161,6 +162,7 @@ fn snapshot_ordered(ordering: VerticalOrdering, nz: usize) -> Snapshot {
                 vertical_staggering: VerticalStaggering::LevelCenter,
                 time: instant(),
                 values: temperatures,
+                source_quantization: None,
             },
             Field {
                 id: FieldId::SpecificHumidity,
@@ -173,6 +175,7 @@ fn snapshot_ordered(ordering: VerticalOrdering, nz: usize) -> Snapshot {
                 vertical_staggering: VerticalStaggering::LevelCenter,
                 time: instant(),
                 values: humidities,
+                source_quantization: None,
             },
         ],
     }

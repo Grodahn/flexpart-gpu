@@ -15,6 +15,25 @@ shaders, physics kernels, or advection logic must add an entry here.
 ---
 
 #
+### 2026-10-30 - Admit #216 GRIB-quantized LSP/CP same-run decreases in #75/#90 (#219)
+**Impact**: numerics (accepted inputs widen exactly to the frozen #216 class; no tolerance change).
+**Files**: `src/meteorology/quantization.rs`, `src/meteorology/accumulation.rs`,
+`src/meteorology/accumulation/packing_decrease.rs`, `src/gpu/accumulation.rs`,
+`src/shaders/accumulated_interval.wgsl`, `src/gpu/meteorology.rs`,
+`src/gpu/meteorology/interval_rates.rs`, `src/gpu/precipitation_members.rs`.
+**Validation**: all 32 #216 controls through the production classifier (exact verdict and
+code); the three genuine rows admitted with the artifact's exact `B`; genuine #202 upload
+through `CanonicalGpuField::upload`, #90 and #207 in one encoder and one submission:
+18/18 series equal `max(deac_vals, 0)` and 234/234 members equal original `darain` (#71
+policy) on hardware and software WGSL adapters.
+
+Implements the #216 decision without widening it. A same-run LSP/CP decrease with complete
+GRIB1 `grid_simple`/OD provenance and `-d < B` becomes a `+0.0` interval amount and rate,
+exactly as original `darain` and the FLEXPART reader use it after clipping. The signed
+difference is kept as a typed diagnostic; the run total equals the final value plus the
+projected decreases. Every other decrease still fails closed; inputs without the record
+keep `NegativeDelta`. The #207 kernel, reset semantics and tolerances are unchanged.
+
 ### 2026-10-29 - Record genuine flagged gas-carrier transport-top rows (#213)
 **Impact**: none (original-reference evidence only; no production Rust/WGSL or tolerance change).
 **Files**: sibling original driver/observers, `fixtures/transport/top-boundary-v2/`, #203 matrix.

@@ -71,10 +71,14 @@ settling flag sets sticky `nstop`; other cases assign the f32 expression
 sampling and after correction, which is applied to the adjusted predictor.
 The preceding schematic trapezoidal formula is equivalent only when boundary
 actions do not intervene. Production #198 implements the ordinary placement and
-ordering. Requested settling remains rejected; the original scientific stop is not a
-fatal meteorology condition. The [#203 contract](../research/settling-stop-203.md)
-defines the run-owned flag, step-private sticky stop and termination handoff for a
-later implementation. See [evidence scope](../transport-top.md).
+ordering. Production #214 also implements the original backward flagged stop
+for validated zero-by-carrier runs. The run flag is derived from original f32
+release masses, never from velocity. Predictor/corrector stop bits are sticky
+within one call; the guard terminates stopped lanes before downstream physics
+and atomic commit retains corrected state and mass. Subsequent calls exclude
+inactive particles. See the [supported envelope and evidence](../transport-top.md#settling-stop-integration-214).
+The scientific stop remains separate from fatal meteorology status. General
+nonzero settling and dry deposition remain with #35/#37.
 
 The proof retains 24 boundary and 72 public-advance cases, exact raw/decoded
 observations and two distinct fresh-build provenance inventories. It introduces

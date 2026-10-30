@@ -156,10 +156,34 @@ fn test_transport_top_pinned_production_driver_matrix() {
     surface.temperature_2m_k.fill(280.0);
     surface.dewpoint_2m_k.fill(275.0);
     surface.mixing_height_m.fill(100.0);
+    let flagged_bytes = std::fs::read("fixtures/transport/top-boundary-v2/report.json").unwrap();
+    let flagged_oracle: serde_json::Value = serde_json::from_slice(&flagged_bytes).unwrap();
+    let lifecycle = mixed_lifecycle(&flagged_oracle, &grid, &wind, &surface);
+    let mut flagged_rows = Vec::new();
     let mut rows = Vec::new();
-    for raw in oracle["science"]["rows"]["ADVANCE"].as_array().unwrap() {
+    for (flagged, raw) in oracle["science"]["rows"]["ADVANCE"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| (false, r))
+        .chain(
+            flagged_oracle["science"]["rows"]["ADVANCE"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|r| (true, r)),
+        )
+    {
         let row = raw.as_array().unwrap();
         let id = row[0].as_u64().unwrap();
+        let case = flagged.then(|| {
+            flagged_oracle["science"]["cases"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| c["id"].as_u64() == Some(id))
+                .unwrap()
+        });
         let geometry = row[1].as_u64().unwrap() as usize;
         let direction = row[2].as_i64().unwrap();
         let epoch = row[3].as_i64().unwrap();
@@ -182,7 +206,7 @@ fn test_transport_top_pinned_production_driver_matrix() {
             z_max: height,
             mass_kg: 1.0,
             particle_count: 130,
-            species_masses_kg: None,
+            species_masses_kg: if flagged { None } else { Some(vec![0.5, 0.5]) },
             raw: BTreeMap::new(),
         }];
         let scale = crate::physics::VelocityToGridScale {
@@ -194,6 +218,7 @@ fn test_transport_top_pinned_production_driver_matrix() {
         let mut forward = (direction == 1).then(|| {
             pollster::block_on(ForwardTimeLoopDriver::new(
                 ForwardTimeLoopConfig {
+                    transport_settling: Some(gas_settling(if flagged { 1 } else { 2 })),
                     start_timestamp: start.clone(),
                     end_timestamp: end.clone(),
                     timestep_seconds: 600,
@@ -209,11 +234,22 @@ fn test_transport_top_pinned_production_driver_matrix() {
         let mut backward = (direction == -1).then(|| {
             pollster::block_on(BackwardTimeLoopDriver::new(
                 BackwardTimeLoopConfig {
+                    transport_settling: Some(gas_settling(if flagged { 1 } else { 2 })),
                     start_timestamp: start,
-                    end_timestamp: end,
+                    end_timestamp: timestamp(start_seconds - 1200),
                     timestep_seconds: 600,
                     velocity_to_grid_scale: scale,
+                    source_regions: vec![crate::simulation::BackwardSourceRegionConfig {
+                        name: "all-scientific-lanes".into(),
+                        lon_min: 0.0,
+                        lon_max: 2.0,
+                        lat_min: 0.0,
+                        lat_max: 2.0,
+                        z_min_m: 0.0,
+                        z_max_m: 20000.0,
+                    }],
                     receptors: vec![BackwardReceptorConfig {
+                        species_masses_kg: if flagged { None } else { Some(vec![0.5, 0.5]) },
                         name: "transport-top".into(),
                         lon: 0.25,
                         lat: 0.0,
@@ -285,7 +321,7 @@ fn test_transport_top_pinned_production_driver_matrix() {
             "target_identity_json":target_identity_json,"runtimes":runtimes,"controlled_shared_winds":controlled,"target":target,"device_target":device_target,
             "target_status":target_status,"initial_z":height,"nxmax_from_nxfield":2});
         let input_bytes = serde_json::to_vec(&input).unwrap();
-        let input_file = format!("input-{id}.json");
+        let input_file = format!("input-{}-{id}.json", if flagged { "v2" } else { "v1" });
         std::fs::write(root.join(&input_file), &input_bytes).unwrap();
         drop(prepared);
         let met = MetTimeBracket {
@@ -329,6 +365,14 @@ fn test_transport_top_pinned_production_driver_matrix() {
             rows.push(json!({"oracle_id":id,"settling_rejected":true,"error":error,"initial_bytes":bytemuck::cast_slice::<_,u8>(&before),"final_bytes":bytemuck::cast_slice::<_,u8>(&after),"adapter":adapter,"input_file":input_file,"input_sha256":format!("{:x}",Sha256::digest(&input_bytes))}));
             continue;
         }
+        let initial_particles = if let Some(d) = &mut forward {
+            d.test_prime_releases();
+            pollster::block_on(d.test_raw_particles())
+        } else {
+            let d = backward.as_mut().unwrap();
+            d.test_prime_releases();
+            pollster::block_on(d.test_raw_particles())
+        };
         let (published, status, metadata, values, queries, corrected) =
             if let Some(d) = &mut forward {
                 pollster::block_on(d.run_timestep(&met, &forcing)).unwrap();
@@ -354,6 +398,64 @@ fn test_transport_top_pinned_production_driver_matrix() {
                     pollster::block_on(d.test_corrected_advection()),
                 )
             };
+        let predictor_heights = if let Some(d) = &forward {
+            pollster::block_on(d.test_predictor_heights())
+        } else {
+            pollster::block_on(backward.as_ref().unwrap().test_predictor_heights())
+        };
+        let stops = if let Some(d) = &forward {
+            pollster::block_on(d.test_stop_words())
+        } else {
+            pollster::block_on(backward.as_ref().unwrap().test_stop_words())
+        };
+        let expected_stop = case.map_or(0, |c| {
+            u32::from(c["predictor_stop"].as_bool().unwrap())
+                | (u32::from(c["corrector_stop"].as_bool().unwrap()) << 1)
+        });
+        assert_eq!(&stops[..130], vec![expected_stop; 130]);
+        assert_eq!(stops[130], 0);
+        for lane in 0..130 {
+            assert_eq!(
+                (published[lane].flags & crate::particles::FLAG_ACTIVE) == 0,
+                expected_stop != 0
+            );
+            assert_eq!(published[lane].mass, corrected[lane].mass);
+            if expected_stop != 0 {
+                let mut expected = corrected[lane];
+                expected.flags &= !crate::particles::FLAG_ACTIVE;
+                assert_eq!(
+                    bytemuck::bytes_of(&expected),
+                    bytemuck::bytes_of(&published[lane])
+                );
+            }
+            if let Some(c) = case {
+                assert_eq!(
+                    queries[131 + lane].height_agl_m.to_bits(),
+                    (c["stages"]["ADVANCED_IN"]["z_m"].as_f64().unwrap() as f32).to_bits(),
+                    "v2 advanced row {id}"
+                );
+            }
+        }
+        let second_step = if flagged && direction == -1 && scenario == 4 {
+            let d = backward.as_mut().unwrap();
+            let report = pollster::block_on(d.run_timestep(&met, &forcing)).unwrap();
+            assert_eq!(
+                report.source_collections["all-scientific-lanes"].hit_count,
+                0
+            );
+            let second = pollster::block_on(d.test_raw_particles());
+            let second_stops = pollster::block_on(d.test_stop_words());
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&published),
+                bytemuck::cast_slice::<_, u8>(&second)
+            );
+            assert!(second_stops.iter().all(|s| *s == 0));
+            Some(
+                json!({"published_bytes":bytemuck::cast_slice::<_,u8>(&second),"stop_words":second_stops,"source_hits":report.source_collections["all-scientific-lanes"].hit_count}),
+            )
+        } else {
+            None
+        };
         for region in status[..792].chunks_exact(132) {
             assert_eq!(region[0], 0);
             assert!(region[1..131].iter().all(|s| *s == 2));
@@ -379,15 +481,27 @@ fn test_transport_top_pinned_production_driver_matrix() {
             bytemuck::bytes_of(&corrected[130]),
             bytemuck::bytes_of(&published[130])
         );
-        let device_file = format!("device-{id}.json");
-        let bytes = serde_json::to_vec(&json!({"queries":queries,"sampled_values":values,"status":status,"metadata":metadata,
+        let settling_provenance = if let Some(d) = &forward {
+            d.test_settling_provenance()
+        } else {
+            backward.as_ref().unwrap().test_settling_provenance()
+        };
+        let device_file = format!("device-{}-{id}.json", if flagged { "v2" } else { "v1" });
+        let bytes = serde_json::to_vec(&json!({"initial_bytes":bytemuck::cast_slice::<_,u8>(&initial_particles),"predictor_heights":&predictor_heights[..130],"settling_provenance_sha256":settling_provenance.0,"settling_provenance_json":settling_provenance.1,"stop_words":stops,"second_step":second_step,"queries":queries,"sampled_values":values,"status":status,"metadata":metadata,
             "corrected_bytes":bytemuck::cast_slice::<_,u8>(&corrected),"published_bytes":bytemuck::cast_slice::<_,u8>(&published)})).unwrap();
         std::fs::write(root.join(&device_file), &bytes).unwrap();
-        rows.push(json!({"oracle_id":id,"settling_rejected":false,"adapter":adapter,"device_file":device_file,"device_sha256":format!("{:x}",Sha256::digest(&bytes)),
+        let output_rows = if flagged {
+            &mut flagged_rows
+        } else {
+            &mut rows
+        };
+        output_rows.push(json!({"oracle_id":id,"settling_rejected":false,"adapter":adapter,"device_file":device_file,"device_sha256":format!("{:x}",Sha256::digest(&bytes)),
             "input_file":input_file,"input_sha256":format!("{:x}",Sha256::digest(&input_bytes)),"comparison":if scenario == 8 {"no_trajectory_policy_204"} else {"exact_f32_projection_of_original_z"}}));
     }
     let sources = [
         "src/gpu/advection_resident.rs",
+        "src/simulation/timeloop/settling.rs",
+        "src/simulation/timeloop/config.rs",
         "src/gpu/meteorology/transport_boundary.rs",
         "src/gpu/meteorology/transport_top_tests.rs",
         "src/simulation/timeloop/forward/timestep.rs",
@@ -438,7 +552,7 @@ fn test_transport_top_pinned_production_driver_matrix() {
     .into();
     let report = json!({"schema":"flexpart-gpu.transport-top.v1","execution":"wgsl_device","candidate_revision":shared_fixture::revision(),
         "candidate_executable_sha256":format!("{:x}",Sha256::digest(std::fs::read(std::env::current_exe().unwrap()).unwrap())),
-        "source_hashes":hashes,"shader_hashes":shaders,"oracle_fixture_sha256":format!("{:x}",Sha256::digest(&oracle_bytes)),"rows":rows,
+        "lifecycle":lifecycle,"flagged_rows":flagged_rows,"flagged_oracle_fixture_sha256":format!("{:x}",Sha256::digest(&flagged_bytes)),"source_hashes":hashes,"shader_hashes":shaders,"oracle_fixture_sha256":format!("{:x}",Sha256::digest(&oracle_bytes)),"rows":rows,
         "precision_scope":"f32 state; exact f32 projection is not f64 trajectory equivalence; f64-only predicate probes excluded",
         "scientific_verdict":"AWAITING_FRESH_PINNED_AUDIT"});
     std::fs::write(
@@ -447,4 +561,184 @@ fn test_transport_top_pinned_production_driver_matrix() {
     )
     .unwrap();
     eprintln!("TRANSPORT-TOP-198: both real drivers, 56 exact projections, 8 trajectory diagnostics (#204), 8 settling requests rejected (#203)");
+}
+
+/// Supplemental structural controls use genuine scenario-5 winds at multiple release heights.
+/// Scientific expected stages remain independently checked against #213 in the row matrix.
+fn mixed_lifecycle(
+    oracle: &serde_json::Value,
+    grid: &GridDomain,
+    wind: &crate::wind::WindField3D,
+    surface: &SurfaceFields,
+) -> Vec<serde_json::Value> {
+    let mut evidence = Vec::new();
+    for fault in [None, Some((2, 1))] {
+        let original = oracle["science"]["rows"]["ADVANCE"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row[1] == 0 && row[2] == -1 && row[3] == 0 && row[4] == 5)
+            .unwrap()
+            .as_array()
+            .unwrap();
+        let top = oracle["science"]["target_top_m_agl"].as_f64().unwrap();
+        let mut driver = pollster::block_on(BackwardTimeLoopDriver::new(
+            BackwardTimeLoopConfig {
+                transport_settling: Some(gas_settling(1)),
+                start_timestamp: timestamp(0),
+                end_timestamp: timestamp(-1200),
+                timestep_seconds: 600,
+                velocity_to_grid_scale: crate::physics::VelocityToGridScale {
+                    x_grid_per_meter: 1.0 / 111_200.0,
+                    y_grid_per_meter: 1.0 / 111_200.0,
+                    z_grid_per_meter: 1.0,
+                    ..crate::physics::VelocityToGridScale::IDENTITY
+                },
+                receptors: (0..130)
+                    .map(|i| BackwardReceptorConfig {
+                        species_masses_kg: None,
+                        name: format!("lane-{i}"),
+                        lon: 0.25,
+                        lat: 0.0,
+                        z_m: top + [-1000.0, -1.0, 0.0, 1.0][i % 4],
+                        particle_count: 1,
+                        mass_kg: 1.0,
+                    })
+                    .collect(),
+                source_regions: vec![crate::simulation::BackwardSourceRegionConfig {
+                    name: "all".into(),
+                    lon_min: 0.0,
+                    lon_max: 2.0,
+                    lat_min: 0.0,
+                    lat_max: 2.0,
+                    z_min_m: 0.0,
+                    z_max_m: 20000.0,
+                }],
+                ..Default::default()
+            },
+            grid.clone(),
+            133,
+        ))
+        .unwrap();
+        driver.test_prepare_mixed_lanes();
+        let initial = pollster::block_on(driver.test_raw_particles());
+        let snapshots = sources(0, -1);
+        let runtimes = snapshots
+            .each_ref()
+            .map(|s| runtime(s, "#214 mixed scenario-5 zero-omega"));
+        let mut slot = CanonicalMeteorologySlot::default();
+        let prepared = driver
+            .prepare_canonical_meteorology(
+                bracket_with_initial(
+                    driver.meteorology_context(),
+                    [&snapshots[1], &snapshots[0]],
+                    [&runtimes[1], &runtimes[0]],
+                    1,
+                ),
+                &mut slot,
+            )
+            .unwrap();
+        let owners = Arc::clone(prepared.resources());
+        let adapter = GpuAdapterEvidence::from_context(prepared.context());
+        let controls = controlled_shared_winds(prepared.context(), &owners, original);
+        drop(prepared);
+        let met = MetTimeBracket {
+            canonical: Some(&owners),
+            wind_t0: wind,
+            wind_t1: wind,
+            surface_t0: surface,
+            surface_t1: surface,
+            time_t0_seconds: START_SECONDS - 3600,
+            time_t1_seconds: START_SECONDS,
+        };
+        crate::gpu::advection_resident::TEST_QUERY_FAULT.with(|f| f.set(fault));
+        let forcing = ForwardStepForcing {
+            dry_deposition_velocity_m_s: vec![crate::simulation::ParticleForcingField::Uniform(
+                0.1,
+            )],
+            wet_scavenging_coefficient_s_inv: vec![
+                crate::simulation::ParticleForcingField::Uniform(0.001),
+            ],
+            wet_precipitating_fraction: crate::simulation::ParticleForcingField::Uniform(0.5),
+            decay_constant_s_inv: vec![0.001],
+            ..Default::default()
+        };
+        let result = pollster::block_on(driver.run_timestep(&met, &forcing));
+        assert_eq!(result.is_err(), fault.is_some());
+        let (published, status, metadata, values, queries) =
+            pollster::block_on(driver.test_advection_state());
+        let corrected = pollster::block_on(driver.test_corrected_advection());
+        let stops = pollster::block_on(driver.test_stop_words());
+        let mut second = None;
+        if fault.is_some() {
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&initial),
+                bytemuck::cast_slice::<_, u8>(&published)
+            );
+            assert!(status.iter().any(|s| *s == 1));
+            assert_eq!(stops[66] & 1, 1, "valid stopped peer in another workgroup");
+        } else {
+            let hits = result.unwrap().source_collections["all"].hit_count;
+            assert_eq!(hits, 33);
+            for i in 0..129 {
+                let expected = [0, 2, 3, 3][i % 4];
+                assert_eq!(stops[i], expected);
+                assert_eq!(published[i].flags & 1, u32::from(expected == 0));
+                if expected == 0 {
+                    assert!(published[i].mass[0] < initial[i].mass[0]);
+                } else {
+                    assert_eq!(initial[i].mass, published[i].mass);
+                }
+                if expected != 0 {
+                    let mut expected_particle = corrected[i];
+                    expected_particle.flags &= !1;
+                    assert_eq!(
+                        bytemuck::bytes_of(&expected_particle),
+                        bytemuck::bytes_of(&published[i])
+                    );
+                }
+            }
+            let next = pollster::block_on(driver.run_timestep(&met, &forcing)).unwrap();
+            let after = pollster::block_on(driver.test_raw_particles());
+            let next_stops = pollster::block_on(driver.test_stop_words());
+            for i in 0..133 {
+                if i >= 129 || stops[i] != 0 {
+                    assert_eq!(
+                        bytemuck::bytes_of(&published[i]),
+                        bytemuck::bytes_of(&after[i])
+                    );
+                    assert_eq!(next_stops[i], 0);
+                }
+            }
+            assert_eq!(next.source_collections["all"].hit_count, 33);
+            second = Some(
+                json!({"published_bytes":bytemuck::cast_slice::<_,u8>(&after),"stop_words":next_stops,"source_hits":33}),
+            );
+        }
+        let preflight = if fault.is_none() {
+            let before = pollster::block_on(driver.test_raw_particles());
+            let errors = driver.test_reject_compaction_then_missing_route(&met);
+            let after = pollster::block_on(driver.test_raw_particles());
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&before),
+                bytemuck::cast_slice::<_, u8>(&after)
+            );
+            Some(
+                json!({"errors":errors,"before":bytemuck::cast_slice::<_,u8>(&before),"after":bytemuck::cast_slice::<_,u8>(&after)}),
+            )
+        } else {
+            None
+        };
+        for i in 129..133 {
+            assert_eq!(
+                bytemuck::bytes_of(&initial[i]),
+                bytemuck::bytes_of(&published[i])
+            );
+            assert_eq!(stops[i], 0);
+        }
+        evidence.push(json!({"adapter":adapter,"fault":fault,"active_prefix":130,"capacity":133,"workgroups":3,
+            "downstream_forcing":{"dry_velocity_m_s":0.1,"wet_lambda_s_inv":0.001,"wet_fraction":0.5,"decay_s_inv":0.001},"preflight":preflight,"controls":controls,"initial_bytes":bytemuck::cast_slice::<_,u8>(&initial),"published_bytes":bytemuck::cast_slice::<_,u8>(&published),
+            "corrected_bytes":bytemuck::cast_slice::<_,u8>(&corrected),"stop_words":stops,"status":status,"metadata":metadata,"values":values,"queries":queries,"second_step":second}));
+    }
+    evidence
 }

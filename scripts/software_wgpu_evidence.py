@@ -59,7 +59,7 @@ SHARED_ADVECTION_STEP = '''name: Audit complete prepared-vector production drive
 '''
 
 
-TRANSPORT_TOP_STEP = 'name: Audit original transport-top action in production drivers (#198)\n        id: transport-top-198\n        run: |\n          set -euo pipefail\n          for mode in validation-0-compaction-0 validation-1-compaction-0 validation-0-compaction-1; do\n            python3 scripts/transport/check_transport_top.py --report "target/ci-gate/transport-top/$mode/report.json" --software\n            cargo run --quiet --example check_gpu_evidence -- "target/ci-gate/transport-top/$mode/fixture-comparison.json"\n          done\n          python3 scripts/transport/test_check_transport_top.py\n'
+TRANSPORT_TOP_STEP = 'name: Audit original transport-top action in production drivers (#198)\n        id: transport-top-198\n        run: |\n          set -euo pipefail\n          for mode in validation-0-compaction-0 validation-1-compaction-0 validation-0-compaction-1; do\n            python3 scripts/transport/check_transport_top.py --report "target/ci-gate/transport-top/$mode/report.json" --software\n            cargo run --quiet --example check_gpu_evidence -- "target/ci-gate/transport-top/$mode/fixture-comparison.json"\n          done\n          python3 scripts/transport/test_check_transport_top.py\n          cargo test --lib simulation::timeloop::settling::tests -- --test-threads=1 > target/ci-gate/transport-route.log 2>&1\n'
 
 
 TRANSPORT_TOP_TECHNICAL_STEP = '      - name: Compare production transport-top action with fresh pinned advance (#198)\n        working-directory: flexpart-gpu\n        env:\n          FLEXPART_GPU_VALIDATION: "0"\n          FLEXPART_GPU_COMPACTION: "0"\n        run: |\n          set -euo pipefail\n          python3 scripts/transport/run_top_boundary_oracle.py --checkout ../flexpart --output-dir target/ci-gate/top-production\n          cargo test --lib gpu::meteorology::advection_production_tests::transport_top_tests -- --nocapture --test-threads=1 > target/ci-gate/transport-top.log 2>&1\n          python3 scripts/transport/check_transport_top.py --report target/ci-gate/transport-top/validation-0-compaction-0/report.json --oracle-run target/ci-gate/top-production --software\n          cargo run --quiet --example check_gpu_evidence -- target/ci-gate/transport-top/validation-0-compaction-0/fresh-comparison.json\n          python3 scripts/transport/test_check_transport_top.py\n\n'
@@ -97,7 +97,7 @@ def contract():
     result['steps'].append({'name': 'Audit original transport-top action in production drivers (#198)',
                            'block': TRANSPORT_TOP_STEP, 'owners': ['gpu-transport-physics'],
                            'sha256': hashlib.sha256(coverage.normalized(TRANSPORT_TOP_STEP).encode()).hexdigest()})
-    result['artifacts']['gpu-transport-physics'].append('target/ci-gate/transport-top/**/*.json')
+    result['artifacts']['gpu-transport-physics'].extend(['target/ci-gate/transport-top/**/*.json','target/ci-gate/transport-route.log'])
     return result
 
 

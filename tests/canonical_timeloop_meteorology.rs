@@ -456,6 +456,7 @@ fn test_canonical_forward_backward_preparation_reuse_transition_and_resident_exe
             start_timestamp: "20240101000002".into(),
             end_timestamp: "20240101000001".into(),
             receptors: vec![BackwardReceptorConfig {
+                species_masses_kg: None,
                 name: "canonical-receptor".into(),
                 lon: 6.0,
                 lat: 50.0,

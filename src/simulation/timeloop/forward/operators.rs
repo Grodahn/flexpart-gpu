@@ -93,6 +93,9 @@ impl ForwardTimeLoopDriver {
                     &self.gpu_context,
                     &self.particle_buffers,
                     &self.staged_particles,
+                    self.transport_settling
+                        .as_ref()
+                        .expect("production route preflight"),
                     canonical.fields(),
                     canonical.bracket().horizontal_grid(),
                     [

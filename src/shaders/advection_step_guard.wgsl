@@ -7,10 +7,11 @@ struct Particle {
 };
 struct Params { capacity: u32, active_count: u32, nx: u32, ny: u32,
     dt: f32, x_scale: f32, y_scale: f32, target_levels: u32,
-    top_margin_m: f32, pad0: u32, pad1: u32, pad2: u32 };
+    top_margin_m: f32, stop_route: u32, pad1: u32, pad2: u32 };
 @group(0) @binding(0) var<storage, read_write> staged: array<Particle>;
 @group(0) @binding(1) var<storage, read> status: array<u32>;
-@group(0) @binding(2) var<uniform> params: Params;
+@group(0) @binding(2) var<storage, read> stops: array<u32>;
+@group(0) @binding(3) var<uniform> params: Params;
 fn failed() -> bool {
     for (var stage = 0u; stage < 6u; stage++) {
         if (status[stage * (params.capacity + 1u)] != 0u) { return true; }
@@ -22,5 +23,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     let lane = gid.y * (nwg.x * 64u) + gid.x;
     if (lane >= params.capacity) { return; }
     // Inactive private lanes cannot feed downstream particle physics on fatal status.
-    if (failed() || status[6u * (params.capacity + 1u)] != 0u) { staged[lane].flags = 0u; }
+    if (failed() || status[6u * (params.capacity + 1u)] != 0u) { staged[lane].flags = 0u; return; }
+    // timemanager_mod.f90:534-541: scientific termination preserves mass and corrected state.
+    if (lane < params.active_count && stops[lane] != 0u) { staged[lane].flags &= ~1u; }
 }

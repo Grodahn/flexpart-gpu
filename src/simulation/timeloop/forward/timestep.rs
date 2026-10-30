@@ -72,11 +72,24 @@ impl ForwardTimeLoopDriver {
                 .into(),
             );
         }
-        // No driver path implements settling; a legacy diagnostic must not silently drop it.
+        // A per-step override cannot replace the run-owned carrier route or enable a velocity producer.
         if forcing.settling_enabled {
             return Err(crate::gpu::meteorology::MeteorologyCompositionError::Unsupported(
                 "transport settling requires validated settling and sticky particle-stop state (#203; physics #35/#37)",
             ).into());
+        }
+        if !legacy_diagnostic {
+            let route = self.transport_settling.as_ref().ok_or(
+                crate::gpu::meteorology::MeteorologyCompositionError::Missing(
+                    "run-owned transport settling/carrier route",
+                ),
+            )?;
+            route.stop_route(
+                &self.gpu_context,
+                crate::simulation::timeloop::time::timestep_seconds_f32(
+                    self.config.timestep_seconds,
+                )?,
+            )?;
         }
         if let Some(canonical) = met.canonical {
             canonical.validate_production(&self.gpu_context)?;

@@ -63,6 +63,7 @@ pub struct BackwardTimeLoopDriver {
     philox_counter: PhiloxCounter,
     release_grid: GridDomain,
     release_manager: ReleaseManager,
+    transport_settling: Option<super::settling::TransportSettlingRoute>,
     particle_store: ParticleStore,
     gpu_context: GpuContext,
     particle_buffers: ParticleBuffers,
@@ -127,6 +128,97 @@ impl BackwardTimeLoopDriver {
             .download_particles(&self.gpu_context)
             .await
             .expect("test particle snapshot")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_prepare_mixed_lanes(&mut self) {
+        self.release_manager
+            .inject_and_upload_for_time(
+                &self.config.start_timestamp,
+                &mut self.particle_store,
+                &self.particle_buffers,
+                &self.gpu_context,
+            )
+            .expect("test release inventory");
+        self.particle_store.as_mut_slice()[129].flags = 0x10;
+        for p in self.particle_store.as_mut_slice().iter_mut().skip(130) {
+            p.flags = 0x20;
+            p.time = -123;
+            p.vel_u = 42.0;
+        }
+        self.particle_buffers
+            .upload_store(&self.gpu_context, &self.particle_store)
+            .expect("sentinel upload");
+        self.particle_buffers.set_dispatch_count(130);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_reject_compaction_then_missing_route(
+        &mut self,
+        met: &MetTimeBracket<'_>,
+    ) -> Vec<String> {
+        self.config.compact_particles = true;
+        let compaction = pollster::block_on(self.run_timestep(met, &ForwardStepForcing::default()))
+            .expect_err("backward compaction rejected")
+            .to_string();
+        assert!(compaction.contains("backward compaction"));
+        self.config.compact_particles = false;
+        self.transport_settling = None;
+        let missing = pollster::block_on(self.run_timestep(met, &ForwardStepForcing::default()))
+            .expect_err("missing run route rejected")
+            .to_string();
+        assert!(missing.contains("run-owned transport settling/carrier route"));
+        vec![compaction, missing]
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_prime_releases(&mut self) {
+        self.release_manager
+            .inject_and_upload_for_time(
+                &self.config.start_timestamp,
+                &mut self.particle_store,
+                &self.particle_buffers,
+                &self.gpu_context,
+            )
+            .expect("test initial source state");
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_predictor_heights(&self) -> Vec<f32> {
+        let step = self.latest_advection.as_ref().expect("encoded step");
+        crate::gpu::download_buffer_typed(
+            &self.gpu_context,
+            &step.predictor_heights,
+            self.particle_buffers.capacity(),
+            "test predictor heights",
+        )
+        .await
+        .expect("predictor readback")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_settling_provenance(&self) -> (&str, &str) {
+        let step = self.latest_advection.as_ref().expect("encoded step");
+        (
+            &step.settling_provenance_sha256,
+            &step.settling_provenance_json,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_stop_words(&self) -> Vec<u32> {
+        let step = self
+            .latest_advection
+            .as_ref()
+            .expect("production advection");
+        crate::gpu::download_buffer_typed(
+            &self.gpu_context,
+            &step.stop_words,
+            self.particle_buffers.capacity(),
+            "test scientific stop evidence",
+        )
+        .await
+        .expect("stop readback")
     }
 
     #[cfg(test)]
@@ -229,6 +321,18 @@ impl BackwardTimeLoopDriver {
         )?;
         let particle_store = ParticleStore::with_capacity(particle_capacity);
         let gpu_context = GpuContext::new().await?;
+        let transport_settling = config
+            .transport_settling
+            .as_ref()
+            .map(|options| {
+                super::settling::TransportSettlingRoute::new(
+                    &gpu_context,
+                    options,
+                    &build_receptor_release_configs(&config.receptors, &config.start_timestamp),
+                    super::config::TimeDirection::Backward,
+                )
+            })
+            .transpose()?;
         let particle_buffers = ParticleBuffers::from_store(&gpu_context, &particle_store);
         let staged_particles = ParticleBuffers::from_store(&gpu_context, &particle_store);
         let resident_advection_kernels = ResidentAdvectionKernels::new(&gpu_context)?;
@@ -268,6 +372,7 @@ impl BackwardTimeLoopDriver {
             philox_counter: initial_philox_counter,
             release_grid,
             release_manager,
+            transport_settling,
             particle_store,
             gpu_context,
             particle_buffers,
@@ -370,11 +475,32 @@ impl BackwardTimeLoopDriver {
                 .into(),
             );
         }
-        // No driver path implements settling; a legacy diagnostic must not silently drop it.
+        // A per-step override cannot replace the run-owned carrier route or enable a velocity producer.
         if forcing.settling_enabled {
             return Err(crate::gpu::meteorology::MeteorologyCompositionError::Unsupported(
                 "transport settling requires validated settling and sticky particle-stop state (#203; physics #35/#37)",
             ).into());
+        }
+        if !legacy_diagnostic {
+            if self.config.compact_particles {
+                return Err(
+                    crate::gpu::meteorology::MeteorologyCompositionError::Unsupported(
+                        "backward compaction (#214)",
+                    )
+                    .into(),
+                );
+            }
+            let route = self.transport_settling.as_ref().ok_or(
+                crate::gpu::meteorology::MeteorologyCompositionError::Missing(
+                    "run-owned transport settling/carrier route",
+                ),
+            )?;
+            route.stop_route(
+                &self.gpu_context,
+                -(crate::simulation::timeloop::time::timestep_seconds_f32(
+                    self.config.timestep_seconds,
+                )?),
+            )?;
         }
         if let Some(canonical) = met.canonical {
             canonical.validate_production(&self.gpu_context)?;
@@ -536,6 +662,9 @@ impl BackwardTimeLoopDriver {
                     &self.gpu_context,
                     &self.particle_buffers,
                     &self.staged_particles,
+                    self.transport_settling
+                        .as_ref()
+                        .expect("production route preflight"),
                     canonical.fields(),
                     canonical.bracket().horizontal_grid(),
                     [
@@ -804,7 +933,7 @@ fn build_receptor_release_configs(
             z_max: receptor.z_m,
             mass_kg: receptor.mass_kg,
             particle_count: receptor.particle_count,
-            species_masses_kg: None,
+            species_masses_kg: receptor.species_masses_kg.clone(),
             raw: BTreeMap::new(),
         })
         .collect()

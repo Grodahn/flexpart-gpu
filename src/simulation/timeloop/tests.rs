@@ -32,6 +32,7 @@ fn backward_config_rejects_inverted_range() {
         start_timestamp: "20240101000000".to_string(),
         end_timestamp: "20240101000001".to_string(),
         receptors: vec![BackwardReceptorConfig {
+            species_masses_kg: None,
             name: "r1".to_string(),
             lon: 0.0,
             lat: 0.0,

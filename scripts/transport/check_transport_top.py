@@ -15,6 +15,7 @@ from verify_top_boundary_oracle import require
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / 'fixtures/transport/top-boundary-v1/report.json'
 SOURCE_FILES = {
+    'src/simulation/timeloop/settling.rs', 'src/simulation/timeloop/config.rs',
     'src/gpu/advection_resident.rs', 'src/gpu/meteorology/transport_boundary.rs',
     'src/gpu/meteorology/transport_top_tests.rs', 'src/simulation/timeloop/forward/timestep.rs',
     'src/simulation/timeloop/forward/operators.rs', 'src/simulation/timeloop/backward.rs',
@@ -198,6 +199,8 @@ def check(path, software=False, hardware=False, oracle_run=None):
         verdicts.append({'oracle_id':ref[0], 'verdict':'NO_TRAJECTORY_POLICY_204' if scenario == 8 else 'EXACT_F32_PROJECTION', 'device_z_f32':z, 'exact_projection_equal':z == f32(final_z), 'original_z_f64':final_z,
                          'original_z_f32':f32(final_z), 'ordinary_nstop':False})
     require(len(placements) == 5200 and all(a == adapters[0] for a in adapters), 'placement/adapter coverage')
+    flagged = check_flagged(path, report, software, hardware)
+    lifecycle = check_lifecycle(report, software, hardware)
     p = provenance or oracle['provenance']
     gpu_evidence = {
         'schema':{'id':'flexpart-gpu.gpu-execution-evidence','version':1},
@@ -213,9 +216,17 @@ def check(path, software=False, hardware=False, oracle_run=None):
                       'oracle_value_count':5200,'candidate_value_count':5200,'compared_value_count':5200,
                       'max_absolute_error':0.0,'max_relative_error':0.0,'first_failure':None},
     }
-    return {'state':'PASS','validation_level':'real_driver_advection_stage', 'candidate_revision':revision,
+    flagged_evidence=json.loads(json.dumps(gpu_evidence))
+    flagged_p=json.loads((ROOT/'fixtures/transport/top-boundary-v2/report.json').read_text())['provenance']
+    flagged_evidence['case_id']='ADV-GPU-TOP-214-ORIGINAL-STAGE-FATE'
+    flagged_evidence['candidate']['implementation_id']='real_forward_backward_resident_zero_by_carrier_stage_fate'
+    flagged_evidence['candidate']['input_sha256']=digest(json.dumps([r['input_sha256'] for r in report['flagged_rows']]).encode())
+    flagged_evidence['oracle'].update(implementation_id='FLEXPART-11.1::advance flagged zero-velocity stage fate only',
+        executable_sha256=flagged_p['artifacts_sha256']['build/w-production-oracle'],output_sha256=flagged_p['artifacts_sha256']['output.txt'])
+    flagged_evidence['comparison'].update(oracle_value_count=8320,candidate_value_count=8320,compared_value_count=8320)
+    return {'state':'PASS','flagged_gpu_evidence':flagged_evidence,'validation_level' :'real_driver_advection_stage', 'candidate_revision':revision,
             'reference_revision':oracle['provenance']['pinned_commit'], 'fresh_oracle_provenance':provenance,
-            'ordinary_advance_rows':64,'exact_projection_rows':56,'trajectory_diagnostic_rows':8,'rejected_settling_rows':8,'f64_only_push_probes':'EXCLUDED_UNREPRESENTABLE',
+            'flagged_advance_rows':len(flagged),'flagged_verdicts':flagged,'lifecycle':lifecycle,'ordinary_advance_rows':64,'exact_projection_rows':56,'trajectory_diagnostic_rows':8,'rejected_settling_rows':8,'f64_only_push_probes':'EXCLUDED_UNREPRESENTABLE',
             'comparison':'boundary/action and exact f32 projection for scenarios 1-7; scenario 8 has no trajectory verdict (#204)',
             'scientific_verdict':'BOUNDARY_ACTION_VERIFIED_TRAJECTORY_PARITY_NOT_ESTABLISHED',
             'gpu_evidence':gpu_evidence,'verdicts':verdicts, 'candidate_report_sha256':digest(path.read_bytes())}
@@ -225,14 +236,142 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--report',type=Path,required=True)
     parser.add_argument('--oracle-run',type=Path)
+    parser.add_argument('--hardware-report',type=Path,help='require both this software report and genuine hardware production evidence')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--software',action='store_true')
     group.add_argument('--hardware',action='store_true')
     args = parser.parse_args()
     result = check(args.report,args.software,args.hardware,args.oracle_run)
+    if args.hardware_report is not None:
+        check(args.report,software=True,oracle_run=args.oracle_run)
+        hardware=check(args.hardware_report,hardware=True,oracle_run=args.oracle_run)
+        result['required_software_and_hardware']='PASS'
+        result['hardware_report_sha256']=hardware['candidate_report_sha256']
     output = args.report.with_name('fresh-comparison.json' if args.oracle_run else 'fixture-comparison.json')
     output.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
-    print(json.dumps({k:v for k,v in result.items() if k not in ('fresh_oracle_provenance','verdicts','gpu_evidence')}))
+    print(json.dumps({k:v for k,v in result.items() if k not in ('fresh_oracle_provenance','verdicts','gpu_evidence','flagged_gpu_evidence','flagged_verdicts')}))
+
+
+
+
+
+def adapter_class(adapter, software, hardware):
+    expected = 'software_wgsl' if adapter['device_type'] == 'cpu' else 'hardware_gpu'
+    require(adapter['name'] and adapter['backend'] and adapter['driver_info'] is not None, 'flagged adapter provenance')
+    require(adapter['adapter_class'] == expected, 'flagged adapter classification')
+    require(not software or expected == 'software_wgsl', 'flagged software execution required')
+    require(not hardware or expected == 'hardware_gpu', 'flagged hardware execution required')
+
+
+def particle_field(data, lane, offset, fmt):
+    return struct.unpack_from('<'+fmt, data, lane*96+offset)[0]
+
+
+def check_flagged(path, report, software, hardware):
+    """Audit genuine #213 rows without adding a trajectory comparison tolerance."""
+    from verify_flagged_top_boundary_oracle import audit_fixture
+    audit_fixture()
+    fixture = ROOT / 'fixtures/transport/top-boundary-v2/report.json'
+    require(report['flagged_oracle_fixture_sha256'] == digest(fixture.read_bytes()), 'flagged oracle hash')
+    original = {c['id']:c for c in json.loads(fixture.read_text())['science']['cases']}
+    rows=report['flagged_rows']
+    require(len(rows)==64 and {r['oracle_id'] for r in rows}==set(original), 'missing/duplicate genuine flagged rows')
+    verdicts=[]
+    for row in rows:
+        ref=original[row['oracle_id']]
+        adapter_class(row['adapter'],software,hardware)
+        require(not row['settling_rejected'], 'skipped flagged production case')
+        inputs=artifact(path.parent,row,'input')
+        source_inputs(inputs,ref['geometry'],ref['direction'])
+        target=inputs['target']
+        require(inputs['device_target']==target['height_m_agl'] and inputs['device_target'][-1]==9521.84375 and inputs['target_status']==[2], 'flagged device target')
+        require(digest(struct.pack('<4f',*inputs['device_target']))==target['height_sha256'], 'flagged target hash')
+        require(digest(inputs['target_identity_json'].encode())==target['identity_sha256'], 'flagged target identity')
+        device=artifact(path.parent,row,'device')
+        require(digest(device['settling_provenance_json'].encode())==device['settling_provenance_sha256'], 'settling route provenance hash')
+        releases,carriers,mquasilag,domain_fill,restart,backward=json.loads(device['settling_provenance_json'])
+        require(len(carriers)==len(releases)==1 and carriers[0]['particle_density_kg_m3']==-1 and not mquasilag and not domain_fill and not restart and backward==(ref['direction']==-1), 'flagged carrier/run envelope')
+        require(releases[0]['mass_kg']==1 and releases[0]['species_masses_kg'] is None and releases[0]['particle_count']==130 and releases[0]['z_min']==releases[0]['z_max']==ref['initial_z_m'], 'flagged release inventory')
+        require(device['status']==([0]+[2]*130+[0])*6+[0], 'flagged fatal or incomplete status')
+        require(len(device['queries'])==262 and len(device['sampled_values'])==786 and len(device['metadata'])==6, 'flagged stage shape')
+        require(all(math.isfinite(v) for v in device['sampled_values']), 'flagged nonfinite velocity')
+        bits=int(ref['predictor_stop']) | (int(ref['corrector_stop'])<<1)
+        require(device['stop_words']==[bits]*130+[0], 'incorrect original stage stop bits')
+        initial=bytes(device['initial_bytes']); corrected=bytes(device['corrected_bytes']); published=bytes(device['published_bytes'])
+        require(len(initial)==len(corrected)==len(published)==131*96, 'flagged particle shape')
+        require(initial[130*96:]==corrected[130*96:]==published[130*96:], 'flagged inactive tail modified')
+        for stage in (0,1):
+            for component, field in enumerate(('wind_u','wind_v','vertical_velocity')):
+                metadata=device['metadata'][stage*3+component]
+                require(metadata['field_id']==field and metadata['time']['instantaneous']['epoch_seconds']==START+(ref['epoch_1200_s']*1200+stage*600)*ref['direction'], 'flagged signed time')
+                require(metadata['shared_height']['target_identity_sha256']==target['identity_sha256'], 'flagged mixed target')
+        ordered=[0,1] if ref['direction']==1 else [1,0]
+        for control,index in zip(inputs['controlled_shared_winds'],ordered):
+            uv=control['prepared_w']['prepared_uv']
+            require(uv['target']==target and uv['source']['snapshot_sha256']==digest(inputs['snapshot_json'][index].encode()), 'flagged prepared source target')
+            fraction=f32(f32(index*3600-ref['epoch_1200_s']*1200)/600)
+            expected_u=f32(f32(ref['direction']*0.5)/f32(600*f32(1/111200)))
+            expected_w=[f32(ref['direction']*f32(f32(ref['old_w_unsigned_m_s']+f32(f32(ref['end_w_unsigned_m_s']-ref['old_w_unsigned_m_s'])*fraction))+f32(ref['x_slope_unsigned_m_s']*(i%2)))) for i in range(16)]
+            require(list(map(f32,control['u']))==[expected_u]*16 and control['v']==[0]*16 and list(map(f32,control['w']))==expected_w, 'flagged original shared forcing')
+        for lane in range(130):
+            q0=device['queries'][lane]; q1=device['queries'][131+lane]
+            require(q0['active']==q1['active']==1 and q0['height_agl_m']==f32(ref['initial_z_m']), 'flagged current query')
+            require(q1['height_agl_m']==f32(ref['stages']['ADVANCED_IN']['z_m']), 'retained predictor query height')
+            for stage,query in [(0,q0),(1,q1)]:
+                expected_w=ref['direction']*((ref['old_w_unsigned_m_s'] if stage==0 else ref['end_w_unsigned_m_s'])+ref['x_slope_unsigned_m_s']*query['fraction_x'])
+                require(velocity(device['sampled_values'][stage*393+lane],expected_u) and velocity(device['sampled_values'][stage*393+131+lane],0) and velocity(device['sampled_values'][stage*393+262+lane],expected_w), 'flagged sampled original wind')
+            if ref['scenario'] != 8:
+                require(device['predictor_heights'][lane]==f32(ref['stages']['PREDICTOR_RAW']['z_m']), 'flagged raw predictor height')
+                require(particle_field(corrected,lane,8,'f')==f32(ref['returned_z_m']), 'flagged exact corrected height')
+            require(initial[lane*96+24:lane*96+40]==corrected[lane*96+24:lane*96+40]==published[lane*96+24:lane*96+40], 'stop changed mass')
+            # Only movement and mean-velocity words belong to advection.
+            for offset in (52,56,60,64,68,72,76,80,84,88,92):
+                require(initial[lane*96+offset:lane*96+offset+4]==corrected[lane*96+offset:lane*96+offset+4], 'unrelated particle word changed')
+            require(bool(particle_field(published,lane,20,'I')&1) == (bits==0), 'scientific termination flag')
+            if bits:
+                expected=bytearray(corrected[lane*96:(lane+1)*96]); struct.pack_into('<I',expected,20,particle_field(corrected,lane,20,'I')&~1)
+                require(bytes(expected)==published[lane*96:(lane+1)*96], 'stopped lane received downstream physics')
+        if ref['direction']==-1 and ref['scenario']==4:
+            second=device['second_step']
+            require(second is not None and bytes(second['published_bytes'])==published and second['stop_words']==[0]*131 and second['source_hits']==0, 'incomplete two-step termination')
+        verdicts.append({'oracle_id':ref['id'],'boundary_fate':'PASS','stop_bits':bits,
+            'trajectory':'NO_TRAJECTORY_POLICY_204' if ref['scenario']==8 else 'EXACT_F32_PROJECTION'})
+    return verdicts
+
+
+def check_lifecycle(report, software, hardware):
+    rows=report['lifecycle']
+    require(len(rows)==2 and [r['fault'] for r in rows]==[None,[2,1]], 'missing mixed success/fatal production cases')
+    for row in rows:
+        adapter_class(row['adapter'],software,hardware)
+        require(row['active_prefix']==130 and row['capacity']==133 and row['workgroups']==3, 'mixed workgroup coverage')
+        require(row['downstream_forcing']=={'dry_velocity_m_s':0.1,'wet_lambda_s_inv':0.001,'wet_fraction':0.5,'decay_s_inv':0.001}, 'downstream exclusion forcing missing')
+        initial=bytes(row['initial_bytes']); corrected=bytes(row['corrected_bytes']); published=bytes(row['published_bytes'])
+        require(len(initial)==len(corrected)==len(published)==133*96, 'mixed particle shape')
+        stops=row['stop_words']; require(len(stops)==133 and stops[129:]==[0]*4, 'fabricated inactive/tail stops')
+        require(initial[129*96:]==published[129*96:], 'mixed inactive/tail bytes modified')
+        if row['fault']:
+            require(initial==published and any(row['status'][i*134] for i in range(6)), 'partial fatal publication')
+            require(stops[66]&1 and row['second_step'] is None, 'missing stopped fatal peer')
+        else:
+            require(row['status']==([0]+[2]*129+[0]*4)*6+[0], 'mixed success status')
+            require(stops[:129]==[[0,2,3,3][i%4] for i in range(129)], 'mixed per-lane fate')
+            negative=row['preflight']; require(negative['before']==negative['after'] and len(negative['errors'])==2 and 'backward compaction' in negative['errors'][0] and 'run-owned transport settling/carrier route' in negative['errors'][1], 'preflight rejection atomicity')
+            second=row['second_step']; require(second is not None and second['source_hits']==33 and len(second['stop_words'])==133, 'missing two-step mixed attribution')
+            after=bytes(second['published_bytes']); require(len(after)==len(initial), 'second-step shape')
+            for lane in range(133):
+                if lane>=129 or stops[lane]:
+                    require(published[lane*96:(lane+1)*96]==after[lane*96:(lane+1)*96] and second['stop_words'][lane]==0, 'stopped lane changed next timestep')
+                if lane<129:
+                    if stops[lane]:
+                        require(initial[lane*96+24:lane*96+40]==published[lane*96+24:lane*96+40], 'mixed stopped mass loss')
+                    else:
+                        require(0<particle_field(published,lane,24,'f')<particle_field(initial,lane,24,'f'), 'active downstream physics not executed')
+                    require(bool(particle_field(published,lane,20,'I')&1)==(stops[lane]==0), 'mixed active flag')
+                    if stops[lane]:
+                        expected=bytearray(corrected[lane*96:(lane+1)*96]);struct.pack_into('<I',expected,20,particle_field(corrected,lane,20,'I')&~1)
+                        require(bytes(expected)==published[lane*96:(lane+1)*96], 'mixed stopped physics mutation')
+    return {'success':'PASS','fatal_atomicity':'PASS','two_step':'PASS','inactive_tail':'PASS'}
 
 
 if __name__ == '__main__':

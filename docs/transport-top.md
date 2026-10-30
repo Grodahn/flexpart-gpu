@@ -44,13 +44,62 @@ this does not establish release-file acceptance or operational ingestion.
 Restart/fallback initialization, nested/global/polar grids, ETA/ASL, native or
 incomplete W, mixed source/time/target/context and alternative precision/adaptive
 PBL routes remain unsupported. Existing constructors reject these routes.
-Requested settling (`ForwardStepForcing::settling_enabled`) rejects before
-release/encoding in both production drivers and their legacy diagnostic paths.
-There is no validated production settling flag/velocity or sticky `nstop` owner.
-The [#203 contract](research/settling-stop-203.md) defines that handoff and its
-[acceptance matrix](research/settling-stop-203-matrix.json) for a later implementation; #35/#37 retain general physics. Original backward settling is
-a scientific particle stop, never a fatal meteorology batch; this PR does not
-fabricate that state or claim to execute the stopped route.
+Canonical production now requires a run-owned `TransportSettlingConfig` with an
+explicit #10 species table. The driver derives the original flag once, including
+backward receptor mass-slot bindings. A missing table fails before release;
+the per-step `settling_enabled` request remains rejection-only for compatibility.
+The supported enabled route is `ZeroByCarrier`: every bound carrier has explicit
+finite density <= 0 and valid gas parameters. No settling velocity is calculated.
+Positive density, mixed gas/aerosol tables and `Produced` velocity remain unsupported
+pending #35/#37.
+
+## Settling stop integration (#214)
+
+`TransportSettlingRoute` retains direction, GPU-context identity and SHA-256 of
+the complete release inventory, species table and original options. `lsettling`
+starts true (`com_mod.f90:175`). With MQUASILAG=0, any release point with more than
+one original f32 `xmass > 1.e-9` disables it for the entire run
+(`readoptions_mod.f90:2574-2585`, `point_mod.f90:20`). Multiple release points
+carrying separate single species keep it enabled. The exact MQUASILAG derivation
+is tested (nspec>1 disables); execution with MQUASILAG remains rejected. Domain
+fill, restart and backward compaction are also rejected. Optional receptor
+`species_masses_kg` uses the run table's positional slots, like forward releases.
+All carriers are checked, so no live source requires an unvalidated producer.
+
+The private uniform enables the stop action only for enabled backward transport.
+The predictor ORs bit 0 on inclusive `predicted_z >= top`, retains its raw height
+and uses it for advanced sampling. The corrector consumes that stored height and
+predictor bit, continues the original half-difference correction, then ORs bit 1
+on inclusive corrected encounter. It never retests the predictor predicate on
+the stopped route. Forward and genuinely disabled routes retain ordinary placement.
+No velocity term, sampler change, target construction or tolerance is added.
+
+`ResidentAdvectionStep` owns one GPU stop word per particle lane. Encoding clears
+it, subsequent stage writes only OR bits, and the owner survives through guard,
+commit and the deferred checkpoint. This is scientific fate, separate from all
+fatal status regions. On success the guard clears only `FLAG_ACTIVE` on stopped
+lanes before downstream physics. The raw-word commit publishes their corrected
+state and unchanged mass atomically. The next timestep sees inactive particles
+and zero new stop words. Backward source collections skip them. A fatal query
+still prevents every published byte, including otherwise valid stopped peers.
+There is no deposition reservoir, particle ABI or query/commit layout change.
+
+The production matrix consumes all 64 immutable #213 v2 rows, both directions,
+geometries and epochs, alongside v1 disabled controls. Scenarios 1-7 compare exact
+f32 projections and stage fate; scenario 8 remains a trajectory diagnostic under
+#204. The supplemental 130-lane mixed batch uses three workgroups, an inactive
+sentinel and three capacity-tail lanes. Two actual backward calls prove permanent
+inactivation without manually toggling a stopped particle. An advanced W query
+fault beside a stopped lane proves fatal publication atomicity.
+
+The extended `check_transport_top.py` requires v2 fixture identity, route/source/
+shader/input hashes, actual adapter classification, exact stop bits, unchanged
+mass/particle words, mixed and two-step evidence. Mutation tests reject missing
+rows, altered bits, partial publication and incomplete lifecycle records. Existing
+software-WGSL CI runs this extended matrix and auditor in every transport mode.
+Hardware evidence must be produced with a recorded physical adapter separately.
+The frozen #180/#203/#213 findings and fixture bytes remain unchanged; their
+historical status tables describe the state before this integration.
 
 ## Evidence and reproduction
 
@@ -107,3 +156,16 @@ are not passing evidence. #198 must remain open if its required accepted-route
 evidence is incomplete; this implementation claims no complete FLEXPART parity.
 
 Provenance marker: **GPT6.1 Sol**.
+
+
+For the complete #214 device acceptance, audit both adapter classes together:
+
+```text
+python scripts/transport/check_transport_top.py --report <software-report> --software --hardware-report <hardware-report> --oracle-run <fresh-v1-run>
+cargo run --example check_gpu_evidence -- <software-fixture-comparison.json>
+```
+
+Every individual report also requires all flagged and lifecycle cases. A software
+report alone supplies software evidence; the combined command fails if the
+required hardware report is absent, stale or incorrectly classified. No physical
+GPU performance claim is made from these functional executions.

@@ -30,7 +30,9 @@ mod forward;
 mod meteorology;
 mod options;
 mod reports;
+pub(crate) mod settling;
 mod time;
+pub use settling::TransportSettlingConfig;
 
 pub use backward::BackwardTimeLoopDriver;
 pub use config::{

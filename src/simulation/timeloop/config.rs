@@ -11,6 +11,8 @@ use crate::simulation::timeloop::time::{parse_timestamp_seconds, timestep_second
 /// Time-loop configuration for forward integration.
 #[derive(Debug, Clone)]
 pub struct ForwardTimeLoopConfig {
+    /// Run-owned species/carrier binding required by canonical production transport.
+    pub transport_settling: Option<super::settling::TransportSettlingConfig>,
     /// Inclusive simulation start timestamp (`YYYYMMDDHHMMSS`).
     pub start_timestamp: String,
     /// Inclusive simulation end timestamp (`YYYYMMDDHHMMSS`).
@@ -57,6 +59,7 @@ pub struct ForwardSpatialSortConfig {
 impl Default for ForwardTimeLoopConfig {
     fn default() -> Self {
         Self {
+            transport_settling: None,
             start_timestamp: "20240101000000".to_string(),
             end_timestamp: "20240101000000".to_string(),
             timestep_seconds: 1,
@@ -100,6 +103,8 @@ impl TimeDirection {
 /// in time to estimate source attribution.
 #[derive(Debug, Clone)]
 pub struct BackwardReceptorConfig {
+    /// Optional receptor masses in the run species-table order [kg].
+    pub species_masses_kg: Option<Vec<f64>>,
     /// Receptor identifier.
     pub name: String,
     /// Receptor longitude [degrees].
@@ -180,6 +185,10 @@ impl Default for BackwardSourceCollection {
 ///   deposition during backward attribution runs.
 #[derive(Debug, Clone)]
 pub struct BackwardTimeLoopConfig {
+    /// Backward compaction has no validated stop-state ownership and must remain false.
+    pub compact_particles: bool,
+    /// Run-owned species table; receptor masses bind to these positional slots.
+    pub transport_settling: Option<super::settling::TransportSettlingConfig>,
     /// Inclusive simulation start timestamp (`YYYYMMDDHHMMSS`), typically the
     /// receptor sampling time and therefore later than `end_timestamp`.
     pub start_timestamp: String,
@@ -209,6 +218,8 @@ pub struct BackwardTimeLoopConfig {
 impl Default for BackwardTimeLoopConfig {
     fn default() -> Self {
         Self {
+            compact_particles: false,
+            transport_settling: None,
             start_timestamp: "20240101000000".to_string(),
             end_timestamp: "20240101000000".to_string(),
             timestep_seconds: 1,

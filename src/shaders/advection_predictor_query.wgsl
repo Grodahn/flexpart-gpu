@@ -14,7 +14,7 @@ struct Query {
 };
 struct Params { capacity: u32, active_count: u32, nx: u32, ny: u32,
     dt: f32, x_scale: f32, y_scale: f32, target_levels: u32,
-    top_margin_m: f32, pad0: u32, pad1: u32, pad2: u32 };
+    top_margin_m: f32, stop_route: u32, pad1: u32, pad2: u32 };
 @group(0) @binding(0) var<storage, read> particles: array<Particle>;
 @group(0) @binding(1) var<storage, read> velocities: array<f32>;
 @group(0) @binding(2) var<storage, read> status: array<u32>;
@@ -23,7 +23,8 @@ struct Params { capacity: u32, active_count: u32, nx: u32, ny: u32,
 @group(0) @binding(5) var<storage, read> target_status: array<u32>;
 // Private raw predictor height: the corrector consumes this exact value and boundary decision.
 @group(0) @binding(6) var<storage, read_write> predictor_z: array<f32>;
-@group(0) @binding(7) var<uniform> params: Params;
+@group(0) @binding(7) var<storage, read_write> stops: array<u32>;
+@group(0) @binding(8) var<uniform> params: Params;
 fn finite(v: f32) -> bool { return (bitcast<u32>(v) & 0x7f800000u) != 0x7f800000u; }
 // Split-cell arithmetic never reconstructs a signed cell as a floating-point position.
 fn moved(cell: i32, fraction: f32, delta: f32, n: u32) -> vec2<f32> {
@@ -63,6 +64,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     let x = moved(p.cell_x, p.pos_x, dx, params.nx);
     let y = moved(p.cell_y, p.pos_y, dy, params.ny);
     predictor_z[lane] = predicted_z;
+    // advance_mod.f90:889-895: stop retains z and does not suppress correction.
+    let stopped = params.stop_route != 0u && predicted_z >= top;
+    if (stopped) { stops[lane] |= 1u; }
     queries[lane] = Query(p.cell_x + i32(x.x), p.cell_y + i32(y.x), x.y, y.y,
-        max(select(predicted_z, placed_z, predicted_z >= top), 0.0), 1u, 0u, 0u);
+        max(select(predicted_z, placed_z, predicted_z >= top && !stopped), 0.0), 1u, 0u, 0u);
 }

@@ -269,3 +269,14 @@ all source anchors, the frozen raw-output hash, every oracle selector against th
 case consistency rules and every repository owner symbol. `--allow-missing-checkout` reports
 `PASS_SOURCE_ANCHORS_NOT_CHECKED`, never `PASS`. Its verdict is
 `CONTRACT_ONLY_NO_SETTLING_OR_TRANSPORT_PARITY`.
+
+
+## Production implementation follow-up (#214)
+
+The frozen findings, matrix classifications and original fixtures above retain
+their historical meaning. The zero-by-carrier route, step-private stop lifecycle
+and both production drivers are now implemented in the
+[#214 integration](../transport-top.md#settling-stop-integration-214).
+Acceptance requires the extended real-device matrix and independent evidence
+auditor; this implementation-status link does not promote nonzero velocity,
+#204 trajectory diagnostics or whole-FLEXPART parity.

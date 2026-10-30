@@ -53,6 +53,7 @@ fn test_backward_timeloop_receptor_release_and_source_collection() {
         time_bounds_behavior: TimeBoundsBehavior::Strict,
         velocity_to_grid_scale: VelocityToGridScale::IDENTITY,
         receptors: vec![BackwardReceptorConfig {
+            species_masses_kg: None,
             name: "receptor_a".to_string(),
             lon: 10.0,
             lat: 5.0,

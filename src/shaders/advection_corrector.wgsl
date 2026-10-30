@@ -10,7 +10,7 @@ struct Particle {
 };
 struct Params { capacity: u32, active_count: u32, nx: u32, ny: u32,
     dt: f32, x_scale: f32, y_scale: f32, target_levels: u32,
-    top_margin_m: f32, pad0: u32, pad1: u32, pad2: u32 };
+    top_margin_m: f32, stop_route: u32, pad1: u32, pad2: u32 };
 @group(0) @binding(0) var<storage, read> original: array<Particle>;
 @group(0) @binding(1) var<storage, read> velocities: array<f32>;
 @group(0) @binding(2) var<storage, read_write> status: array<atomic<u32>>;
@@ -18,7 +18,8 @@ struct Params { capacity: u32, active_count: u32, nx: u32, ny: u32,
 @group(0) @binding(4) var<storage, read> target_heights: array<f32>;
 @group(0) @binding(5) var<storage, read> target_status: array<u32>;
 @group(0) @binding(6) var<storage, read> predictor_z: array<f32>;
-@group(0) @binding(7) var<uniform> params: Params;
+@group(0) @binding(7) var<storage, read_write> stops: array<u32>;
+@group(0) @binding(8) var<uniform> params: Params;
 fn failed() -> bool {
     for (var stage = 0u; stage < 6u; stage++) {
         if (atomicLoad(&status[stage * (params.capacity + 1u)]) != 0u) { return true; }
@@ -55,7 +56,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     // Consume the predictor's own height so both stages share one boundary decision.
     let raw_predictor_z = predictor_z[lane];
     // Retain the existing lower boundary; only the upper action changes the correction base.
-    let base_z = select(raw_predictor_z, placed_z, raw_predictor_z >= top);
+    var base_z = raw_predictor_z;
+    // A stopped predictor retains its raw state. Only the ordinary route can place it.
+    // On the stop route, consume bit 0 without repeating the predictor predicate.
+    let predictor_stopped = (stops[lane] & 1u) != 0u;
+    if (!predictor_stopped && params.stop_route == 0u) {
+        base_z = select(raw_predictor_z, placed_z, raw_predictor_z >= top);
+    }
     let correction_m = ((w1 - w0) * 0.5) * params.dt;
     let corrected_z = base_z + correction_m;
     if (!finite(u) || !finite(v) || !finite(w) || !finite(dx) || !finite(dy) || !finite(corrected_z)
@@ -68,7 +75,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
     let y = moved(p.cell_y, p.pos_y, dy, params.ny);
     p.cell_x += i32(x.x); p.pos_x = x.y;
     p.cell_y += i32(y.x); p.pos_y = y.y;
-    p.pos_z = max(select(corrected_z, placed_z, corrected_z >= top), 0.0);
+    let stopped = params.stop_route != 0u && corrected_z >= top;
+    if (stopped) { stops[lane] |= 2u; }
+    p.pos_z = max(select(corrected_z, placed_z, corrected_z >= top && !stopped), 0.0);
     p.vel_u = u; p.vel_v = v; p.vel_w = w;
     staged[lane] = p;
 }

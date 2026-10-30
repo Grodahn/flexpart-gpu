@@ -95,7 +95,7 @@ class ReplayEvidenceTests(unittest.TestCase):
             'member value': lambda v: v['lanes'][1]['members']['rows'][5].update(gpu=1e3),
             'missing interval row': lambda v: v['lanes'][0]['interval_rates_90'].pop(),
             'interval value': lambda v: v['lanes'][0]['interval_rates_90'][3].update(
-                gpu_rate_bits='3f800000'),
+                gpu_rate_bits='447a0000'),  # 1000 mm/h
             'member timestamp': lambda v: v['metadata']['members'][0].update(
                 valid_time_epoch_seconds=0),
             'missing metadata interval': lambda v: v['metadata']['intervals'].pop(),

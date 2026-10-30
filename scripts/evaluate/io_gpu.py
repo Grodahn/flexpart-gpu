@@ -75,9 +75,9 @@ def read_etex_gpu_json(path):
             raise ValueError("ETEX candidate concentration window is incomplete")
         if len(step["concentration_mass_kg"]) != expected:
             raise ValueError("ETEX candidate concentration field has the wrong shape")
-        for value in step["concentration_mass_kg"]:
-            if not math.isfinite(value) or value < 0:
-                raise ValueError("ETEX candidate field has non-finite or negative mass")
+    # Finite and non-negative values are checked cell by cell by the #54
+    # deterministic-invariant gate (INV-FIELD-FINITE / INV-FIELD-NONNEGATIVE),
+    # which records the offending window and cell.
     return data
 
 

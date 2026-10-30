@@ -193,6 +193,78 @@ def read_grid_conc(filepath, header, endian="<"):
     return grid
 
 
+def _decode_sparse_block_strict(records, idx, endian, label):
+    """Decode one sparse block, rejecting truncated or inconsistent records."""
+    if idx + 4 > len(records):
+        raise ValueError(f"{label}: sparse block truncated at record {idx}")
+    blocks = []
+    for kind, fmt in (("indices", "i"), ("values", "f")):
+        count_rec = records[idx]
+        if len(count_rec) != 4:
+            raise ValueError(f"{label}: sparse {kind} count record has {len(count_rec)} bytes")
+        (count,) = struct.unpack(f"{endian}i", count_rec)
+        data = records[idx + 1]
+        if count < 0 or len(data) != count * 4:
+            raise ValueError(f"{label}: sparse {kind} count {count} contradicts "
+                             f"{len(data)}-byte record")
+        blocks.append(list(struct.unpack(f"{endian}{count}{fmt}", data)) if count else [])
+        idx += 2
+    return blocks[0], blocks[1], idx
+
+
+def _strict_cells(indices, values, total, label):
+    for start in indices:
+        if not 0 <= start < total:
+            raise ValueError(f"{label}: sparse start index {start} outside [0, {total})")
+    if values and not indices:
+        raise ValueError(f"{label}: sparse values without run start indices")
+    return reconstruct_grid_from_sparse(indices, values, total)
+
+
+def read_grid_conc_blocks(filepath, header, endian="<"):
+    """Read every block of one ``grid_conc_*`` file for invariant checks (#54).
+
+    Returns ``concentration`` (flat, ``nx*ny*nz`` in ``ix, iy, iz`` order as
+    :func:`flatten_grid_nx_ny_nz`), ``wet_deposition`` and
+    ``dry_deposition`` (flat ``nx*ny``) summed over release points and age
+    classes. FLEXPART writes all three sparse blocks even when deposition is
+    off (zero entries), so an empty block is an explicit zero field. Any
+    truncated, inconsistent or trailing record raises ValueError instead of
+    being silently truncated.
+    """
+    nx, ny, nz = header["numxgrid"], header["numygrid"], header["numzgrid"]
+    label = Path(filepath).name
+    with open(filepath, "rb") as stream:
+        records = []
+        while True:
+            rec = read_fortran_record(stream, endian)
+            if rec is None:
+                break
+            records.append(rec)
+    if not records or len(records[0]) != 4:
+        raise ValueError(f"{label}: missing itime record")
+    conc_total = (nz + 1) * nx * ny
+    surface_total = nx * ny
+    conc = [0.0] * conc_total
+    wet = [0.0] * surface_total
+    dry = [0.0] * surface_total
+    idx = 1
+    for _ in range(header["maxpointspec_act"]):
+        for _ in range(header["nageclass"]):
+            for target, total in ((wet, surface_total), (dry, surface_total), (conc, conc_total)):
+                indices, values, idx = _decode_sparse_block_strict(records, idx, endian, label)
+                for cell, value in enumerate(_strict_cells(indices, values, total, label)):
+                    target[cell] += value
+    if idx != len(records):
+        raise ValueError(f"{label}: {len(records) - idx} unexpected trailing records")
+    flat = []
+    for ix in range(nx):
+        for iy in range(ny):
+            for kz in range(1, nz + 1):
+                flat.append(conc[ix + iy * nx + kz * nx * ny])
+    return {"concentration": flat, "wet_deposition": wet, "dry_deposition": dry}
+
+
 def flatten_grid_nx_ny_nz(grid):
     """Flatten an (nx, ny, nz) nested list to row-major flat order."""
     flat = []

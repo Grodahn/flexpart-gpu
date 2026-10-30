@@ -85,6 +85,11 @@ reservoir is present; it never implies cross-model parity. Oracle
 comparisons are diagnostic; no threshold in `thresholds.json` turns them
 into a parity pass.
 
+`scripts/evaluate/evaluate_case.py --case corpus-seeds` applies the #54
+deterministic-invariant gate to every seed and oracle output directory;
+runner `budget_status` stays a diagnostic and the canonical closure verdict
+is `INV-MASS-CLOSURE` (see [evaluation](evaluation.md#deterministic-invariant-gate-issue-54)).
+
 `scripts/run-corpus.sh compare` asserts input equality
 (`audit_corpus_inputs.py`) before comparing any output. `scripts/run-corpus.sh
 all` is fail-closed: candidate, oracle, comparison and manifest steps are

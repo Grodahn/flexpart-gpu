@@ -144,6 +144,39 @@ class ValidRunTest(unittest.TestCase):
             self.assertEqual(result["state"], provenance.ATTRIBUTION_VERIFIED)
 
 
+class ExecutionBindingLookupTest(unittest.TestCase):
+    """#54 per-realization binding: artifact bytes -> one execution of a role."""
+
+    def test_artifact_binds_exactly_its_own_execution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, _path, files = _build_manifest(root)
+            candidate = provenance.executions_for_artifact(manifest, files["output"], "candidate")
+            self.assertEqual([r["role"] for r in candidate], ["candidate"])
+            self.assertEqual(candidate[0]["realization"], {"seed_index": 0})
+            # Role-scoped: an oracle output never binds a candidate execution.
+            self.assertEqual(
+                provenance.executions_for_artifact(manifest, files["oracle_output"], "candidate"),
+                [])
+            oracle = provenance.executions_for_artifact(manifest, files["oracle_output"], "oracle")
+            self.assertEqual(oracle[0]["oracle_kind"], "pristine-oracle")
+
+    def test_modified_bytes_bind_no_execution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, _path, files = _build_manifest(root)
+            files["output"].write_bytes(b"substituted")
+            self.assertEqual(
+                provenance.executions_for_artifact(manifest, files["output"], "candidate"), [])
+
+    def test_unknown_role_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, _path, files = _build_manifest(root)
+            with self.assertRaises(provenance.ProvenanceError):
+                provenance.executions_for_artifact(manifest, files["output"], "observer")
+
+
 class OutputSubstitutionTest(unittest.TestCase):
     def test_modified_output_fails_verification(self):
         with tempfile.TemporaryDirectory() as directory:

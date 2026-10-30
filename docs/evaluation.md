@@ -54,6 +54,7 @@ Unit tests for the formulas (analytical fields, no oracle needed):
 ```bash
 python scripts/evaluate/test_metrics.py
 python scripts/evaluate/test_evaluate.py
+python scripts/evaluate/test_invariants.py
 ```
 
 The evaluation needs only the Python standard library. A non-zero exit
@@ -97,7 +98,7 @@ proves the sources, recorded as `checkout_verified`, but leaves output
 attribution `unverified` because it does not link supplied outputs to a
 run.
 
-## Report schema (version 1.0.0)
+## Report schema (version 1.1.0)
 
 Top-level keys: `schema_version`, `case_id`, `created_utc`,
 `overall_status` (`INTEGRITY_ERROR`, `DIAGNOSTIC`, `PASS`, `FAIL`),
@@ -108,8 +109,12 @@ origin in degrees, resolution in degrees, heights in metres), `oracle`
 seed controllability), `candidate` (revision, revision source, worktree
 dirtiness, adapter, seed and seed controllability), `input_sha256`, `alignment` (grid and window
 checks), `particle_metrics`, `grid_metrics`, `etex`, `multiseed`,
-`thresholds` (version plus per-criterion verdicts), `missing_metrics`
-(name plus reason for every unavailable metric), `notes`.
+`thresholds` (version plus per-criterion verdicts),
+`deterministic_invariants` (Issue #54 gate block, see below; `null` means
+not evaluated and must be read as `BLOCKED`), `missing_metrics` (name plus
+reason for every unavailable metric), `notes`. Version 1.1.0 is a strict
+superset of 1.0.0; `aggregate-seeds` accepts only reports of the current
+version and contract.
 
 ## Unified metric definitions
 
@@ -136,9 +141,10 @@ in the older helpers (`compare_etex_fortran_obs.py`, `compare_gpu_obs.py`,
 
 Particle metrics and grid metrics are strictly separated:
 
-- `particle_metrics` holds the per-seed kilogram mass budgets (remaining
-  plus dry, wet and decayed deposition versus released mass, each with a
-  per-seed PASS/FAIL verdict), particle-space center of mass, horizontal
+- `particle_metrics` holds the per-seed kilogram mass budgets (the
+  canonical `INV-MASS-CLOSURE` record: airborne plus every reservoir of a
+  process the case enables, versus released mass, with its per-seed
+  verdict), particle-space center of mass, horizontal
   covariance/eigenvalues, vertical quantiles and, when the oracle wrote a
   `partposit` dump, the oracle particle ensemble. The mass-closure gate
   evaluates every seed and the worst absolute error governs, so
@@ -173,7 +179,143 @@ Particle metrics and grid metrics are strictly separated:
 `scripts/evaluate/` so code changes cannot silently move a gate, and they
 must never be loosened to make a candidate pass. Version 1 enforces the
 kilogram mass-budget closure, field positivity and grid/window alignment;
-all gridded shape and ETEX observation comparisons stay diagnostic.
+all gridded shape and ETEX observation comparisons stay diagnostic. The
+deterministic-invariant contract references these criteria (and the
+corpus `analytic_advection_*` bounds) by id and reads their values from
+the threshold files; it versions no threshold of its own.
+
+## Deterministic invariant gate (Issue #54)
+
+`scripts/evaluate/invariants.py` is the single evaluation path for the
+versioned contract
+[`evaluation/invariants/deterministic-invariants-v1.json`](../evaluation/invariants/deterministic-invariants-v1.json)
+(`flexpart-gpu.deterministic-invariants` v1). Every `evaluate_case.py`
+report embeds its result as `deterministic_invariants`; `--invariants`
+selects the contract file. Invariants are unary per realization (one
+candidate `seed_*.json`, or one oracle output directory) except the
+ensemble exact-repeat check. They are hard gates: no stochastic spread,
+averaging or favorable aggregate statistic can excuse them.
+
+| Invariant (v1) | Family | Applies when (#51 case) | Comparison |
+|---|---|---|---|
+| `INV-FIELD-FINITE` | finite fields | always | exact, every cell |
+| `INV-FIELD-NONNEGATIVE` | non-negative fields | always | exact, no epsilon (`MASS_POSITIVITY`) |
+| `INV-MASS-CLOSURE` | mass/reservoir closure | `simulation_direction` forward | `MASS_BUDGET_CLOSE` (1e-5, abs_lt) |
+| `INV-DISABLED-DRY-DEPOSITION-ZERO` | disabled physics | dry deposition off | exact zero, else closure bound |
+| `INV-DISABLED-WET-DEPOSITION-ZERO` | disabled physics | wet deposition off | exact zero, else closure bound |
+| `INV-DISABLED-DECAY-NO-LOSS` | disabled physics | decay off | exact zero, else closure bound |
+| `INV-ANALYTIC-UNIFORM-ADVECTION` | analytic process | no turbulence/convection/deposition/decay, uniform wind, point instant release, forward, deterministic | corpus `analytic_advection_*` (360/1/0.01 m), worst particle, scope `ADV-ANA-001` |
+| `INV-ANALYTIC-DECAY` | analytic process | decay on | unavailable (BLOCKED) |
+| `INV-DETERMINISTIC-REPEAT` | deterministic process | Philox derivation `reuse_base_identity_v1` | exact equality |
+| `INV-CASE-IDENTITY` | output consistency | always | exact |
+| `INV-OUTPUT-UNITS` | output consistency | always | kg, kg/m3, time-averaged mass concentration |
+| `INV-PARTICLE-COUNT` | output consistency | always (candidate) | exact |
+| `INV-OUTPUT-GRID` | output consistency | `output_grid` declared | `report.check_grid_alignment` (1e-5) |
+| `INV-OUTPUT-CHRONOLOGY` | output consistency | `output`/`integration` declared | exact start, interval, averaging, sampling, `start + k*interval_s` stamps |
+| `INV-PROVENANCE-BINDING` | evidence requirements | always | one #53 execution per realization |
+
+Each definition records meaning, roles, required artifacts, quantities and
+units, normalization, owner, comparison policy, threshold reference and the
+PASS/FAIL/missing-evidence/integrity behavior. The case manifest decides
+whether a process is declared; the contract decides how it is checked.
+
+### Verdicts and precedence
+
+- `PASS`: applicable, evidence verified, assertion holds.
+- `FAIL`: applicable, evidence usable, assertion violated
+  (`MASS_DEFICIT`, `MASS_EXCESS`, `DISABLED_PROCESS_NONZERO_RESERVOIR`,
+  `UNEXPLAINED_MASS_LOSS`, `ANALYTIC_DISPLACEMENT_EXCEEDED`,
+  `REPEAT_NOT_IDENTICAL`).
+- `INTEGRITY_ERROR`: malformed, non-finite, negative (v1
+  `MASS_POSITIVITY` classifies negatives as integrity errors),
+  contradictory, hash-mismatched or misattributed evidence. Evaluation
+  stops before any statistic is computed and the report keeps the
+  offending field/cell records.
+- `NOT_APPLICABLE`: the validated case explicitly excludes the invariant.
+  A missing case manifest or field is `BLOCKED`, never `NOT_APPLICABLE`.
+- `BLOCKED`: applicable but evidence or capability is unavailable.
+
+Precedence: `INTEGRITY_ERROR > FAIL > BLOCKED > PASS > NOT_APPLICABLE`;
+an empty set is `BLOCKED`. Every record keeps a stable `error_id` from the
+contract's closed `error_ids` catalog. The gate lists every FAIL,
+INTEGRITY_ERROR and BLOCKED entry next to the aggregate. Report effect:
+invariant `FAIL` makes the report `FAIL` (exit 1), `INTEGRITY_ERROR` makes
+it `INTEGRITY_ERROR` (exit 2); `PASS` and `BLOCKED` never raise
+`overall_status` above `DIAGNOSTIC`.
+
+### Evidence, #52 and #53 prerequisites
+
+- Candidate: raw seed-file values (no coercion), `particle_count`,
+  `active_particles`, `deposited_dry_kg`, `deposited_wet_kg`, optional
+  `decayed_kg`, the declared initial mass. A missing ledger is never zero.
+- Oracle: binary `header` and every `grid_conc_*` concentration, wet and
+  dry block (`io_fortran.read_grid_conc_blocks` rejects truncated,
+  inconsistent or trailing records as `ORACLE_OUTPUT_INCOMPLETE`), plus a
+  `partposit_*` dump when present. No regridding or resampling happens.
+  FLEXPART's sparse format uses the value sign as a run delimiter, so
+  decoded oracle cells are non-negative by construction; the finite check
+  still covers every cell.
+- Contract identity: `contract_sha256` hashes canonical JSON (sorted keys,
+  compact separators), so checkouts with different line endings agree.
+- #53: every consumed file goes through `build_provenance` /
+  `run_provenance.verify_artifact_set` before evaluation;
+  `run_provenance.executions_for_artifact` binds each realization to
+  exactly one execution whose role, case id, case-manifest hash and
+  `seed_index` must agree. Two realizations claiming one execution are an
+  integrity error. Without a manifest, or with a legacy one, the binding is
+  `BLOCKED`.
+- #52: `paired_scoring` is separate from the unary verdict:
+  `NOT_REQUESTED` (no oracle), `BLOCKED` (oracle without
+  `--require-input-equivalence`, or `INPUT_EQUIVALENT` without complete #53
+  binding), `ELIGIBLE` (both). A refused gate stops with `INPUT_MISMATCH`,
+  `INPUT_EQUIVALENCE_NOT_DEMONSTRATED` or
+  `INPUT_EQUIVALENCE_INTEGRITY_ERROR`. Invariants never manufacture
+  equivalence, and eligibility is not parity.
+
+### Runner diagnostics versus canonical verdicts
+
+`corpus-run` writes `budget_closure_rel_error` and `budget_status`; they
+remain runner-local diagnostics (`runner_budget_status` in the per-seed
+record). The canonical verdict is `INV-MASS-CLOSURE`, recomputed from the
+case inventory and the recorded ledgers with `metrics.mass_budget`. The
+legacy `MASS_BUDGET_CLOSE` threshold evaluation consumes the worst
+evaluated closure error.
+
+### Unavailable evidence and physics (BLOCKED, follow-up owned elsewhere)
+
+- Oracle kilogram mass ledger: FLEXPART 11.1 binary output carries
+  mass-proportional grid sums only, so oracle closure and the oracle
+  disabled-decay bound are `BLOCKED`.
+- Oracle particle positions: `partposit` is NetCDF-only in 11.1, so oracle
+  analytic advection is `BLOCKED` unless a dump is supplied.
+- Candidate gridded output: corpus seed files carry end-state particles
+  only, so candidate grid and chronology checks are `BLOCKED`.
+- Decay: no species contract binds a half-life, `corpus-run` writes no
+  decay ledger and no decay threshold is versioned; `INV-ANALYTIC-DECAY`
+  is `BLOCKED` whenever decay is enabled (DECAY-011).
+- Particle termination ledger: deactivated particles make closure
+  `BLOCKED` (`MISSING_TERMINATION_RESERVOIR`), never dry deposition.
+- Backward runs: closure is `NOT_APPLICABLE`; chronology is `BLOCKED`.
+- `synthetic-uniform-wind` and ETEX consume no #51 case manifest, so only
+  field invariants run there; case-dependent invariants stay `BLOCKED`.
+
+On the local ADV-ANA-001 artifacts (candidate revision
+`7e71838b04ad58d8e8638b5610322d21e89600a7`, pinned-oracle output without a
+run manifest) the candidate passes every evaluable invariant, including
+analytic advection for all 1024 particles, the oracle passes field,
+deposition-zero, grid and chronology checks, and the aggregate is
+`BLOCKED` because provenance, the oracle kg ledger and candidate gridded
+output are unavailable.
+
+### Downstream handoff (#55-#59)
+
+Consumers read `deterministic_invariants`, keep every realization record
+and aggregate with `invariants.aggregate_realizations` (or the contract
+precedence). Distributional or ensemble scoring may proceed only when the
+aggregate is `PASS` and `paired_scoring.status` is `ELIGIBLE`. A
+per-seed FAIL, INTEGRITY_ERROR or BLOCKED is never averaged away:
+`aggregate-seeds` already carries every seed's realizations and fails when
+any seed fails.
 
 ## Multi-seed policy
 

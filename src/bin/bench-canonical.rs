@@ -18,7 +18,7 @@ use flexpart_gpu::{
     physics::VelocityToGridScale,
     simulation::{
         CanonicalMeteorologyBracket, CanonicalMeteorologySlot, ForwardStepForcing,
-        ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket,
+        ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket, TransportSettlingConfig,
     },
     wind::{SurfaceFields, WindField3D},
 };
@@ -203,8 +203,20 @@ async fn create_driver(
         species_masses_kg: None,
         raw: std::collections::BTreeMap::default(),
     };
+    // The paired pinned run releases the inert gas tracer SPECIES_024 (AIRTRACER,
+    // PDENSITY=-0.9E+9). #10 normalizes that sentinel to None and keeps the raw value.
+    // Canonical production requires this explicit carrier; forward transport never stops.
+    let tracer = serde_json::from_value(json!({
+        "name": "AIRTRACER",
+        "raw": { "pdensity": "-0.9E+9" },
+    }))
+    .context("benchmark gas tracer carrier")?;
     Ok(ForwardTimeLoopDriver::new(
         ForwardTimeLoopConfig {
+            transport_settling: Some(TransportSettlingConfig {
+                species: vec![tracer],
+                ..TransportSettlingConfig::default()
+            }),
             start_timestamp: "20240101000000".into(),
             end_timestamp: "20240101235900".into(),
             timestep_seconds: s.dt_seconds,

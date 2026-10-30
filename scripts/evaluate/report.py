@@ -1,6 +1,6 @@
 """Versioned evaluation report schema and alignment checks.
 
-Schema version ``1.0.0``. Every report carries units, the evaluated time
+Schema version ``1.1.0``. Every report carries units, the evaluated time
 window, the spatial grid, oracle and candidate revisions, the adapter, seeds,
 input hashes and an explicit list of missing metrics. Reports are comparable
 across runs because field names, units and missing-data rules are fixed here.
@@ -13,6 +13,15 @@ Overall status values:
 - ``DIAGNOSTIC``: metrics were computed but no parity verdict is given
   (ETEX mini, single-seed stochastic runs, normalized shape-only views).
 - ``PASS`` / ``FAIL``: threshold evaluation for in-scope criteria.
+
+Schema ``1.1.0`` (Issue #54) adds the ``deterministic_invariants`` block
+written by :mod:`invariants` (contract
+``evaluation/invariants/deterministic-invariants-v1.json``). It is a strict
+superset of ``1.0.0``: an invariant ``FAIL`` makes the report ``FAIL`` and
+an invariant ``INTEGRITY_ERROR`` makes it ``INTEGRITY_ERROR``; ``BLOCKED``
+and ``PASS`` never upgrade ``overall_status`` beyond ``DIAGNOSTIC``. A
+``null`` block means the invariants were not evaluated and consumers must
+treat it as ``BLOCKED``.
 """
 
 import hashlib
@@ -21,7 +30,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 GRID_ABS_TOL = 1e-5
 
 
@@ -158,8 +167,9 @@ def evaluate_thresholds(thresholds_doc, context):
 def make_report(case_id, time_window, grid, oracle, candidate, input_hashes,
                 alignment, particle_metrics, grid_metrics, etex,
                 multiseed, threshold_evaluations, thresholds_version,
-                missing_metrics, notes, overall_status, status_detail):
-    """Assemble a schema 1.0.0 report dict."""
+                missing_metrics, notes, overall_status, status_detail,
+                deterministic_invariants=None):
+    """Assemble a schema 1.1.0 report dict."""
     return {
         "schema_version": SCHEMA_VERSION,
         "case_id": case_id,
@@ -180,6 +190,7 @@ def make_report(case_id, time_window, grid, oracle, candidate, input_hashes,
             "version": thresholds_version,
             "evaluations": threshold_evaluations,
         },
+        "deterministic_invariants": deterministic_invariants,
         "missing_metrics": missing_metrics,
         "notes": notes,
     }
@@ -264,6 +275,12 @@ def render_summary(report):
                     f"{key}: n={block['n']} FB={block['fractional_bias']} "
                     f"NMSE={block['nmse']} corr={block['correlation']} "
                     f"FAC2={block['fac2']} ({block['fac2_pairs']} positive pairs)")
+    gate = report.get("deterministic_invariants")
+    if gate:
+        lines.extend(gate.get("summary") or
+                     [f"Deterministic invariants: {gate.get('verdict')}"])
+    else:
+        lines.append("Deterministic invariants: not evaluated (treat as BLOCKED)")
     missing = report.get("missing_metrics", [])
     if missing:
         lines.append("Missing metrics:")

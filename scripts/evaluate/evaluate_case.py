@@ -39,11 +39,19 @@ Corpus particle ensembles (Issue #6 test corpus, per-seed particle files)::
 The command fails (non-zero exit) on incompatible inputs or missing oracle
 artifacts instead of interpolating or substituting values. A written report
 with ``overall_status`` ``INTEGRITY_ERROR`` documents the failure.
+
+Every report carries the Issue #54 ``deterministic_invariants`` block from
+:mod:`invariants` (versioned contract
+``evaluation/invariants/deterministic-invariants-v1.json``). An invariant
+``FAIL`` makes the report ``FAIL`` (exit 1); an invariant
+``INTEGRITY_ERROR`` makes it ``INTEGRITY_ERROR`` (exit 2) before any
+statistic is computed from invalid fields.
 """
 
 import argparse
 import json
 import math
+import struct
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -52,6 +60,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(
     0, str(Path(__file__).resolve().parent.parent.parent / "scripts" / "provenance"))
 
+import invariants
 import io_corpus
 import io_fortran
 import io_gpu
@@ -129,7 +138,7 @@ def _verify_artifacts_against_manifest(manifest, labeled_paths):
 
 
 def build_provenance(args, oracle_manifest, embedded_revisions=None,
-                     embedded_adapters=None, artifact_paths=None):
+                     embedded_adapters=None, artifact_paths=None, evidence=None):
     """Build oracle/candidate provenance without misattribution.
 
     The candidate revision is only reported when it is tied to the supplied
@@ -143,12 +152,18 @@ def build_provenance(args, oracle_manifest, embedded_revisions=None,
     not link supplied outputs to a run, so output attribution stays
     explicitly unverified in that case.
 
-    Returns ``(oracle, candidate, prov_missing, prov_notes)``.
+    Returns ``(oracle, candidate, prov_missing, prov_notes)``. When
+    ``evidence`` is a dict it receives the loaded manifest document and the
+    #53 ``verify_artifact_set`` result so the invariant gate can bind each
+    realization to its execution without re-verifying.
     """
     missing = []
     notes = []
     artifact_paths = artifact_paths or []
     manifest = _load_run_manifest(args.run_manifest) if args.run_manifest else None
+    if evidence is not None:
+        evidence["document"] = manifest
+        evidence["verify_result"] = None
     if args.run_manifest:
         notes.append(f"Run manifest consumed: {args.run_manifest}")
     if manifest is not None and provenance is not None:
@@ -162,7 +177,7 @@ def build_provenance(args, oracle_manifest, embedded_revisions=None,
                 embedded_revisions=embedded_revisions,
                 embedded_adapters=embedded_adapters,
                 artifact_paths=artifact_paths,
-                missing=missing, notes=notes)
+                missing=missing, notes=notes, evidence=evidence)
 
     candidate_revision = None
     revision_source = None
@@ -180,7 +195,8 @@ def build_provenance(args, oracle_manifest, embedded_revisions=None,
                            "artifacts embed no usable revision (unknown/missing); "
                            "the set stays explicitly unverified"})
         elif len(usable) > 1:
-            raise ValueError(
+            raise invariants.InvariantGateError(
+                "MIXED_CANDIDATE_REVISION",
                 f"candidate artifacts mix revisions: {sorted(usable)}")
         elif usable:
             candidate_revision = usable.pop()
@@ -292,7 +308,7 @@ def build_provenance(args, oracle_manifest, embedded_revisions=None,
 def _build_provenance_v1(args, oracle_manifest, manifest,
                          embedded_revisions=None,
                          embedded_adapters=None, artifact_paths=None,
-                         missing=None, notes=None):
+                         missing=None, notes=None, evidence=None):
     """Build provenance from a v1 authoritative manifest (issue #53).
 
     The v1 envelope is verified explicitly (never silently reinterpreted
@@ -330,6 +346,8 @@ def _build_provenance_v1(args, oracle_manifest, manifest,
     labeled = [(label, path, kind) for label, path, kind in artifact_paths]
     if labeled:
         result = provenance.verify_artifact_set(args.run_manifest, labeled)
+        if evidence is not None:
+            evidence["verify_result"] = result
         for item in result.get("missing", []):
             missing.append(item)
         notes.extend(result.get("notes", []))
@@ -360,7 +378,8 @@ def _build_provenance_v1(args, oracle_manifest, manifest,
                            "artifacts embed no usable revision (unknown/missing); "
                            "the set stays explicitly unverified"})
         elif len(usable) > 1:
-            raise ValueError(
+            raise invariants.InvariantGateError(
+                "MIXED_CANDIDATE_REVISION",
                 f"candidate artifacts mix revisions: {sorted(usable)}")
         elif usable:
             candidate_revision = usable.pop()
@@ -476,7 +495,8 @@ def _build_provenance_v1(args, oracle_manifest, manifest,
     return oracle, candidate, missing, notes
 
 
-def _integrity_report(case_id, args, oracle, candidate, input_hashes, missing, detail, notes):
+def _integrity_report(case_id, args, oracle, candidate, input_hashes, missing, detail, notes,
+                      deterministic_invariants=None):
     thresholds_doc = json.loads(Path(args.thresholds).read_text(encoding="utf-8"))
     evaluations = report_lib.evaluate_thresholds(
         thresholds_doc, {"case_id": case_id})
@@ -488,7 +508,8 @@ def _integrity_report(case_id, args, oracle, candidate, input_hashes, missing, d
         threshold_evaluations=evaluations,
         thresholds_version=thresholds_doc.get("version", "unknown"),
         missing_metrics=missing, notes=notes,
-        overall_status="INTEGRITY_ERROR", status_detail=detail)
+        overall_status="INTEGRITY_ERROR", status_detail=detail,
+        deterministic_invariants=deterministic_invariants)
     return built
 
 
@@ -501,6 +522,285 @@ def write_outputs(built, args):
         summary_path.write_text(summary, encoding="utf-8")
     print(summary)
     print(f"Report: {args.output}")
+
+
+# ---------------------------------------------------------------------------
+# Deterministic-invariant gate integration (Issue #54)
+# ---------------------------------------------------------------------------
+
+# corpus-run seed-file ledger -> canonical reservoir name used by the gate.
+SEED_RESERVOIR_FIELDS = (
+    ("deposited_dry_kg", "dry_deposited_kg"),
+    ("deposited_wet_kg", "wet_deposited_kg"),
+    ("decayed_kg", "decayed_kg"),
+)
+PAIRED_PENDING_PROVENANCE = "ELIGIBLE_PENDING_PROVENANCE"
+INPUT_REFUSAL_IDS = {
+    "INPUT_MISMATCH": "INPUT_MISMATCH",
+    "INPUT_EQUIVALENCE_NOT_DEMONSTRATED": "INPUT_EQUIVALENCE_NOT_DEMONSTRATED",
+}
+
+
+def load_invariant_contract(args):
+    """Load the versioned invariant contract named by ``--invariants``."""
+    path = getattr(args, "invariants", None) or invariants.DEFAULT_CONTRACT
+    try:
+        return invariants.load_contract(path)
+    except invariants.InvariantContractError as exc:
+        raise invariants.InvariantGateError("INVARIANT_CONTRACT_INVALID", str(exc)) from None
+
+
+def seed_evidence(path, data):
+    """Normalize one corpus seed file into gate evidence without coercion.
+
+    Raw JSON values are passed through so malformed or non-finite entries
+    reach the finite-field invariant instead of failing inside a float().
+    """
+    label = f"candidate_{Path(path).name}"
+    particles = {key: [record.get(key) for record in data["particles"]]
+                 for key in ("lon_deg", "lat_deg", "z_m", "mass_kg")}
+    reservoirs = {name: data[key] for key, name in SEED_RESERVOIR_FIELDS if key in data}
+    runner_metrics = data.get("metrics") or {}
+    return invariants.particle_evidence(
+        "candidate", f"candidate:{Path(path).name}", case_id=data.get("case_id"),
+        particles=particles, particle_count=data.get("particle_count"),
+        active_particles=data.get("active_particles"),
+        declared_initial_mass_kg=runner_metrics.get("initial_mass_kg"),
+        reservoirs=reservoirs, seed_index=data.get("seed_index"),
+        artifacts=[{"label": label, "path": str(path),
+                    "sha256": report_lib.sha256_file(path)}])
+
+
+def oracle_output_evidence(fortran_dir):
+    """Gridded oracle evidence from one FLEXPART output directory.
+
+    Reads the binary ``header`` and every ``grid_conc_*`` file (concentration,
+    wet and dry blocks, every cell) plus the last ``partposit_*`` dump when
+    present. Returns ``(evidence, labeled_paths)``; every consumed file is
+    labeled for #53 verification. Truncated or inconsistent output is an
+    ``ORACLE_OUTPUT_INCOMPLETE`` integrity error.
+    """
+    fortran_dir = Path(fortran_dir)
+    grid_files = sorted(p for p in fortran_dir.glob("grid_conc_*") if p.is_file())
+    partposit_files = io_fortran.find_partposit_files(fortran_dir)
+    artifacts, labeled = [], []
+
+    def consume(label, path):
+        artifacts.append({"label": label, "path": str(path),
+                          "sha256": report_lib.sha256_file(path)})
+        labeled.append((label, str(path), "oracle"))
+
+    fields, grid, chronology = [], None, None
+    if grid_files:
+        header_path = fortran_dir / "header"
+        if not header_path.is_file():
+            raise invariants.InvariantGateError(
+                "ORACLE_OUTPUT_INCOMPLETE", f"grid_conc files without header in {fortran_dir}")
+        try:
+            header, endian = io_fortran.read_header_with_endian(str(header_path))
+        except (ValueError, struct.error) as exc:
+            raise invariants.InvariantGateError("ORACLE_OUTPUT_INCOMPLETE", str(exc)) from None
+        consume("oracle_header", header_path)
+        nx, ny, nz = header["numxgrid"], header["numygrid"], header["numzgrid"]
+        stamps = []
+        for path in grid_files:
+            try:
+                blocks = io_fortran.read_grid_conc_blocks(str(path), header, endian)
+                stamps.append(_flexpart_stamp_to_epoch(path.name.split("_")[2]))
+            except (ValueError, IndexError, struct.error) as exc:
+                raise invariants.InvariantGateError(
+                    "ORACLE_OUTPUT_INCOMPLETE", f"{path.name}: {exc}") from None
+            consume(f"oracle_{path.name}", path)
+            fields.append({"field_id": f"{path.name}/concentration", "kind": "concentration",
+                           "unit": "FLEXPART native concentration",
+                           "values": blocks["concentration"], "expected_cells": nx * ny * nz})
+            for kind in ("wet_deposition", "dry_deposition"):
+                fields.append({"field_id": f"{path.name}/{kind}", "kind": kind,
+                               "unit": "FLEXPART native deposition",
+                               "values": blocks[kind], "expected_cells": nx * ny})
+        grid = {"nx": nx, "ny": ny, "nz": nz, "xlon0": header["outlon0"],
+                "ylat0": header["outlat0"], "dx": header["dxout"], "dy": header["dyout"],
+                "heights_m": header["outheights"]}
+        chronology = {
+            "start_epoch_s": _flexpart_stamp_to_epoch(
+                f"{int(header['ibdate']):08d}{int(header['ibtime']):06d}"),
+            "interval_s": header["loutstep"], "averaging_s": header["loutaver"],
+            "sampling_s": header["loutsample"], "timestamps_epoch_s": stamps}
+    positions = None
+    if partposit_files:
+        lons, lats, zs = io_fortran.read_partposit(str(partposit_files[-1]))
+        consume(f"oracle_{partposit_files[-1].name}", partposit_files[-1])
+        positions = {"lon_deg": lons, "lat_deg": lats, "z_m": zs}
+    evidence = invariants.gridded_evidence(
+        "oracle", f"oracle:{fortran_dir.name}", case_id=None, fields=fields, grid=grid,
+        chronology=chronology, particle_positions=positions, artifacts=artifacts)
+    return evidence, labeled
+
+
+def _bound_case_id(provenance_ctx, labeled):
+    """Case id of the unique #53 execution that produced the labeled artifacts."""
+    case_ids = set()
+    for label, _path, _role in labeled:
+        bound = (provenance_ctx.get("bindings") or {}).get(label) or []
+        if len(bound) != 1:
+            return None
+        case_ids.add(bound[0].get("case_id"))
+    return case_ids.pop() if len(case_ids) == 1 else None
+
+
+def _load_input_equivalence_module():
+    import importlib.util as _ilu
+
+    spec = _ilu.spec_from_file_location(
+        "input_equivalence_gate", REPO_ROOT / "scripts" / "corpus" / "input_equivalence.py")
+    if spec is None or spec.loader is None:
+        raise invariants.InvariantGateError(
+            "INPUT_EQUIVALENCE_INTEGRITY_ERROR", "input_equivalence.py cannot be loaded")
+    module = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def paired_scoring_prerequisite(args, case_id):
+    """Record the #52 paired-scoring prerequisite without manufacturing equivalence.
+
+    ``NOT_REQUESTED`` without an oracle, ``BLOCKED`` when an oracle is
+    supplied without ``--require-input-equivalence``, and
+    ``ELIGIBLE_PENDING_PROVENANCE`` when the #52 report is
+    ``INPUT_EQUIVALENT`` (finalized after #53 binding). A refused gate stops
+    the evaluation with a stable error id.
+    """
+    if not getattr(args, "fortran_output", None):
+        return {"status": "NOT_REQUESTED", "input_equivalence": None,
+                "reason": "no oracle artifact supplied; candidate-only unary evaluation"}
+    path = getattr(args, "require_input_equivalence", None)
+    if not path:
+        return {"status": "BLOCKED", "input_equivalence": "INPUT_EQUIVALENCE_NOT_DEMONSTRATED",
+                "reason": "oracle supplied without --require-input-equivalence; "
+                          "the #52 verdict is not established"}
+    module = _load_input_equivalence_module()
+    try:
+        report = module.require_input_equivalent(path, expected_case_id=case_id)
+    except module.InputEquivalenceError as exc:
+        error_id = "INPUT_EQUIVALENCE_INTEGRITY_ERROR"
+        if "paired scientific scoring refused" in str(exc):
+            try:
+                verdict = json.loads(Path(path).read_text(encoding="utf-8")).get("verdict")
+            except (OSError, ValueError):
+                verdict = None
+            error_id = INPUT_REFUSAL_IDS.get(verdict, error_id)
+        raise invariants.InvariantGateError(
+            error_id, f"input-equivalence gate refused scoring: {exc}") from None
+    return {"status": PAIRED_PENDING_PROVENANCE, "input_equivalence": report["verdict"],
+            "input_equivalence_report_sha256": report_lib.sha256_file(path),
+            "reason": "#52 INPUT_EQUIVALENT; #53 execution binding pending"}
+
+
+def finalize_paired_scoring(gate):
+    """Grant paired-scoring eligibility only after every realization is #53-bound."""
+    paired = gate["paired_scoring"]
+    if paired.get("status") != PAIRED_PENDING_PROVENANCE:
+        return
+    unbound = [r["realization_id"] for r in gate["realizations"]
+               if any(rec["invariant_id"] == "INV-PROVENANCE-BINDING"
+                      and rec["verdict"] != invariants.PASS for rec in r["invariants"])]
+    if unbound:
+        paired.update(status="BLOCKED",
+                      reason=f"#52 INPUT_EQUIVALENT, but #53 execution binding is "
+                             f"incomplete for {unbound}")
+    else:
+        paired.update(status="ELIGIBLE",
+                      reason="#52 INPUT_EQUIVALENT and every realization is bound by #53; "
+                             "eligibility is not parity")
+    gate["summary"] = invariants.render_gate_summary(gate)
+
+
+def apply_invariant_gate_status(overall, detail, gate):
+    """Merge the invariant verdict into overall_status without upgrading it."""
+    verdict = gate["verdict"]
+    if verdict == invariants.INTEGRITY_ERROR and overall != "INTEGRITY_ERROR":
+        ids = sorted({e["error_id"] for e in gate["integrity_errors"]})
+        return "INTEGRITY_ERROR", f"deterministic invariant integrity error {ids}"
+    if verdict == invariants.FAIL and overall != "INTEGRITY_ERROR":
+        violated = ", ".join(f"{e['realization_id']} {e['invariant_id']} [{e['error_id']}]"
+                             for e in gate["failed"])
+        prefix = f"{detail}; " if overall == "FAIL" else ""
+        return "FAIL", f"{prefix}deterministic invariant violated: {violated}"
+    return overall, f"{detail}; deterministic invariants {verdict}"
+
+
+def classify_failure(exc):
+    """Map a fail-closed evaluation stop to a stable error id and gate block."""
+    if isinstance(exc, invariants.InvariantGateError):
+        return exc.error_id, exc.block
+    if isinstance(exc, invariants.InvariantContractError):
+        return "INVARIANT_CONTRACT_INVALID", None
+    if isinstance(exc, provenance.ProvenanceError):
+        return "PROVENANCE_INVALID", None
+    return "EVALUATION_INTEGRITY_ERROR", None
+
+
+def aggregate_invariant_blocks(args, case_id, reports):
+    """Carry every per-realization invariant record of every seed report.
+
+    Reports must share the current contract identity. A report without a
+    gate block is BLOCKED; a report whose overall status is
+    ``INTEGRITY_ERROR`` contributes an integrity error even if its block is
+    missing. The aggregate uses :func:`invariants.aggregate_realizations`,
+    so one failing seed can never be averaged away.
+    """
+    contract = load_invariant_contract(args)
+    blocks = [doc.get("deterministic_invariants") for _, doc in reports]
+    digests = {b.get("contract_sha256") for b in blocks if isinstance(b, dict)}
+    if digests and digests != {contract["_sha256"]}:
+        raise invariants.InvariantGateError(
+            "INVARIANT_CONTRACT_INVALID",
+            "seed reports were not evaluated under the current invariant contract")
+    sources = list(blocks)
+    realizations, ensemble = [], []
+    for (path, doc), block in zip(reports, blocks):
+        if isinstance(block, dict):
+            for realization in block.get("realizations") or []:
+                realizations.append(dict(realization, source_report=str(path)))
+            ensemble.extend(dict(r, source_report=str(path)) for r in block.get("ensemble") or [])
+        if doc.get("overall_status") == "INTEGRITY_ERROR" and (
+                not isinstance(block, dict) or block.get("verdict") != invariants.INTEGRITY_ERROR):
+            sources.append(invariants.integrity_block(
+                contract, "EVALUATION_INTEGRITY_ERROR", f"seed report {path} is INTEGRITY_ERROR"))
+    gate = invariants.assemble_gate(
+        contract, None, realizations, ensemble,
+        paired_scoring={"status": "BLOCKED", "input_equivalence": None,
+                        "reason": "aggregation consumes seed reports; paired eligibility "
+                                  "is established per report"})
+    summary = invariants.aggregate_realizations(sources)
+    gate.update(case_id=case_id, verdict=summary["verdict"], counts=summary["counts"],
+                failed=summary["failed"], integrity_errors=summary["integrity_errors"],
+                blocked=summary["blocked"])
+    gate["source_reports"] = [
+        {"path": str(path), "verdict": (block or {}).get("verdict"),
+         "overall_status": doc.get("overall_status")}
+        for (path, doc), block in zip(reports, blocks)]
+    gate["summary"] = invariants.render_gate_summary(gate)
+    return gate
+
+
+def unary_field_gate(args, case_def, evidences, *, provenance_ctx=None, paired_scoring=None):
+    """Gate for report paths without corpus seed files (synthetic, ETEX).
+
+    Without a #51 case manifest every case-dependent invariant stays
+    BLOCKED; field invariants still run on every cell. An integrity error
+    stops the evaluation before any statistic uses the invalid fields.
+    """
+    contract = load_invariant_contract(args)
+    gate = invariants.build_gate(contract, case_def, evidences, provenance=provenance_ctx,
+                                 paired_scoring=paired_scoring)
+    if gate["verdict"] == invariants.INTEGRITY_ERROR:
+        first = gate["integrity_errors"][0]
+        raise invariants.InvariantGateError(
+            first["error_id"],
+            f"deterministic invariant integrity error in {first['realization_id']} "
+            f"{first['invariant_id']}: {first['detail']}", block=gate)
+    return gate
 
 
 # ---------------------------------------------------------------------------
@@ -529,21 +829,60 @@ def run_synthetic(args, oracle_manifest):
     }
     oracle_nested = io_fortran.read_grid_conc(str(last_conc), header, endian)
     oracle_flat = io_fortran.flatten_grid_nx_ny_nz(oracle_nested)
-    for value in oracle_flat:
-        if not math.isfinite(value) or value < 0:
-            raise ValueError("oracle concentration field has non-finite or negative values")
+    try:
+        oracle_blocks = io_fortran.read_grid_conc_blocks(str(last_conc), header, endian)
+    except (ValueError, IndexError, struct.error) as exc:
+        raise invariants.InvariantGateError(
+            "ORACLE_OUTPUT_INCOMPLETE", f"{last_conc.name}: {exc}") from None
     input_hashes["fortran_concentration"] = report_lib.sha256_file(last_conc)
 
     gpu = io_gpu.read_fortran_validation_json(args.gpu_output)
     input_hashes["candidate_output"] = report_lib.sha256_file(args.gpu_output)
+    labeled = [("fortran_header", str(header_path), "oracle"),
+               ("fortran_concentration", str(last_conc), "oracle"),
+               ("candidate_output", str(args.gpu_output), "candidate")]
+    provenance_evidence = {}
     oracle, candidate, prov_missing, prov_notes = build_provenance(
-        args, oracle_manifest,
-        artifact_paths=[("fortran_header", str(header_path), "oracle"),
-                        ("fortran_concentration", str(last_conc), "oracle"),
-                        ("candidate_output", str(args.gpu_output), "candidate")])
+        args, oracle_manifest, artifact_paths=labeled, evidence=provenance_evidence)
     missing.extend(prov_missing)
     notes.extend(prov_notes)
     grid = gpu["grid"]
+    oracle_cells = header["numxgrid"] * header["numygrid"] * header["numzgrid"]
+    surface_cells = header["numxgrid"] * header["numygrid"]
+    oracle_fields = [{"field_id": f"{last_conc.name}/concentration", "kind": "concentration",
+                      "unit": "FLEXPART native concentration",
+                      "values": oracle_blocks["concentration"], "expected_cells": oracle_cells}]
+    for kind in ("wet_deposition", "dry_deposition"):
+        oracle_fields.append({"field_id": f"{last_conc.name}/{kind}", "kind": kind,
+                              "unit": "FLEXPART native deposition",
+                              "values": oracle_blocks[kind], "expected_cells": surface_cells})
+    gate = unary_field_gate(
+        args, None,
+        [invariants.gridded_evidence(
+            "candidate", "candidate:candidate_output", case_id=None,
+            fields=[{"field_id": "candidate_output/concentration_mass_kg",
+                     "kind": "concentration", "unit": "kg per output cell",
+                     "values": list(gpu["concentration_mass_kg"]),
+                     "expected_cells": grid["nx"] * grid["ny"] * grid["nz"]}],
+            grid={"nx": grid["nx"], "ny": grid["ny"], "nz": grid["nz"],
+                  "xlon0": grid["xlon0"], "ylat0": grid["ylat0"], "dx": grid["dx"],
+                  "dy": grid["dy"], "heights_m": grid["heights_m"]},
+            chronology=None,
+            artifacts=[{"label": "candidate_output", "path": str(args.gpu_output),
+                        "sha256": input_hashes["candidate_output"]}]),
+         invariants.gridded_evidence(
+            "oracle", "oracle:fortran_output", case_id=None, fields=oracle_fields,
+            grid=None, chronology=None,
+            artifacts=[{"label": "fortran_header", "path": str(header_path),
+                        "sha256": input_hashes["fortran_header"]},
+                       {"label": "fortran_concentration", "path": str(last_conc),
+                        "sha256": input_hashes["fortran_concentration"]}])],
+        provenance_ctx=invariants.provenance_context(
+            provenance_evidence.get("document"), provenance_evidence.get("verify_result"),
+            labeled),
+        paired_scoring={"status": "BLOCKED",
+                        "input_equivalence": "INPUT_EQUIVALENCE_NOT_DEMONSTRATED",
+                        "reason": "synthetic path consumes no #52 input-equivalence report"})
     candidate_grid = {
         "nx": grid["nx"], "ny": grid["ny"], "nz": grid["nz"],
         "xlon0": grid["xlon0"], "ylat0": grid["ylat0"],
@@ -551,9 +890,6 @@ def run_synthetic(args, oracle_manifest):
     }
     candidate_flat = [float(v) for v in gpu["concentration_mass_kg"]]
     candidate_counts = [int(v) for v in gpu["particle_count_per_cell"]]
-    for value in candidate_flat:
-        if not math.isfinite(value) or value < 0:
-            raise ValueError("candidate mass field has non-finite or negative values")
 
     # Window alignment: the oracle averaging window ends at the last file.
     stamp = last_conc.name.split("_")[2]
@@ -774,6 +1110,10 @@ def run_synthetic(args, oracle_manifest):
     notes.append("Grid diagnostics compare concentration against concentration: the "
                  "candidate mass field is converted to kg/m3 with cell volumes before "
                  "normalization. Raw sums are reported separately with units.")
+    notes.append("No #51 case manifest is consumed by this path: case-dependent "
+                 "deterministic invariants stay BLOCKED; the hard-coded released mass "
+                 "feeds only the legacy MASS_BUDGET_CLOSE diagnostic.")
+    overall, detail = apply_invariant_gate_status(overall, detail, gate)
     return report_lib.make_report(
         case_id="synthetic-uniform-wind", time_window=time_window, grid=grid_report,
         oracle=oracle, candidate=candidate, input_hashes=input_hashes,
@@ -782,7 +1122,8 @@ def run_synthetic(args, oracle_manifest):
         threshold_evaluations=evaluations,
         thresholds_version=thresholds_doc.get("version", "unknown"),
         missing_metrics=missing, notes=notes,
-        overall_status=overall, status_detail=detail)
+        overall_status=overall, status_detail=detail,
+        deterministic_invariants=gate)
 
 
 # ---------------------------------------------------------------------------
@@ -904,12 +1245,46 @@ def run_etex(args, case_id, oracle_manifest):
             str(field_path), fortran_grid_raw["nx"], fortran_grid_raw["ny"], fortran_grid_raw["nz"])
         surface = [[float(nested[ix][iy][0]) for ix in range(fortran_grid_raw["nx"])]
                    for iy in range(fortran_grid_raw["ny"])]
-        for row in surface:
-            for value in row:
-                if not math.isfinite(value) or value < 0:
-                    raise ValueError("oracle surface field has non-finite or negative values")
-        fortran_windows.append({"start": start, "end": end, "surface": surface})
+        fortran_windows.append({"start": start, "end": end, "surface": surface,
+                                "name": field_path.name})
         conc_hashes[field_path.name] = report_lib.sha256_file(field_path)
+    labeled = ([("measurements", str(args.measurements), "input"),
+                ("candidate_output", str(args.gpu_output), "candidate"),
+                ("fortran_header_txt", str(header_txt_path), "oracle"),
+                ("fortran_dates", str(dates_path), "oracle")] +
+               [("fortran_concentration", str(fortran_dir / name), "oracle")
+                for name in conc_hashes])
+    provenance_evidence = {}
+    oracle, candidate, prov_missing, prov_notes = build_provenance(
+        args, oracle_manifest, artifact_paths=labeled, evidence=provenance_evidence)
+    gate = unary_field_gate(
+        args, None,
+        [invariants.gridded_evidence(
+            "candidate", "candidate:candidate_output", case_id=None,
+            fields=[{"field_id": f"candidate_output/timestep_{index}/concentration_mass_kg",
+                     "kind": "concentration", "unit": "kg per output cell",
+                     "values": list(step["concentration_mass_kg"]),
+                     "expected_cells": gpu_grid["nx"] * gpu_grid["ny"] * gpu_grid["nz"]}
+                    for index, step in enumerate(gpu_data["timesteps"])],
+            grid=None, chronology=None,
+            artifacts=[{"label": "candidate_output", "path": str(args.gpu_output),
+                        "sha256": report_lib.sha256_file(args.gpu_output)}]),
+         invariants.gridded_evidence(
+            "oracle", "oracle:fortran_output", case_id=None,
+            fields=[{"field_id": f"{window['name']}/surface_concentration",
+                     "kind": "concentration", "unit": "pg/m3",
+                     "values": [v for row in window["surface"] for v in row],
+                     "expected_cells": fortran_grid_raw["nx"] * fortran_grid_raw["ny"]}
+                    for window in fortran_windows],
+            grid=None, chronology=None,
+            artifacts=[{"label": label, "path": path, "sha256": report_lib.sha256_file(path)}
+                       for label, path, role in labeled if role == "oracle"])],
+        provenance_ctx=invariants.provenance_context(
+            provenance_evidence.get("document"), provenance_evidence.get("verify_result"),
+            [item for item in labeled if item[2] in ("candidate", "oracle")]),
+        paired_scoring={"status": "BLOCKED",
+                        "input_equivalence": "INPUT_EQUIVALENCE_NOT_DEMONSTRATED",
+                        "reason": "ETEX consumes the legacy audit, not a #52 v1 verdict"})
     # Grid alignment (surface-layer heights compared; full column follows OUTGRID).
     grid_match, grid_checks = report_lib.check_grid_alignment(
         {"outlon0": fortran_grid_raw["outlon0"], "outlat0": fortran_grid_raw["outlat0"],
@@ -954,14 +1329,6 @@ def run_etex(args, case_id, oracle_manifest):
     observed = [p["observed_pg_m3"] for p in pairs]
     gpu_values = [p["gpu_pg_m3"] for p in pairs]
     fortran_values = [p["fortran_pg_m3"] for p in pairs]
-    oracle, candidate, prov_missing, prov_notes = build_provenance(
-        args, oracle_manifest,
-        artifact_paths=[("measurements", str(args.measurements), "input"),
-                        ("candidate_output", str(args.gpu_output), "candidate"),
-                        ("fortran_header_txt", str(header_txt_path), "oracle"),
-                        ("fortran_dates", str(dates_path), "oracle")] +
-                       [("fortran_concentration", str(fortran_dir / name), "oracle")
-                        for name in conc_hashes])
     missing.extend(prov_missing)
     notes.extend(prov_notes)
     etex = {
@@ -1022,6 +1389,10 @@ def run_etex(args, case_id, oracle_manifest):
         audit_detail = f"input audit status {audit_record['status']}"
     else:
         audit_detail = "input equivalence not evaluated by this report"
+    etex_overall, etex_detail = apply_invariant_gate_status(
+        "DIAGNOSTIC",
+        f"paired observation diagnostics computed; no parity verdict ({audit_detail})",
+        gate)
     return report_lib.make_report(
         case_id=case_id, time_window=time_window, grid=grid_report,
         oracle=oracle, candidate=candidate, input_hashes=input_hashes,
@@ -1030,9 +1401,8 @@ def run_etex(args, case_id, oracle_manifest):
         threshold_evaluations=evaluations,
         thresholds_version=thresholds_doc.get("version", "unknown"),
         missing_metrics=missing, notes=notes,
-        overall_status="DIAGNOSTIC",
-        status_detail=("paired observation diagnostics computed; no parity verdict "
-                       f"({audit_detail})"))
+        overall_status=etex_overall, status_detail=etex_detail,
+        deterministic_invariants=gate)
 
 
 # ---------------------------------------------------------------------------
@@ -1137,6 +1507,15 @@ def run_aggregate(args, oracle_manifest):
     if len(reports) < 10:
         notes.append(f"Only {len(reports)} seeds aggregated; at least 10 independent seeds "
                      "are required for a stochastic parity claim.")
+    gate = aggregate_invariant_blocks(args, case_id, reports)
+    aggregate_overall, aggregate_detail = apply_invariant_gate_status(
+        "DIAGNOSTIC",
+        f"aggregated {len(reports)} seeds; diagnostic unless >= 10 seeds with "
+        "controllable oracle seed", gate)
+    for entry in gate["blocked"]:
+        missing.append({"name": f"deterministic_invariants.{entry.get('invariant_id')}",
+                        "reason": f"{entry.get('realization_id')}: [{entry.get('error_id')}] "
+                                  f"{entry.get('detail')}"})
     thresholds_doc = json.loads(Path(args.thresholds).read_text(encoding="utf-8"))
     evaluations = report_lib.evaluate_thresholds(
         thresholds_doc, {"case_id": case_id})
@@ -1150,9 +1529,8 @@ def run_aggregate(args, oracle_manifest):
         threshold_evaluations=evaluations,
         thresholds_version=thresholds_doc.get("version", "unknown"),
         missing_metrics=missing, notes=notes,
-        overall_status="DIAGNOSTIC",
-        status_detail=(f"aggregated {len(reports)} seeds; "
-                       "diagnostic unless >= 10 seeds with controllable oracle seed"))
+        overall_status=aggregate_overall, status_detail=aggregate_detail,
+        deterministic_invariants=gate)
     return built
 
 
@@ -1332,51 +1710,37 @@ def run_corpus_seeds(args, oracle_manifest):
 
     Consumes ``seed_*.json`` files from ``src/bin/corpus-run.rs`` together
     with the versioned case definition. Seed files are validated as distinct,
-    correctly derived Philox identities before any statistics are computed.
-    Particle metrics (kilogram mass budget, center of mass, horizontal
-    covariance/eigenvalues, vertical quantiles) use :mod:`metrics` and are
-    aggregated over seeds with means, dispersion and approximate 95%
-    confidence intervals. The mass-closure gate applies to every seed: the
-    worst absolute error governs, so opposite-sign errors cannot cancel into
-    a pass. The runner's own ``metrics`` block is cross-checked on an
-    unweighted basis with unit-aware tolerances; a divergence is an
-    integrity error. An optional oracle directory contributes particle-space
-    diagnostics from ``partposit`` dumps. There is no parity verdict: the
-    corpus thresholds version no oracle-vs-candidate gate and the Fortran
-    runner exposes no controllable seed.
+    correctly derived Philox identities, and every consumed artifact is
+    passed to the #53 provenance verifier, before any statistic is computed.
+    The Issue #54 deterministic-invariant gate then evaluates every seed
+    (and the oracle output directory, when supplied) as an independent
+    realization; any invariant integrity error stops the evaluation with an
+    ``INTEGRITY_ERROR`` report that preserves the offending records. The
+    per-seed kilogram mass budget is the canonical ``INV-MASS-CLOSURE``
+    record (airborne plus every enabled-process reservoir), so opposite-sign
+    errors cannot cancel and a single failing seed fails the report.
+    Particle metrics (center of mass, horizontal covariance/eigenvalues,
+    vertical quantiles) use :mod:`metrics` and are aggregated over seeds with
+    means, dispersion and approximate 95% confidence intervals. The runner's
+    own ``metrics`` block is cross-checked on an unweighted basis with
+    unit-aware tolerances; a divergence is an integrity error. An optional
+    oracle directory contributes particle-space diagnostics from
+    ``partposit`` dumps. There is no parity verdict.
     """
     missing = []
     notes = list(args.note or [])
+    contract = load_invariant_contract(args)
     case_def = io_corpus.read_case_definition(args.case_def)
+    case_id = case_def["case_id"]
+    case_sha256 = report_lib.sha256_file(args.case_def)
     # Fail-closed #52 gate: paired oracle scoring requires INPUT_EQUIVALENT.
-    # Candidate-only statistics remain diagnostic; supplying --fortran-output
-    # together with --require-input-equivalence turns the gate on.
-    if getattr(args, "require_input_equivalence", None) and getattr(args, "fortran_output", None):
-        import importlib.util as _ilu
-
-        _spec = _ilu.spec_from_file_location(
-            "input_equivalence_gate",
-            REPO_ROOT / "scripts" / "corpus" / "input_equivalence.py",
-        )
-        assert _spec is not None and _spec.loader is not None
-        _ie = _ilu.module_from_spec(_spec)
-        _spec.loader.exec_module(_ie)
-        try:
-            _ie.require_input_equivalent(
-                args.require_input_equivalence,
-                expected_case_id=case_def["case_id"],
-            )
-        except _ie.InputEquivalenceError as exc:
-            raise ValueError(f"input-equivalence gate refused scoring: {exc}") from None
+    paired_scoring = paired_scoring_prerequisite(args, case_id)
+    if paired_scoring["status"] == PAIRED_PENDING_PROVENANCE:
         notes.append(
             "Input-equivalence gate passed (INPUT_EQUIVALENT); #53 provenance "
             "must still be verified before any parity claim."
         )
-    case_id = case_def["case_id"]
     release_mass = float(case_def["release"]["inventory"]["quantity_kg"])
-    switches = case_def["physics_switches"]
-    deposition_on = bool(switches.get("dry_deposition") or
-                         switches.get("wet_deposition") or switches.get("decay"))
     candidate_block = _candidate_philox_block(case_def, case_id)
     expected_seeds = 1 if candidate_block is None else int(candidate_block["count"])
     thresholds_doc = json.loads(Path(args.thresholds).read_text(encoding="utf-8"))
@@ -1384,12 +1748,13 @@ def run_corpus_seeds(args, oracle_manifest):
 
     seed_paths = _expand_patterns(args.candidate_seeds)
     seeds = []
-    input_hashes = {"case_definition": report_lib.sha256_file(args.case_def)}
+    input_hashes = {"case_definition": case_sha256}
     for path in seed_paths:
         data = io_corpus.read_seed_file(path)
         if data["case_id"] != case_id:
-            raise ValueError(f"seed file {path} belongs to {data['case_id']}, "
-                             f"expected {case_id}")
+            raise invariants.InvariantGateError(
+                "CASE_ID_MISMATCH",
+                f"seed file {path} belongs to {data['case_id']}, expected {case_id}")
         seeds.append((path, data))
         input_hashes[f"candidate_{Path(path).name}"] = report_lib.sha256_file(path)
     if not seeds:
@@ -1402,7 +1767,7 @@ def run_corpus_seeds(args, oracle_manifest):
     # hold recognized artifacts; otherwise this is an integrity error, not a
     # silent candidate-only run.
     partposit_files, grid_files = [], []
-    fortran_dir = None
+    oracle_evidence, oracle_labeled = None, []
     if args.fortran_output:
         fortran_dir = Path(args.fortran_output)
         if not fortran_dir.is_dir():
@@ -1417,26 +1782,55 @@ def run_corpus_seeds(args, oracle_manifest):
             raise FileNotFoundError(
                 f"oracle directory holds no partposit_* or grid_conc_* "
                 f"artifacts: {fortran_dir}")
-    if deposition_on:
-        notes.append("Deposition or decay is enabled: the deposited/decayed "
-                     "reservoirs are not recorded in seed files, so the kilogram "
-                     "budget stays open by the removed mass and is diagnostic.")
-        missing.append({"name": "particle_metrics.deposited_reservoirs",
-                        "reason": "seed files record particle masses only; "
-                                  "removed mass cannot be closed into a budget"})
+        oracle_evidence, oracle_labeled = oracle_output_evidence(fortran_dir)
+
+    # #53 verification of every consumed artifact precedes evaluation.
+    candidate_evidence = [seed_evidence(path, data) for path, data in seeds]
+    candidate_labeled = [(e["artifacts"][0]["label"], e["artifacts"][0]["path"], "candidate")
+                         for e in candidate_evidence]
+    labeled = candidate_labeled + oracle_labeled
+    provenance_evidence = {}
+    oracle, candidate, prov_missing, prov_notes = build_provenance(
+        args, oracle_manifest,
+        embedded_revisions=[data.get("candidate_revision") for _, data in seeds],
+        embedded_adapters=[data.get("adapter") for _, data in seeds],
+        artifact_paths=labeled, evidence=provenance_evidence)
+    missing.extend(prov_missing)
+    notes.extend(prov_notes)
+    provenance_ctx = invariants.provenance_context(
+        provenance_evidence.get("document"), provenance_evidence.get("verify_result"),
+        labeled, case_manifest_sha256=case_sha256)
+    evidences = list(candidate_evidence)
+    if oracle_evidence is not None:
+        oracle_evidence["case_id"] = _bound_case_id(provenance_ctx, oracle_labeled)
+        evidences.append(oracle_evidence)
+    gate = invariants.build_gate(contract, case_def, evidences, provenance=provenance_ctx,
+                                 paired_scoring=paired_scoring,
+                                 case_manifest_sha256=case_sha256)
+    finalize_paired_scoring(gate)
+    if gate["verdict"] == invariants.INTEGRITY_ERROR:
+        first = gate["integrity_errors"][0]
+        raise invariants.InvariantGateError(
+            first["error_id"],
+            f"deterministic invariant integrity error in {first['realization_id']} "
+            f"{first['invariant_id']}: {first['detail']}", block=gate)
+    closure_by_seed = {
+        r["realization_id"]: next(rec for rec in r["invariants"]
+                                  if rec["invariant_id"] == "INV-MASS-CLOSURE")
+        for r in gate["realizations"] if r["role"] == "candidate"}
 
     per_seed = []
-    for path, data in seeds:
+    for (path, data), evidence in zip(seeds, candidate_evidence):
         lons, lats, heights, masses = io_corpus.seed_particles(data)
-        for value in masses:
-            if not math.isfinite(value) or value < 0:
-                raise ValueError(f"non-finite or negative particle mass in {path}")
-        budget = metrics.mass_budget(release_mass, float(sum(masses)))
-        if deposition_on:
-            budget_verdict = "NOT_APPLICABLE"
+        closure = closure_by_seed[evidence["realization_id"]]
+        if closure.get("measured"):
+            budget = dict(closure["measured"], verdict=closure["verdict"],
+                          invariant_id="INV-MASS-CLOSURE", error_id=closure.get("error_id"))
         else:
-            budget_verdict = ("PASS" if abs(budget["relative_error"]) < gate_value
-                              else "FAIL")
+            budget = dict(metrics.mass_budget(release_mass, float(sum(masses))),
+                          verdict=closure["verdict"], invariant_id="INV-MASS-CLOSURE",
+                          error_id=closure.get("error_id"),
+                          note="airborne-only view; the canonical closure is not evaluable")
         com = metrics.center_of_mass_particles(lons, lats, heights, masses)
         cov = metrics.horizontal_covariance(lons, lats, masses)
         quantiles = metrics.vertical_quantiles(heights, masses, (0.1, 0.5, 0.9))
@@ -1463,7 +1857,8 @@ def run_corpus_seeds(args, oracle_manifest):
             "philox_counter": data["philox_counter"],
             "adapter": data["adapter"],
             "particle_count": len(masses),
-            "mass_budget": dict(budget, verdict=budget_verdict),
+            "mass_budget": budget,
+            "runner_budget_status": data.get("budget_status"),
             "center_of_mass": com,
             "horizontal_covariance": cov,
             "vertical_quantiles_m": quantiles,
@@ -1476,18 +1871,8 @@ def run_corpus_seeds(args, oracle_manifest):
     adapters = {entry["adapter"] for entry in per_seed}
     if len(adapters) != 1:
         raise ValueError(f"seed files mix adapters: {sorted(adapters)}")
-    oracle_file = (partposit_files[-1] if partposit_files
-                   else (grid_files[-1] if grid_files else None))
-    oracle, candidate, prov_missing, prov_notes = build_provenance(
-        args, oracle_manifest,
-        embedded_revisions=[data.get("candidate_revision") for _, data in seeds],
-        embedded_adapters=[data.get("adapter") for _, data in seeds],
-        artifact_paths=[(f"candidate_{Path(p).name}", str(p), "candidate")
-                        for p, _ in seeds] +
-                       ([(f"oracle_{oracle_file.name}", str(oracle_file), "oracle")]
-                        if oracle_file is not None else []))
-    missing.extend(prov_missing)
-    notes.extend(prov_notes)
+    notes.append("Runner budget_status values are runner-local diagnostics; the "
+                 "per-seed mass_budget verdict is the canonical INV-MASS-CLOSURE record.")
 
     series = {
         "total_mass_kg": [e["mass_budget"]["remaining_mass_kg"] for e in per_seed],
@@ -1507,21 +1892,27 @@ def run_corpus_seeds(args, oracle_manifest):
                   for name, values in series.items()}
     # Mass-closure gate: every seed is evaluated and the worst absolute
     # error governs, so opposite-sign errors cannot cancel into a pass.
-    if deposition_on:
-        budget_gate = {"gate": "SKIPPED",
-                       "reason": "deposition/decay reservoirs are not recorded"}
-        worst_abs_rel_error = None
-        failed_seeds = []
+    evaluated = [e for e in per_seed
+                 if e["mass_budget"]["verdict"] in (invariants.PASS, invariants.FAIL)]
+    failed_seeds = [e["seed_file"] for e in per_seed
+                    if e["mass_budget"]["verdict"] == invariants.FAIL]
+    blocked_seeds = [e["seed_file"] for e in per_seed
+                     if e["mass_budget"]["verdict"] not in (invariants.PASS, invariants.FAIL)]
+    worst_abs_rel_error = (max(abs(e["mass_budget"]["relative_error"]) for e in evaluated)
+                           if evaluated else None)
+    if failed_seeds:
+        budget_gate_verdict = invariants.FAIL
+    elif blocked_seeds:
+        budget_gate_verdict = invariants.BLOCKED
     else:
-        failed_seeds = [e["seed_file"] for e in per_seed
-                        if e["mass_budget"]["verdict"] != "PASS"]
-        worst_abs_rel_error = max(abs(e["mass_budget"]["relative_error"])
-                                  for e in per_seed)
-        budget_gate = {"gate": "PASS" if not failed_seeds else "FAIL",
-                       "gate_value": gate_value,
-                       "worst_abs_relative_error": worst_abs_rel_error,
-                       "failed_seed_count": len(failed_seeds),
-                       "failed_seeds": failed_seeds}
+        budget_gate_verdict = invariants.PASS
+    budget_gate = {"gate": budget_gate_verdict,
+                   "invariant_id": "INV-MASS-CLOSURE",
+                   "gate_value": gate_value,
+                   "worst_abs_relative_error": worst_abs_rel_error,
+                   "failed_seed_count": len(failed_seeds),
+                   "failed_seeds": failed_seeds,
+                   "blocked_seeds": blocked_seeds}
     multiseed = {
         "n_seeds": len(seeds),
         "expected_seeds": expected_seeds,
@@ -1536,6 +1927,10 @@ def run_corpus_seeds(args, oracle_manifest):
     missing.append({"name": "multiseed.oracle_seed_control",
                     "reason": "oracle runner exposes no controllable seed; "
                               "NOT_SUITABLE_FOR_MULTISEED_PARITY"})
+    for entry in gate["blocked"]:
+        missing.append({"name": f"deterministic_invariants.{entry['invariant_id']}",
+                        "reason": f"{entry['realization_id']}: [{entry['error_id']}] "
+                                  f"{entry['detail']}"})
     if expected_seeds and len(seeds) != expected_seeds:
         notes.append(f"Found {len(seeds)} seeds but the case requests {expected_seeds}; "
                      "at least 10 independent seeds are required for a stochastic claim.")
@@ -1568,7 +1963,6 @@ def run_corpus_seeds(args, oracle_manifest):
                     "candidate_center_distances_km": distances,
                     "verdict": "DIAGNOSTIC",
                 }
-                input_hashes["oracle_partposit"] = report_lib.sha256_file(partposit_files[-1])
             else:
                 missing.append({"name": "oracle.partposit",
                                 "reason": "oracle partposit file is empty"})
@@ -1579,14 +1973,12 @@ def run_corpus_seeds(args, oracle_manifest):
                                       "comparison needs a partposit dump, and seed "
                                       "files carry no concentration grid, so this "
                                       "run is classified candidate-only"})
-            notes.append("Oracle grid_conc files are present but not evaluated: "
-                         "without a partposit dump there is no particle-space "
-                         "counterpart, and gridding the candidate would duplicate "
-                         "the corpus comparison script's scope.")
-        else:
-            missing.append({"name": "oracle.partposit",
-                            "reason": "oracle wrote no partposit dump; particle-space "
-                                      "oracle comparison unavailable"})
+            notes.append("Oracle grid_conc files are evaluated only by the unary "
+                         "deterministic-invariant gate: without a partposit dump there "
+                         "is no particle-space counterpart, and gridding the candidate "
+                         "would duplicate the corpus comparison script's scope.")
+        for label, path, _role in oracle_labeled:
+            input_hashes[label] = report_lib.sha256_file(path)
     else:
         missing.append({"name": "oracle",
                         "reason": "no oracle directory supplied; candidate-only evaluation"})
@@ -1616,52 +2008,42 @@ def run_corpus_seeds(args, oracle_manifest):
                     "reason": "case domain carries wind levels, not output heights; "
                               "no gridded comparison is attempted"})
     particle_section = {"per_seed": per_seed, "aggregated": aggregated,
-                        "unit": "kg/m/km"}
+                        "oracle_partposit": oracle_section, "unit": "kg/m/km"}
     context = {"case_id": "corpus-seeds",
                "particle_metrics.mass_budget.relative_error": worst_abs_rel_error,
                "integrity.non_negative_fields": True,
                "alignment.grid_and_window_match": None}
-    if deposition_on:
-        context["particle_metrics.mass_budget.relative_error"] = None
     evaluations = report_lib.evaluate_thresholds(thresholds_doc, context)
     divergent = [e["seed_file"] for e in per_seed
                  if e["runner_metrics_cross_check"]["verdict"] == "DIVERGENT"]
     failed_gates = [e["id"] for e in evaluations if e.get("verdict") == "FAIL"]
+    alignment = {"grid_and_window_match": None,
+                 "checks": [],
+                 "note": "particle-ensemble case: no shared concentration grid asserted"}
     if divergent:
-        return report_lib.make_report(
-            case_id=case_id, time_window=time_window, grid=grid_report,
-            oracle=oracle, candidate=candidate, input_hashes=input_hashes,
-            alignment={"grid_and_window_match": None,
-                       "checks": [],
-                       "note": "particle-ensemble case: no shared concentration grid asserted"},
-            particle_metrics=particle_section, grid_metrics=None,
-            etex=None, multiseed=multiseed,
-            threshold_evaluations=evaluations,
-            thresholds_version=thresholds_doc.get("version", "unknown"),
-            missing_metrics=missing, notes=notes,
-            overall_status="INTEGRITY_ERROR",
-            status_detail=("runner cross-check DIVERGENT for seeds "
+        overall, detail = ("INTEGRITY_ERROR",
+                           "runner cross-check DIVERGENT for seeds "
                            f"{divergent}; the two implementations disagree, so no "
-                           "reported metric can be trusted"))
-    if failed_gates:
+                           "reported metric can be trusted")
+    elif failed_gates:
         overall, detail = ("FAIL", "in-scope threshold violated: " +
                            ", ".join(failed_gates))
     else:
         overall, detail = ("DIAGNOSTIC", "corpus particle-ensemble diagnostics over "
                            f"{len(seeds)} seeds; no parity verdict")
+    overall, detail = apply_invariant_gate_status(overall, detail, gate)
     return report_lib.make_report(
         case_id=case_id, time_window=time_window, grid=grid_report,
         oracle=oracle, candidate=candidate, input_hashes=input_hashes,
-        alignment={"grid_and_window_match": None,
-                   "checks": [],
-                   "note": "particle-ensemble case: no shared concentration grid asserted"},
+        alignment=alignment,
         particle_metrics=particle_section, grid_metrics=None,
         etex=None, multiseed=multiseed,
         threshold_evaluations=evaluations,
         thresholds_version=thresholds_doc.get("version", "unknown"),
         missing_metrics=missing, notes=notes,
         overall_status=overall,
-        status_detail=detail)
+        status_detail=detail,
+        deterministic_invariants=gate)
 
 
 # Unit-aware tolerances for the runner cross-check. Absolute tolerances are
@@ -1767,6 +2149,8 @@ def build_parser():
     parser.add_argument("--output", required=True)
     parser.add_argument("--summary", default=None)
     parser.add_argument("--thresholds", default=str(DEFAULT_THRESHOLDS))
+    parser.add_argument("--invariants", default=str(invariants.DEFAULT_CONTRACT),
+                        help="Versioned deterministic-invariant contract (Issue #54)")
     parser.add_argument("--oracle-manifest", default=str(DEFAULT_ORACLE_MANIFEST))
     parser.add_argument("--oracle-checkout", default=None)
     parser.add_argument("--oracle-executable", default=None)
@@ -1824,10 +2208,19 @@ def main():
             print(f"INTEGRITY_ERROR: {inner}", file=sys.stderr)
             sys.exit(2)
         case_id = args.case if args.case != "aggregate-seeds" else "aggregate-seeds"
+        error_id, block = classify_failure(exc)
+        if block is None:
+            try:
+                contract = invariants.load_contract(args.invariants)
+            except (OSError, ValueError):
+                contract = None
+            block = invariants.integrity_block(contract, error_id, str(exc))
         built = _integrity_report(
             case_id, args, oracle, candidate, {},
-            [{"name": "evaluation", "reason": str(exc)}], f"integrity error: {exc}",
-            list(args.note or []))
+            [{"name": "evaluation", "reason": str(exc)}],
+            f"integrity error: [{error_id}] {exc}" if f"[{error_id}]" not in str(exc)
+            else f"integrity error: {exc}",
+            list(args.note or []), deterministic_invariants=block)
         write_outputs(built, args)
         print(f"INTEGRITY_ERROR: {exc}", file=sys.stderr)
         sys.exit(2)

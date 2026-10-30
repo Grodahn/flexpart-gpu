@@ -189,7 +189,11 @@ fn test_precipitation_temporal_genuine_same_encoder_original_comparison() {
     let passed = rows.iter().all(|r| r["verdict"] == "passed");
     let candidate: Vec<f64> = values.iter().map(|v| f64::from(*v)).collect();
     let expected_flat: Vec<f64> = expected.iter().flatten().copied().collect();
-    let input_manifest = serde_json::to_string(&metadata).expect("input manifest");
+    // Use the same Value representation as the retained report: it preserves
+    // exact f32 admission values when JSON numbers are widened to f64.
+    let input_manifest =
+        serde_json::to_string(&serde_json::to_value(&metadata).expect("input metadata"))
+            .expect("input manifest");
     let evidence = GpuCalculationEvidence {
         schema: GpuEvidenceSchema::default(),
         case_id: "genuine-precipitation-temporal-119".to_owned(),

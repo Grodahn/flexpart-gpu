@@ -108,6 +108,15 @@ impl TransportSettlingRoute {
         releases: &[ReleaseConfig],
         direction: TimeDirection,
     ) -> Result<Self, MeteorologyCompositionError> {
+        Self::from_inventory(&ctx.identity, config, releases, direction)
+    }
+
+    fn from_inventory(
+        context: &Arc<()>,
+        config: &TransportSettlingConfig,
+        releases: &[ReleaseConfig],
+        direction: TimeDirection,
+    ) -> Result<Self, MeteorologyCompositionError> {
         let invalid = MeteorologyCompositionError::Incompatible;
         if config.species.is_empty() || config.species.len() > MAX_SPECIES || releases.is_empty() {
             return Err(invalid(
@@ -164,7 +173,7 @@ impl TransportSettlingRoute {
         ))
         .map_err(|_| invalid("settling provenance serialization"))?;
         Ok(Self {
-            context: Arc::clone(&ctx.identity),
+            context: Arc::clone(context),
             direction,
             input: if enabled {
                 PetterssenSettlingInput::ZeroByCarrier
@@ -183,7 +192,15 @@ impl TransportSettlingRoute {
         ctx: &GpuContext,
         signed_dt: f32,
     ) -> Result<bool, MeteorologyCompositionError> {
-        if !Arc::ptr_eq(&self.context, &ctx.identity)
+        self.validate_context(&ctx.identity, signed_dt)
+    }
+
+    fn validate_context(
+        &self,
+        context: &Arc<()>,
+        signed_dt: f32,
+    ) -> Result<bool, MeteorologyCompositionError> {
+        if !Arc::ptr_eq(&self.context, context)
             || !signed_dt.is_finite()
             || signed_dt == 0.0
             || (signed_dt < 0.0) != (self.direction == TimeDirection::Backward)
@@ -217,7 +234,7 @@ mod tests {
     #[test]
     fn test_settling_route_carriers_bindings_and_context_fail_closed() {
         use super::*;
-        let ctx = pollster::block_on(GpuContext::new()).expect("required route adapter");
+        let context = Arc::new(());
         let gas: SpeciesConfig = serde_json::from_value(
             serde_json::json!({"name":"gas","particle_density_kg_m3":-1.0,"raw":{"pdensity":"-1"}}),
         )
@@ -227,28 +244,32 @@ mod tests {
             ..Default::default()
         };
         let release:ReleaseConfig=serde_json::from_value(serde_json::json!({"name":"source","start_time":"20240101000000","end_time":"20240101000000","lon":0.25,"lat":0.0,"z_min":1.0,"z_max":1.0,"mass_kg":1.0,"particle_count":1,"raw":{}})).expect("release");
-        let route = TransportSettlingRoute::new(
-            &ctx,
+        let route = TransportSettlingRoute::from_inventory(
+            &context,
             &config,
             std::slice::from_ref(&release),
             TimeDirection::Backward,
         )
         .expect("explicit gas");
-        assert!(route.stop_route(&ctx, -1.0).expect("same context"));
-        assert!(route.stop_route(&ctx, 1.0).is_err());
-        assert!(route.stop_route(&ctx, f32::NAN).is_err());
-        let other = pollster::block_on(GpuContext::new()).expect("second required context");
-        assert!(route.stop_route(&other, -1.0).is_err());
-        let forward = TransportSettlingRoute::new(
-            &ctx,
+        assert!(route
+            .validate_context(&context, -1.0)
+            .expect("same context"));
+        assert!(route.validate_context(&context, 1.0).is_err());
+        assert!(route.validate_context(&context, f32::NAN).is_err());
+        let other = Arc::new(());
+        assert!(route.validate_context(&other, -1.0).is_err());
+        let forward = TransportSettlingRoute::from_inventory(
+            &context,
             &config,
             std::slice::from_ref(&release),
             TimeDirection::Forward,
         )
         .expect("forward");
-        assert!(!forward.stop_route(&ctx, 1.0).expect("no forward stop"));
-        assert!(TransportSettlingRoute::new(
-            &ctx,
+        assert!(!forward
+            .validate_context(&context, 1.0)
+            .expect("no forward stop"));
+        assert!(TransportSettlingRoute::from_inventory(
+            &context,
             &TransportSettlingConfig::default(),
             std::slice::from_ref(&release),
             TimeDirection::Backward
@@ -271,8 +292,8 @@ mod tests {
                 _ => invalid.species[0].name.clear(),
             }
             assert!(
-                TransportSettlingRoute::new(
-                    &ctx,
+                TransportSettlingRoute::from_inventory(
+                    &context,
                     &invalid,
                     std::slice::from_ref(&release),
                     TimeDirection::Backward
@@ -284,8 +305,8 @@ mod tests {
         for mass in [f64::NAN, f64::INFINITY, -1.0, 0.0, f64::MAX] {
             let mut invalid = release.clone();
             invalid.mass_kg = mass;
-            assert!(TransportSettlingRoute::new(
-                &ctx,
+            assert!(TransportSettlingRoute::from_inventory(
+                &context,
                 &config,
                 &[invalid],
                 TimeDirection::Backward
@@ -298,8 +319,13 @@ mod tests {
         two.species.push(second);
         let mut multi = release.clone();
         multi.species_masses_kg = Some(vec![0.5, 0.5]);
-        let disabled = TransportSettlingRoute::new(&ctx, &two, &[multi], TimeDirection::Backward)
-            .expect("original run-wide disable");
-        assert!(!disabled.stop_route(&ctx, -1.0).expect("disabled"));
+        let disabled = TransportSettlingRoute::from_inventory(
+            &context,
+            &two,
+            &[multi],
+            TimeDirection::Backward,
+        )
+        .expect("original run-wide disable");
+        assert!(!disabled.validate_context(&context, -1.0).expect("disabled"));
     }
 }

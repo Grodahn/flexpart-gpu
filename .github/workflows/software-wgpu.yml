@@ -869,6 +869,7 @@ jobs:
             cargo run --quiet --example check_gpu_evidence -- "target/ci-gate/transport-top/$mode/fixture-comparison.json"
           done
           python3 scripts/transport/test_check_transport_top.py
+          cargo test --lib simulation::timeloop::settling::tests -- --test-threads=1 > target/ci-gate/transport-route.log 2>&1
       - name: Record dependency cache checksums
         id: original-24
         run: python3 scripts/cargo_cache_integrity.py record

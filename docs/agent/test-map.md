@@ -225,6 +225,7 @@ Choose the artifact contract being changed.
 - Input equivalence: `python scripts/corpus/test_audit_corpus_inputs.py`.
 - Corpus manifest: `python scripts/corpus/test_write_corpus_manifest_v1.py`; shared provenance: `python scripts/provenance/test_run_provenance.py`.
 - Evaluation report and deterministic invariants (#54): `python scripts/evaluate/test_evaluate.py` and `python scripts/evaluate/test_invariants.py` (positive, adversarial, contract-mutation and CLI exit-code cases).
+- Distributional metric contract (#55): `python scripts/evaluate/test_distributional.py` (analytical particle/grid/paired cases, adversarial states, contract mutation, CLI and aggregation handoff), with `python scripts/evaluate/test_metrics.py` for the shared formulas.
 - Canonical case validation: `cargo test --lib validation::case::` (all eight private responsibility modules).
 - Focused case checks: choose the owner below; use [shared fixtures/schema helper](../../src/validation/case/test_support.rs) only when needed to interpret a test.
 

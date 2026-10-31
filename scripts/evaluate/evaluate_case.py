@@ -46,6 +46,13 @@ Every report carries the Issue #54 ``deterministic_invariants`` block from
 ``FAIL`` makes the report ``FAIL`` (exit 1); an invariant
 ``INTEGRITY_ERROR`` makes it ``INTEGRITY_ERROR`` (exit 2) before any
 statistic is computed from invalid fields.
+
+Schema ``1.2.0`` reports also carry the Issue #55 ``distributional_metrics``
+block from :mod:`distributional` (versioned contract
+``evaluation/metrics/distributional-metrics-v1.json``). The block never
+changes ``overall_status``: unary records are diagnostics, and paired records
+are computed only when the invariant aggregate is ``PASS`` and paired
+scoring is ``ELIGIBLE``.
 """
 
 import argparse
@@ -60,6 +67,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(
     0, str(Path(__file__).resolve().parent.parent.parent / "scripts" / "provenance"))
 
+import distributional
 import invariants
 import io_corpus
 import io_fortran
@@ -804,6 +812,124 @@ def unary_field_gate(args, case_def, evidences, *, provenance_ctx=None, paired_s
 
 
 # ---------------------------------------------------------------------------
+# Distributional metric integration (Issue #55)
+# ---------------------------------------------------------------------------
+
+# FLEXPART OUTHEIGHTS and particle ztra1 are metres above ground level.
+FLEXPART_HEIGHT_REFERENCE = "agl"
+ORACLE_FIELD_SEMANTICS = {
+    "concentration": (distributional.QUANTITY_CONCENTRATION, "per_volume",
+                      distributional.LAYOUT_XYZ),
+    "dry_deposition": (distributional.QUANTITY_DRY, "per_area",
+                       distributional.LAYOUT_X_FASTEST_2D),
+    "wet_deposition": (distributional.QUANTITY_WET, "per_area",
+                       distributional.LAYOUT_X_FASTEST_2D),
+}
+PROCESS_QUANTITIES = (("dry_deposition", distributional.QUANTITY_DRY),
+                      ("wet_deposition", distributional.QUANTITY_WET))
+
+
+def load_metric_contract(args):
+    """Load the versioned distributional metric contract (``--metric-contract``)."""
+    return distributional.load_contract(
+        getattr(args, "metric_contract", None) or distributional.DEFAULT_CONTRACT)
+
+
+def declared_quantities(case_def):
+    """Gridded quantities in scope: concentration plus deposition the case enables.
+
+    Without a #51 case manifest every quantity is in scope.
+    """
+    quantities = [distributional.QUANTITY_CONCENTRATION]
+    switches = (case_def or {}).get("physics_switches") or {}
+    for process, quantity in PROCESS_QUANTITIES:
+        if case_def is None or switches.get(process) is True:
+            quantities.append(quantity)
+    return quantities
+
+
+def oracle_grid_fields(oracle_evidence, species, quantities):
+    """Contract field descriptors for every decoded oracle grid_conc block.
+
+    Concentration is a time average ending at the file stamp (``loutaver``);
+    deposition is accumulated since the simulation start and written per area
+    (FLEXPART 11.1 binary_output_mod.f90:1200-1233, drygridunc/wetgridunc are
+    only reset at allocation in outgrid_mod.f90:344). Kilogram scales are not
+    declared because the 1e12 and sp_fact factors have no versioned contract.
+    """
+    grid = dict(oracle_evidence.get("grid") or {}, heights_ref=FLEXPART_HEIGHT_REFERENCE)
+    chronology = oracle_evidence.get("chronology") or {}
+    by_label = {a["label"]: a for a in oracle_evidence["artifacts"]}
+    fields = []
+    for field in oracle_evidence["fields"]:
+        file_name, kind = field["field_id"].split("/", 1)
+        quantity, measure, layout = ORACLE_FIELD_SEMANTICS[kind]
+        if quantity not in quantities:
+            continue
+        end = _flexpart_stamp_to_epoch(file_name.split("_")[2])
+        if kind == "concentration":
+            window = {"kind": "time_average", "start_epoch_s": end - chronology["averaging_s"],
+                      "end_epoch_s": end, "averaging_s": chronology["averaging_s"]}
+        else:
+            window = {"kind": "accumulated_since_start",
+                      "start_epoch_s": chronology["start_epoch_s"], "end_epoch_s": end}
+        artifacts = [by_label[label] for label in ("oracle_header", f"oracle_{file_name}")
+                     if label in by_label]
+        fields.append(distributional.grid_field(
+            "oracle", oracle_evidence["realization_id"], field_id=field["field_id"],
+            quantity=quantity, measure=measure, unit=field["unit"], values=field["values"],
+            layout=layout, grid=grid, window=window, artifacts=artifacts, species=species))
+    return fields
+
+
+def oracle_metric_records(ctx, oracle_evidence, species, quantities, end_epoch_s=None):
+    """Unary oracle records with explicit missing-evidence records for absent dumps.
+
+    A decoded partposit dump yields count-weighted particle metrics only: its
+    masses are not decoded, and particles are never reconstructed from grids.
+    """
+    records = []
+    positions = oracle_evidence.get("particle_positions")
+    if positions:
+        source = distributional.particle_source(
+            "oracle", oracle_evidence["realization_id"], lons=positions["lon_deg"],
+            lats=positions["lat_deg"], heights=positions["z_m"], masses=None, mass_unit=None,
+            vertical_reference=FLEXPART_HEIGHT_REFERENCE,
+            artifacts=[a for a in oracle_evidence["artifacts"] if "partposit" in a["label"]],
+            species=species, end_epoch_s=end_epoch_s)
+        records.extend(distributional.extract_particle_records(ctx, source))
+    else:
+        records.extend(distributional.missing_records(
+            ctx, distributional.PARTICLE_IDS, role="oracle",
+            reason_code="PARTICLE_DUMP_UNAVAILABLE",
+            detail="no oracle partposit dump was decoded (FLEXPART 11.1 writes partposit as "
+                   "NetCDF only); particle positions are never reconstructed from grids",
+            species=species))
+    fields = oracle_grid_fields(oracle_evidence, species, quantities)
+    for field in fields:
+        records.extend(distributional.extract_grid_records(ctx, field))
+    if not fields:
+        records.extend(distributional.missing_records(
+            ctx, distributional.GRID_UNARY_IDS, role="oracle",
+            reason_code="GRID_FIELD_UNAVAILABLE", detail="oracle wrote no grid_conc file",
+            quantities=quantities, species=species))
+    ledger = distributional.particle_source(
+        "oracle", oracle_evidence["realization_id"], lons=None, lats=None, heights=None,
+        masses=None, mass_unit=None, vertical_reference=None,
+        artifacts=oracle_evidence["artifacts"], species=species, reservoirs=None,
+        end_epoch_s=end_epoch_s)
+    records.extend(distributional.budget_records(ctx, ledger, species=species,
+                                                 quantities=quantities))
+    return records, fields
+
+
+def not_extracted_block(contract, gate, case_id, scope):
+    """An explicit empty block for paths outside the distributional scope."""
+    ctx = distributional.ExtractionContext(contract, gate, case_id=case_id)
+    return distributional.build_block(ctx, [], extraction_scope=scope)
+
+
+# ---------------------------------------------------------------------------
 # Synthetic uniform-wind case
 # ---------------------------------------------------------------------------
 
@@ -1114,6 +1240,9 @@ def run_synthetic(args, oracle_manifest):
                  "deterministic invariants stay BLOCKED; the hard-coded released mass "
                  "feeds only the legacy MASS_BUDGET_CLOSE diagnostic.")
     overall, detail = apply_invariant_gate_status(overall, detail, gate)
+    distributional_block = synthetic_distributional_block(
+        args, gate, gpu, candidate_window, header, header_path, last_conc, oracle_blocks,
+        input_hashes, endian)
     return report_lib.make_report(
         case_id="synthetic-uniform-wind", time_window=time_window, grid=grid_report,
         oracle=oracle, candidate=candidate, input_hashes=input_hashes,
@@ -1123,7 +1252,82 @@ def run_synthetic(args, oracle_manifest):
         thresholds_version=thresholds_doc.get("version", "unknown"),
         missing_metrics=missing, notes=notes,
         overall_status=overall, status_detail=detail,
-        deterministic_invariants=gate)
+        deterministic_invariants=gate, distributional_metrics=distributional_block)
+
+
+def synthetic_distributional_block(args, gate, gpu, candidate_window, header, header_path,
+                                   last_conc, oracle_blocks, input_hashes, endian):
+    """Contract records for the synthetic path (no #51 manifest, so no species)."""
+    contract = load_metric_contract(args)
+    ctx = distributional.ExtractionContext(contract, gate, case_id="synthetic-uniform-wind")
+    grid = gpu["grid"]
+    candidate_field = distributional.grid_field(
+        "candidate", "candidate:candidate_output",
+        field_id="candidate_output/concentration_mass_kg",
+        quantity=distributional.QUANTITY_CONCENTRATION, measure="per_cell", unit="kg",
+        values=list(gpu["concentration_mass_kg"]), layout=distributional.LAYOUT_XYZ,
+        grid={"nx": grid["nx"], "ny": grid["ny"], "nz": grid["nz"], "xlon0": grid["xlon0"],
+              "ylat0": grid["ylat0"], "dx": grid["dx"], "dy": grid["dy"],
+              "heights_m": grid["heights_m"], "heights_ref": FLEXPART_HEIGHT_REFERENCE},
+        window={"kind": "time_average",
+                "start_epoch_s": candidate_window["window_start_epoch_seconds"],
+                "end_epoch_s": candidate_window["window_end_epoch_seconds"],
+                "averaging_s": candidate_window["averaging_seconds"]},
+        artifacts=[{"label": "candidate_output", "path": str(args.gpu_output),
+                    "sha256": input_hashes["candidate_output"]}],
+        mass_scale_to_kg=1.0)
+    artifacts = [{"label": "oracle_header", "path": str(header_path),
+                  "sha256": input_hashes["fortran_header"]},
+                 {"label": f"oracle_{last_conc.name}", "path": str(last_conc),
+                  "sha256": input_hashes["fortran_concentration"]}]
+    positions = None
+    partposit_files = io_fortran.find_partposit_files(Path(args.fortran_output))
+    if partposit_files:
+        lons, lats, zs = io_fortran.read_partposit(str(partposit_files[-1]), endian)
+        if lons:
+            positions = {"lon_deg": lons, "lat_deg": lats, "z_m": zs}
+            artifacts.append({"label": f"oracle_{partposit_files[-1].name}",
+                              "path": str(partposit_files[-1]),
+                              "sha256": report_lib.sha256_file(partposit_files[-1])})
+    oracle_evidence = {
+        "realization_id": "oracle:fortran_output",
+        "grid": {"nx": header["numxgrid"], "ny": header["numygrid"],
+                 "nz": header["numzgrid"], "xlon0": header["outlon0"],
+                 "ylat0": header["outlat0"], "dx": header["dxout"], "dy": header["dyout"],
+                 "heights_m": header["outheights"]},
+        "chronology": {"start_epoch_s": _flexpart_stamp_to_epoch(
+                           f"{int(header['ibdate']):08d}{int(header['ibtime']):06d}"),
+                       "averaging_s": header["loutaver"]},
+        "particle_positions": positions,
+        "artifacts": artifacts,
+        "fields": [{"field_id": f"{last_conc.name}/{kind}", "unit": unit,
+                    "values": oracle_blocks[kind]}
+                   for kind, unit in (("concentration", "FLEXPART native concentration"),
+                                      ("dry_deposition", "FLEXPART native deposition"),
+                                      ("wet_deposition", "FLEXPART native deposition"))]}
+    quantities = declared_quantities(None)
+    records = distributional.extract_grid_records(ctx, candidate_field)
+    records.extend(distributional.missing_records(
+        ctx, distributional.PARTICLE_IDS, role="candidate",
+        reason_code="PARTICLE_DUMP_UNAVAILABLE",
+        detail="candidate validation JSON carries particle_z_stats only, no particle positions"))
+    oracle_records, oracle_fields = oracle_metric_records(ctx, oracle_evidence, None, quantities)
+    records.extend(oracle_records)
+    oracle_concentration = next(f for f in oracle_fields
+                                if f["quantity"] == distributional.QUANTITY_CONCENTRATION)
+    records.extend(distributional.extract_paired_grid_records(
+        ctx, candidate_field, oracle_concentration))
+    records.extend(distributional.missing_records(
+        ctx, distributional.PAIRED_GRID_IDS, role="paired",
+        reason_code="GRID_FIELD_UNAVAILABLE",
+        detail="candidate validation JSON carries no gridded deposition",
+        quantities=[distributional.QUANTITY_DRY, distributional.QUANTITY_WET]))
+    return distributional.build_block(
+        ctx, records,
+        extraction_scope="synthetic-uniform-wind: candidate/oracle concentration grids, oracle "
+                         "deposition fields and an optional oracle partposit dump; no #51 "
+                         "manifest, so species are undeclared and paired records cannot be "
+                         "computed")
 
 
 # ---------------------------------------------------------------------------
@@ -1402,7 +1606,11 @@ def run_etex(args, case_id, oracle_manifest):
         thresholds_version=thresholds_doc.get("version", "unknown"),
         missing_metrics=missing, notes=notes,
         overall_status=etex_overall, status_detail=etex_detail,
-        deterministic_invariants=gate)
+        deterministic_invariants=gate,
+        distributional_metrics=not_extracted_block(
+            load_metric_contract(args), gate, case_id,
+            "not extracted: the ETEX path pairs surface station windows with observations; "
+            "observation metrics stay in the etex block"))
 
 
 # ---------------------------------------------------------------------------
@@ -1520,6 +1728,18 @@ def run_aggregate(args, oracle_manifest):
     evaluations = report_lib.evaluate_thresholds(
         thresholds_doc, {"case_id": case_id})
     first = reports[0][1]
+    metric_contract = load_metric_contract(args)
+    handoff = distributional.collect_for_ensemble(reports, metric_contract)
+    metric_ctx = distributional.ExtractionContext(metric_contract, gate, case_id=case_id)
+    carried = [dict(record, eligible_for_paired_scoring=bool(
+        record.get("eligible_for_paired_scoring") and handoff["eligible"]))
+        for record in handoff["records"]]
+    metric_block = distributional.build_block(
+        metric_ctx, carried,
+        extraction_scope="aggregate-seeds: per-realization records carried unchanged from the "
+                         "source reports (source_report); no metric values are aggregated here",
+        notes=([f"Ineligible source reports: {handoff['ineligible_reports']}"]
+               if handoff["ineligible_reports"] else []))
     built = report_lib.make_report(
         case_id=case_id, time_window=first.get("time_window"), grid=first.get("grid"),
         oracle=oracle, candidate=candidate,
@@ -1530,7 +1750,7 @@ def run_aggregate(args, oracle_manifest):
         thresholds_version=thresholds_doc.get("version", "unknown"),
         missing_metrics=missing, notes=notes,
         overall_status=aggregate_overall, status_detail=aggregate_detail,
-        deterministic_invariants=gate)
+        deterministic_invariants=gate, distributional_metrics=metric_block)
     return built
 
 
@@ -2007,6 +2227,9 @@ def run_corpus_seeds(args, oracle_manifest):
     missing.append({"name": "grid.heights_m",
                     "reason": "case domain carries wind levels, not output heights; "
                               "no gridded comparison is attempted"})
+    distributional_block = corpus_distributional_block(
+        args, gate, case_def, case_sha256, seeds, candidate_evidence, oracle_evidence,
+        time_window["end_epoch_s"])
     particle_section = {"per_seed": per_seed, "aggregated": aggregated,
                         "oracle_partposit": oracle_section, "unit": "kg/m/km"}
     context = {"case_id": "corpus-seeds",
@@ -2043,7 +2266,63 @@ def run_corpus_seeds(args, oracle_manifest):
         missing_metrics=missing, notes=notes,
         overall_status=overall,
         status_detail=detail,
-        deterministic_invariants=gate)
+        deterministic_invariants=gate, distributional_metrics=distributional_block)
+
+
+def corpus_distributional_block(args, gate, case_def, case_sha256, seeds, candidate_evidence,
+                                oracle_evidence, end_epoch_s):
+    """Contract records for corpus particle ensembles and optional oracle output."""
+    contract = load_metric_contract(args)
+    species = ((case_def.get("release") or {}).get("species") or {}).get("id")
+    output_grid = case_def.get("output_grid") or {}
+    ctx = distributional.ExtractionContext(
+        contract, gate, case_id=case_def["case_id"], case_manifest_sha256=case_sha256,
+        layer_heights_m=output_grid.get("heights_m"),
+        layer_reference=output_grid.get("heights_ref"))
+    quantities = declared_quantities(case_def)
+    records = []
+    for (_path, data), evidence in zip(seeds, candidate_evidence):
+        lons, lats, heights, masses = io_corpus.seed_particles(data)
+        source = distributional.particle_source(
+            "candidate", evidence["realization_id"], lons=lons, lats=lats, heights=heights,
+            masses=masses, mass_unit="kg", vertical_reference=FLEXPART_HEIGHT_REFERENCE,
+            artifacts=evidence["artifacts"], species=species, reservoirs=evidence["reservoirs"],
+            stochastic_identity={"philox_key": data["philox_key"],
+                                 "philox_counter": data["philox_counter"]},
+            end_epoch_s=end_epoch_s)
+        records.extend(distributional.extract_particle_records(ctx, source))
+        records.extend(distributional.budget_records(ctx, source, species=species,
+                                                     quantities=quantities))
+    candidate_grid_gap = ("corpus-run writes end-state particles only; no candidate gridded "
+                          "output exists (#41/#42), and particles are never gridded here")
+    records.extend(distributional.missing_records(
+        ctx, distributional.GRID_UNARY_IDS, role="candidate",
+        reason_code="GRID_FIELD_UNAVAILABLE", detail=candidate_grid_gap,
+        quantities=quantities, species=species))
+    if oracle_evidence is None:
+        no_oracle = "no oracle directory supplied; candidate-only evaluation"
+        records.extend(distributional.missing_records(
+            ctx, distributional.PARTICLE_IDS, role="oracle",
+            reason_code="PARTICLE_DUMP_UNAVAILABLE", detail=no_oracle, species=species))
+        records.extend(distributional.missing_records(
+            ctx, distributional.GRID_UNARY_IDS, role="oracle",
+            reason_code="GRID_FIELD_UNAVAILABLE", detail=no_oracle, quantities=quantities,
+            species=species))
+    else:
+        oracle_records, _fields = oracle_metric_records(
+            ctx, oracle_evidence, species, quantities, end_epoch_s)
+        records.extend(oracle_records)
+    records.extend(distributional.missing_records(
+        ctx, distributional.PAIRED_GRID_IDS, role="paired",
+        reason_code="GRID_FIELD_UNAVAILABLE", detail=candidate_grid_gap,
+        quantities=quantities, species=species))
+    return distributional.build_block(
+        ctx, records,
+        extraction_scope="corpus-seeds: candidate particle ensembles (mass and count weighting), "
+                         "#54 ledgers, oracle grid_conc fields and an optional partposit dump; "
+                         "particle metrics are unary and never paired by seed index",
+        notes=["Candidate Philox and FLEXPART oracle stochastic identities are separate "
+               "namespaces; #58 owns ensemble comparison."])
 
 
 # Unit-aware tolerances for the runner cross-check. Absolute tolerances are
@@ -2151,6 +2430,8 @@ def build_parser():
     parser.add_argument("--thresholds", default=str(DEFAULT_THRESHOLDS))
     parser.add_argument("--invariants", default=str(invariants.DEFAULT_CONTRACT),
                         help="Versioned deterministic-invariant contract (Issue #54)")
+    parser.add_argument("--metric-contract", default=str(distributional.DEFAULT_CONTRACT),
+                        help="Versioned distributional metric contract (Issue #55)")
     parser.add_argument("--oracle-manifest", default=str(DEFAULT_ORACLE_MANIFEST))
     parser.add_argument("--oracle-checkout", default=None)
     parser.add_argument("--oracle-executable", default=None)

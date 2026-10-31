@@ -1,6 +1,6 @@
 """Versioned evaluation report schema and alignment checks.
 
-Schema version ``1.1.0``. Every report carries units, the evaluated time
+Schema version ``1.2.0``. Every report carries units, the evaluated time
 window, the spatial grid, oracle and candidate revisions, the adapter, seeds,
 input hashes and an explicit list of missing metrics. Reports are comparable
 across runs because field names, units and missing-data rules are fixed here.
@@ -22,6 +22,16 @@ an invariant ``INTEGRITY_ERROR`` makes it ``INTEGRITY_ERROR``; ``BLOCKED``
 and ``PASS`` never upgrade ``overall_status`` beyond ``DIAGNOSTIC``. A
 ``null`` block means the invariants were not evaluated and consumers must
 treat it as ``BLOCKED``.
+
+Schema ``1.2.0`` (Issue #55) adds the ``distributional_metrics`` block
+written by :mod:`distributional` (contract
+``evaluation/metrics/distributional-metrics-v1.json``): stable metric
+records with explicit status, units, weighting and provenance. It is a
+strict superset of ``1.1.0`` and never changes ``overall_status``; paired
+records are computed only when the invariant aggregate is ``PASS`` and paired
+scoring is ``ELIGIBLE``. ``null`` means the metrics were not extracted (the
+evaluation stopped). Migration: ``1.1.0`` reports carry no metric records
+and are not accepted by ``aggregate-seeds``; regenerate them.
 """
 
 import hashlib
@@ -30,7 +40,16 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
+# Strict-superset chain ending at SCHEMA_VERSION. A block contract that names
+# an earlier version in this chain (the #54 invariant contract names 1.1.0,
+# where its block was introduced) is still carried unchanged by this schema.
+SUPERSET_CHAIN = ("1.1.0", "1.2.0")
+
+
+def schema_carries(version):
+    """True when the current schema still carries blocks introduced in ``version``."""
+    return version in SUPERSET_CHAIN
 GRID_ABS_TOL = 1e-5
 
 
@@ -168,8 +187,8 @@ def make_report(case_id, time_window, grid, oracle, candidate, input_hashes,
                 alignment, particle_metrics, grid_metrics, etex,
                 multiseed, threshold_evaluations, thresholds_version,
                 missing_metrics, notes, overall_status, status_detail,
-                deterministic_invariants=None):
-    """Assemble a schema 1.1.0 report dict."""
+                deterministic_invariants=None, distributional_metrics=None):
+    """Assemble a schema 1.2.0 report dict."""
     return {
         "schema_version": SCHEMA_VERSION,
         "case_id": case_id,
@@ -191,6 +210,7 @@ def make_report(case_id, time_window, grid, oracle, candidate, input_hashes,
             "evaluations": threshold_evaluations,
         },
         "deterministic_invariants": deterministic_invariants,
+        "distributional_metrics": distributional_metrics,
         "missing_metrics": missing_metrics,
         "notes": notes,
     }
@@ -281,6 +301,15 @@ def render_summary(report):
                      [f"Deterministic invariants: {gate.get('verdict')}"])
     else:
         lines.append("Deterministic invariants: not evaluated (treat as BLOCKED)")
+    block = report.get("distributional_metrics")
+    if block:
+        counts = ", ".join(f"{k}={v}" for k, v in block.get("counts", {}).items() if v)
+        lines.append(f"Distributional metrics ({block.get('contract_id')} "
+                     f"v{block.get('contract_version')}): {block.get('record_count')} records "
+                     f"({counts}); paired scoring eligible="
+                     f"{block.get('eligible_for_paired_scoring')}")
+    else:
+        lines.append("Distributional metrics: not extracted")
     missing = report.get("missing_metrics", [])
     if missing:
         lines.append("Missing metrics:")

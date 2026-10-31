@@ -785,6 +785,52 @@ class EvaluatorIntegrationTest(unittest.TestCase):
         budget = by_id(block["records"], "budget.mass_closure", role="candidate")
         self.assertEqual(budget["value"]["invariant_verdict"], inv.FAIL)
 
+    def test_synthetic_path_extracts_and_blocks_pairs(self):
+        # Oracle: 2x2x2 grid, uniform 2.0, files at 00:30 and 01:00 (the path uses the last,
+        # window 00:30-01:00). Candidate: the same grid and window, 1 kg in cell (0,0,0).
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            oracle = ti.write_flexpart_output(root / "oracle")
+            start = 1704067200
+            candidate = root / "gpu.json"
+            candidate.write_text(json.dumps({
+                "grid": {"nx": 2, "ny": 2, "nz": 2, "dx": 0.1, "dy": 0.1, "xlon0": 6.0,
+                         "ylat0": 47.0, "heights_m": [100.0, 250.0]},
+                "particle_count_per_cell": [1] + [0] * 7,
+                "concentration_mass_kg": [1.0] + [0.0] * 7,
+                "window_start_epoch_seconds": start + 1800,
+                "window_end_epoch_seconds": start + 3600, "averaging_seconds": 1800,
+                "sampling_seconds": 300, "samples": 7, "endpoint_weight": 0.5}),
+                encoding="utf-8")
+            args = ti.args_for(root / "unused.json", [], fortran_output=str(oracle),
+                               gpu_output=str(candidate),
+                               metric_contract=str(dm.DEFAULT_CONTRACT))
+            built = evaluate_case.run_synthetic(args, ti.ORACLE_MANIFEST)
+        json.dumps(built, allow_nan=False)
+        records = built["distributional_metrics"]["records"]
+        center = by_id(records, "grid.horizontal.center_of_mass", role="candidate")
+        self.assertAlmostEqual(center["value"]["lon_deg"], 6.05, places=9)
+        self.assertEqual(by_id(records, "grid.field.integrated_total",
+                               role="candidate")["value"], {"total_kg": 1.0})
+        oracle_conc = by_id(records, "grid.vertical.layer_fraction", role="oracle",
+                            quantity=dm.QUANTITY_CONCENTRATION)
+        self.assertAlmostEqual(oracle_conc["value"]["layer_fraction"][0], 0.4, places=6)
+        paired = [r for r in records if r["role"] == "paired"
+                  and r["quantity"] == dm.QUANTITY_CONCENTRATION]
+        self.assertEqual(len(paired), len(dm.PAIRED_GRID_IDS))
+        # No #51 manifest: species are undeclared, so no paired value exists.
+        self.assertEqual({r["reason_code"] for r in paired}, {"SPECIES_UNDECLARED"})
+        self.assertTrue(all(r["value"] is None for r in paired))
+        # Oracle deposition fields are all zero here: explicitly degenerate, not fabricated.
+        dry = by_id(records, "grid.horizontal.center_of_mass", role="oracle",
+                    quantity=dm.QUANTITY_DRY)
+        self.assertEqual((dry["status"], dry["value"]), (dm.DEGENERATE, None))
+
+    def test_not_extracted_block_is_explicit(self):
+        block = evaluate_case.not_extracted_block(CONTRACT, None, "etex-mini", "not extracted")
+        self.assertEqual((block["record_count"], block["deterministic_invariants_verdict"],
+                          block["eligible_for_paired_scoring"]), (0, inv.BLOCKED, False))
+
     def test_cli_and_contract_mutation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

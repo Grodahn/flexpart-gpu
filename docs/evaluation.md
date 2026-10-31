@@ -412,7 +412,8 @@ degenerate behavior, owner and process references.
   handled.
 - FLEXPART 11.1 binary deposition is `1e12 * mass / area`, accumulated since
   the run start (`binary_output_mod.f90:1200-1233`; the deposition grids are
-  only reset at allocation, `outgrid_mod.f90:344`). Oracle deposition fields
+  zeroed only in `outgrid_init`, `outgrid_mod.f90:344`, called once from
+  `FLEXPART.f90:358`). Oracle deposition fields
   are therefore `per_area` with window `accumulated_since_start`; their
   kilogram totals are `UNSUPPORTED/FIELD_MASS_SCALE_UNDECLARED` because the
   scale factors have no versioned output contract (#40). Concentration

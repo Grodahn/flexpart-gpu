@@ -854,7 +854,8 @@ def oracle_grid_fields(oracle_evidence, species, quantities):
     Concentration is a time average ending at the file stamp (``loutaver``);
     deposition is accumulated since the simulation start and written per area
     (FLEXPART 11.1 binary_output_mod.f90:1200-1233, drygridunc/wetgridunc are
-    only reset at allocation in outgrid_mod.f90:344). Kilogram scales are not
+    zeroed only in outgrid_init, outgrid_mod.f90:344, called once from
+    FLEXPART.f90:358). Kilogram scales are not
     declared because the 1e12 and sp_fact factors have no versioned contract.
     """
     grid = dict(oracle_evidence.get("grid") or {}, heights_ref=FLEXPART_HEIGHT_REFERENCE)

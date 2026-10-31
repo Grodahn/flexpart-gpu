@@ -70,7 +70,7 @@
   },
   "quantities": {
     "air_concentration": {"measures": ["per_volume", "per_cell"], "meaning": "Airborne species amount on the 3-D output grid over the declared window (time average for FLEXPART grid_conc, which uses factor3d=1e12/volume/outnum in binary_output_mod.f90)."},
-    "dry_deposition": {"measures": ["per_area", "per_cell"], "meaning": "Dry-deposited species amount on the surface output grid. FLEXPART 11.1 binary output writes 1e12*drygrid/area (binary_output_mod.f90:1233), accumulated since simulation start (drygridunc is reset only at allocation, outgrid_mod.f90:344)."},
+    "dry_deposition": {"measures": ["per_area", "per_cell"], "meaning": "Dry-deposited species amount on the surface output grid. FLEXPART 11.1 binary output writes 1e12*drygrid/area (binary_output_mod.f90:1233), accumulated since simulation start (drygridunc/wetgridunc are zeroed only in outgrid_init, outgrid_mod.f90:344, called once from FLEXPART.f90:358; concoutput resets only the concentration grid, binary_output_mod.f90:1462)."},
     "wet_deposition": {"measures": ["per_area", "per_cell"], "meaning": "Wet-deposited species amount on the surface output grid. FLEXPART 11.1 binary output writes sp_fact*1e12*wetgrid/area (binary_output_mod.f90:1200), accumulated since simulation start."},
     "particle_ensemble": {"measures": ["particle"], "meaning": "Active particle end-state positions and weights of one realization."},
     "mass_ledger": {"measures": ["kg"], "meaning": "Kilogram mass budget reservoirs of the #54 INV-MASS-CLOSURE record."}

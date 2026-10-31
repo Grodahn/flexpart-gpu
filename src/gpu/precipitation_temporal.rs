@@ -291,6 +291,10 @@ pub struct EncodedPrecipitationTimeSamples<'a> {
 /// No arbitrary buffer, raw #90 rate, amount or CPU member can enter this API.
 /// `direction` must be +1 (the existing FLEXPART forward convention).
 ///
+/// Sized for bounded validation batches: every query allocates four full-grid
+/// #87 planes, so memory grows with `queries * cell_count`. Particle-scale
+/// resident queries are #114's adoption work.
+///
 /// # Errors
 /// Rejects context, direction, query, complete-window and resource errors before
 /// encoding. #207 already validated source/grid/calendar/#216 preparation.

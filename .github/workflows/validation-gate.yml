@@ -239,8 +239,17 @@ jobs:
 
       - name: Compare precipitation temporal sampling with fresh original inputs (#119)
         working-directory: flexpart-gpu
+        env:
+          FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
+          # The #119 evidence requires a clean candidate; name any path an earlier step dirtied.
+          dirty=$(git status --porcelain)
+          if [ -n "$dirty" ]; then
+            echo "::error::candidate checkout is dirty before #119 evidence"
+            echo "$dirty"
+            exit 1
+          fi
           cargo test --test precipitation_temporal_gpu -- --test-threads=1 > target/ci-gate/precipitation-temporal.log 2>&1
           python3 scripts/precipitation/temporal_oracle.py run target/ci-gate/precipitation-temporal/original-software --checkout ../flexpart --device-report target/ci-gate/precipitation-temporal/software_wgsl.json --output target/ci-gate/precipitation-temporal/matched-software.json
           python3 scripts/precipitation/check_genuine_production_replay.py --temporal target/ci-gate/precipitation-temporal/software_wgsl.json --software --matched target/ci-gate/precipitation-temporal/matched-software.json

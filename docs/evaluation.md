@@ -55,6 +55,7 @@ Unit tests for the formulas (analytical fields, no oracle needed):
 python scripts/evaluate/test_metrics.py
 python scripts/evaluate/test_evaluate.py
 python scripts/evaluate/test_invariants.py
+python scripts/evaluate/test_distributional.py
 ```
 
 The evaluation needs only the Python standard library. A non-zero exit
@@ -70,6 +71,7 @@ adapter line), `--seed` / `--oracle-seed`, `--oracle-checkout`
 `--input-equivalence-report` (ETEX input audit to consume, see below),
 `--candidate-executable` / `--oracle-executable` (hashes),
 `--candidate-revision` (explicitly declared, labeled as unverified),
+`--metric-contract` (Issue #55 distributional metric contract, see below),
 `--note`.
 
 ## Execution provenance (no misattribution)
@@ -98,7 +100,7 @@ proves the sources, recorded as `checkout_verified`, but leaves output
 attribution `unverified` because it does not link supplied outputs to a
 run.
 
-## Report schema (version 1.1.0)
+## Report schema (version 1.2.0)
 
 Top-level keys: `schema_version`, `case_id`, `created_utc`,
 `overall_status` (`INTEGRITY_ERROR`, `DIAGNOSTIC`, `PASS`, `FAIL`),
@@ -112,9 +114,14 @@ checks), `particle_metrics`, `grid_metrics`, `etex`, `multiseed`,
 `thresholds` (version plus per-criterion verdicts),
 `deterministic_invariants` (Issue #54 gate block, see below; `null` means
 not evaluated and must be read as `BLOCKED`), `missing_metrics` (name plus
-reason for every unavailable metric), `notes`. Version 1.1.0 is a strict
-superset of 1.0.0; `aggregate-seeds` accepts only reports of the current
-version and contract.
+reason for every unavailable metric), `notes`, and
+`distributional_metrics` (Issue #55 metric records, see below; `null` means
+not extracted because the evaluation stopped). Version 1.2.0 is a strict
+superset of 1.1.0, which is a strict superset of 1.0.0; the #54 invariant
+contract still names 1.1.0, the schema that introduced its block
+(`report.SUPERSET_CHAIN`). `aggregate-seeds` accepts only reports of the
+current version and contracts; regenerate 1.1.0 reports, which carry no
+metric records.
 
 ## Unified metric definitions
 
@@ -315,7 +322,218 @@ precedence). Distributional or ensemble scoring may proceed only when the
 aggregate is `PASS` and `paired_scoring.status` is `ELIGIBLE`. A
 per-seed FAIL, INTEGRITY_ERROR or BLOCKED is never averaged away:
 `aggregate-seeds` already carries every seed's realizations and fails when
-any seed fails.
+any seed fails. The #55 metric records apply this rule per record
+(`eligible_for_paired_scoring`); see
+[Distributional metric contract](#distributional-metric-contract-issue-55).
+
+## Distributional metric contract (Issue #55)
+
+`scripts/evaluate/distributional.py` is the single extraction path for the
+versioned contract
+[`evaluation/metrics/distributional-metrics-v1.json`](../evaluation/metrics/distributional-metrics-v1.json)
+(`flexpart-gpu.distributional-metrics` v1, report schema 1.2.0, normative
+oracle FLEXPART 11.1 `c70586c2b7f5258850705325881c61f557ea9bd8`). It defines
+what each metric means, which evidence it needs and how it is represented.
+It defines no threshold, ensemble statistic, confidence interval, margin or
+verdict. Distributional similarity never replaces #52 input equivalence,
+#53 provenance or the #54 hard invariants, and a computed metric never
+declares scientific equivalence.
+
+### Inventory of existing metric code
+
+| Metric family | Existing function | Units / weighting | Required evidence | Limitation found | Action |
+|---|---|---|---|---|---|
+| Center of mass (particles) | `metrics.center_of_mass_particles` | deg, m; declared weights | particle lon/lat/z, masses | naive longitude mean | wrapped; wrap-spanning ensembles UNSUPPORTED |
+| Center of mass (grid) | `metrics.center_of_mass_grid`, `horizontal_covariance_grid` means | deg, m; cell mass | grid, OUTHEIGHTS | needs mass, not concentration | wrapped with volume/area weights (`io_gpu.cell_volume_m3`) |
+| Covariance / eigenvalues | `metrics.horizontal_covariance(_grid)` | km^2, population | positions + weights | no orientation; no negative-eigenvalue check | wrapped; `principal_axes` added |
+| Projection | inside `horizontal_covariance` | km, R = 6371 km | - | not reusable for radii | extracted to `local_tangent_offsets_km` (same formula) |
+| Vertical quantiles | `metrics.vertical_quantiles` | m, mass-weighted first reach | heights + weights | zero-weight entries affect brackets | body moved to `weighted_quantiles` (identical math); contract excludes zero weights |
+| Runner quantiles | `metrics.unweighted_quantiles_linear` | m, unweighted | heights | cross-check convention only | retained, not a contract metric |
+| Field comparison | `metrics.field_comparison_metrics`, `pearson_correlation` | field units | aligned fields | none (correlation `None` on zero variance) | wrapped |
+| FB / NMSE | `metrics.etex_station_metrics` | dimensionless | non-negative pairs | ETEX-named but domain-agnostic | reused for grid cells |
+| Footprint overlap | `metrics.footprint_overlap` | cells | aligned fields | threshold 0 implicit in the evaluator | wrapped as explicit `support_overlap`; threshold-free mass footprints added |
+| Mass budget | `metrics.mass_budget` via `INV-MASS-CLOSURE` | kg | #54 ledger | - | read from the #54 record, never recomputed |
+| Seed aggregation | `metrics.aggregate_seed_values` | - | - | ensemble statistics belong to #58 | retained for the legacy `multiseed` block; not used by the contract |
+| Legacy `grid_metrics.vertical_profile` | in `run_synthetic` | concentration sums | grid | fractions of summed concentration, not mass | retained for compatibility; superseded by `grid.vertical.layer_fraction` |
+| Oracle partposit moments | in `run_corpus_seeds` | `release/N` per particle | partposit | count weights labeled as mass | retained in the legacy block; contract labels them `particle_count` |
+
+New functions in `metrics.py`: `local_tangent_offsets_km`, `principal_axes`,
+`weighted_quantiles`, `mass_containment_footprint`,
+`area_weighted_set_overlap`, `normalized_mass_overlap`. No existing formula
+was changed; `test_metrics.py` still passes unchanged.
+
+### Stable metric identifiers (definition version 1)
+
+| Representation | Metric ids |
+|---|---|
+| Particle space (unary) | `particle.horizontal.center_of_mass`, `particle.vertical.mean_height`, `particle.horizontal.covariance`, `particle.horizontal.principal_axes`, `particle.horizontal.radial_containment` (r50/r90/r95), `particle.vertical.quantiles` (5-95%, IQR, p10-p90), `particle.vertical.layer_fraction`, `particle.vertical.fraction_above_mixing_height` (UNSUPPORTED) |
+| Gridded field (unary) | `grid.horizontal.center_of_mass`, `grid.vertical.mean_height`, `grid.horizontal.covariance`, `grid.horizontal.principal_axes`, `grid.horizontal.radial_containment`, `grid.horizontal.mass_footprint_area` (50%/90%), `grid.horizontal.hotspot`, `grid.vertical.layer_fraction`, `grid.field.integrated_total` |
+| Gridded field (paired) | `paired.grid.field_statistics`, `paired.grid.shape_statistics`, `paired.grid.support_overlap`, `paired.grid.mass_footprint_overlap`, `paired.grid.center_separation` |
+| Ledger (unary) | `budget.mass_closure`, `budget.deposited_mass_total` |
+
+Particle and grid metrics never share an identifier, and there are no
+paired particle metrics: pairing candidate and oracle particle ensembles is
+ensemble work for #58. Each definition records meaning, quantities, allowed
+weightings, outputs with units, required artifacts, aggregation domain,
+time window, normalization, quantile convention, missing-data and
+degenerate behavior, owner and process references.
+
+### Units, weighting and conventions
+
+- Weightings: `particle_mass_kg` (declared kg masses; any other unit is
+  `WEIGHT_UNIT_INVALID`), `particle_count` (each particle 1; never labeled
+  mass), `cell_mass_proportional` (value*volume, value*area or value per
+  cell from the field's declared `measure`), `cell_sample_unweighted` (one
+  sample per aligned cell), `none` (ledger values). Candidate seeds yield
+  both particle weightings; the oracle `partposit` reader decodes no masses,
+  so oracle particle records are count-weighted only.
+- Horizontal distances use the equirectangular local-tangent projection at
+  the weighted mean latitude with R = 6371 km, identical to `corpus-run`.
+  Covariances are population moments (divide by total weight) in km^2;
+  eigenvalues are reported major first; the azimuth is degrees clockwise
+  from north in [0, 180) and `null` when isotropic
+  (`major - minor <= max(1e-9 * trace, 1e-12 km^2)`). A minor eigenvalue
+  below `-1e-12 * trace` is an `INTEGRITY_ERROR`; smaller negatives are
+  roundoff, set to 0 and flagged `roundoff_clamped`.
+- Quantiles: stable ascending sort, first entry whose cumulative weight
+  fraction reaches q, linear interpolation to the preceding entry,
+  zero-weight entries excluded. Radial radii use distances from the
+  centroid of the same weighting.
+- Mass footprints rank columns by column mass per cell area and add whole
+  cells until the fraction is reached (ties by lowest index); no
+  concentration cutoff is involved. `support_overlap` is the only
+  threshold-based overlap and its rule (`value > 0`) is declared.
+  `mass_footprint_overlap` is area-weighted IoU; `normalized_mass_overlap`
+  is `sum(min(p_c, p_o))`.
+- Vertical metrics require a declared reference (`agl`/`asl`); layer
+  fractions require the layer reference to equal the height reference.
+  FLEXPART OUTHEIGHTS, `ztra1` and candidate `Particle.pos_z` are AGL.
+  Grid layer fractions use actual layer volumes, so non-uniform layers are
+  handled.
+- FLEXPART 11.1 binary deposition is `1e12 * mass / area`, accumulated since
+  the run start (`binary_output_mod.f90:1200-1233`; the deposition grids are
+  zeroed only in `outgrid_init`, `outgrid_mod.f90:344`, called once from
+  `FLEXPART.f90:358`). Oracle deposition fields
+  are therefore `per_area` with window `accumulated_since_start`; their
+  kilogram totals are `UNSUPPORTED/FIELD_MASS_SCALE_UNDECLARED` because the
+  scale factors have no versioned output contract (#40). Concentration
+  fields are `time_average` windows ending at the file stamp.
+- Absolute paired statistics require one unit and measure; shape-only
+  statistics accept a unit scale difference for the same quantity. A
+  correlation of a constant field is `null`, never 1.0; a perfect
+  correlation or shape match is not a magnitude or mass statement.
+
+### Record format and states
+
+`distributional_metrics.records[]` holds one record per metric, realization
+(or candidate/oracle pair), weighting, quantity and field: `metric_id`,
+`definition_version`, `contract_version`, `classification`
+(`diagnostic`/`paired`), `representation`, `role`, `status`, `reason_code`,
+`reason`, `value` (only when `COMPUTED`), `units`, `weighting`,
+`normalization`, `quantity`, `species`, `vertical_reference`, `parameters`,
+`case` (id + manifest SHA-256), `time_window`, `aggregation_domain`,
+`field_ids`, `source_artifacts` (labels + SHA-256), `comparability_key`,
+the realization identity (role, seed index, #53 execution identity, #54
+verdict, stochastic namespace `candidate_philox` or
+`flexpart_oracle_internal`), for paired records the #52 input-equivalence
+identity, and `eligible_for_paired_scoring`. The block carries the contract
+identity, the #54 aggregate verdict, the paired-scoring status and counts
+per state. Reports are written with `allow_nan=False`.
+
+| State | Meaning |
+|---|---|
+| `COMPUTED` | evidence valid and compatible |
+| `DEGENERATE` | evidence valid, metric undefined (`ZERO_TOTAL_WEIGHT`, `ZERO_VARIANCE`, `ZERO_DENOMINATOR`, `EMPTY_FOOTPRINT`); no substitute center or value |
+| `MISSING_EVIDENCE` | particle dump, masses, grid, reservoir, ledger or layer geometry absent; never reconstructed |
+| `INCOMPATIBLE` | grid, unit, quantity, species, window, vertical reference, transformation or contract version differs |
+| `BLOCKED` | #54 aggregate not `PASS`, #52 not `INPUT_EQUIVALENT`, or #53 binding incomplete |
+| `INTEGRITY_ERROR` | non-finite/negative weights, invalid coordinates, wrong weight unit, incomplete field, undeclared layout, negative eigenvalue, mutated artifact hash, mixed execution provenance |
+| `UNSUPPORTED` | defined but no attributable evidence yet (mixing height, wrap-spanning domains, undeclared kg scale) |
+
+### Prerequisites and grid transformations
+
+- Unary records are extracted only after #53 verification and only when no
+  #54 `INTEGRITY_ERROR` stopped the evaluation. Each record carries its
+  realization's #54 verdict, so a `FAIL` stays visible next to good metrics.
+  Source artifact hashes are re-checked at extraction.
+- Paired records are computed only when the #54 aggregate is `PASS` and
+  `paired_scoring.status` is `ELIGIBLE`; otherwise they are `BLOCKED` with
+  `value: null`. Compatibility and integrity are checked first.
+- `eligible_for_paired_scoring` is true only for `COMPUTED` records of an
+  evaluation whose #54 aggregate is `PASS` and paired scoring `ELIGIBLE`.
+  The block never changes `overall_status`.
+- Only the identity transformation is permitted. Different grids are
+  `GRID_MISMATCH`; a declared non-identity transformation is
+  `NONCONSERVATIVE_TRANSFORMATION`; a requested conservative regrid is
+  `REGRIDDING_UNAVAILABLE`, because no validated conservative mapping exists.
+
+### Case-specific mapping
+
+| Process | Metric ids | Available now | Missing evidence | Threshold owner |
+|---|---|---|---|---|
+| #7 horizontal turbulence | particle center/covariance/principal axes/radial containment; grid 90% footprint area; paired footprint overlap, center separation, shape | candidate particle metrics (mass and count); oracle grid metrics | oracle partposit masses; candidate grids; conservative regridding for the "90% footprint after regridding" criterion | #7 via #59 |
+| #8 / #64 vertical transport | particle mean height, quantiles, layer fraction, fraction above mixing height; grid mean height, layer fraction | candidate and oracle-grid vertical metrics | per-particle mixing height (`fraction_above_mixing_height` UNSUPPORTED) | #64 via #59 |
+| #13 wet deposition | `budget.deposited_mass_total`, `budget.mass_closure`, grid center/spread/footprint/hotspot, paired field/shape/footprint | candidate wet reservoir when written; oracle wet-field shape and location | candidate wet grid (#41/#42); oracle kg scale (#40) | #34 via #59 |
+| #14 dry deposition / settling | as #13 for dry, plus particle vertical quantiles | candidate dry reservoir; oracle dry-field shape and location | candidate dry grid; oracle kg scale; #114 is not consumed | #37 via #59 |
+| #16 output semantics | paired field/shape/support statistics, integrated total, grid layer fraction, hotspot | unary oracle field metrics | versioned output schema (#40), candidate serialization (#42) | #42 via #59 |
+
+Deposition quantities are extracted only when the #51 case enables that
+process (all quantities without a case manifest).
+
+### Downstream handoff (#58/#59)
+
+`distributional.collect_for_ensemble(reports)` returns every record with its
+`source_report`, groups keyed by role and `comparability_key`, and the #54
+aggregate over all sources from `invariants.aggregate_realizations`. It
+rejects mixed contract versions or digests and mixed case ids; a report
+without a block is ineligible. `eligible` is true only when the #54
+aggregate is `PASS` and every source block is eligible. Candidate (Philox)
+and oracle (FLEXPART internal seeds) realizations are independent samples
+and are never paired by seed index. `aggregate-seeds` carries the records
+unchanged and aggregates no metric value. #59 references metrics by
+`metric_id`, `definition_version` and output name; thresholds stay with the
+physics issues.
+
+### Real-artifact demonstration
+
+`corpus-seeds` on the local ADV-ANA-001 artifacts (one candidate seed,
+1024 particles; pinned-oracle `grid_conc` output for 00:30 and 01:00, no
+`partposit`, no run manifest, no #52 report) produces 66 records:
+
+- 31 `COMPUTED` unary records: candidate particle metrics for both
+  weightings (center 10.5037E 50.0000N, zero spread and 100 m at every
+  quantile, as expected for analytic advection) and the candidate kg budget
+  (#54 `PASS`, relative error 0); no reservoir records because the case
+  disables deposition; oracle
+  concentration metrics per output time (e.g. centroid 10.1333E then
+  10.3750E, 90% footprint 3 cells / 238 km^2, east-west major axis).
+- 31 `MISSING_EVIDENCE`: candidate grids (corpus-run writes none), oracle
+  particle dump, oracle kg ledger, and all 5 paired metrics.
+- 4 `UNSUPPORTED`: candidate fraction above mixing height (both
+  weightings) and oracle kg totals.
+- No paired metric is computed: the #54 aggregate is `BLOCKED` (provenance
+  and oracle ledger unavailable). The candidate end-state centroid and the
+  oracle time-averaged grid centroid differ in representation and window and
+  are not compared.
+
+No synthetic `validate_run` artifacts were available locally, so the
+synthetic path is exercised by tests only.
+
+### Unimplemented requirements (follow-ups)
+
+- Fraction above the mixing height needs per-particle mixing-height evidence (#64).
+- Oracle particle mass weighting needs decoded `partposit` masses; FLEXPART
+  11.1 writes `partposit` as NetCDF only (#57).
+- Paired metrics across different grids need a validated conservative
+  regridding contract (follow-up to #7/#16).
+- Kilogram totals of FLEXPART binary grids need a versioned output unit
+  contract (#40).
+- Candidate gridded corpus output (#41/#42).
+- Paired scoring stays unreachable while the oracle kg ledger keeps the #54
+  aggregate `BLOCKED`; that rule belongs to #54 and is not relaxed here.
+- #51 case manifests still reference `evaluation-metrics report-schema-1.0.0`
+  in `validation_definition_refs.metric_contracts`; adopting the new contract
+  identity there is a separate case-data migration.
 
 ## Multi-seed policy
 

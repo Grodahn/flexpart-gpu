@@ -139,7 +139,7 @@ def validate_contract(document):
     if document["contract_version"] != CONTRACT_VERSION:
         raise InvariantContractError(
             f"unsupported contract_version {document['contract_version']!r}")
-    if document["report_schema_version"] != report_lib.SCHEMA_VERSION:
+    if not report_lib.schema_carries(document["report_schema_version"]):
         raise InvariantContractError(
             f"contract targets report schema {document['report_schema_version']}, "
             f"evaluator writes {report_lib.SCHEMA_VERSION}")

@@ -281,11 +281,7 @@ def horizontal_covariance(lons_deg, lats_deg, weights):
         return None
     lon_mean = sum(lon * wi for lon, wi in zip(lons, w)) / total
     lat_mean = sum(lat * wi for lat, wi in zip(lats, w)) / total
-    lat_rad = math.radians(lat_mean)
-    m_per_deg_lon = EARTH_RADIUS_M * math.cos(lat_rad) * math.pi / 180.0
-    m_per_deg_lat = EARTH_RADIUS_M * math.pi / 180.0
-    xs = [(lon - lon_mean) * m_per_deg_lon / 1000.0 for lon in lons]
-    ys = [(lat - lat_mean) * m_per_deg_lat / 1000.0 for lat in lats]
+    xs, ys = local_tangent_offsets_km(lons, lats, lon_mean, lat_mean)
     xx = sum(wi * x * x for wi, x in zip(w, xs)) / total
     yy = sum(wi * y * y for wi, y in zip(w, ys)) / total
     xy = sum(wi * x * y for wi, x, y in zip(w, xs, ys)) / total
@@ -304,6 +300,189 @@ def horizontal_covariance(lons_deg, lats_deg, weights):
         "sigma_north_km": math.sqrt(max(yy, 0.0)),
         "unit": "km",
     }
+
+
+def local_tangent_offsets_km(lons_deg, lats_deg, lon_ref_deg, lat_ref_deg):
+    """East/north offsets in km from a reference point.
+
+    Equirectangular local-tangent projection around ``lat_ref_deg`` with the
+    corpus-runner conversion (``m_per_deg_lon = R * cos(lat_ref) * pi/180``,
+    ``m_per_deg_lat = R * pi/180``). Shared by :func:`horizontal_covariance`
+    and the radial containment quantiles so both use one projection.
+    """
+    m_per_deg_lon = EARTH_RADIUS_M * math.cos(math.radians(lat_ref_deg)) * math.pi / 180.0
+    m_per_deg_lat = EARTH_RADIUS_M * math.pi / 180.0
+    xs = [(float(lon) - lon_ref_deg) * m_per_deg_lon / 1000.0 for lon in lons_deg]
+    ys = [(float(lat) - lat_ref_deg) * m_per_deg_lat / 1000.0 for lat in lats_deg]
+    return xs, ys
+
+
+def principal_axes(covariance_km2, roundoff_rel=1e-12, isotropy_rel=1e-9,
+                   orientation_floor_km2=1e-12):
+    """Eigen-decomposition of a 2x2 horizontal covariance matrix in km^2.
+
+    Returns eigenvalues in descending order (major first), the axis
+    standard deviations (square roots, km) and the major-axis azimuth in
+    degrees clockwise from north in ``[0, 180)``. The azimuth is ``None``
+    when the matrix is isotropic (``major - minor <= max(isotropy_rel *
+    trace, orientation_floor_km2)``), including a single point whose
+    covariance is zero up to coordinate roundoff. A minor eigenvalue below zero
+    by at most ``roundoff_rel * trace`` is f64 roundoff and is set to zero
+    with ``roundoff_clamped`` true; a larger negative eigenvalue raises
+    ValueError because a weighted covariance is positive semidefinite.
+    """
+    (xx, xy), (yx, yy) = covariance_km2
+    xx, xy, yx, yy = float(xx), float(xy), float(yx), float(yy)
+    for value in (xx, xy, yx, yy):
+        if not math.isfinite(value):
+            raise ValueError("covariance entries must be finite")
+    if xy != yx:
+        raise ValueError("covariance matrix must be symmetric")
+    trace = xx + yy
+    if xx < 0 or yy < 0:
+        raise ValueError("covariance diagonal must be non-negative")
+    root = math.sqrt(max((xx - yy) ** 2 / 4.0 + xy * xy, 0.0))
+    major = trace / 2.0 + root
+    minor = trace / 2.0 - root
+    clamped = False
+    if minor < 0:
+        if -minor > roundoff_rel * max(trace, 0.0):
+            raise ValueError(f"covariance eigenvalue {minor} km^2 is negative beyond roundoff")
+        minor, clamped = 0.0, True
+    isotropic = (major - minor) <= max(isotropy_rel * trace, orientation_floor_km2)
+    azimuth = None
+    if not isotropic:
+        theta_from_east = math.degrees(0.5 * math.atan2(2.0 * xy, xx - yy))
+        azimuth = (90.0 - theta_from_east) % 180.0
+    return {
+        "eigenvalue_major_km2": major,
+        "eigenvalue_minor_km2": minor,
+        "sigma_major_km": math.sqrt(major),
+        "sigma_minor_km": math.sqrt(minor),
+        "major_axis_azimuth_deg": azimuth,
+        "isotropic": bool(isotropic),
+        "roundoff_clamped": clamped,
+    }
+
+
+def weighted_quantiles(values, weights, quantiles):
+    """Weighted first-reach quantiles with linear interpolation.
+
+    Values are sorted ascending (stable for ties); the quantile q is the
+    value at which the cumulative weight fraction first reaches q, linearly
+    interpolated against the preceding entry. ``q <= 0`` returns the minimum
+    and ``q >= 1`` the maximum. Returns None when the total weight is not
+    positive. Shared by :func:`vertical_quantiles` and the radial
+    containment quantiles of the distributional contract.
+    """
+    data = [float(v) for v in values]
+    weights = [float(v) for v in weights]
+    if len(data) != len(weights):
+        raise ValueError("values and weights must have equal length")
+    for w in weights:
+        if not math.isfinite(w) or w < 0:
+            raise ValueError("quantile weights must be finite and non-negative")
+    for q in quantiles:
+        if not 0.0 <= q <= 1.0:
+            raise ValueError(f"quantile out of [0, 1]: {q}")
+    total = sum(weights)
+    if total <= 0 or len(weights) == 0:
+        return None
+    order = sorted(range(len(data)), key=lambda i: data[i])
+    sorted_v = [data[i] for i in order]
+    cumulative = []
+    running = 0.0
+    for i in order:
+        running += weights[i]
+        cumulative.append(running / total)
+    result = {}
+    for q in quantiles:
+        if q <= 0.0:
+            result[str(q)] = sorted_v[0]
+            continue
+        if q >= 1.0:
+            result[str(q)] = sorted_v[-1]
+            continue
+        idx = next(i for i, c in enumerate(cumulative) if c >= q)
+        if idx == 0:
+            result[str(q)] = sorted_v[0]
+        else:
+            c0 = cumulative[idx - 1]
+            c1 = cumulative[idx]
+            frac = 0.0 if c1 == c0 else (q - c0) / (c1 - c0)
+            result[str(q)] = sorted_v[idx - 1] + frac * (sorted_v[idx] - sorted_v[idx - 1])
+    return {"quantiles": result, "total_weight": total}
+
+
+def mass_containment_footprint(cell_masses, cell_areas_m2, fraction):
+    """Smallest set of highest-density cells holding ``fraction`` of the mass.
+
+    Cells are ranked by surface mass density (mass / area) descending, ties
+    by ascending cell index, and whole cells are added until the cumulative
+    mass fraction reaches ``fraction`` (no partial cells). Returns the
+    selected cell indices, their total area in km^2 and the achieved
+    fraction, or None when the total mass is not positive. Mass is any
+    quantity proportional to kilograms; the result is scale-invariant.
+    """
+    masses = [float(v) for v in cell_masses]
+    areas = [float(v) for v in cell_areas_m2]
+    if len(masses) != len(areas):
+        raise ValueError("cell masses and areas must have equal length")
+    if not 0.0 < fraction <= 1.0:
+        raise ValueError(f"containment fraction out of (0, 1]: {fraction}")
+    for m, a in zip(masses, areas):
+        if not math.isfinite(m) or m < 0:
+            raise ValueError("cell masses must be finite and non-negative")
+        if not math.isfinite(a) or a <= 0:
+            raise ValueError("cell areas must be finite and positive")
+    total = sum(masses)
+    if total <= 0:
+        return None
+    order = sorted((i for i, m in enumerate(masses) if m > 0),
+                   key=lambda i: (-masses[i] / areas[i], i))
+    selected, running = [], 0.0
+    for i in order:
+        selected.append(i)
+        running += masses[i]
+        if running / total >= fraction:
+            break
+    return {"cells": selected, "cell_count": len(selected),
+            "area_km2": sum(areas[i] for i in selected) / 1e6,
+            "achieved_fraction": min(running / total, 1.0)}
+
+
+def area_weighted_set_overlap(cells_a, cells_b, cell_areas_m2):
+    """Area-weighted intersection over union of two cell sets (km^2).
+
+    Returns intersection/union areas and their ratio, None when the union
+    is empty. Distinct from :func:`footprint_overlap`, which counts cells.
+    """
+    set_a, set_b = set(cells_a), set(cells_b)
+    union = set_a | set_b
+    union_km2 = sum(float(cell_areas_m2[i]) for i in union) / 1e6
+    intersection_km2 = sum(float(cell_areas_m2[i]) for i in set_a & set_b) / 1e6
+    return {"intersection_km2": intersection_km2, "union_km2": union_km2,
+            "area_overlap_ratio": (intersection_km2 / union_km2) if union_km2 > 0 else None}
+
+
+def normalized_mass_overlap(masses_a, masses_b):
+    """Overlap of two unit-sum mass distributions, ``sum(min(p_a, p_b))``.
+
+    Equals one minus the total-variation distance: 1 for identical shapes,
+    0 for disjoint support. Shape-only; it carries no magnitude or mass
+    conservation information. Returns None when either total is not positive.
+    """
+    a = [float(v) for v in masses_a]
+    b = [float(v) for v in masses_b]
+    if len(a) == 0 or len(a) != len(b):
+        raise ValueError("mass overlap needs nonempty paired values")
+    for v in a + b:
+        if not math.isfinite(v) or v < 0:
+            raise ValueError("masses must be finite and non-negative")
+    total_a, total_b = sum(a), sum(b)
+    if total_a <= 0 or total_b <= 0:
+        return None
+    return sum(min(x / total_a, y / total_b) for x, y in zip(a, b))
 
 
 def grid_column_weights(flat_values, nx, ny, nz):
@@ -342,46 +521,11 @@ def vertical_quantiles(heights_m, masses, quantiles=(0.05, 0.25, 0.5, 0.75, 0.95
     interpolation between bracketing particles. Returns None when the total
     mass is not positive. An empty quantile list returns an empty dict.
     """
-    heights = [float(v) for v in heights_m]
-    weights = [float(v) for v in masses]
-    if len(heights) != len(weights):
-        raise ValueError("heights and masses must have equal length")
-    for w in weights:
-        if not math.isfinite(w) or w < 0:
-            raise ValueError("quantile weights must be finite and non-negative")
-    for q in quantiles:
-        if not 0.0 <= q <= 1.0:
-            raise ValueError(f"quantile out of [0, 1]: {q}")
-    total = sum(weights)
-    if total <= 0 or len(weights) == 0:
+    result = weighted_quantiles(heights_m, masses, quantiles)
+    if result is None:
         return None
-    order = sorted(range(len(heights)), key=lambda i: heights[i])
-    sorted_h = [heights[i] for i in order]
-    sorted_w = [weights[i] for i in order]
-    cumulative = []
-    running = 0.0
-    for w in sorted_w:
-        running += w
-        cumulative.append(running / total)
-    result = {}
-    for q in quantiles:
-        if q <= 0.0:
-            result[str(q)] = sorted_h[0]
-            continue
-        if q >= 1.0:
-            result[str(q)] = sorted_h[-1]
-            continue
-        idx = next(i for i, c in enumerate(cumulative) if c >= q)
-        if idx == 0:
-            result[str(q)] = sorted_h[0]
-        else:
-            c0 = cumulative[idx - 1]
-            c1 = cumulative[idx]
-            h0 = sorted_h[idx - 1]
-            h1 = sorted_h[idx]
-            frac = 0.0 if c1 == c0 else (q - c0) / (c1 - c0)
-            result[str(q)] = h0 + frac * (h1 - h0)
-    return {"quantiles_m": result, "total_mass_kg": total, "unit": "m"}
+    return {"quantiles_m": result["quantiles"], "total_mass_kg": result["total_weight"],
+            "unit": "m"}
 
 
 def unweighted_quantiles_linear(values, quantiles=(0.1, 0.5, 0.9)):

@@ -511,7 +511,8 @@ class PositiveTest(unittest.TestCase):
         self.assertEqual(gate["paired_scoring"]["status"], "NOT_REQUESTED")
         self.assertEqual(gate["verdict"], inv.BLOCKED)
         self.assertEqual(built["overall_status"], "DIAGNOSTIC")
-        self.assertEqual(built["schema_version"], "1.1.0")
+        self.assertEqual(built["schema_version"], "1.2.0")
+        self.assertFalse(built["distributional_metrics"]["eligible_for_paired_scoring"])
         self.assertEqual(built["particle_metrics"]["per_seed"][0]["mass_budget"]["verdict"],
                          inv.PASS)
 

@@ -1,0 +1,232 @@
+{
+  "schema": "flexpart-gpu.deposition-meteorology-inventory.v1",
+  "issue": 114,
+  "tracker": 77,
+  "flexpart_revision": "c70586c2b7f5258850705325881c61f557ea9bd8",
+  "flex_extract_revision": "e0005c99ac81d12faa45a8ff799debbd592b0dc0",
+  "statuses": ["MIGRATED", "NOT_APPLICABLE", "BLOCKED"],
+  "verdict": "No current production deposition kernel samples meteorology. Both kernels consume externally supplied process coefficients on the canonical #76/#171 particle transaction; there is no legacy deposition meteorology sampling path to retire. Deriving those coefficients from canonical meteorology is new deposition physics owned by #33/#36 and, for particle-scale precipitation, needs the new #227 capability.",
+  "production_kernels": [
+    {
+      "consumer": "dry deposition probability/mass update",
+      "shader": "src/shaders/dry_deposition.wgsl",
+      "host": "src/gpu/deposition.rs",
+      "flexpart_routine": "drydepo_mod.f90:827-865 drydepo_probability (mass-loss form)",
+      "bindings": [
+        {"binding": 0, "name": "particles", "class": "particle_state", "note": "pos_z [m AGL] versus 2*href; mass[s] update"},
+        {"binding": 1, "name": "deposition_velocity_m_s", "class": "external_process_coefficient", "note": "vdep [m/s] per particle and species from ForwardStepForcing; derivation owned by #36, integration by #37"},
+        {"binding": 2, "name": "deposition_probability", "class": "output", "note": "published only after the canonical step status succeeds"},
+        {"binding": 3, "name": "params", "class": "run_configuration", "note": "particle_count, dt [s], href [m] (config dry_reference_height_m, FLEXPART par_mod href=15 m)"}
+      ]
+    },
+    {
+      "consumer": "wet deposition probability/mass update",
+      "shader": "src/shaders/wet_deposition.wgsl",
+      "host": "src/gpu/wet_deposition.rs",
+      "flexpart_routine": "wetdepo_mod.f90:17-202 wetdepo (mass-loss form only)",
+      "bindings": [
+        {"binding": 0, "name": "particles", "class": "particle_state", "note": "mass[s] update; no height or cloud test"},
+        {"binding": 1, "name": "scavenging_coefficient_s_inv", "class": "external_process_coefficient", "note": "wetscav [1/s] per particle and species from ForwardStepForcing; derivation owned by #33, integration by #34"},
+        {"binding": 2, "name": "precipitating_fraction", "class": "external_process_coefficient", "note": "grfraction [-] per particle from ForwardStepForcing; derivation owned by #33"},
+        {"binding": 3, "name": "wet_deposition_probability", "class": "output", "note": "published only after the canonical step status succeeds"},
+        {"binding": 4, "name": "params", "class": "run_configuration", "note": "particle_count, dt [s]"}
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "id": "DRY-VDEP",
+      "consumer": "dry deposition kernel",
+      "flexpart_routine": "drydepo_mod.f90:827-865 drydepo_probability; vdep produced by getfields_mod.f90:1052-1073 -> drydepo_mod.f90:867-1051 getvdep",
+      "field": "dry deposition velocity vdep",
+      "units": "m s-1",
+      "production_source": "ForwardStepForcing.dry_deposition_velocity_m_s (caller-supplied; corpus cases use a constant)",
+      "execution": "host materialization and explicit upload; GPU mass update",
+      "canonical_field": null,
+      "canonical_temporal_semantics": "FLEXPART derives vdep on the grid at each source time, then interpolates the derived vdep bilinearly and linearly in time to the particle (hor_interpol + temporal_interpolation). Raw meteorology is never sampled at the particle for dry deposition.",
+      "existing_api": "none: #171 resident v1 samples only canonical snapshot fields, not a derived gridded vdep",
+      "grid_and_vertical": "surface 2-D derived field; particle pos_z [m AGL] < 2*href gate is particle state",
+      "missing": ["GPU getvdep producer (ra/rb/rc resistances, species parameters, land-use and season mapping)", "resident query of a derived gridded field"],
+      "feasibility": "Not a meteorology migration: requires the #36 resistance model and #37 integration.",
+      "status": "BLOCKED",
+      "blockers": ["#36", "#37"]
+    },
+    {
+      "id": "DRY-USTAR", "consumer": "getvdep (vdep derivation)", "flexpart_routine": "getfields_mod.f90:1058,1064; drydepo_mod.f90:282-322 raerod, getrb",
+      "field": "friction velocity ustar", "units": "m s-1", "production_source": "none in deposition",
+      "execution": "not executed in production", "canonical_field": "FrictionVelocity",
+      "canonical_temporal_semantics": "source-time value at memory slot n; no particle-time interpolation (see #120 for surface-flux eligibility)",
+      "existing_api": "#76 composition / #89 instantaneous time; #120 eligibility", "grid_and_vertical": "surface 2-D on the source grid",
+      "missing": ["no production consumer; getvdep is #36 physics"], "feasibility": "Field available; consumer does not exist.",
+      "status": "BLOCKED", "blockers": ["#36"]
+    },
+    {
+      "id": "DRY-T2M", "consumer": "getvdep", "flexpart_routine": "getfields_mod.f90:1061-1065; getvdep temperature argument",
+      "field": "2 m temperature tt2", "units": "K", "production_source": "none in deposition", "execution": "not executed in production",
+      "canonical_field": "Temperature2m", "canonical_temporal_semantics": "source-time value used to derive vdep",
+      "existing_api": "#76 composition", "grid_and_vertical": "surface 2-D", "missing": ["no production consumer"],
+      "feasibility": "Field available; consumer does not exist.", "status": "BLOCKED", "blockers": ["#36"]
+    },
+    {
+      "id": "DRY-PS", "consumer": "getvdep", "flexpart_routine": "getfields_mod.f90:1061-1065",
+      "field": "surface pressure ps", "units": "Pa", "production_source": "none in deposition", "execution": "not executed in production",
+      "canonical_field": "SurfacePressure", "canonical_temporal_semantics": "source-time value used to derive vdep and rh",
+      "existing_api": "#76 composition", "grid_and_vertical": "surface 2-D", "missing": ["no production consumer"],
+      "feasibility": "Field available; consumer does not exist.", "status": "BLOCKED", "blockers": ["#36"]
+    },
+    {
+      "id": "DRY-RH", "consumer": "getvdep (getrc)", "flexpart_routine": "getfields_mod.f90:1061 rh=ew(td2,ps)/ew(tt2,ps)",
+      "field": "surface relative humidity from 2 m dewpoint", "units": "1", "production_source": "none in deposition", "execution": "not executed in production",
+      "canonical_field": "Dewpoint2m", "canonical_temporal_semantics": "source-time derived diagnostic; not a canonical field itself",
+      "existing_api": "#76 composition for td2/tt2/ps inputs only", "grid_and_vertical": "surface 2-D",
+      "missing": ["derived ew()/rh diagnostic", "no production consumer"], "feasibility": "Derivation is #36 physics.",
+      "status": "BLOCKED", "blockers": ["#36"]
+    },
+    {
+      "id": "DRY-OLI", "consumer": "getvdep (raerod stability)", "flexpart_routine": "getfields_mod.f90:1064 1./oli",
+      "field": "inverse Obukhov length", "units": "m-1", "production_source": "none in deposition", "execution": "not executed in production",
+      "canonical_field": "InverseObukhovLength", "canonical_temporal_semantics": "source-time value; L=1/oli passed to getvdep",
+      "existing_api": "#76 composition", "grid_and_vertical": "surface 2-D", "missing": ["no production consumer"],
+      "feasibility": "Field available; consumer does not exist.", "status": "BLOCKED", "blockers": ["#36"]
+    },
+    {
+      "id": "DRY-SSR", "consumer": "getvdep (getrc stomatal term)", "flexpart_routine": "getfields_mod.f90:1065 ssr",
+      "field": "surface solar radiation", "units": "W m-2", "production_source": "none in deposition", "execution": "not executed in production",
+      "canonical_field": "SurfaceSolarRadiation", "canonical_temporal_semantics": "source-time surface flux (#120 memory-slot eligibility) consumed before vdep time interpolation",
+      "existing_api": "#76 composition; #120 eligibility", "grid_and_vertical": "surface 2-D", "missing": ["no production consumer"],
+      "feasibility": "Field available; consumer does not exist.", "status": "BLOCKED", "blockers": ["#36"]
+    },
+    {
+      "id": "DRY-PRECIP", "consumer": "getvdep (getrc wet-surface term)", "flexpart_routine": "getfields_mod.f90:1065 sum(lsprec(...,n))+sum(convprec(...,n))",
+      "field": "source-time LSP+CP member sum", "units": "mm h-1", "production_source": "none in deposition", "execution": "not executed in production",
+      "canonical_field": "LargeScalePrecipitation + ConvectivePrecipitation",
+      "canonical_temporal_semantics": "raw source-memory member at wftime(n), not the particle-time #119 result; corresponds to the #207 member at the source time",
+      "existing_api": "#90 -> #207 member planes", "grid_and_vertical": "surface 2-D on the source grid",
+      "missing": ["no production consumer"], "feasibility": "Members exist; the consumer is #36 physics. Using #119 particle-time output here would change the original operation order.",
+      "status": "BLOCKED", "blockers": ["#36"]
+    },
+    {
+      "id": "DRY-SNOW", "consumer": "getvdep (snow surface)", "flexpart_routine": "drydepo_mod.f90 getvdep snow>0.001 branch",
+      "field": "snow depth", "units": "m water equivalent", "production_source": "none in deposition", "execution": "not executed in production",
+      "canonical_field": "SnowDepth", "canonical_temporal_semantics": "source-time value",
+      "existing_api": "#76 composition", "grid_and_vertical": "surface 2-D", "missing": ["no production consumer"],
+      "feasibility": "Field available; consumer does not exist.", "status": "BLOCKED", "blockers": ["#36"]
+    },
+    {
+      "id": "DRY-LANDUSE", "consumer": "getvdep (land-use weighting, z0 table)", "flexpart_routine": "drydepo_mod.f90:63-280 assignland; getvdep slanduse",
+      "field": "land-use class fractions", "units": "1", "production_source": "none in deposition", "execution": "not executed in production",
+      "canonical_field": "LandUseFractions", "canonical_temporal_semantics": "static",
+      "existing_api": "#76 composition (static)", "grid_and_vertical": "class-axis 2-D; resident v1 rejects class-axis fields",
+      "missing": ["class-axis resident query", "no production consumer"], "feasibility": "#36 owns land-surface mapping.",
+      "status": "BLOCKED", "blockers": ["#36"]
+    },
+    {
+      "id": "DRY-SEASON", "consumer": "getvdep (getrc seasonal category)", "flexpart_routine": "drydepo_mod.f90:909-937 lseason from bdate+wftime(n) and latitude",
+      "field": "seasonal category", "units": "category 1..5", "production_source": "none", "execution": "not executed in production",
+      "canonical_field": null, "canonical_temporal_semantics": "derived from source time and grid latitude",
+      "existing_api": "none", "grid_and_vertical": "grid-row latitude",
+      "missing": ["seasonal mapping is not a canonical field or contract"], "feasibility": "#36 owns land-surface/season mapping.",
+      "status": "BLOCKED", "blockers": ["#36"]
+    },
+    {
+      "id": "DRY-SPECIES", "consumer": "getvdep / part0", "flexpart_routine": "drydepo_mod.f90:607-728 part0; getrb/getrc species constants",
+      "field": "species deposition parameters", "units": "species-specific", "production_source": "SpeciesConfig (not consumed by the GPU kernel)", "execution": "CPU diagnostics only (src/physics/deposition.rs)",
+      "canonical_field": null, "canonical_temporal_semantics": "not meteorology",
+      "existing_api": "not applicable", "grid_and_vertical": "not applicable", "missing": [],
+      "feasibility": "Not a meteorology input; owned by #36 and settling by #35.", "status": "NOT_APPLICABLE", "blockers": ["#35", "#36"]
+    },
+    {
+      "id": "DRY-WIND10M", "consumer": "none", "flexpart_routine": "not an argument of getvdep",
+      "field": "10 m wind components", "units": "m s-1", "production_source": "none", "execution": "not consumed",
+      "canonical_field": "WindU10m / WindV10m", "canonical_temporal_semantics": "not used by pinned dry deposition",
+      "existing_api": "not applicable", "grid_and_vertical": "not applicable", "missing": [],
+      "feasibility": "Pinned dry deposition uses ustar, not 10 m wind.", "status": "NOT_APPLICABLE", "blockers": []
+    },
+    {
+      "id": "DRY-HUMIDITY-3D", "consumer": "none", "flexpart_routine": "not consumed by drydepo_mod.f90 or wetdepo_mod.f90",
+      "field": "model-level specific humidity and pressure", "units": "kg kg-1 / Pa", "production_source": "none", "execution": "not consumed",
+      "canonical_field": "SpecificHumidity / Pressure", "canonical_temporal_semantics": "not used by pinned deposition (surface rh comes from td2)",
+      "existing_api": "not applicable", "grid_and_vertical": "not applicable", "missing": [],
+      "feasibility": "No deposition consumer in the pinned source.", "status": "NOT_APPLICABLE", "blockers": []
+    },
+    {
+      "id": "WET-COEFFICIENTS", "consumer": "wet deposition kernel",
+      "flexpart_routine": "wetdepo_mod.f90:17-202 wetdepo; coefficients from wetdepo_mod.f90:204-433 get_wetscav",
+      "field": "scavenging coefficient wetscav and precipitating fraction grfraction", "units": "s-1 / 1",
+      "production_source": "ForwardStepForcing.wet_scavenging_coefficient_s_inv and wet_precipitating_fraction (caller-supplied)",
+      "execution": "host materialization and explicit upload; GPU mass update", "canonical_field": null,
+      "canonical_temporal_semantics": "FLEXPART derives them per particle at itime from interpol_rain outputs",
+      "existing_api": "none", "grid_and_vertical": "per particle; cloud test uses particle z and cloud boundaries",
+      "missing": ["GPU get_wetscav physics", "particle-scale precipitation sampling", "cloud boundary fields"],
+      "feasibility": "Not a meteorology migration: requires #33 rate physics and #34 integration.",
+      "status": "BLOCKED", "blockers": ["#33", "#34", "#227"]
+    },
+    {
+      "id": "WET-LSP", "consumer": "get_wetscav (prec, grfraction)", "flexpart_routine": "interpol_mod.f90:1209-1582 interpol_rain yint1; wetdepo_mod.f90:327-345",
+      "field": "large-scale precipitation rate", "units": "mm h-1", "production_source": "none in deposition", "execution": "not executed in production",
+      "canonical_field": "LargeScalePrecipitation",
+      "canonical_temporal_semantics": "#90 -> #207 darain members -> #87 -> #119 (dt/3 retained, numpf=1, RRINT=0, PUREFC=0, BASETIME unset, forward only, no extrapolation)",
+      "existing_api": "#119 prepare_precipitation_time_samples (bounded validation batches only)", "grid_and_vertical": "surface 2-D at particle (x, y); no vertical dependence",
+      "missing": ["pair-shared particle-scale resident query (#227)", "no production consumer (#33)"],
+      "feasibility": "Science chain complete; the bounded #119 API scales as queries x 4 x cell_count x 4 B and one dispatch per query, so it cannot serve particles.",
+      "status": "BLOCKED", "blockers": ["#227", "#33"]
+    },
+    {
+      "id": "WET-CP", "consumer": "get_wetscav (prec, grfraction)", "flexpart_routine": "interpol_mod.f90:1209-1582 interpol_rain yint2",
+      "field": "convective precipitation rate", "units": "mm h-1", "production_source": "none in deposition", "execution": "not executed in production",
+      "canonical_field": "ConvectivePrecipitation",
+      "canonical_temporal_semantics": "same as WET-LSP with a distinct CP identity",
+      "existing_api": "#119 prepare_precipitation_time_samples (bounded validation batches only)", "grid_and_vertical": "surface 2-D at particle (x, y)",
+      "missing": ["pair-shared particle-scale resident query (#227)", "no production consumer (#33)"],
+      "feasibility": "As WET-LSP.", "status": "BLOCKED", "blockers": ["#227", "#33"]
+    },
+    {
+      "id": "WET-TCC", "consumer": "get_gridfract, in-cloud scavenging", "flexpart_routine": "interpol_mod.f90:1357-1360,1552 yint3",
+      "field": "total cloud cover", "units": "1", "production_source": "none in deposition", "execution": "not executed in production",
+      "canonical_field": "TotalCloudCover", "canonical_temporal_semantics": "bilinear, then (y(1)*dt2+y(2)*dt1)/dt at itime",
+      "existing_api": "#76/#171 resident instantaneous surface sampling", "grid_and_vertical": "surface 2-D",
+      "missing": ["no production consumer"], "feasibility": "Field and resident path exist; the only consumer is #33 physics.",
+      "status": "BLOCKED", "blockers": ["#33"]
+    },
+    {
+      "id": "WET-CTWC", "consumer": "in-cloud scavenging (cl)", "flexpart_routine": "interpol_mod.f90:1373-1376,1553 yint4",
+      "field": "cloud total water column", "units": "kg m-2", "production_source": "none in deposition", "execution": "not executed in production",
+      "canonical_field": "CloudTotalWater", "canonical_temporal_semantics": "bilinear, linear in time at itime; only when readclouds",
+      "existing_api": "#76/#171 resident instantaneous surface sampling", "grid_and_vertical": "column-integrated 2-D",
+      "missing": ["readclouds availability contract", "no production consumer"], "feasibility": "#33 owns cloud/phase semantics.",
+      "status": "BLOCKED", "blockers": ["#33"]
+    },
+    {
+      "id": "WET-TEMPERATURE", "consumer": "in-cloud phase / activated fraction", "flexpart_routine": "interpol_mod.f90:1362-1370,1554 ytint at level kz from find_z_level_meters",
+      "field": "air temperature at the particle model level", "units": "K", "production_source": "none in deposition", "execution": "not executed in production",
+      "canonical_field": "Temperature", "canonical_temporal_semantics": "level-index selection (no vertical interpolation), bilinear, linear in time",
+      "existing_api": "#171 resident vertical sampling interpolates vertically; the level-index semantic is not established",
+      "grid_and_vertical": "model level kz chosen from particle z [m AGL]",
+      "missing": ["level-index (indz) sampling contract", "no production consumer"], "feasibility": "#33 owns this semantic.",
+      "status": "BLOCKED", "blockers": ["#33"]
+    },
+    {
+      "id": "WET-CLOUD-BOUNDS", "consumer": "below/in/above-cloud classification", "flexpart_routine": "interpol_mod.f90:1378-1445,1557-1580 icloudbot/icloudtop masked averaging; wetdepo_mod.f90:350-370",
+      "field": "cloud bottom and top heights", "units": "m", "production_source": "none", "execution": "not executed in production",
+      "canonical_field": null, "canonical_temporal_semantics": "derived per source time in vertical transformation; icmv-masked bilinear and truncated time blend",
+      "existing_api": "none", "grid_and_vertical": "compared against particle z [m AGL]",
+      "missing": ["canonical cloud-boundary diagnostic", "icmv masking semantic"], "feasibility": "New canonical diagnostic and cloud science; #33 owns it.",
+      "status": "BLOCKED", "blockers": ["#33"]
+    },
+    {
+      "id": "WET-SPECIES", "consumer": "get_wetscav below/in-cloud branches", "flexpart_routine": "wetdepo_mod.f90:435-667",
+      "field": "species scavenging parameters", "units": "species-specific", "production_source": "SpeciesConfig (CPU diagnostics only, src/physics/wet_scavenging.rs)", "execution": "not executed in production",
+      "canonical_field": null, "canonical_temporal_semantics": "not meteorology",
+      "existing_api": "not applicable", "grid_and_vertical": "not applicable", "missing": [],
+      "feasibility": "Not a meteorology input; owned by #33.", "status": "NOT_APPLICABLE", "blockers": ["#33"]
+    },
+    {
+      "id": "WET-NUMPF3", "consumer": "interpol_rain numpf=3 / RRINT=1 path", "flexpart_routine": "interpol_mod.f90:1302-1340 numpf>1 branch",
+      "field": "precipitation submembers", "units": "mm h-1", "production_source": "none", "execution": "not executed",
+      "canonical_field": "LargeScalePrecipitation / ConvectivePrecipitation", "canonical_temporal_semantics": "unresolved submember alignment",
+      "existing_api": "rejected by #207/#119", "grid_and_vertical": "surface 2-D",
+      "missing": ["submember timestamp decision"], "feasibility": "Unsupported and rejected fail-closed.",
+      "status": "BLOCKED", "blockers": ["#212"]
+    }
+  ]
+}

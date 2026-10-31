@@ -164,8 +164,10 @@ four copy, four #87 and one #119 dispatch. Device memory therefore grows as
 `queries x 4 x cell_count x 4 bytes`, and the API intentionally does not share
 planes between queries with the same memory pair.
 
-#114 still owns wet-deposition consumer migration, resident particle query
-adoption (including a pair-shared, particle-scale query layout) and honoring
-the fatal status before applying forcing. Cloud-mask
+#114 [assessed](deposition-meteorology-migration.md#119-particle-scale-assessment)
+that the pair-shared, particle-scale resident layout needs a new lane-parallel
+kernel. It is split out as [#227](https://github.com/Grodahn/flexpart-gpu/issues/227);
+this batch API stays unchanged. No production wet-deposition consumer of these
+rates exists yet (#33/#34). Cloud-mask
 physics, deposition rates (#33), numpf=3 (#212), provider decoding (#32) and
 full wet-deposition/FLEXPART parity are outside this change.

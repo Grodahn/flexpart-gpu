@@ -34,7 +34,14 @@ class CoverageTests(unittest.TestCase):
                        text.count('cargo test --lib precipitation_temporal')
                        for text in self.workflows().values())
         self.assertEqual(temporal, 3)
-        self.assertLess(result['after_invocations'] - 1 - temporal, result['baseline_invocations'])
+        # #114 adds the deposition inventory lock and one driver-mode loop of the
+        # production deposition boundary regression.
+        deposition = sum(text.count('cargo test --test deposition_meteorology_inventory') +
+                         text.count('cargo test --lib gpu::meteorology::deposition_production_tests')
+                         for text in self.workflows().values())
+        self.assertEqual(deposition, 2)
+        self.assertLess(result['after_invocations'] - 1 - temporal - deposition,
+                        result['baseline_invocations'])
 
     def test_missing_secondary_validation_cell_fails(self):
         texts = self.workflows()

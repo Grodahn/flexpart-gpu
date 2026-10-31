@@ -31,7 +31,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::sync::Arc;
-fn gas_settling(species_count: usize) -> crate::simulation::TransportSettlingConfig {
+pub(super) fn gas_settling(species_count: usize) -> crate::simulation::TransportSettlingConfig {
     crate::simulation::TransportSettlingConfig {
         species: (0..species_count).map(|i| serde_json::from_value(json!({
             "name":format!("original-gas-{i}"), "particle_density_kg_m3":-1.0, "raw":{ "pdensity":"-1" }
@@ -40,7 +40,7 @@ fn gas_settling(species_count: usize) -> crate::simulation::TransportSettlingCon
     }
 }
 
-const START_SECONDS: i64 = 1_704_067_200;
+pub(super) const START_SECONDS: i64 = 1_704_067_200;
 fn snapshot(seconds: i64, offset: f32) -> Snapshot {
     let mut snapshot: Snapshot = serde_json::from_str(include_str!(
         "../../../fixtures/vertical/synthetic-column-v1.json"
@@ -95,12 +95,12 @@ fn native_motion(snapshot: &Snapshot, source_id: &str) -> NativeVerticalMotion {
     }
 }
 
-fn runtime(snapshot: &Snapshot, source_id: &str) -> VerticalTransformResult {
+pub(super) fn runtime(snapshot: &Snapshot, source_id: &str) -> VerticalTransformResult {
     reconstruct_vertical_geometry_with_motion(snapshot, &native_motion(snapshot, source_id))
         .unwrap()
 }
 
-fn bracket<'a>(
+pub(super) fn bracket<'a>(
     ctx: &GpuContext,
     s: [&'a Snapshot; 2],
     r: [&'a VerticalTransformResult; 2],
@@ -136,7 +136,7 @@ fn bracket_with_initial<'a>(
     CanonicalMeteorologyBracket::from_shared_height_vector(s, views, uv, w).unwrap()
 }
 
-fn analytic_snapshot(seconds: i64, varying: bool) -> Snapshot {
+pub(super) fn analytic_snapshot(seconds: i64, varying: bool) -> Snapshot {
     let mut s = snapshot(seconds, 0.0);
     for f in &mut s.fields {
         for (index, value) in f.values.iter_mut().enumerate() {

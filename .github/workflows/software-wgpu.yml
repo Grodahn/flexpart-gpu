@@ -884,6 +884,19 @@ jobs:
           done
           python3 scripts/transport/test_check_transport_top.py
           cargo test --lib simulation::timeloop::settling::tests -- --test-threads=1 > target/ci-gate/transport-route.log 2>&1
+      - name: Prove canonical deposition consumer boundary (#114)
+        id: deposition-meteorology-114
+        run: |
+          set -euo pipefail
+          cargo test --test deposition_meteorology_inventory > target/ci-gate/deposition-inventory.log 2>&1
+          for mode in validation-0-compaction-0 validation-1-compaction-0 validation-0-compaction-1; do
+            export FLEXPART_GPU_VALIDATION=0 FLEXPART_GPU_COMPACTION=0
+            if [ "$mode" = validation-1-compaction-0 ]; then export FLEXPART_GPU_VALIDATION=1; fi
+            if [ "$mode" = validation-0-compaction-1 ]; then export FLEXPART_GPU_COMPACTION=1; fi
+            cargo test --lib gpu::meteorology::deposition_production_tests -- --nocapture --test-threads=1 > "target/ci-gate/deposition-meteorology-$mode.log" 2>&1
+            grep -q 'DEPOSITION-METEOROLOGY-114: .* on software_wgsl' "target/ci-gate/deposition-meteorology-$mode.log"
+            mv target/ci-gate/deposition-meteorology/report-software_wgsl.json "target/ci-gate/deposition-meteorology/$mode-report.json"
+          done
       - name: Record dependency cache checksums
         id: original-24
         run: python3 scripts/cargo_cache_integrity.py record

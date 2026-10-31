@@ -140,7 +140,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 - Authority: [deposition science](../science/deposition.md), [interval precipitation](../accumulation-contract.md), [GPU contract](../GPU_CONTRACT.md).
 - Fixtures: [WET-008](../../fixtures/corpus/cases/WET-008.json), [Fortran inputs](../../fixtures/corpus/fortran/WET-008/), [wet species identity](../../reference/species-physics/species-040-wet-aerosol-v1.json).
 - Tests: [GPU module](../../src/gpu/wet_deposition.rs), [mass evolution](../../tests/integration/deposition_decay.rs); [verification](test-map.md#wet-deposition).
-- Dependencies: meteorology/rates + species -> scavenging -> mass accounting/output; [CPU scavenging diagnostics](../../src/physics/wet_scavenging.rs) and canonical consumer migration (#114) are separate boundaries.
+- Dependencies: meteorology/rates + species -> scavenging -> mass accounting/output; [CPU scavenging diagnostics](../../src/physics/wet_scavenging.rs) are separate. The kernel consumes external coefficients only: [#114 inventory](../deposition-meteorology-migration.md), [lock](../../tests/deposition_meteorology_inventory.rs), [production regression](../../src/gpu/meteorology/deposition_production_tests.rs); particle-scale precipitation is #227.
 
 ## Dry-deposition-settling
 
@@ -149,7 +149,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 - Authority: [deposition science](../science/deposition.md), [settling science and domain](../science/settling.md), [limitations](../science/known-limitations.md), [GPU contract](../GPU_CONTRACT.md).
 - Fixtures: [DRY-007](../../fixtures/corpus/cases/DRY-007.json), [Fortran inputs](../../fixtures/corpus/fortran/DRY-007/), [constant dry identity](../../reference/species-physics/species-040-dry-constant-v1.json); settling [canonical vectors](../../fixtures/settling/canonical-vectors-v1.json), [pinned oracle](../../fixtures/settling/oracle-v1.json), [raw output](../../fixtures/settling/oracle-output-v1.txt) and [direct driver](../../oracle/settling_oracle.f90).
 - Tests: [GPU deposition module](../../src/gpu/deposition.rs), [mass evolution](../../tests/integration/deposition_decay.rs), [settling device/oracle](../../tests/settling_gpu.rs); [verification](test-map.md#dry-deposition-settling).
-- Dependencies: surface/PBL + species -> dry deposition -> mass/output. [CPU resistance/bin utilities](../../src/physics/deposition.rs) accept settling velocity as an input. #35 owns the standalone GPU spherical settling calculation and its pinned oracle; timeloop composition belongs to #37. A supplied velocity or constant dry fixture does not prove settling physics.
+- Dependencies: surface/PBL + species -> dry deposition -> mass/output. [CPU resistance/bin utilities](../../src/physics/deposition.rs) accept settling velocity as an input. #35 owns the standalone GPU spherical settling calculation and its pinned oracle; timeloop composition belongs to #37. A supplied velocity or constant dry fixture does not prove settling physics. `vdep` is an external coefficient with no meteorology sampling ([#114 inventory](../deposition-meteorology-migration.md)).
 
 ## Decay-mass-ledger
 

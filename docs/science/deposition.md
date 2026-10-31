@@ -97,6 +97,14 @@ mass_new = mass_old · (1 − P_wet)
 
 `gr_fraction` is the precipitating area fraction at the particle's location.
 
+## Production meteorology boundary (#114)
+
+The production kernels sample no meteorology. They consume caller-supplied
+`vdep`, `wetscav` and `grfraction` on the canonical #76/#171 particle
+transaction. The CPU resistance and scavenging modules above are diagnostics
+and are not used by production. Field-by-field ownership and blockers are in
+[the deposition meteorology inventory](../deposition-meteorology-migration.md).
+
 ## Source Files
 
 | File | Role |

@@ -1368,3 +1368,7 @@ impl SpatialResources {
 #[cfg(test)]
 #[path = "meteorology/advection_production_tests.rs"]
 mod advection_production_tests;
+
+#[cfg(test)]
+#[path = "meteorology/deposition_production_tests.rs"]
+mod deposition_production_tests;

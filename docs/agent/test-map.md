@@ -194,7 +194,7 @@ Start at the [stable facade](../../src/meteorology/vertical.rs) and select its
 - Device diagnostic: `cargo test --lib gpu::wet_deposition::tests`; paired production case: `python scripts/agent_validation.py --check comparison --case WET-008`.
 - Evidence: species/scavenging/precipitation identities, GPU execution, retained paired budgets and inert calibration dependency. [Corpus thresholds](../../fixtures/corpus/thresholds.json) are diagnostic.
 - Broader: owning deposition production gate; canonical rate/consumer changes additionally use the meteorology row.
-- #114 boundary: `cargo test --test deposition_meteorology_inventory` (inventory/binding lock, offline), then `cargo test --lib deposition_production_tests -- --nocapture --test-threads=1` on hardware and with `FLEXPART_GPU_SOFTWARE=1`; reports in `target/ci-gate/deposition-meteorology/report-<adapter_class>.json`. Production-path boundary and atomicity evidence only; no migrated field or deposition parity.
+- #114 boundary: `cargo test --test deposition_meteorology_inventory` (inventory/binding lock, offline), then `cargo test --lib deposition_production_tests -- --nocapture --test-threads=1` on hardware and with `FLEXPART_GPU_SOFTWARE=1`; reports in `target/ci-gate/deposition-meteorology/report-<adapter_class>.json`. Software CI step "Prove canonical deposition consumer boundary (#114)" runs both in the production, separated-validation and compaction driver modes. Production-path boundary and atomicity evidence only; no migrated field or deposition parity.
 
 ## Dry-deposition-settling
 

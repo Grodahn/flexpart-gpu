@@ -24,7 +24,7 @@ use crate::{
     simulation::{
         BackwardReceptorConfig, BackwardTimeLoopConfig, BackwardTimeLoopDriver,
         CanonicalMeteorologySlot, ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver,
-        MetTimeBracket, ParticleForcingField,
+        MetTimeBracket, ParticleForcingField, TimeLoopError,
     },
     wind::{uniform_wind_field, SurfaceFields, WindFieldGrid},
 };
@@ -36,7 +36,8 @@ use std::collections::BTreeMap;
 const CAPACITY: usize = 130;
 const ACTIVE: usize = 67;
 const RELEASE_HEIGHT_M: f64 = 5.0;
-/// Existing `FLEXPART` `href` default carried by both driver configurations [m].
+/// Dry-deposition reference height `href` [m], set explicitly on both drivers
+/// (FLEXPART `par_mod.f90` value).
 const HREF_M: f32 = 15.0;
 const WET_LAMBDA_S_INV: f32 = 0.1;
 const WET_FRACTION: f32 = 0.5;
@@ -78,6 +79,35 @@ fn shader_hashes() -> BTreeMap<&'static str, String> {
             (name, format!("{:x}", Sha256::digest(bytes)))
         })
         .collect()
+}
+
+/// #173 rejects the step before release when no canonical owner is supplied.
+fn is_missing_canonical(error: &TimeLoopError) -> bool {
+    matches!(
+        error,
+        TimeLoopError::CanonicalMeteorology(super::MeteorologyCompositionError::Missing(_))
+    )
+}
+
+/// The capacity-sized coefficient contract rejects a one-slot-short dry vector.
+fn is_short_forcing(error: &TimeLoopError) -> bool {
+    matches!(
+        error,
+        TimeLoopError::ForcingLengthMismatch {
+            field: "dry_deposition_velocity_m_s",
+            expected: CAPACITY,
+            actual,
+        } if *actual == CAPACITY - 1
+    )
+}
+
+/// Classify the final step: only a canonical meteorology failure may reject it.
+fn step_failed<T>(result: &Result<T, TimeLoopError>) -> bool {
+    match result {
+        Ok(_) => false,
+        Err(TimeLoopError::CanonicalMeteorology(_)) => true,
+        Err(other) => panic!("unexpected non-meteorology step failure: {other:?}"),
+    }
 }
 
 struct Outcome {
@@ -151,6 +181,7 @@ fn test_production_deposition_consumes_coefficients_on_canonical_transaction() {
                         particle_count: ACTIVE as u64,
                         mass_kg: ACTIVE as f64,
                     }],
+                    dry_reference_height_m: HREF_M,
                     ..BackwardTimeLoopConfig::default()
                 };
                 let mut driver =
@@ -177,13 +208,17 @@ fn test_production_deposition_consumes_coefficients_on_canonical_transaction() {
                 };
                 let canonical = met.canonical.take();
                 let rejected_missing_canonical =
-                    pollster::block_on(driver.run_timestep(&met, &forcing)).is_err();
+                    pollster::block_on(driver.run_timestep(&met, &forcing))
+                        .err()
+                        .is_some_and(|e| is_missing_canonical(&e));
                 met.canonical = canonical;
                 let rejected_short_forcing =
-                    pollster::block_on(driver.run_timestep(&met, &short_forcing)).is_err();
+                    pollster::block_on(driver.run_timestep(&met, &short_forcing))
+                        .err()
+                        .is_some_and(|e| is_short_forcing(&e));
                 let initial = pollster::block_on(driver.test_raw_particles());
                 crate::gpu::advection_resident::TEST_QUERY_FAULT.with(|f| f.set(failure));
-                let failed = pollster::block_on(driver.run_timestep(&met, &forcing)).is_err();
+                let failed = step_failed(&pollster::block_on(driver.run_timestep(&met, &forcing)));
                 let particles = pollster::block_on(driver.test_raw_particles());
                 Outcome {
                     initial,
@@ -202,6 +237,7 @@ fn test_production_deposition_consumes_coefficients_on_canonical_transaction() {
                     end_timestamp: "20240101000001".into(),
                     timestep_seconds: 1,
                     collect_deposition_probabilities_each_step: true,
+                    dry_reference_height_m: HREF_M,
                     ..ForwardTimeLoopConfig::default()
                 };
                 let releases = vec![ReleaseConfig {
@@ -245,22 +281,28 @@ fn test_production_deposition_consumes_coefficients_on_canonical_transaction() {
                 };
                 let canonical = met.canonical.take();
                 let rejected_missing_canonical =
-                    pollster::block_on(driver.run_timestep(&met, &forcing)).is_err();
+                    pollster::block_on(driver.run_timestep(&met, &forcing))
+                        .err()
+                        .is_some_and(|e| is_missing_canonical(&e));
                 met.canonical = canonical;
                 let rejected_short_forcing =
-                    pollster::block_on(driver.run_timestep(&met, &short_forcing)).is_err();
+                    pollster::block_on(driver.run_timestep(&met, &short_forcing))
+                        .err()
+                        .is_some_and(|e| is_short_forcing(&e));
                 let initial = pollster::block_on(driver.test_raw_particles());
                 crate::gpu::advection_resident::TEST_QUERY_FAULT.with(|f| f.set(failure));
                 let result = pollster::block_on(driver.run_timestep(&met, &forcing));
+                let failed = step_failed(&result);
                 let particles = pollster::block_on(driver.test_raw_particles());
-                let (failed, dry, wet) = match result {
-                    Ok(report) => (
-                        false,
-                        report.dry_deposition_probability,
-                        report.wet_deposition_probability,
-                    ),
-                    Err(_) => (true, Vec::new(), Vec::new()),
-                };
+                let (dry, wet) = result.map_or_else(
+                    |_| (Vec::new(), Vec::new()),
+                    |report| {
+                        (
+                            report.dry_deposition_probability,
+                            report.wet_deposition_probability,
+                        )
+                    },
+                );
                 Outcome {
                     initial,
                     particles,
@@ -290,7 +332,6 @@ fn test_production_deposition_consumes_coefficients_on_canonical_transaction() {
                     bytemuck::cast_slice::<_, u8>(&outcome.initial),
                     "an independent canonical failure must publish no deposited mass"
                 );
-                assert!(outcome.dry.is_empty() && outcome.wet.is_empty());
             } else {
                 for (slot, (after, before)) in
                     outcome.particles.iter().zip(&outcome.initial).enumerate()
@@ -367,6 +408,8 @@ fn test_production_deposition_consumes_coefficients_on_canonical_transaction() {
         root.join(format!("report-{class}.json")),
         serde_json::to_vec_pretty(&json!({
             "schema":"flexpart-gpu.deposition-meteorology-production.v1",
+            "validation_configuration":std::env::var("FLEXPART_GPU_VALIDATION").unwrap_or_else(|_| "0".into()),
+            "compaction_configuration":std::env::var("FLEXPART_GPU_COMPACTION").unwrap_or_else(|_| "0".into()),
             "issue":114,
             "candidate_revision":String::from_utf8(revision.stdout).unwrap().trim(),
             "validation_level":"production-path integration (forward and backward canonical drivers)",

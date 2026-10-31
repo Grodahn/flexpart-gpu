@@ -109,6 +109,11 @@ per-slot `vdep`, uniform `wetscav=0.1 s-1`, `grfraction=0.5`. It checks:
   probabilities.
 
 Run it once per adapter (set `FLEXPART_GPU_SOFTWARE=1` for software WGSL).
+Required software CI (`gpu-transport-physics`, step *Prove canonical deposition
+consumer boundary (#114)*) runs the inventory lock and this regression with
+`FLEXPART_GPU_VALIDATION`/`FLEXPART_GPU_COMPACTION` set to `0/0`, `1/0` and `0/1`.
+Each rejection is checked by error kind: the missing-owner error, the
+dry-coefficient length error and a canonical meteorology step error.
 Each run writes `target/ci-gate/deposition-meteorology/report-<adapter_class>.json`
 with the revision, adapter, shader SHA-256, source snapshot hashes and sampled lanes.
 

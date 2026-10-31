@@ -34,20 +34,55 @@ fn inventory() -> Value {
     serde_json::from_str(INVENTORY).expect("inventory JSON")
 }
 
-/// `(binding, variable name)` pairs; each `@binding` line is followed by its `var`.
-fn wgsl_bindings(source: &str) -> Vec<(u64, String)> {
+/// `(group, binding, variable name)` for every resource declared in one WGSL kernel.
+///
+/// Accepts the declaration on the attribute line or on the following line, and
+/// rejects any `@binding` it cannot attribute, so no resource escapes the lock.
+fn wgsl_bindings(source: &str) -> Vec<(u64, u64, String)> {
+    let lines: Vec<&str> = source.lines().map(str::trim).collect();
     let mut bindings = Vec::new();
-    let mut pending = None;
-    for line in source.lines().map(str::trim) {
-        if let Some(rest) = line.strip_prefix("@group(0) @binding(") {
-            let index = rest.split_once(')').expect("binding index").0;
-            pending = Some(index.parse().expect("numeric binding"));
-        } else if let Some(index) = pending.take() {
-            let declaration = line.split_once('>').expect("var qualifier").1;
-            let name = declaration.split(':').next().expect("var name").trim();
-            bindings.push((index, name.to_owned()));
+    for (index, line) in lines.iter().enumerate() {
+        if line.starts_with("//") || !line.contains("@binding(") {
+            continue;
         }
+        let number = |key: &str| -> u64 {
+            let rest = line.split_once(key).expect("resource attribute").1;
+            rest.split_once(')')
+                .expect("closing paren")
+                .0
+                .trim()
+                .parse()
+                .expect("numeric attribute")
+        };
+        let after = line.rsplit_once(')').expect("attribute end").1.trim();
+        let declaration = if after.starts_with("var") {
+            after
+        } else {
+            lines[index + 1]
+        };
+        assert!(
+            declaration.starts_with("var"),
+            "unattributed WGSL binding: {line}"
+        );
+        let name = declaration
+            .split_once('>')
+            .map_or(declaration.trim_start_matches("var"), |(_, rest)| rest)
+            .split(':')
+            .next()
+            .expect("var name")
+            .trim();
+        bindings.push((number("@group("), number("@binding("), name.to_owned()));
     }
+    let attributes = source
+        .lines()
+        .filter(|l| !l.trim().starts_with("//"))
+        .map(|l| l.matches("@binding(").count())
+        .sum::<usize>();
+    assert_eq!(
+        attributes,
+        bindings.len(),
+        "every WGSL binding must be inventoried"
+    );
     bindings
 }
 
@@ -152,6 +187,11 @@ fn test_deposition_inventory_matches_kernel_bindings() {
         let path = kernel["shader"].as_str().unwrap();
         let source = std::fs::read_to_string(path).expect("deposition shader");
         let declared = wgsl_bindings(&source);
+        assert!(
+            declared.iter().all(|(group, _, _)| *group == 0),
+            "{path}: a binding outside group 0 needs an inventory review"
+        );
+        let declared: Vec<(u64, String)> = declared.into_iter().map(|(_, b, n)| (b, n)).collect();
         let recorded: Vec<(u64, String)> = kernel["bindings"]
             .as_array()
             .unwrap()
@@ -174,6 +214,28 @@ fn test_deposition_inventory_matches_kernel_bindings() {
             );
         }
     }
+}
+
+#[test]
+fn test_deposition_inventory_binding_parser_rejects_hidden_resources() {
+    let split = "@group(0) @binding(0)
+var<storage, read> a: array<f32>;
+";
+    let inline = "@group(1) @binding(2) var<uniform> wind: Params;
+";
+    assert_eq!(wgsl_bindings(split), vec![(0, 0, "a".to_owned())]);
+    assert_eq!(wgsl_bindings(inline), vec![(1, 2, "wind".to_owned())]);
+    let hidden = std::panic::catch_unwind(|| {
+        wgsl_bindings(
+            "@group(0) @binding(1)
+fn main() {}
+",
+        )
+    });
+    assert!(
+        hidden.is_err(),
+        "an unattributed binding must fail the lock"
+    );
 }
 
 #[test]

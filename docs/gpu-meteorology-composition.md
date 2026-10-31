@@ -107,9 +107,11 @@ The following paths require their own contracts and remain explicit rejections:
   stencils with differing active #30 height profiles, or differing terrain for
   ASL. No averaged profile or arbitrary column is selected. Integer/local-column
   and equal-profile queries are supported.
-- [#119](https://github.com/Grodahn/flexpart-gpu/issues/119): precipitation
-  rate-grid time sampling, including `interpol_rain`'s frozen `dt/3` behavior.
-  Explicit interval products are not reported as final wet-deposition forcing.
+- [#119 precipitation time sampling](precipitation-time-sampling.md) supplies
+  the separate #90 -> #207 -> #87 -> #119 caller-encoder path, including the
+  original `dt/3` and final duplicate-time branch. Its final mm/h output and
+  fatal status are available for #114 adoption. Explicit #76 interval products
+  remain distinct from this reconstructed-point-member output.
 - [#120](https://github.com/Grodahn/flexpart-gpu/issues/120) resolved
   instantaneous surface-flux eligibility. Sensible heat, solar radiation and both
   stress components stored as `Instantaneous` use the surface #87 -> #89 path. The
@@ -140,7 +142,7 @@ the authority for field definitions and consumer requirements.
 | --- | --- | --- |
 | [#112 wind/advection](https://github.com/Grodahn/flexpart-gpu/issues/112) | #173 prepares U/V and normalized center W as separate #76 owners with source/#30 provenance; #171 prepares resident scalar queries | #112 owns predictor/corrector query producers and operator adoption. Fractional nonuniform geometry needs #118. The #173 driver handoff rejects interface W; the separate #76 single-column interface path retains #80/#88 limits. Operational decoding remains #32. |
 | [#113 PBL/turbulence](https://github.com/Grodahn/flexpart-gpu/issues/113) | Existing instantaneous thermodynamic/wind fields and surface diagnostics, instantaneous sensible-heat/stress fluxes (#120), plus explicitly selected interval-mean fluxes | FLEXPART consumes fluxes only at source times and time-interpolates derived `ustar/oli/hmix/wstar`. Request exact source timestamps to reproduce that order. Fractional nonuniform model geometry needs #118. Fixed grid-query slices can begin; resident particle queries need #152. Derived diagnostics must be supplied by their existing owners; #76 does not derive absent fields. |
-| [#114 deposition](https://github.com/Grodahn/flexpart-gpu/issues/114) | Canonical temperature/humidity/cloud-water fields when supplied, surface diagnostics, static 13-class land use, interval totals, and distinct #90 amounts/SI rates/mm-h rates | Final precipitation time sampling needs #119. Instantaneous solar radiation is available (#120); FLEXPART forms `vdep` from it at source times before time interpolation. Resident particle queries need #152. Missing cloud bounds or other unrepresented consumer inputs remain blockers, never defaults. |
+| [#114 deposition](https://github.com/Grodahn/flexpart-gpu/issues/114) | Canonical temperature/humidity/cloud-water fields when supplied, surface diagnostics, static 13-class land use, interval totals, distinct #90 amounts/SI rates/mm-h rates, and the separate [#119 final precipitation handoff](precipitation-time-sampling.md) | #114 owns final precipitation consumer adoption and fatal-status handling. Instantaneous solar radiation is available (#120); FLEXPART forms `vdep` from it at source times before time interpolation. Resident particle query adoption remains consumer-owned. Missing cloud bounds or other unrepresented consumer inputs remain blockers, never defaults. |
 | [#115 convection](https://github.com/Grodahn/flexpart-gpu/issues/115) | Existing instantaneous temperature, humidity, pressure and surface thermodynamic fields when supplied | Inventory the actual consumer first. The current simplified host convection chain is not a canonical production path. CAPE, cloud bounds and convection calculations are not supplied or inferred by #76. #118 applies to nonuniform fractional model queries. |
 
 The original host-query API prepares one explicit grid/time/height sample per plan.

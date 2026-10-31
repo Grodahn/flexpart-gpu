@@ -28,7 +28,13 @@ class CoverageTests(unittest.TestCase):
         # #214 adds one required host preflight suite beyond the frozen #177 selection.
         route_gate = 'cargo test --lib simulation::timeloop::settling::tests'
         self.assertEqual(self.workflows()[coverage.WORKFLOWS[0]].count(route_gate), 1)
-        self.assertLess(result['after_invocations'] - 1, result['baseline_invocations'])
+        # #119 adds two device runs and one isolated arithmetic gate. Keep the
+        # original #175 reduction claim restricted to its original selection.
+        temporal = sum(text.count('cargo test --test precipitation_temporal_gpu') +
+                       text.count('cargo test --lib precipitation_temporal')
+                       for text in self.workflows().values())
+        self.assertEqual(temporal, 3)
+        self.assertLess(result['after_invocations'] - 1 - temporal, result['baseline_invocations'])
 
     def test_missing_secondary_validation_cell_fails(self):
         texts = self.workflows()

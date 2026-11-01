@@ -16,7 +16,7 @@ fixtures/**/RELEASES text eol=lf
 fixtures/**/SPECIES_024 text eol=lf
 fixtures/**/SPECIES_040 text eol=lf
 
-# #238 preserves exact ECMWF response bytes, including JSON-line indexes.
-fixtures/meteorology/ifs-open-audit-v1/*.index -text
-fixtures/meteorology/ifs-open-audit-v1/*.capture -text
+# #238's original text responses use LF; preserve their exact source bytes.
+fixtures/meteorology/ifs-open-audit-v1/*.index text eol=lf
+fixtures/meteorology/ifs-open-audit-v1/*.capture text eol=lf
 fixtures/meteorology/ifs-open-audit-v1/*.grib2 binary

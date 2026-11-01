@@ -341,7 +341,9 @@ fn repository_policy_forces_lf_for_every_text_fixture_class() {
     let text_paths: Vec<&str> = paths
         .iter()
         .copied()
-        .filter(|path| !path.ends_with(".grib") && !path.ends_with(".npz"))
+        .filter(|path| {
+            !path.ends_with(".grib") && !path.ends_with(".grib2") && !path.ends_with(".npz")
+        })
         .collect();
     assert!(!text_paths.is_empty());
 

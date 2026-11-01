@@ -1,0 +1,75 @@
+{
+  "schema": "flexpart-gpu.icon-eu-sample-request",
+  "version": 1,
+  "issue": 230,
+  "purpose": "Bounded real-source sample for the #230 ICON-EU provider audit. Research input only; not an operational retrieval set.",
+  "base_url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib",
+  "product": "icon-eu_europe_regular-lat-lon",
+  "cycle": "2026103100",
+  "groups": [
+    {
+      "role": "time-invariant geometry, terrain and surface",
+      "kind": "time-invariant",
+      "variables": ["HSURF", "FR_LAND", "SOILTYP", "PLCOV", "LAI", "RLAT", "RLON"]
+    },
+    {
+      "role": "complete half-level geometric height column set",
+      "kind": "time-invariant",
+      "variables": ["HHL"],
+      "levels": "1-75"
+    },
+    {
+      "role": "full-level dynamics and thermodynamics (top, middle, two lowest levels)",
+      "kind": "model-level",
+      "variables": ["U", "V", "T", "QV", "P"],
+      "steps": [0, 1],
+      "levels": [1, 37, 73, 74]
+    },
+    {
+      "role": "half-level vertical wind (top, middle, lowest interior, surface half level)",
+      "kind": "model-level",
+      "variables": ["W"],
+      "steps": [0, 1],
+      "levels": [1, 37, 74, 75]
+    },
+    {
+      "role": "cloud fraction and condensate",
+      "kind": "model-level",
+      "variables": ["CLC", "QC", "QI"],
+      "steps": [1],
+      "levels": [10, 60]
+    },
+    {
+      "role": "pressure-level vertical motion and same-directory pressure-level wind",
+      "kind": "pressure-level",
+      "variables": ["OMEGA", "U"],
+      "steps": [0, 1],
+      "levels": [500]
+    },
+    {
+      "role": "surface state, fluxes, cloud and PBL diagnostics",
+      "kind": "single-level",
+      "variables": ["PS", "T_2M", "TD_2M", "U_10M", "V_10M", "ASHFL_S", "ASOB_S", "AUMFL_S", "AVMFL_S", "CLCT", "H_SNOW", "W_SNOW", "MH", "HBAS_CON", "HTOP_CON", "Z0"],
+      "steps": [0, 1, 2]
+    },
+    {
+      "role": "precipitation components across first steps, 48 h and the hourly/3-hourly cadence change",
+      "kind": "single-level",
+      "variables": ["TOT_PREC", "RAIN_GSP", "RAIN_CON", "SNOW_GSP", "SNOW_CON"],
+      "steps": [0, 1, 2, 3, 47, 48, 78, 81, 84]
+    },
+    {
+      "role": "midday surface-flux sign and averaging-window control",
+      "kind": "single-level",
+      "variables": ["ASHFL_S", "ASOB_S", "AUMFL_S", "AVMFL_S", "U_10M", "V_10M"],
+      "steps": [12, 13]
+    },
+    {
+      "role": "different-cycle control for the wrong-cycle integrity test",
+      "kind": "single-level",
+      "cycle": "2026103103",
+      "variables": ["TOT_PREC"],
+      "steps": [0, 1]
+    }
+  ]
+}

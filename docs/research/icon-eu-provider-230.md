@@ -437,19 +437,23 @@ python -I scripts/provider/icon_eu_audit.py check --sample <new-dir>/2026103100 
   6 reject the two 500 hPa `U` files by level type (first surface, second
   surface and level value each).
 - **Offline self-tests:** `python -I scripts/provider/test_icon_eu_audit.py`
-  runs 31 tests over the committed `raw/` messages. They cover:
-  - corrupted and truncated messages, and a bitmap;
+  runs 40 tests over the committed `raw/` messages. They cover:
+  - corrupted, truncated and too-short messages, sections shorter than their
+    template, a bitmap and signed CCSDS samples;
+  - a second file with the same message identity anywhere in the sample tree;
   - wrong variable behind a correct file name, wrong cycle (including one hidden
     behind a correct file name), wrong level and wrong grid;
   - incorrect units/parameter and wrong time unit;
   - insufficient temporal coverage;
-  - unknown or average statistical processing, and accumulation not from the
-    run start;
+  - unknown or average statistical processing, accumulation not from the run
+    start, and more than one statistical time range;
+  - `inspect` refusing evidence when ecCodes and libaec values differ, metadata
+    disagree, or cycle, time unit, grid or vertical-grid identity is not unique;
   - matrix coverage of all 30 canonical fields, evidence references,
     decision/matrix consistency and identity-vs-evidence agreement.
 
   The ecCodes/libaec cross-checks run when those libraries are installed (all
-  31 pass in the pinned container).
+  40 pass in the pinned container).
 - **Rust lock:** `cargo test --test icon_eu_provider_contract` pins the contract
   hash and ties it to `FIELD_SPECS` and the canonical `HorizontalGrid`.
 

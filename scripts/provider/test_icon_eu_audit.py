@@ -39,7 +39,9 @@ SECTION3_NI = 30
 SECTION4_PARAMETER_NUMBER = 10
 SECTION4_TIME_UNIT = 17
 SECTION4_FORECAST_TIME = 18
+SECTION4_TIME_RANGE_COUNT = 41
 SECTION4_STATISTICAL_PROCESSING = 46
+SECTION5_CCSDS_FLAGS = 21
 SECTION6_BITMAP = 5
 
 
@@ -76,7 +78,9 @@ class Sample:
     def __init__(self, files):
         self.directory = tempfile.mkdtemp(prefix="icon-eu-230-")
         for name, data in files:
-            with open(os.path.join(self.directory, name), "wb") as handle:
+            path = os.path.join(self.directory, name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as handle:
                 handle.write(data)
 
     def __enter__(self):
@@ -180,6 +184,18 @@ class ContractCheckTest(unittest.TestCase):
         self.assert_rejected(snow_files({2: lambda data: mutate(data, 4, SECTION4_FORECAST_TIME, (60).to_bytes(4, "big"))}),
                              "statistics start 60 min after the cycle")
 
+    def test_icon_eu_multiple_statistical_time_ranges_rejected(self):
+        self.assert_rejected(snow_files({2: lambda data: mutate(data, 4, SECTION4_TIME_RANGE_COUNT, b"\x02")}),
+                             "end of interval .* does not match step 2")
+
+    def test_icon_eu_short_garbage_file_rejected_as_corrupt(self):
+        self.assert_rejected(snow_files({1: lambda _: b"GRIB\x00\x00"}), "corrupt message: truncated")
+
+    def test_icon_eu_same_name_copy_in_subdirectory_rejected(self):
+        corrupt = raw_bytes(CYCLE, SNOW_CON[1])[:-4] + b"7776"
+        self.assert_rejected(snow_files() + [(os.path.join("copy", SNOW_CON[1]), corrupt)],
+                             "duplicate message identity")
+
     def test_icon_eu_unknown_variable_rejected(self):
         name = f"{PREFIX}single-level_{CYCLE}_000_MH.grib2"
         self.assert_rejected(snow_files() + [(name, raw_bytes(CYCLE, SNOW_CON[0]))], "variable not in contract")
@@ -229,6 +245,25 @@ class IndependentReaderTest(unittest.TestCase):
         with self.assertRaises(sections.SectionError):
             sections.parse(mutate(message, 5, 9, (0).to_bytes(2, "big")))
 
+    def test_icon_eu_signed_ccsds_samples_rejected(self):
+        message = sections.split_messages(raw_bytes(CYCLE, SNOW_CON[1]))[0]
+        flags = sections.parse(message)["representation"]["ccsds_flags"]
+        signed = mutate(message, 5, SECTION5_CCSDS_FLAGS, bytes([flags | sections.AEC_DATA_SIGNED]))
+        with self.assertRaises(sections.SectionError):
+            sections.decode_values(signed, libaec=None)
+
+    def test_icon_eu_short_section_reported_as_section_error(self):
+        message = sections.split_messages(raw_bytes(CYCLE, SNOW_CON[1]))[0]
+        start = section_start(message, 6)
+        # Shrink section 6 to its 5-octet header and move the freed octet into section 7.
+        shrunk = bytearray(message)
+        shrunk[start:start + 4] = (5).to_bytes(4, "big")
+        seventh = start + 6
+        shrunk[seventh - 1:seventh + 4] = (int.from_bytes(message[seventh:seventh + 4], "big") + 1).to_bytes(4, "big")
+        shrunk[seventh + 3] = 7
+        with self.assertRaises(sections.SectionError):
+            sections.parse(bytes(shrunk))
+
     @unittest.skipIf(sections.load_libaec() is None, "libaec not installed (runs in the pinned container)")
     def test_icon_eu_libaec_values_match_evidence(self):
         import numpy  # noqa: PLC0415
@@ -237,6 +272,32 @@ class IndependentReaderTest(unittest.TestCase):
             values = numpy.asarray(sections.decode_values(message, sections.load_libaec()), dtype="<f8")
             digest = hashlib.sha256(values.tobytes()).hexdigest()
             self.assertEqual(digest, self.rows[f"{CYCLE}/{name}"]["values"]["values_sha256_f8le"], name)
+
+
+class EvidenceProblemsTest(unittest.TestCase):
+    """``inspect`` refuses evidence when decoders or frozen identities disagree."""
+
+    CLEAN_IDENTITY = {"cycle_and_time_unit_problems": [], "distinct_grids": [["grid"]],
+                      "distinct_vertical_grid_uuids": ["uuid"]}
+
+    def file(self, difference=0.0, mismatches=()):
+        return {"path": "x.grib2", "independent_max_abs_difference": difference,
+                "cross_check_problems": list(mismatches)}
+
+    def test_icon_eu_clean_evidence_has_no_problems(self):
+        self.assertEqual(audit.evidence_problems([self.file(), self.file(None)], self.CLEAN_IDENTITY), [])
+
+    def test_icon_eu_libaec_value_difference_is_a_problem(self):
+        self.assertTrue(audit.evidence_problems([self.file(1.0e-7)], self.CLEAN_IDENTITY))
+
+    def test_icon_eu_metadata_mismatch_is_a_problem(self):
+        self.assertTrue(audit.evidence_problems([self.file(mismatches=["Ni: 1 vs 2"])], self.CLEAN_IDENTITY))
+
+    def test_icon_eu_identity_disagreements_are_problems(self):
+        for key, value in (("cycle_and_time_unit_problems", ["x: time unit 1"]),
+                           ("distinct_grids", [["a"], ["b"]]),
+                           ("distinct_vertical_grid_uuids", ["u1", "u2"])):
+            self.assertTrue(audit.evidence_problems([self.file()], dict(self.CLEAN_IDENTITY, **{key: value})), key)
 
 
 def eccodes_available():

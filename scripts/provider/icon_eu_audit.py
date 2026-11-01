@@ -308,6 +308,8 @@ def check_surface_w(store):
     w75 = store.get("model-level", "W", step=0, level=75)
     w74 = store.get("model-level", "W", step=0, level=74)
     keys = store.keys("time-invariant", "HSURF")
+    if int(keys["jScansPositively"]) != 1 or int(keys["iScansNegatively"]) != 0:
+        raise AuditError("surface-W check assumes south-to-north, west-to-east scanning")
     if float(keys["iDirectionIncrementInDegrees"]) != float(keys["jDirectionIncrementInDegrees"]):
         raise AuditError("surface-W check assumes equal i/j grid increments")
     first_lat = float(keys["latitudeOfFirstGridPointInDegrees"])
@@ -426,11 +428,29 @@ def identity_checks(rows, messages):
             "cycle_and_time_unit_problems": problems}
 
 
+def evidence_problems(files, identity):
+    """Return the disagreements that make derived evidence unusable (empty means usable).
+
+    Covers ecCodes-vs-octet metadata, ecCodes-vs-libaec values (bit identity is
+    required), per-message cycle/time-unit identity, and the single horizontal
+    grid and single vertical grid that the contract freezes.
+    """
+    problems = [f"{item['path']}: {problem}" for item in files for problem in item["cross_check_problems"]]
+    problems.extend(f"{item['path']}: independent libaec values differ by {item['independent_max_abs_difference']}"
+                    for item in files if item["independent_max_abs_difference"] not in (None, 0.0))
+    problems.extend(identity["cycle_and_time_unit_problems"])
+    if len(identity["distinct_grids"]) != 1:
+        problems.append(f"{len(identity['distinct_grids'])} distinct horizontal grids")
+    if len(identity["distinct_vertical_grid_uuids"]) != 1:
+        problems.append(f"{len(identity['distinct_vertical_grid_uuids'])} distinct vertical grid UUIDs")
+    return problems
+
+
 def inspect(sample, label):
     eccodes = eccodes_module()
     manifest, rows = load_manifest(sample)
     libaec = sections.load_libaec()
-    files, messages, problems = [], [], []
+    files, messages = [], []
     for row in rows:
         with open(row["grib_path"], "rb") as handle:
             raw = handle.read()
@@ -446,7 +466,6 @@ def inspect(sample, label):
             import numpy  # noqa: PLC0415
             other = numpy.asarray(sections.decode_values(parsed_messages[0], libaec), dtype="<f8")
             independent = float(numpy.abs(other - values).max())
-        problems.extend(f"{row['path']}: {item}" for item in mismatches)
         messages.append(keys)
         files.append({
             "path": row["path"][: -len(".bz2")],
@@ -458,8 +477,10 @@ def inspect(sample, label):
             "cross_check_problems": mismatches,
         })
     store = FieldStore(rows)
+    identity = identity_checks(rows, messages)
+    problems = evidence_problems(files, identity)
     science = {
-        "identity": identity_checks(rows, messages),
+        "identity": identity,
         "vertical": check_vertical(store),
         "surface_w": check_surface_w(store),
         "precipitation": check_precipitation(store, rows),
@@ -478,6 +499,7 @@ def inspect(sample, label):
         "retrieval_manifest_sha256": sha256_bytes(open(os.path.join(sample, "retrieval-manifest.json"), "rb").read()),
         "file_count": len(files),
         "cross_check_problem_count": len(problems),
+        "cross_check_problems": problems,
         "files": files,
         "science": science,
     }
@@ -546,16 +568,22 @@ def check_sample(sample, contract, profile):
     """Check every message of a sample directory; return a list of violations."""
     identities = contract["message_identities"]
     grid = contract["grid"]["octet_identity"]
-    violations, seen = [], {}
-    names = sorted(name for root, _, files in os.walk(sample) for name in files if name.endswith(".grib2"))
-    paths = {name: os.path.join(root, name) for root, _, files in os.walk(sample) for name in files}
-    for name in names:
-        info = describe(name)
+    violations, seen, identities_seen = [], {}, set()
+    paths = sorted(os.path.join(root, name) for root, _, files in os.walk(sample)
+                   for name in files if name.endswith(".grib2"))
+    for path in paths:
+        name = os.path.relpath(path, sample).replace(os.sep, "/")
+        info = describe(path)
+        message_key = (info["kind"], info["cycle"], info["variable"], info["step"], info["level"])
+        if message_key in identities_seen:
+            violations.append(f"{name}: duplicate message identity {message_key}")
+            continue
+        identities_seen.add(message_key)
         expected = identities.get(info["variable"])
         if expected is None:
             violations.append(f"{name}: variable not in contract")
             continue
-        with open(paths[name], "rb") as handle:
+        with open(path, "rb") as handle:
             data = handle.read()
         try:
             messages = sections.split_messages(data)

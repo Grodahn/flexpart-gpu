@@ -26,9 +26,15 @@ SUPPORTED_GRID_TEMPLATE = 0
 SUPPORTED_PRODUCT_TEMPLATES = (0, 8)
 CCSDS_TEMPLATE = 42
 NO_BITMAP = 255
-# libaec flag bits (libaec.h): output data layout only, not compression semantics.
+# libaec flag bits (libaec.h). 3BYTE/MSB select the output layout only; SIGNED
+# samples are not used by GRIB2 template 5.42 and are rejected.
+AEC_DATA_SIGNED = 1
 AEC_DATA_3BYTE = 2
 AEC_DATA_MSB = 4
+SECTION0_OCTETS = 16
+# Template 4.8 fixed part ends at WMO octet 46; each time range adds 12 octets.
+PRODUCT_8_FIXED_OCTETS = 46
+PRODUCT_8_TIME_RANGE_OCTETS = 12
 MICRO_DEGREE = 1.0e-6
 
 
@@ -56,11 +62,13 @@ def split_messages(data):
     while offset < len(data):
         if data[offset:offset + 4] != GRIB_MAGIC:
             raise SectionError(f"no GRIB indicator at byte {offset}")
+        if len(data) - offset < SECTION0_OCTETS:
+            raise SectionError(f"truncated indicator section at byte {offset}")
         if data[offset + 7] != 2:
             raise SectionError("not GRIB edition 2")
         total = u(data, offset + 8, 8)
         message = data[offset:offset + total]
-        if len(message) != total or message[-4:] != END_MAGIC:
+        if total < SECTION0_OCTETS or len(message) != total or message[-4:] != END_MAGIC:
             raise SectionError("truncated message or missing 7777 end section")
         messages.append(message)
         offset += total
@@ -150,7 +158,7 @@ def parse_product(sec):
             "unit_of_statistical_range": sec[48],
             "statistical_range_length": u(sec, 49, 4),
         })
-        end = 58
+        end = PRODUCT_8_FIXED_OCTETS + PRODUCT_8_TIME_RANGE_OCTETS * product["time_range_count"]
     product["vertical_coordinate_octets"] = sec[end:end + 4 * coordinates].hex()
     return product
 
@@ -174,7 +182,18 @@ def parse_representation(sec):
 
 
 def parse(message):
-    """Return the independently decoded metadata of one message (no data values)."""
+    """Return the independently decoded metadata of one message (no data values).
+
+    A section shorter than its template is reported as ``SectionError`` rather
+    than escaping as an indexing error, so callers can report it as corrupt.
+    """
+    try:
+        return _parse(message)
+    except (IndexError, struct.error) as error:
+        raise SectionError(f"section shorter than its template: {error}") from error
+
+
+def _parse(message):
     found = sections(message)
     bitmap = found[6][5]
     if bitmap != NO_BITMAP:
@@ -223,6 +242,8 @@ def decode_values(message, libaec):
     offset = rep["reference_value"] / 10.0 ** rep["decimal_scale_factor"]
     if bits == 0:
         return [offset] * count
+    if rep["ccsds_flags"] & AEC_DATA_SIGNED:
+        raise SectionError("signed CCSDS samples are not valid GRIB2 template 5.42 data")
     width = 1 if bits <= 8 else 2 if bits <= 16 else 4
     packed = bytes(found[7][5:])
     output = ctypes.create_string_buffer(count * width)

@@ -14,6 +14,16 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ---
 
+### 2026-11-01 - Audit real deterministic IFS Open Data 0.1 degrees (#238)
+**Impact**: none (research decision; no production scientific behavior changes).
+**Files**: `docs/research/ifs-open-provider-238.md`, versioned IFS provider
+matrix, archived real GRIB2 messages/indexes and research-only audit checks.
+**Validation**: ecCodes 2.48.0/2.24.2 numeric and independent octet/libaec
+comparisons, offline negative controls and canonical field coverage lock.
+NO_GO for existing production consumers: native hybrid geometry, near-surface
+profile and required P0 source/preparation are absent or unproved. No original
+FLEXPART behavior is changed and no parity claim is made.
+
 ### 2026-10-31 - Sample reconstructed numpf=1 precipitation point members on GPU (#119)
 **Impact**: numerics (new precipitation temporal stage and genuine composition).
 **Files**: `src/gpu/precipitation_temporal.rs`, `src/shaders/precipitation_temporal.wgsl`.

@@ -1,0 +1,17 @@
+{
+  "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+  "files": {
+    "windfields_mod.f90": "440ec62b9a7b8f4534e913b2af2a41aabdf44072b3fe77edbc213866e698e7d1",
+    "verttransform_mod.f90": "7d7ba231f960779dc63f19073103c489441da116cec12c6b8875dc06a5b7422c"
+  },
+  "inspected_ranges": {
+    "windfields_mod.f90": [
+      "819-846: native hybrid A/B and artificial surface",
+      "2105-2175: parameter/level/unit matching"
+    ],
+    "verttransform_mod.f90": [
+      "1976-2044: native pressure/height/W interface reconstruction"
+    ]
+  },
+  "role": "Original-source contract analysis only; no oracle execution or parity claim"
+}

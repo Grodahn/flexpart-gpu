@@ -54,6 +54,8 @@ Keep the final checks and owner-specific pinned-oracle gates described below.
 
 ## Meteorology
 
+- IFS Open provider audit (#238): `python -I scripts/provider/test_ifs_open_audit.py` (offline real-byte identity and semantic mutations, required ecCodes/numpy, regenerated value diagnostics) and `cargo test --test ifs_open_provider_contract` (all canonical fields and checksummed source/decoder evidence). Full independent value reproduction follows [the research note](../research/ifs-open-provider-238.md#reproduction-and-checks). Research only; no decoder, GPU or parity gate.
+
 - Precipitation time sampling (#119): `cargo test --lib precipitation_temporal -- --test-threads=1`, then `cargo test --test precipitation_temporal_gpu -- --test-threads=1` on software WGSL and hardware GPU. [Contract, original replay and final matched-input gate](../precipitation-time-sampling.md#validation-and-retained-evidence); [auditor mutation tests](../../scripts/precipitation/test_check_precipitation_temporal.py). The final acceptance requires both adapters with fresh unchanged-original matched-input comparisons; synthetic arithmetic alone does not satisfy it.
 
 - Precipitation member mapping (#202): `cargo test --test precipitation_member_mapping` locks the decision and its decoded evidence offline. It is research evidence only, not a GPU or production check. Regenerating the original evidence follows [the decision note](../research/precipitation-interval-mapping-202.md#phase-4--executed-example).

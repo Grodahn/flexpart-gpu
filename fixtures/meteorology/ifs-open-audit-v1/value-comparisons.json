@@ -1,0 +1,134 @@
+{
+  "same_cycle_control": [
+    {
+      "step": 0,
+      "param": "2t",
+      "shared_gridpoints": 259920,
+      "max_abs_difference": 0.24359130859375,
+      "mean_abs_difference": 0.012415821172890938,
+      "interpretation": "Different export grids/quantization; no required equality or input equivalence claim"
+    },
+    {
+      "step": 0,
+      "param": "tp",
+      "shared_gridpoints": 259920,
+      "max_abs_difference": 0.0,
+      "mean_abs_difference": 0.0,
+      "interpretation": "Different export grids/quantization; no required equality or input equivalence claim"
+    },
+    {
+      "step": 3,
+      "param": "tp",
+      "shared_gridpoints": 259920,
+      "max_abs_difference": 0.0,
+      "mean_abs_difference": 0.0,
+      "interpretation": "Different export grids/quantization; no required equality or input equivalence claim"
+    }
+  ],
+  "accumulation_diagnostics": [
+    {
+      "parameter": "tp",
+      "from": 0,
+      "to": 3,
+      "negative_count": 0,
+      "minimum_delta_m": 0.0,
+      "maximum_delta_m": 0.15802001953125,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "tp",
+      "from": 3,
+      "to": 6,
+      "negative_count": 152510,
+      "minimum_delta_m": -6.103515625e-05,
+      "maximum_delta_m": 0.1622314453125,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "tp",
+      "from": 6,
+      "to": 24,
+      "negative_count": 0,
+      "minimum_delta_m": 0.0,
+      "maximum_delta_m": 0.262451171875,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "tp",
+      "from": 24,
+      "to": 48,
+      "negative_count": 2716,
+      "minimum_delta_m": -0.0001220703125,
+      "maximum_delta_m": 0.46435546875,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "cp",
+      "from": 0,
+      "to": 3,
+      "negative_count": 0,
+      "minimum_delta_m": 0.0,
+      "maximum_delta_m": 0.087921142578125,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "cp",
+      "from": 3,
+      "to": 6,
+      "negative_count": 137204,
+      "minimum_delta_m": -3.0517578125e-05,
+      "maximum_delta_m": 0.1207275390625,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "cp",
+      "from": 6,
+      "to": 24,
+      "negative_count": 0,
+      "minimum_delta_m": 0.0,
+      "maximum_delta_m": 0.16278076171875,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "cp",
+      "from": 24,
+      "to": 48,
+      "negative_count": 161187,
+      "minimum_delta_m": -6.103515625e-05,
+      "maximum_delta_m": 0.2955322265625,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    }
+  ],
+  "tp_minus_cp_diagnostics": [
+    {
+      "step": 0,
+      "negative_count": 0,
+      "minimum_m": 0.0,
+      "interpretation": "Diagnostic only; not an admitted LSP transformation"
+    },
+    {
+      "step": 3,
+      "negative_count": 61162,
+      "minimum_m": -3.0517578125e-05,
+      "interpretation": "Diagnostic only; not an admitted LSP transformation"
+    },
+    {
+      "step": 6,
+      "negative_count": 57399,
+      "minimum_m": -6.103515625e-05,
+      "interpretation": "Diagnostic only; not an admitted LSP transformation"
+    },
+    {
+      "step": 24,
+      "negative_count": 39574,
+      "minimum_m": -6.103515625e-05,
+      "interpretation": "Diagnostic only; not an admitted LSP transformation"
+    },
+    {
+      "step": 48,
+      "negative_count": 277,
+      "minimum_m": -0.0001220703125,
+      "interpretation": "Diagnostic only; not an admitted LSP transformation"
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+[
+  {
+    "url": "https://www.ecmwf.int/en/forecasts/datasets/open-data",
+    "path": "official-open-data.capture",
+    "bytes": 94910,
+    "sha256": "b8fc3a17a7680344b221e984995b8ebb6b6acd431b86b4f2e1d3fd5daad6b01d",
+    "retrieved_utc": "2026-11-01T22:34:36.598262+00:00",
+    "response_headers": "HTTP/1.1 200 OK\nServer: nginx\nContent-Type: text/html; charset=UTF-8\nContent-Length: 94910\nConnection: keep-alive\nCache-Control: max-age=900, public\nDate: Sun, 01 Nov 2026 19:43:32 GMT\nX-Drupal-Dynamic-Cache: HIT\nContent-language: en\nX-Content-Type-Options: nosniff\nX-Frame-Options: SAMEORIGIN\nExpires: Sun, 19 Nov 1978 05:00:00 GMT\nLast-Modified: Sun, 01 Nov 2026 20:42:48 GMT\nETag: \"1793565768\"\nVary: Cookie\nX-Generator: Drupal 10 (https://www.drupal.org)\nX-Drupal-Cache: HIT\n\n",
+    "range": null,
+    "archived": false
+  },
+  {
+    "url": "https://confluence.ecmwf.int/spaces/DAC/pages/272310539/ECMWF+open+data+real-time+forecasts+from+IFS+and+AIFS",
+    "path": "official-overview.capture",
+    "bytes": 80350,
+    "sha256": "7b71d33abf917c4870298ca04ae5a3d9adc7ba20ce56e8ad76d1873295e168d5",
+    "retrieved_utc": "2026-11-01T22:34:37.158301+00:00",
+    "response_headers": "HTTP/1.1 200 \nServer: nginx\nDate: Sun, 01 Nov 2026 22:34:36 GMT\nContent-Type: text/html;charset=UTF-8\nTransfer-Encoding: chunked\nConnection: keep-alive\nStrict-Transport-Security: max-age=31536000\nX-XSS-Protection: 1; mode=block\nX-Content-Type-Options: nosniff\nX-Frame-Options: SAMEORIGIN\nContent-Security-Policy: frame-ancestors 'self' https://jira.ecmwf.int https://bamboo.ecmwf.int https://git.ecmwf.int\nCache-Control: no-store\nExpires: Thu, 01 Jan 1970 00:00:00 GMT\nX-Confluence-Request-Time: 1793572476548\nX-Confluence-Cluster-Node: 546f19f7\nX-Confluence-Cluster-Node-Name: confluence-1\nContent-Security-Policy-Report-Only: script-src 'self' 'nonce-Rxmpb6QUxr/W/7BagKHQuFUq+S0=' https://confluence.ecmwf.int; report-uri /rest/csp/latest/csp-report;\nSet-Cookie: JSESSIONID=A7681DB1F1284FC1B98D321756F209D1; Path=/; Secure; HttpOnly\nContent-Language: en-US\n\n",
+    "range": null,
+    "archived": false
+  },
+  {
+    "url": "https://confluence.ecmwf.int/spaces/DAC/pages/738041087/ECMWF+open+data+what+s+new+at+0.1%C2%B0",
+    "path": "official-0p1.capture",
+    "bytes": 65367,
+    "sha256": "e80d87358fa1f2ecc1460051bce8c28316b157ba4f0f087d8259723d2c33f0c9",
+    "retrieved_utc": "2026-11-01T22:34:37.615759+00:00",
+    "response_headers": "HTTP/1.1 200 \nServer: nginx\nDate: Sun, 01 Nov 2026 22:34:37 GMT\nContent-Type: text/html;charset=UTF-8\nTransfer-Encoding: chunked\nConnection: keep-alive\nStrict-Transport-Security: max-age=31536000\nX-XSS-Protection: 1; mode=block\nX-Content-Type-Options: nosniff\nX-Frame-Options: SAMEORIGIN\nContent-Security-Policy: frame-ancestors 'self' https://jira.ecmwf.int https://bamboo.ecmwf.int https://git.ecmwf.int\nCache-Control: no-store\nExpires: Thu, 01 Jan 1970 00:00:00 GMT\nX-Confluence-Request-Time: 1793572477068\nX-Confluence-Cluster-Node: 546f19f7\nX-Confluence-Cluster-Node-Name: confluence-1\nContent-Security-Policy-Report-Only: script-src 'self' 'nonce-3EqXO4LVGV3EiriL5thY69PNW0I=' https://confluence.ecmwf.int; report-uri /rest/csp/latest/csp-report;\nSet-Cookie: JSESSIONID=CD9E3B357BB073ADDB6E6426B07A85B5; Path=/; Secure; HttpOnly\nContent-Language: en-US\n\n",
+    "range": null,
+    "archived": false
+  },
+  {
+    "url": "https://confluence.ecmwf.int/spaces/DAC/pages/738041084/ECMWF+open+data+file+naming+and+formats",
+    "path": "official-format.capture",
+    "bytes": 64134,
+    "sha256": "f969c80341a81ee5d8eb2e1a0973cfbe84a446d364714b896d2d4f009bdee1fa",
+    "retrieved_utc": "2026-11-01T22:34:38.015868+00:00",
+    "response_headers": "HTTP/1.1 200 \nServer: nginx\nDate: Sun, 01 Nov 2026 22:34:37 GMT\nContent-Type: text/html;charset=UTF-8\nTransfer-Encoding: chunked\nConnection: keep-alive\nStrict-Transport-Security: max-age=31536000\nX-XSS-Protection: 1; mode=block\nX-Content-Type-Options: nosniff\nX-Frame-Options: SAMEORIGIN\nContent-Security-Policy: frame-ancestors 'self' https://jira.ecmwf.int https://bamboo.ecmwf.int https://git.ecmwf.int\nCache-Control: no-store\nExpires: Thu, 01 Jan 1970 00:00:00 GMT\nX-Confluence-Request-Time: 1793572477452\nX-Confluence-Cluster-Node: 546f19f7\nX-Confluence-Cluster-Node-Name: confluence-1\nContent-Security-Policy-Report-Only: script-src 'self' 'nonce-6VtoeF1MGPagnoiGcZIvO7/gkaQ=' https://confluence.ecmwf.int; report-uri /rest/csp/latest/csp-report;\nSet-Cookie: JSESSIONID=84A08BC9D2B2086679E8F8078A0F8E29; Path=/; Secure; HttpOnly\nContent-Language: en-US\n\n",
+    "range": null,
+    "archived": false
+  },
+  {
+    "url": "https://confluence.ecmwf.int/spaces/DAC/pages/738041093/ECMWF+open+data+bits+per+value",
+    "path": "official-precision.capture",
+    "bytes": 83912,
+    "sha256": "807ecbc7dd5e14596cf56839e44f11d952555ba25f7bfd2421b7c8cd9503abcb",
+    "retrieved_utc": "2026-11-01T22:34:38.485589+00:00",
+    "response_headers": "HTTP/1.1 200 \nServer: nginx\nDate: Sun, 01 Nov 2026 22:34:38 GMT\nContent-Type: text/html;charset=UTF-8\nTransfer-Encoding: chunked\nConnection: keep-alive\nStrict-Transport-Security: max-age=31536000\nX-XSS-Protection: 1; mode=block\nX-Content-Type-Options: nosniff\nX-Frame-Options: SAMEORIGIN\nContent-Security-Policy: frame-ancestors 'self' https://jira.ecmwf.int https://bamboo.ecmwf.int https://git.ecmwf.int\nCache-Control: no-store\nExpires: Thu, 01 Jan 1970 00:00:00 GMT\nX-Confluence-Request-Time: 1793572477867\nX-Confluence-Cluster-Node: 546f19f7\nX-Confluence-Cluster-Node-Name: confluence-1\nContent-Security-Policy-Report-Only: script-src 'self' 'nonce-d3eDIgSdIY5Tnw9Mtdcs/d2kA7s=' https://confluence.ecmwf.int; report-uri /rest/csp/latest/csp-report;\nSet-Cookie: JSESSIONID=ED684A6ED6D9FA22F206E005E730F507; Path=/; Secure; HttpOnly\nContent-Language: en-US\n\n",
+    "range": null,
+    "archived": false
+  },
+  {
+    "url": "https://raw.githubusercontent.com/ecmwf/ecmwf-opendata/main/README.md",
+    "path": "official-client.capture",
+    "bytes": 29790,
+    "sha256": "ebbe0fcc206ee394fe1be4bd95d0201e30be25498566fac35e461e33acf13908",
+    "retrieved_utc": "2026-11-01T22:34:38.969851+00:00",
+    "response_headers": "HTTP/1.1 200 OK\nConnection: keep-alive\nContent-Length: 29790\nCache-Control: max-age=300\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox\nContent-Type: text/plain; charset=utf-8\nETag: \"9f169e8b1f60366ace03c490c7250597cc0af0ad6e288fb85b51e49189beec3d\"\nStrict-Transport-Security: max-age=31536000\nX-Content-Type-Options: nosniff\nX-Frame-Options: deny\nX-XSS-Protection: 1; mode=block\nX-GitHub-Request-Id: 4A04:95B80:1309E11:14152E7:6AE7BE7D\nx-github-edge-region: fra\nAccept-Ranges: bytes\nDate: Sun, 01 Nov 2026 22:34:38 GMT\nVia: 1.1 varnish\nX-Served-By: cache-dus1260022-DUS\nX-Cache: MISS\nX-Cache-Hits: 0\nX-Timer: S1793572478.417345,VS0,VE173\nVary: Authorization,Accept-Encoding\nAccess-Control-Allow-Origin: *\nCross-Origin-Resource-Policy: cross-origin\nX-Fastly-Request-ID: ebddbc3c17c7fb8dd18e91e38b59091344c5e22c\nExpires: Sun, 01 Nov 2026 22:39:38 GMT\nSource-Age: 0\n\n",
+    "range": null,
+    "archived": false
+  },
+  {
+    "url": "https://apps.ecmwf.int/datasets/licences/general/",
+    "path": "official-licence.capture",
+    "bytes": 12268,
+    "sha256": "db3f16b5f21f681cc00acb3cc8dfb1944a362a051f7c13ab391dadb9df456a07",
+    "retrieved_utc": "2026-11-01T22:34:39.387987+00:00",
+    "response_headers": "HTTP/1.1 200 OK\nServer: nginx\nDate: Sun, 01 Nov 2026 22:34:38 GMT\nContent-Type: text/html; charset=utf-8\nTransfer-Encoding: chunked\nConnection: keep-alive\nVary: Cookie\nX-XSS-Protection: 1; mode=block\nStrict-Transport-Security: max-age=31536000; includeSubDomains; preload\nX-Cluster: k8s-bol-webapps-prod\n\n",
+    "range": null,
+    "archived": false
+  },
+  {
+    "url": "https://data.ecmwf.int/forecasts/20261101/00z/ifs/0p1/oper/",
+    "path": "directory-0p1.capture",
+    "bytes": 536143,
+    "sha256": "f94328cf1f143d759bb42113ac8f8d00574d24fee9de2a8cc606e50d6cca3ea6",
+    "retrieved_utc": "2026-11-01T22:34:40.464031+00:00",
+    "response_headers": "HTTP/1.1 200 OK\nX-XSS-Protection: 1; mode=block\nX-Content-Type-Options: nosniff\nContent-Security-Policy: script-src 'self' 'unsafe-eval' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline';\nX-Frame-Options: SAMEORIGIN\nStrict-Transport-Security: max-age=31536000;includeSubDomains\nVary: Accept-Encoding\nContent-Type: text/html\nLast-Modified: Sun, 01 Nov 2026 09:34:00 GMT\nCache-Control: no-cache\nTransfer-Encoding: chunked\n\n",
+    "range": null,
+    "archived": true
+  },
+  {
+    "url": "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20261101/00z/ifs/0p1/oper/20261101000000-0h-oper-fc-pl.index",
+    "error": "Command '['curl.exe', '--fail', '--silent', '--show-error', '--max-time', '120', '--max-filesize', '2000000', '--dump-header', 'fixtures\\\\meteorology\\\\ifs-open-audit-v1\\\\mirror-control.capture.headers', '--output', 'fixtures\\\\meteorology\\\\ifs-open-audit-v1\\\\mirror-control.capture', 'https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com/20261101/00z/ifs/0p1/oper/20261101000000-0h-oper-fc-pl.index']' returned non-zero exit status 22."
+  }
+]

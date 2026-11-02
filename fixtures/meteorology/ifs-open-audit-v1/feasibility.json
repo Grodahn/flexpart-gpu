@@ -1,0 +1,45 @@
+{
+  "domain": {
+    "west": -25,
+    "east": 45,
+    "south": 30,
+    "north": 72,
+    "nx": 701,
+    "ny": 421,
+    "cells": 295121
+  },
+  "estimate_not_benchmark": true,
+  "float_bytes": 4,
+  "illustrative_field_profile": "6 pressure-level quantities *14 levels + 9 surface fields; not a scientifically admitted production subset",
+  "fields_2d_equivalent": 93,
+  "regional_one_snapshot_bytes": 109785012,
+  "regional_two_snapshot_bytes": 219570024,
+  "regional_17_snapshot_bytes": 1866345204,
+  "global_one_field_f64_decode_bytes": 51868800,
+  "global_one_field_f32_bytes": 25934400,
+  "global_two_snapshot_bytes_profile": 4823798400,
+  "archive_index_totals": {
+    "0p1": 7916224337,
+    "0p25": 1703501809
+  },
+  "same_cycle_0p1_vs_0p25_bytes_ratio": 4.647030191090334,
+  "actual_capture_bytes": 53026786,
+  "actual_index_bytes": 1416904,
+  "grid_spacing_km": {
+    "north_south": 11.1195,
+    "east_west_at_30": 9.629769477381066,
+    "east_west_at_50": 7.147476825909474,
+    "east_west_at_70": 3.8030929837097744
+  },
+  "selected_profile_global_download_bytes": 3356894641,
+  "supported_surface_profile_17_steps_global_download_bytes": 247458330,
+  "limitations": [
+    "Range selects complete global messages; regional crop does not proportionally reduce network bytes",
+    "Compressed size is observed for this cycle only, not a bandwidth guarantee",
+    "Memory excludes staging, scratch, geometry, particles, caches, output and metadata",
+    "Static terrain is only present at +0; its timestamp is not a new dynamic observation",
+    "15-minute output is 192 intervals, not 192 independent weather inputs; 3-hour forcing brackets 12 output intervals",
+    "Published +48 forecast run does not cover wall-clock now+48 if cycle age >0; use larger lead plus preparation support",
+    "No operational latency SLA measured; HTTP Last-Modified is an observation, not guaranteed publication time"
+  ]
+}

@@ -1,0 +1,157 @@
+{
+  "same_cycle_control": [
+    {
+      "step": 0,
+      "param": "2t",
+      "shared_gridpoints": 259920,
+      "max_abs_difference": 0.24359130859375,
+      "mean_abs_difference": 0.012415821172890938,
+      "interpretation": "Different export grids/quantization; no required equality or input equivalence claim"
+    },
+    {
+      "step": 0,
+      "param": "tp",
+      "shared_gridpoints": 259920,
+      "max_abs_difference": 0.0,
+      "mean_abs_difference": 0.0,
+      "interpretation": "Different export grids/quantization; no required equality or input equivalence claim"
+    },
+    {
+      "step": 3,
+      "param": "tp",
+      "shared_gridpoints": 259920,
+      "max_abs_difference": 0.0,
+      "mean_abs_difference": 0.0,
+      "interpretation": "Different export grids/quantization; no required equality or input equivalence claim"
+    }
+  ],
+  "accumulation_diagnostics": [
+    {
+      "parameter": "tp",
+      "from": 0,
+      "to": 3,
+      "negative_count": 0,
+      "minimum_delta_m": 0.0,
+      "maximum_delta_m": 0.15802001953125,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "tp",
+      "from": 3,
+      "to": 6,
+      "negative_count": 152510,
+      "minimum_delta_m": -6.103515625e-05,
+      "maximum_delta_m": 0.1622314453125,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "tp",
+      "from": 6,
+      "to": 24,
+      "negative_count": 0,
+      "minimum_delta_m": 0.0,
+      "maximum_delta_m": 0.262451171875,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "tp",
+      "from": 24,
+      "to": 48,
+      "negative_count": 2716,
+      "minimum_delta_m": -0.0001220703125,
+      "maximum_delta_m": 0.46435546875,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "cp",
+      "from": 0,
+      "to": 3,
+      "negative_count": 0,
+      "minimum_delta_m": 0.0,
+      "maximum_delta_m": 0.087921142578125,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "cp",
+      "from": 3,
+      "to": 6,
+      "negative_count": 137204,
+      "minimum_delta_m": -3.0517578125e-05,
+      "maximum_delta_m": 0.1207275390625,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "cp",
+      "from": 6,
+      "to": 24,
+      "negative_count": 0,
+      "minimum_delta_m": 0.0,
+      "maximum_delta_m": 0.16278076171875,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    },
+    {
+      "parameter": "cp",
+      "from": 24,
+      "to": 48,
+      "negative_count": 161187,
+      "minimum_delta_m": -6.103515625e-05,
+      "maximum_delta_m": 0.2955322265625,
+      "interpretation": "Only 0-3 and 3-6 are consecutive 3h intervals; larger windows are not 3h forcing"
+    }
+  ],
+  "tp_minus_cp_diagnostics": [
+    {
+      "step": 0,
+      "negative_count": 0,
+      "minimum_m": 0.0,
+      "interpretation": "Diagnostic only; not an admitted LSP transformation"
+    },
+    {
+      "step": 3,
+      "negative_count": 61162,
+      "minimum_m": -3.0517578125e-05,
+      "interpretation": "Diagnostic only; not an admitted LSP transformation"
+    },
+    {
+      "step": 6,
+      "negative_count": 57399,
+      "minimum_m": -6.103515625e-05,
+      "interpretation": "Diagnostic only; not an admitted LSP transformation"
+    },
+    {
+      "step": 24,
+      "negative_count": 39574,
+      "minimum_m": -6.103515625e-05,
+      "interpretation": "Diagnostic only; not an admitted LSP transformation"
+    },
+    {
+      "step": 48,
+      "negative_count": 277,
+      "minimum_m": -0.0001220703125,
+      "interpretation": "Diagnostic only; not an admitted LSP transformation"
+    }
+  ],
+  "source": {
+    "cycle": "2026110100",
+    "model": "ifs",
+    "stream": "oper",
+    "type": "fc",
+    "manifest_sha256": "efa175a0a5a8f6b66e0e9a9b5b0f375a44837404703d697c43aef6c53ebdef38",
+    "inputs": {
+      "0p1-0-2t-sfc.grib2": "4dd47474cfe3d7f53e67f47e2b4a21e424a440222cd0c577d65f4f5733d32b59",
+      "0p1-0-cp-sfc.grib2": "5e8392447d3474c43bb7789e9842ab505572e6ed8089c67121639ad1079f0e0e",
+      "0p1-0-tp-sfc.grib2": "775650aaf42e458d41323f18cf1f0a54c63cdc529f5665389585bdee22cfd3e0",
+      "0p1-24-cp-sfc.grib2": "5883905ff12d3f3cc9fccfab9ecb24b54c70ed1a870311688237beeae92acaef",
+      "0p1-24-tp-sfc.grib2": "a3fc855874e45a6e3dc883fb18bc50f89b697b3b48bbe5cd2329f666f7af25db",
+      "0p1-3-cp-sfc.grib2": "d85e4e7d4fb87b4846b5cacce3bbdb2443b3e90503539713e0a2672fe3fbffa9",
+      "0p1-3-tp-sfc.grib2": "7d682c53153cf7f22181ad79835a2db80cf746b20171ff332429956c780fc68f",
+      "0p1-48-cp-sfc.grib2": "223c72051d97d423e8ac80a83fbb2e6338a582cb4ebe9275488e37bd15d84d3e",
+      "0p1-48-tp-sfc.grib2": "45280f1f54592bab0d9bde54eabc7b136573bf6738e50c44b1ff8bc01f089c0c",
+      "0p1-6-cp-sfc.grib2": "3fac66dc7364004afe17a173f31d4343510426bfb1164d6d25e6dd7f79e3f771",
+      "0p1-6-tp-sfc.grib2": "b394192d52eec1ca3cdfc6f9a75a4b9d9e4c35fb9f1af5bc457bf7bd6031297c",
+      "0p25-0-2t-sfc.grib2": "03f76dfccdfa38e3141b50a77ad002bcda68245d7465d946ab5ee0d66ddeb159",
+      "0p25-0-tp-sfc.grib2": "23b8aa8e33287990ac55be9c15b5fb97eae1c8be6d756c0fcb4c3f2e3aab6dba",
+      "0p25-3-tp-sfc.grib2": "e0869a35b7610b5ae79e902852f764df2416e17247e091faf0b15ea9f621ae00"
+    }
+  }
+}

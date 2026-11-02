@@ -1,0 +1,27 @@
+{
+  "modern": {
+    "ecCodes_api": "2.48.0",
+    "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "python_eccodes_package": "2.48.0",
+    "numpy": "2.5.3",
+    "aec.dll_sha256": "99dccaf5fe3e03f1dc47ebefb83fa7772754bfcb5bc002c517fec244b28884a8",
+    "eccodes.dll_sha256": "d11f2a2e977eb1e89774475a40ece996fb37353fca9d08db518f88c732e87880"
+  },
+  "legacy": {
+    "image": "flexpart-fortran:latest",
+    "image_id": "sha256:324bb63d7311b13d9700906f05c98babaa69967c1dbfed124abb135855f80d84",
+    "ecCodes_api": "2.24.2",
+    "purpose": "numeric diagnostics; unsupported modern parameter labels are retained",
+    "packages": {
+      "libeccodes0": "2.24.2-1",
+      "python3-eccodes": "2:1.4.0-1",
+      "libaec0": "1.0.6-1"
+    }
+  },
+  "independent": {
+    "reader": "scripts/provider/icon_eu_grib2_sections.py",
+    "reader_sha256": "759a134e363b6646780feb0a38ee7c2b68075490281fba6038e149691635c5cc",
+    "algorithm": "WMO octets + direct libaec aec_buffer_decode; no ecCodes parameter definitions"
+  }
+}

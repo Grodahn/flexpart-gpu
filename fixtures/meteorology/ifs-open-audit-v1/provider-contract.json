@@ -1,0 +1,939 @@
+{
+  "schema": "flexpart-gpu.provider-feasibility-contract",
+  "contract_id": "ifs-open-oper-0p1-feasibility",
+  "version": 1,
+  "issue": 238,
+  "parent_issue": 32,
+  "base_revision": "daee70a8dca1c446193a2ca7ddb55a760035ed69",
+  "status": "RESEARCH_ONLY; no production decoder, GPU execution or FLEXPART parity result",
+  "decision": {
+    "verdict": "NO_GO",
+    "scope": "Any existing production 3D dispersion consumer using solely audited IFS deterministic Open Data under current #29/#30/#31 contracts",
+    "supported_production_consumer_subset": [],
+    "full_europe_48h_p0_verdict": "NO_GO",
+    "5_to_8_km_target_verdict": "NO_GO",
+    "surface_diagnostic_subset_verdict": "CONDITIONAL_GO",
+    "surface_diagnostic_subset_scope": "Future separately verified adapter for source-quantity diagnostics; not an existing production physics consumer",
+    "reason": "14 pressure levels without hybrid geometry/native W, missing 3D cloud water and sensible heat flux; unproved LSP, packing/member and surface-time semantics",
+    "supported_quantities": [
+      "surface_pressure",
+      "land_sea_mask",
+      "snow_depth",
+      "wind_u10m",
+      "wind_v10m",
+      "temperature2m",
+      "dewpoint2m",
+      "total_cloud_cover"
+    ]
+  },
+  "source": {
+    "provider": "ECMWF Open Data",
+    "model": "ifs",
+    "stream": "oper",
+    "type": "fc",
+    "resolution": "0p1",
+    "same_cycle_control_resolution": "0p25",
+    "cycle": "2026110100",
+    "initialization_utc": "2026-11-01T00:00:00Z",
+    "steps_hours": [
+      0,
+      3,
+      6,
+      9,
+      12,
+      15,
+      18,
+      21,
+      24,
+      27,
+      30,
+      33,
+      36,
+      39,
+      42,
+      45,
+      48
+    ],
+    "index_count": 51,
+    "message_count": 34,
+    "raw_message_bytes": 53026786,
+    "retrieval_manifest": "retrieval-manifest.json",
+    "source_authority": "source-authority.json",
+    "licence": "CC BY 4.0 plus ECMWF terms",
+    "licence_url": "https://apps.ecmwf.int/datasets/licences/general/",
+    "attribution_file": "ATTRIBUTION.md",
+    "retention": "Official documentation: most recent 12 cycles (~2-3 days); live URLs are not immutable",
+    "immutable_archive": "All selected unmodified message bytes and all scoped indexes committed with SHA-256"
+  },
+  "classification_scope": "SUPPORTED_AS_IS describes decoded individual quantity/unit, not canonical grid admission, full input completeness, runtime execution or parity. Regional extraction/order normalization, finite-domain checks and adapter proof are still needed. REQUIRES_SCIENTIFIC_DECISION includes unproved transformations; MISSING_SOURCE is scoped to all captured cycle indexes, not all ECMWF products.",
+  "field_matrix": [
+    {
+      "canonical_id": "wind_u",
+      "flexpart_consumer": "readwind_ecmwf U -> uuh -> verttransform_ecmwf_windfields -> uu; advection, PBL/turbulence",
+      "source_variable": "u",
+      "grib2_parameter": [
+        0,
+        2,
+        2
+      ],
+      "source_units_sign": "m s-1 eastward",
+      "vertical": "14 isobaric centers, 1000..10 hPa",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "Quantity has canonical units; native hybrid geometry / near-surface profile absent; no vertical regridding authorized",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-u-850.grib2",
+        "all 17 pl indexes"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        30
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "wind_v",
+      "flexpart_consumer": "readwind_ecmwf V -> vvh -> vv; advection, PBL/turbulence",
+      "source_variable": "v",
+      "grib2_parameter": [
+        0,
+        2,
+        3
+      ],
+      "source_units_sign": "m s-1 northward",
+      "vertical": "14 isobaric centers, 1000..10 hPa",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "Quantity has canonical units; native hybrid geometry / near-surface profile absent; no vertical regridding authorized",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-v-850.grib2",
+        "all 17 pl indexes"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        30
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "temperature",
+      "flexpart_consumer": "readwind T -> tth -> tt; #30 heights, PBL, convection, wet deposition, settling",
+      "source_variable": "t",
+      "grib2_parameter": [
+        0,
+        0,
+        0
+      ],
+      "source_units_sign": "K",
+      "vertical": "14 isobaric centers, 1000..10 hPa",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "Quantity has canonical units; native hybrid geometry / near-surface profile absent; no vertical regridding authorized",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-t-850.grib2",
+        "all 17 pl indexes"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        30
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "specific_humidity",
+      "flexpart_consumer": "readwind Q -> qvh -> qv; #30, PBL, convection, cloud fallback",
+      "source_variable": "q",
+      "grib2_parameter": [
+        0,
+        1,
+        0
+      ],
+      "source_units_sign": "kg kg-1",
+      "vertical": "14 isobaric centers, 1000..10 hPa",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "Quantity has canonical units; native hybrid geometry / near-surface profile absent; no vertical regridding authorized",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-q-850.grib2",
+        "all 17 pl indexes"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        30
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "vertical_velocity",
+      "flexpart_consumer": "readwind_ecmwf eta-dot/omega (Pa/s) -> wwh with surface level forced to 0 (windfields_mod.f90:2470-2473) -> pinmconv -> ww; vertical advection",
+      "source_variable": "w",
+      "grib2_parameter": [
+        0,
+        2,
+        8
+      ],
+      "source_units_sign": "Pa s-1, positive increasing pressure",
+      "vertical": "pressure-level center, not native W interface",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "Omega is not canonical upward geometric m/s or original prepared coordinate-relative W; #30 rejects center omega",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-w-850.grib2",
+        "docs/vertical-transform.md"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        30,
+        70,
+        80
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "pressure",
+      "flexpart_consumer": "derived in verttransform/conv_mod::calcmatrix from hybrid A/B + ps; convection, deposition thermodynamics",
+      "source_variable": "pressure-level values + T/q",
+      "grib2_parameter": null,
+      "source_units_sign": "Pa",
+      "vertical": "pressure centers; no interfaces",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "derivable diagnostic on pressure levels, current runtime proof absent",
+      "transformation": "Do not replace #30 native hybrid reconstruction with arbitrary pressure-level geometry",
+      "evidence": [
+        "all 17 pl indexes",
+        "docs/vertical-transform.md"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        30
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "air_density",
+      "flexpart_consumer": "FLEXPART-derived in verttransform_ecmwf_heights -> rho; turbulence, cloud-water integration, settling",
+      "source_variable": "pressure-level values + T/q",
+      "grib2_parameter": null,
+      "source_units_sign": "kg m-3",
+      "vertical": "pressure centers; no interfaces",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "derivable diagnostic on pressure levels, current runtime proof absent",
+      "transformation": "Do not replace #30 native hybrid reconstruction with arbitrary pressure-level geometry",
+      "evidence": [
+        "all 17 pl indexes",
+        "docs/vertical-transform.md"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        30
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "density_gradient",
+      "flexpart_consumer": "FLEXPART-derived in verttransform_ecmwf_windfields -> drhodz; PBL vertical transport",
+      "source_variable": "pressure-level values + T/q",
+      "grib2_parameter": null,
+      "source_units_sign": "kg m-4",
+      "vertical": "pressure centers; no interfaces",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "derivable diagnostic on pressure levels, current runtime proof absent",
+      "transformation": "Do not replace #30 native hybrid reconstruction with arbitrary pressure-level geometry",
+      "evidence": [
+        "all 17 pl indexes",
+        "docs/vertical-transform.md"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        30
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "surface_pressure",
+      "flexpart_consumer": "readwind SP -> ps; #30, PBL, convection, dry deposition",
+      "source_variable": "sp",
+      "grib2_parameter": [
+        0,
+        3,
+        0
+      ],
+      "source_units_sign": "Pa",
+      "vertical": "surface",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "identity quantity",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-sp-sfc.grib2"
+      ],
+      "classification": "SUPPORTED_AS_IS",
+      "blocker_issues": [],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "orography",
+      "flexpart_consumer": "readwind geopotential -> oro; #30 AGL/ASL",
+      "source_variable": "z",
+      "grib2_parameter": [
+        0,
+        3,
+        4
+      ],
+      "source_units_sign": "m2 s-2",
+      "vertical": "surface",
+      "temporal": "initial-cycle ancillary",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "Divide by pinned reference gravity for metres ASL; not executed/admitted in this audit",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-z-sfc.grib2"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "land_sea_mask",
+      "flexpart_consumer": "readwind -> lsm; dry-deposition land-use fallback only",
+      "source_variable": "lsm",
+      "grib2_parameter": [
+        2,
+        0,
+        0
+      ],
+      "source_units_sign": "fraction [0,1]",
+      "vertical": "surface",
+      "temporal": "initial-cycle ancillary",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "identity quantity; not 13-class land use",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-lsm-sfc.grib2"
+      ],
+      "classification": "SUPPORTED_AS_IS",
+      "blocker_issues": [],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "snow_depth",
+      "flexpart_consumer": "readwind SD -> sd -> getvdep; dry deposition",
+      "source_variable": "sd",
+      "grib2_parameter": [
+        0,
+        1,
+        254
+      ],
+      "source_units_sign": "m water equivalent",
+      "vertical": "surface",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "identity quantity; not geometric snow depth",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-sd-sfc.grib2"
+      ],
+      "classification": "SUPPORTED_AS_IS",
+      "blocker_issues": [],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "wind_u10m",
+      "flexpart_consumer": "readwind -> u10; pbl_profile / near-surface diagnosis",
+      "source_variable": "10u",
+      "grib2_parameter": [
+        0,
+        2,
+        2
+      ],
+      "source_units_sign": "m s-1 eastward",
+      "vertical": "10m AGL",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "identity quantity",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-10u-sfc.grib2"
+      ],
+      "classification": "SUPPORTED_AS_IS",
+      "blocker_issues": [],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "wind_v10m",
+      "flexpart_consumer": "readwind -> v10; pbl_profile / near-surface diagnosis",
+      "source_variable": "10v",
+      "grib2_parameter": [
+        0,
+        2,
+        3
+      ],
+      "source_units_sign": "m s-1 northward",
+      "vertical": "10m AGL",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "identity quantity",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-10v-sfc.grib2"
+      ],
+      "classification": "SUPPORTED_AS_IS",
+      "blocker_issues": [],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "temperature2m",
+      "flexpart_consumer": "readwind -> tt2; #30 surface boundary, PBL, convection, dry deposition",
+      "source_variable": "2t",
+      "grib2_parameter": [
+        0,
+        0,
+        0
+      ],
+      "source_units_sign": "K",
+      "vertical": "2m AGL",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "identity quantity",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-2t-sfc.grib2"
+      ],
+      "classification": "SUPPORTED_AS_IS",
+      "blocker_issues": [],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "dewpoint2m",
+      "flexpart_consumer": "readwind -> td2; #30 surface boundary, PBL, convection, dry-deposition RH",
+      "source_variable": "2d",
+      "grib2_parameter": [
+        0,
+        0,
+        6
+      ],
+      "source_units_sign": "K",
+      "vertical": "2m AGL",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "identity quantity",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-2d-sfc.grib2"
+      ],
+      "classification": "SUPPORTED_AS_IS",
+      "blocker_issues": [],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "total_cloud_cover",
+      "flexpart_consumer": "readwind -> tcc -> get_wetscav/interpol_rain cc; wet deposition",
+      "source_variable": "tcc",
+      "grib2_parameter": [
+        0,
+        6,
+        192
+      ],
+      "source_units_sign": "fraction [0,1]",
+      "vertical": "entire atmosphere",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "identity quantity",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-0-tcc-sfc.grib2"
+      ],
+      "classification": "SUPPORTED_AS_IS",
+      "blocker_issues": [],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "large_scale_precipitation",
+      "flexpart_consumer": "readwind -> lsprec (flex_extract RRINT=0 numpf=1 members) -> #90/#207/#119 -> interpol_rain; wet and dry deposition",
+      "source_variable": "no lsp; possible tp-cp residual",
+      "grib2_parameter": null,
+      "source_units_sign": "m water equivalent for tp/cp",
+      "vertical": "surface",
+      "temporal": "run accumulation [0,step]",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "direct source missing; unproved residual candidate",
+      "transformation": "No direct LSP in any index. TP-CP has negative residuals. Amount *1000 kg/m2, reset/deaccumulation/GRIB2 packing admission and original member support need an independent decision",
+      "evidence": [
+        "all sfc indexes",
+        "value-comparisons.json:tp_minus_cp_diagnostics"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        202,
+        207,
+        119,
+        211
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "convective_precipitation",
+      "flexpart_consumer": "readwind -> convprec -> #90/#207/#119 -> interpol_rain; wet and dry deposition (not an Emanuel input)",
+      "source_variable": "cp",
+      "grib2_parameter": [
+        0,
+        1,
+        195
+      ],
+      "source_units_sign": "m water equivalent, nonnegative quantized values",
+      "vertical": "surface",
+      "temporal": "run accumulation [0,step]",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "Raw amount *1000 kg/m2 is dimensionally clear; this GRIB2 class is outside #211/#216 admission; no point-member or negative-difference policy is established",
+      "evidence": [
+        "decoded-2.48.0.json:cp samples",
+        "value-comparisons.json:accumulation_diagnostics"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        202,
+        207,
+        119,
+        211
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "cloud_total_water",
+      "flexpart_consumer": "readwind CLWC/CIWC -> verttransform_ecmwf_cloud combination -> ctwc and cloud bounds; wet deposition",
+      "source_variable": "none; tclw/tciw are column integrals",
+      "grib2_parameter": null,
+      "source_units_sign": "column kg m-2 is not 3D kg kg-1",
+      "vertical": "missing 3D model-level liquid/ice",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "absent from complete scoped inventory",
+      "transformation": "Do not reconstruct cloud profile or cloud bounds from column integrals",
+      "evidence": [
+        "all pl/sfc indexes"
+      ],
+      "classification": "MISSING_SOURCE",
+      "blocker_issues": [
+        32,
+        33
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "sensible_heat_flux",
+      "flexpart_consumer": "readwind SSHF (flex_extract dapoly point value) -> calcpar -> obukhov/richardson; PBL",
+      "source_variable": null,
+      "grib2_parameter": null,
+      "source_units_sign": "required W m-2 upward",
+      "vertical": "surface",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "absent from complete scoped inventory",
+      "transformation": "No sshf/sensible heat flux source in any scoped index; do not infer from net radiation",
+      "evidence": [
+        "all sfc indexes"
+      ],
+      "classification": "MISSING_SOURCE",
+      "blocker_issues": [
+        32
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "surface_solar_radiation",
+      "flexpart_consumer": "readwind SSR -> calcpar -> getvdep gr; dry deposition",
+      "source_variable": "ssr",
+      "grib2_parameter": [
+        0,
+        4,
+        9
+      ],
+      "source_units_sign": "J m-2",
+      "vertical": "surface",
+      "temporal": "run accumulation [0,step]",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "Deaccumulate energy/momentum over explicit windows to interval means; #120 requires proven instantaneous reconstruction for runtime time sampling; sign/units alone do not prove point semantics",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-3-ssr-sfc.grib2",
+        "docs/temporal-interpolation.md"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        120
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "surface_stress_eastward",
+      "flexpart_consumer": "readwind EWSS -> sfcstress magnitude -> scalev/ustar; PBL",
+      "source_variable": "ewss",
+      "grib2_parameter": [
+        0,
+        2,
+        62
+      ],
+      "source_units_sign": "N m-2 s eastward component",
+      "vertical": "surface",
+      "temporal": "run accumulation [0,step]",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "Deaccumulate energy/momentum over explicit windows to interval means; #120 requires proven instantaneous reconstruction for runtime time sampling; sign/units alone do not prove point semantics",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-3-ewss-sfc.grib2",
+        "docs/temporal-interpolation.md"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        120
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "surface_stress_northward",
+      "flexpart_consumer": "readwind NSSS -> sfcstress magnitude; PBL",
+      "source_variable": "nsss",
+      "grib2_parameter": [
+        0,
+        2,
+        63
+      ],
+      "source_units_sign": "N m-2 s northward component",
+      "vertical": "surface",
+      "temporal": "run accumulation [0,step]",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "decoded real message",
+      "transformation": "Deaccumulate energy/momentum over explicit windows to interval means; #120 requires proven instantaneous reconstruction for runtime time sampling; sign/units alone do not prove point semantics",
+      "evidence": [
+        "decoded-2.48.0.json:0p1-3-nsss-sfc.grib2",
+        "docs/temporal-interpolation.md"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        120
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "friction_velocity",
+      "flexpart_consumer": "FLEXPART-derived: calcpar -> scalev(ps, tt2, td2, sfcstress); PBL, dry deposition",
+      "source_variable": null,
+      "grib2_parameter": null,
+      "source_units_sign": "m s-1",
+      "vertical": "surface diagnostic",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "FLEXPART-derived; prerequisites blocked",
+      "transformation": "Pinned FLEXPART diagnosis needs native profile, surface boundary and/or proven point fluxes; no provider diagnostic substitution",
+      "evidence": [
+        "docs/meteorology-contract.md:Process-to-field proof map"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        30
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "convective_velocity_scale",
+      "flexpart_consumer": "FLEXPART-derived: calcpar -> richardson -> wstar; PBL",
+      "source_variable": null,
+      "grib2_parameter": null,
+      "source_units_sign": "m s-1",
+      "vertical": "surface diagnostic",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "FLEXPART-derived; prerequisites blocked",
+      "transformation": "Pinned FLEXPART diagnosis needs native profile, surface boundary and/or proven point fluxes; no provider diagnostic substitution",
+      "evidence": [
+        "docs/meteorology-contract.md:Process-to-field proof map"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        30
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "mixing_height",
+      "flexpart_consumer": "FLEXPART-derived: calcpar -> richardson -> hmix; PBL",
+      "source_variable": null,
+      "grib2_parameter": null,
+      "source_units_sign": "m AGL",
+      "vertical": "surface diagnostic",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "FLEXPART-derived; prerequisites blocked",
+      "transformation": "Pinned FLEXPART diagnosis needs native profile, surface boundary and/or proven point fluxes; no provider diagnostic substitution",
+      "evidence": [
+        "docs/meteorology-contract.md:Process-to-field proof map"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        30
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "tropopause_height",
+      "flexpart_consumer": "FLEXPART-derived in calcpar from the thermodynamic profile",
+      "source_variable": null,
+      "grib2_parameter": null,
+      "source_units_sign": "m",
+      "vertical": "surface diagnostic",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "FLEXPART-derived; prerequisites blocked",
+      "transformation": "Pinned FLEXPART diagnosis needs native profile, surface boundary and/or proven point fluxes; no provider diagnostic substitution",
+      "evidence": [
+        "docs/meteorology-contract.md:Process-to-field proof map"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        30
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "inverse_obukhov_length",
+      "flexpart_consumer": "FLEXPART-derived: calcpar -> obukhov; PBL, dry deposition",
+      "source_variable": null,
+      "grib2_parameter": null,
+      "source_units_sign": "m-1",
+      "vertical": "surface diagnostic",
+      "temporal": "instantaneous, 3-hourly",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "FLEXPART-derived; prerequisites blocked",
+      "transformation": "Pinned FLEXPART diagnosis needs native profile, surface boundary and/or proven point fluxes; no provider diagnostic substitution",
+      "evidence": [
+        "docs/meteorology-contract.md:Process-to-field proof map"
+      ],
+      "classification": "REQUIRES_SCIENTIFIC_DECISION",
+      "blocker_issues": [
+        32,
+        30
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    },
+    {
+      "canonical_id": "land_use_fractions",
+      "flexpart_consumer": "drydepo_mod::assignland -> xlanduse(1:13) from FLEXPART's own land-use inventory; dry deposition",
+      "source_variable": null,
+      "grib2_parameter": null,
+      "source_units_sign": "13 fractions per cell, sum one",
+      "vertical": "surface",
+      "temporal": "static",
+      "grid": "Global regular lat/lon A-grid, east-fastest, north-to-south; Europe extraction and canonical ordering still required",
+      "availability": "absent from complete scoped inventory",
+      "transformation": "External pinned land-use preparation is needed; lsm/asn are not class fractions",
+      "evidence": [
+        "all sfc indexes",
+        "docs/meteorology-contract.md"
+      ],
+      "classification": "MISSING_SOURCE",
+      "blocker_issues": [
+        32,
+        36
+      ],
+      "fatal_behavior": "Reject unsupported consumer request; never synthesize missing source or silently fall back"
+    }
+  ],
+  "vertical": {
+    "pressure_levels_hpa": [
+      1000,
+      925,
+      850,
+      700,
+      600,
+      500,
+      400,
+      300,
+      250,
+      200,
+      150,
+      100,
+      50,
+      10
+    ],
+    "genuine_model_levels_observed": false,
+    "full_native_hybrid_levels_observed": false,
+    "hybrid_interface_ab_observed": false,
+    "decoded_upper_air_NV": 0,
+    "native_model_level_count": null,
+    "runtime_30_geometry_sufficient": false,
+    "near_surface_complex_terrain_sufficient": false,
+    "limitation": "Inventory assertion covers every captured +0..48 index plus official cycle directory; no inference of 137 levels. Only representative message headers were decoded, not every message in the global archives."
+  },
+  "blockers": [
+    {
+      "id": "IFS-VERTICAL",
+      "owner_issues": [
+        32,
+        30
+      ],
+      "contract": "Acquire independently pinned native full/half-level geometry and native-motion source; or decide a separate pressure-level scientific contract before implementation",
+      "handoff": "Source bytes, all A/B interfaces, source surface pressure/T2m/Td2m/orography, native W semantics; no extrapolated terrain profile"
+    },
+    {
+      "id": "IFS-PRECIPITATION",
+      "owner_issues": [
+        32,
+        202,
+        207,
+        119,
+        211
+      ],
+      "contract": "Decide TP/CP/LSP composition, GRIB2 packing-decrease admission and original preprocessing for this source class",
+      "handoff": "Pinned independent producer/reader evidence, phase definitions, actual windows, reset, member support including endpoints"
+    },
+    {
+      "id": "IFS-SURFACE-TIME",
+      "owner_issues": [
+        32,
+        120
+      ],
+      "contract": "Source missing sensible flux and prove accumulated SSR/stress to original point-value preparation",
+      "handoff": "Source flux plus independently validated window, sign, quantization and temporal reconstruction"
+    },
+    {
+      "id": "IFS-CLOUD-LAND",
+      "owner_issues": [
+        32,
+        33,
+        36
+      ],
+      "contract": "Obtain 3D cloud-water profile and independent 13-class ancillary inventory",
+      "handoff": "No column-total inversion or lsm land-class substitution"
+    }
+  ],
+  "provider_comparison": [
+    {
+      "provider": "IFS Open 0p1",
+      "completeness": "pressure-only; no current production-complete subset",
+      "science": "original preprocessing and center omega unresolved",
+      "readiness": "NO_GO under current contracts"
+    },
+    {
+      "provider": "ERA5/ETEX #237",
+      "completeness": "137/138 native metadata exists for bounded U/V/T/q subset; surface join must be proved",
+      "science": "native raw, ARCO surface and flex_extract-prepared classes remain separate",
+      "readiness": "Preferred bounded decoder first; #237 open, no full production readiness"
+    },
+    {
+      "provider": "ICON-EU #230",
+      "completeness": "native height geometry and more fields; no compatible current runtime path",
+      "science": "#231-235 blocked coordinate, motion, precipitation, flux decisions",
+      "readiness": "NO_GO for first provider"
+    }
+  ],
+  "follow_up_boundaries": "Keep four finite prerequisite decisions under #32 as listed; none is implemented or closed here. #237 may share ecCodes, canonical validation and provenance patterns, but IFS needs a distinct input profile/adapter after its own decisions; do not extend the ERA5 profile by a product-name alias.",
+  "consumer_readiness": {
+    "advection": {
+      "verdict": "NO_GO",
+      "blocked_fields": [
+        "vertical_velocity"
+      ],
+      "owner_issues": [
+        32,
+        30,
+        70,
+        80
+      ]
+    },
+    "pbl_turbulence": {
+      "verdict": "NO_GO",
+      "blocked_fields": [
+        "density_gradient",
+        "mixing_height",
+        "sensible_heat_flux",
+        "surface_stress_eastward"
+      ],
+      "owner_issues": [
+        32,
+        30,
+        120
+      ]
+    },
+    "convection": {
+      "verdict": "NO_GO",
+      "blocked_fields": [
+        "pressure",
+        "temperature",
+        "specific_humidity"
+      ],
+      "owner_issues": [
+        32,
+        30
+      ]
+    },
+    "wet_deposition": {
+      "verdict": "NO_GO",
+      "blocked_fields": [
+        "cloud_total_water",
+        "large_scale_precipitation",
+        "convective_precipitation"
+      ],
+      "owner_issues": [
+        32,
+        33,
+        202,
+        207,
+        119,
+        211
+      ]
+    },
+    "dry_deposition": {
+      "verdict": "NO_GO",
+      "blocked_fields": [
+        "land_use_fractions",
+        "large_scale_precipitation",
+        "surface_solar_radiation",
+        "inverse_obukhov_length"
+      ],
+      "owner_issues": [
+        32,
+        36,
+        120
+      ]
+    },
+    "settling": {
+      "verdict": "NO_GO",
+      "blocked_fields": [
+        "temperature",
+        "air_density"
+      ],
+      "owner_issues": [
+        32,
+        30
+      ]
+    }
+  }
+}

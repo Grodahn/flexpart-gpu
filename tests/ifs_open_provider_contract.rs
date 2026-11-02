@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 const ROOT: &str = "fixtures/meteorology/ifs-open-audit-v1";
-const LOCK_SHA256: &str = "5823deec9aa67d9866a032c7922f814ca76b53306040c75afb4a567141c05404";
+const LOCK_SHA256: &str = "807418cc011b8438a5f64514870fc7075dd2315f66592f4811ceb202d00b6db2";
 
 fn read(name: &str) -> Value {
     let bytes = std::fs::read(Path::new(ROOT).join(name)).expect("research artifact");

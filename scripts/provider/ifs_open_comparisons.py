@@ -7,14 +7,36 @@ from pathlib import Path
 import eccodes as ec
 import numpy as np
 
+import ifs_open_audit as audit
+
 
 def comparisons(root):
     """Compare shared export nodes and expose negative cumulative differences."""
+    manifest_bytes = (root / "retrieval-manifest.json").read_bytes()
+    manifest = json.loads(manifest_bytes)
+    audit.validate_inventory(root, manifest)
+    messages = {item["path"]: item for item in manifest["messages"]}
+    if len(messages) != len(manifest["messages"]):
+        raise ValueError("duplicate comparison input")
+    inputs = {}
+
     def values(name):
-        handle = ec.codes_new_from_message((root / name).read_bytes())
+        if name not in messages:
+            raise ValueError(f"missing comparison input: {name}")
+        item = messages[name]
+        data = (root / name).read_bytes()
+        audit.validate_raw(data, item)
+        handle = ec.codes_new_from_message(data)
         try:
+            metadata = audit.read_metadata(handle)
+            audit.validate_message(data, item, manifest, metadata)
+            audit.compare_metadata(audit.octets.parse(data), metadata)
             shape = ec.codes_get(handle, "Nj"), ec.codes_get(handle, "Ni")
-            return ec.codes_get_values(handle).reshape(shape)
+            decoded = ec.codes_get_values(handle).reshape(shape)
+            if not np.isfinite(decoded).all():
+                raise ValueError("nonfinite comparison values")
+            inputs[name] = item["sha256"]
+            return decoded
         finally:
             ec.codes_release(handle)
 
@@ -39,6 +61,9 @@ def comparisons(root):
         report["tp_minus_cp_diagnostics"].append({
             "step": step, "negative_count": int((delta < 0).sum()), "minimum_m": float(delta.min()),
             "interpretation": "Diagnostic only; not an admitted LSP transformation"})
+    report["source"] = {"cycle": manifest["cycle"], "model": manifest["model"],
+                        "stream": manifest["stream"], "type": manifest["type"],
+                        "manifest_sha256": audit.sha(manifest_bytes), "inputs": dict(sorted(inputs.items()))}
     return report
 
 

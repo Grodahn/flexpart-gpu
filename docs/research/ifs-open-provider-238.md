@@ -294,6 +294,10 @@ evidence and regenerate the value diagnostics. Negative controls cover wrong
 cycle, resolution, level, lead, units, packing/precision, statistical window,
 missing values/fields/indexes, cross-run substitution and corrupt bytes.
 Rust tests lock the matrix against `FIELD_SPECS` and the hash-pinned artifacts.
+The standalone value-comparison command applies the same source hash, cycle,
+product, grid and wind-frame checks before decoding values. Its report binds
+the exact manifest and every consumed message hash, so replacing a file with
+another cycle cannot produce a successful, apparently equivalent comparison.
 This is research evidence, not a GPU or original-routine parity gate.
 
 To inspect a **fresh explicitly chosen** coherent 00/12 cycle without overwriting

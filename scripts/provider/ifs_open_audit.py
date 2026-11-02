@@ -48,6 +48,7 @@ def read_metadata(handle):
 
 def validate_inventory(root, manifest):
     """Check complete coherent-cycle index inventory before trusting availability."""
+    validate_product(manifest)
     expected = {(r, s, f) for r, fs in (("0p1", ("sfc", "pl")), ("0p25", ("",)))
                 for s in range(0, 49, 3) for f in fs}
     identities, inventory = set(), []
@@ -83,23 +84,42 @@ def validate_inventory(root, manifest):
     return inventory
 
 
-def validate_message(data, item, manifest, metadata):
-    """Reject cross-run, altered and unsupported samples before value comparison."""
+def validate_product(manifest):
+    """The audit's product scope never aliases AIFS, ENS or another stream."""
+    for key, expected in (("model", "ifs"), ("stream", "oper"), ("type", "fc")):
+        if manifest.get(key) != expected:
+            raise ValueError(f"unsupported product {key}")
+
+
+def validate_raw(data, item):
+    """Reject altered/truncated source bytes before handing them to a native decoder."""
     if sha(data) != item["sha256"] or len(data) != item["bytes"]:
         raise ValueError("raw message integrity")
     if len(octets.split_messages(data)) != 1:
         raise ValueError("one message required")
+
+
+def validate_message(data, item, manifest, metadata):
+    """Reject cross-run, altered and unsupported samples before value comparison."""
+    validate_product(manifest)
+    if item["resolution"] not in ("0p1", "0p25"):
+        raise ValueError("unsupported resolution")
+    validate_raw(data, item)
     expected = {"edition": 2, "centre": "ecmf", "class": "od", "stream": "oper", "type": "fc",
                 "dataDate": int(manifest["cycle"][:8]), "dataTime": int(manifest["cycle"][8:]) * 100,
                 "endStep": item["step"], "stepUnits": 1, "NV": 0,
                 "packingType": "grid_ccsds", "dataRepresentationTemplateNumber": 42,
                 "bitmapPresent": 0, "numberOfMissing": 0, "scanningMode": 0,
+                "gridType": "regular_ll", "gridDefinitionTemplateNumber": 0, "uvRelativeToGrid": 0,
                 "Ni": 3600 if item["resolution"] == "0p1" else 1440,
                 "Nj": 1801 if item["resolution"] == "0p1" else 721,
                 "iDirectionIncrementInDegrees": 0.1 if item["resolution"] == "0p1" else 0.25,
+                "jDirectionIncrementInDegrees": 0.1 if item["resolution"] == "0p1" else 0.25,
                 "latitudeOfFirstGridPointInDegrees": 90.0, "latitudeOfLastGridPointInDegrees": -90.0,
                 "longitudeOfFirstGridPointInDegrees": 180.0,
                 "longitudeOfLastGridPointInDegrees": 179.9 if item["resolution"] == "0p1" else 179.75}
+    points = expected["Ni"] * expected["Nj"]
+    expected.update(numberOfDataPoints=points, numberOfValues=points)
     selector = item["selector"]
     height = {"2t": 2, "2d": 2, "10u": 10, "10v": 10}.get(selector["param"], 0)
     expected.update(level=int(selector.get("levelist", height)),
@@ -180,6 +200,7 @@ def run(root, independent_values=False, legacy_numeric_diagnostic=False):
     records = []
     for item in manifest["messages"]:
         data = (root / item["path"]).read_bytes()
+        validate_raw(data, item)
         handle = ec.codes_new_from_message(data)
         try:
             metadata = read_metadata(handle)

@@ -11,6 +11,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ifs_open_audit as audit
@@ -98,11 +99,57 @@ class RealSourceTests(unittest.TestCase):
                            ("endStep", 6), ("stepUnits", 0), ("units", "kg m-2 s-1"),
                            ("bitsPerValue", 16), ("packingType", "grid_simple"), ("numberOfMissing", 1),
                            ("startStep", 3), ("NV", 276), ("typeOfLevel", "hybrid"),
-                           ("typeOfStatisticalProcessing", 0), ("stream", "enfo"), ("type", "ef")]:
+                           ("typeOfStatisticalProcessing", 0), ("stream", "enfo"), ("type", "ef"),
+                           ("jDirectionIncrementInDegrees", 0.25), ("uvRelativeToGrid", 1),
+                           ("gridDefinitionTemplateNumber", 40), ("gridType", "reduced_gg"),
+                           ("numberOfDataPoints", 10), ("numberOfValues", 10)]:
             with self.subTest(key=key):
                 changed = dict(metadata, **{key: wrong})
                 with self.assertRaises(ValueError):
                     audit.validate_message(data, item, self.manifest, changed)
+
+    def test_unsupported_manifest_product_and_resolution_fail(self):
+        data, item, metadata = self.sample("0p25-0-2t-sfc.grib2")
+        for key, wrong in (("model", "aifs-single"), ("stream", "enfo"), ("type", "ef")):
+            with self.subTest(key=key):
+                manifest = dict(self.manifest, **{key: wrong})
+                with self.assertRaisesRegex(ValueError, "unsupported product"):
+                    audit.validate_inventory(FIXTURE, manifest)
+                with self.assertRaisesRegex(ValueError, "unsupported product"):
+                    audit.validate_message(data, item, manifest, metadata)
+        with self.assertRaisesRegex(ValueError, "unsupported resolution"):
+            audit.validate_message(data, dict(item, resolution="0p9"), self.manifest, metadata)
+
+    def test_comparisons_reject_corrupt_and_cross_cycle_real_messages(self):
+        target = FIXTURE / "0p1-0-2t-sfc.grib2"
+        original = Path.read_bytes
+        data = original(target)
+        handle = audit.ec.codes_new_from_message(data)
+        try:
+            audit.ec.codes_set(handle, "dataDate", 20261031)
+            cross_cycle = audit.ec.codes_get_message(handle)
+        finally:
+            audit.ec.codes_release(handle)
+        for replacement in (data[:-1], cross_cycle):
+            with self.subTest(size=len(replacement)):
+                def read_bytes(path):
+                    return replacement if path == target else original(path)
+                with patch.object(Path, "read_bytes", read_bytes):
+                    with self.assertRaises(ValueError):
+                        diagnostics.comparisons(FIXTURE)
+        # A re-recorded hash cannot make a message from another cycle input-equivalent.
+        manifest = copy.deepcopy(self.manifest)
+        item = next(i for i in manifest["messages"] if i["path"] == target.name)
+        item.update(sha256=audit.sha(cross_cycle), bytes=len(cross_cycle))
+        def read_bytes(path):
+            if path == target:
+                return cross_cycle
+            if path == FIXTURE / "retrieval-manifest.json":
+                return json.dumps(manifest).encode()
+            return original(path)
+        with patch.object(Path, "read_bytes", read_bytes):
+            with self.assertRaisesRegex(ValueError, "message identity dataDate"):
+                diagnostics.comparisons(FIXTURE)
 
     def test_actual_octet_cycle_level_grid_precision_and_corruption_mutations(self):
         data, item, _ = self.sample()
@@ -111,6 +158,7 @@ class RealSourceTests(unittest.TestCase):
             sections[data[offset + 4]] = offset
             offset += int.from_bytes(data[offset:offset + 4], "big")
         for section, index, replacement in [(1, 15, b"\x02"), (3, 30, (1440).to_bytes(4, "big")),
+                                             (3, 67, (500000).to_bytes(4, "big")), (3, 54, b"\x38"),
                                              (4, 24, (850).to_bytes(4, "big")), (5, 19, b"\x10")]:
             with self.subTest(section=section, index=index):
                 changed = bytearray(data)

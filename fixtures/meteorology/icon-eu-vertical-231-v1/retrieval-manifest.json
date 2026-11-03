@@ -1,0 +1,3018 @@
+{
+  "schema": "flexpart-gpu.icon-eu-retrieval-manifest",
+  "version": 1,
+  "request_sha256": "c664df351e008415cebf08255fa7ed4c152f6a1bbf90160db0adb43bd0460e86",
+  "base_url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib",
+  "files": [
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hsurf/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_HSURF.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_HSURF.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:39:15 GMT",
+      "bz2_bytes": 709971,
+      "bz2_sha256": "bbc28517c57e9d8474385496b1b59aee7415e0d46c281a63fb0351b1e0ddcfef",
+      "grib2_bytes": 747052,
+      "grib2_sha256": "b0297e49efa9c9db8413ef10e0cdca15e16d3a7e74e2981e7d4d1ca7aed9e37e",
+      "downloaded_utc": "2026-11-03T14:33:11+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_1_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_1_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 227,
+      "bz2_sha256": "962f1690ac0717857d7a905535dacd4b3cc1275b203fbb78b528e4cbff58b557",
+      "grib2_bytes": 234,
+      "grib2_sha256": "33fa0aa42b28c59de440f172ca58ecdf8f3623d8c9d2ee3f660e775ce40c13da",
+      "downloaded_utc": "2026-11-03T14:33:11+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_2_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_2_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 226,
+      "bz2_sha256": "749db4f47cfdf6556eb35e1b4ef07d5e981acfb7755505f0db045f8a94f5355d",
+      "grib2_bytes": 234,
+      "grib2_sha256": "2e2988ed0a9f12bf666b668c5f64b1a326be2967a1461e067347415649105aef",
+      "downloaded_utc": "2026-11-03T14:33:11+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_3_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_3_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 226,
+      "bz2_sha256": "98fc14cef63af5784d28f61d926d068d4f7ee5d44f9c40da845244750e16b0a5",
+      "grib2_bytes": 234,
+      "grib2_sha256": "3d56dd33f80c0a0d7ac79d518c1d28df390ef744ec4101de06a532a4ef46cda9",
+      "downloaded_utc": "2026-11-03T14:33:11+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_4_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_4_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 226,
+      "bz2_sha256": "8c8e14a82cfedbcb2a64c5f1660ad6d24683d45e53fdd9c270eea876b7abf587",
+      "grib2_bytes": 234,
+      "grib2_sha256": "a445bdb1256ecd701f7c9fbaa6722a5b307e3a998ae499808a9afed9b571b986",
+      "downloaded_utc": "2026-11-03T14:33:11+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_5_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_5_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 227,
+      "bz2_sha256": "3d9d168af45af7c9b54fceec3225cb0ddc1d459e7145a525c75f1f0500081d7a",
+      "grib2_bytes": 234,
+      "grib2_sha256": "9639a94dfe40c6423ea3b3d87d1a10fca4144559741e4826e0170f6e77a77526",
+      "downloaded_utc": "2026-11-03T14:33:11+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_6_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_6_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 228,
+      "bz2_sha256": "42a05ef4f33c1912f04fbedd0646008c2ab70225d36b066b0cc8075d03647d88",
+      "grib2_bytes": 234,
+      "grib2_sha256": "097cf74992a066dbfbde8cb2df14d80fd4d67b2f63628d2f43b0555822ceceef",
+      "downloaded_utc": "2026-11-03T14:33:11+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_7_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_7_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 226,
+      "bz2_sha256": "763cd99b9e7055b1c922ce706e4bebe3c59808bdbcf2d5b91a21ad19b263b9cf",
+      "grib2_bytes": 234,
+      "grib2_sha256": "23d97bf3acbbd5ac066a89c2af6a13a7cedd4beaa0f95b7d74771be44a262285",
+      "downloaded_utc": "2026-11-03T14:33:12+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_8_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_8_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 226,
+      "bz2_sha256": "211e2ee5f3b35cd4dbb4c82a84bd85995f73d53b4149b999f5b0a7120c76e9b9",
+      "grib2_bytes": 234,
+      "grib2_sha256": "b26eb0622355318e80aba3083db986bd8c8d9b7539a79e24fe8424db321dad92",
+      "downloaded_utc": "2026-11-03T14:33:12+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_9_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_9_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 226,
+      "bz2_sha256": "25ce7e90c164741a02fb206c509b59caad634865edc9bfde0602fedfdaf0408c",
+      "grib2_bytes": 234,
+      "grib2_sha256": "85692ba7d305df429cf63e9a361614e95b940c8ce99cadf04c538051e5781434",
+      "downloaded_utc": "2026-11-03T14:33:12+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_10_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_10_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 225,
+      "bz2_sha256": "d039e77d2b7b3079d0372b3a5ad5233facdfd1323abfe5710ed118e1a4c91186",
+      "grib2_bytes": 234,
+      "grib2_sha256": "4d86365235c96517fcf167511ef90eec067b45dfb1da7e6ab76806a60358daff",
+      "downloaded_utc": "2026-11-03T14:33:12+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_11_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_11_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 227,
+      "bz2_sha256": "5d53d95b878d908a66d62c0d1583fb786f2427d724b5ef886163f7ed68760f93",
+      "grib2_bytes": 234,
+      "grib2_sha256": "8dc32a90f761e71eb3806cf1d21ebeb5bcde09260e3fc2324f1f316c68b3bee0",
+      "downloaded_utc": "2026-11-03T14:33:12+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_12_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_12_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 228,
+      "bz2_sha256": "32c4dba68c742381148ac2f70110bc2957a9c0fdc575bb2b432679d41924527f",
+      "grib2_bytes": 234,
+      "grib2_sha256": "c217cf08aaec97b92b40c3daf76581552a935362ad46565f067701dd9483d19a",
+      "downloaded_utc": "2026-11-03T14:33:12+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_13_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_13_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 227,
+      "bz2_sha256": "edaf9e4662302f687ba9ee5363141cbeddbe89b5e526a2ac77a5c2b24a356921",
+      "grib2_bytes": 234,
+      "grib2_sha256": "4f58d3a180c439ecb0290b7492936b889d256c1a156b1abcb65774ff85c412c1",
+      "downloaded_utc": "2026-11-03T14:33:12+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_14_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_14_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 609796,
+      "bz2_sha256": "27c6938fb0f6533ce4864b2f1b328abcc31208a5331a6ecb7f6e25fced861457",
+      "grib2_bytes": 690216,
+      "grib2_sha256": "ee832124ba5248c8dec9e534e289a4744c4ac384fa7d8abc90825ff5bf2eec7a",
+      "downloaded_utc": "2026-11-03T14:33:12+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_15_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_15_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 632263,
+      "bz2_sha256": "afb9ef4928adbfb003fc325f9a80162f079665e5da3ea5f44b886cb28b2542c8",
+      "grib2_bytes": 709100,
+      "grib2_sha256": "b78118591defbe256085d4b87f23740723c0f88608e53ab4a6ae9564c6372831",
+      "downloaded_utc": "2026-11-03T14:33:12+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_16_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_16_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 652244,
+      "bz2_sha256": "8098352e082a0f6172befbe8b0f6a99fc91b39d2ad7dd0b9463566eec18a5665",
+      "grib2_bytes": 726193,
+      "grib2_sha256": "98ce69cbb0555e47feace0bd87b6725a91f497dae816fd4a8a731154dc171975",
+      "downloaded_utc": "2026-11-03T14:33:13+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_17_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_17_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 671303,
+      "bz2_sha256": "2a74475e21de3947a1942ba25fa3301de68195bae4cbcea8ff2fd7af44995b59",
+      "grib2_bytes": 742381,
+      "grib2_sha256": "6b18864ea5bc9ea19de021e62eaa1e8923db5fc8776bb9b1c92adaff32e5de2c",
+      "downloaded_utc": "2026-11-03T14:33:13+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_18_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_18_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 689638,
+      "bz2_sha256": "505076a46b14bc976f65971d93eee5b24682fd9aca42a4cc34d1f410a034cac6",
+      "grib2_bytes": 758197,
+      "grib2_sha256": "4e97276dce4d30cc7dd3bd9cc3a21c57de8421ca083a574f401c593ce8c19326",
+      "downloaded_utc": "2026-11-03T14:33:13+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_19_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_19_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 637763,
+      "bz2_sha256": "b579ebe475a667bd7c220e04e5766a72f8b29b0526992adf78873ee7f3d59915",
+      "grib2_bytes": 688394,
+      "grib2_sha256": "33349ab0e3978af21249812d7e762d8ca2758677d7e707def4699613e7bace02",
+      "downloaded_utc": "2026-11-03T14:33:13+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_20_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_20_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 653005,
+      "bz2_sha256": "26dc450e0a0663b2c4e52fde113604794703d8fc8c6f4d0874fd05e22168728a",
+      "grib2_bytes": 702568,
+      "grib2_sha256": "6f6f5b66b5edf082b1dde62d0bb46ea6b7944726d5b24c769fabe35cc44bd717",
+      "downloaded_utc": "2026-11-03T14:33:14+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_21_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_21_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 668562,
+      "bz2_sha256": "c250e8b75d9e651981c94710d1316e739c0d13e91c11bfddf26b08d9fc2230c5",
+      "grib2_bytes": 716914,
+      "grib2_sha256": "d38a582f69ff89137aeae02f8b6a1f07ad4a2db0ec362d36e4e9b1ab2169bd4d",
+      "downloaded_utc": "2026-11-03T14:33:14+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_22_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_22_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:12 GMT",
+      "bz2_bytes": 683755,
+      "bz2_sha256": "0f4f5b5bac797f828cb22ef8f1558d8714712dea3876d5b7a61ea8e808ed6dd9",
+      "grib2_bytes": 731108,
+      "grib2_sha256": "6bd4c5624b882817631763e32c53dd89422176dc805ed6239bcc3b93117504fe",
+      "downloaded_utc": "2026-11-03T14:33:14+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_23_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_23_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 699146,
+      "bz2_sha256": "2ef9afd3cb36b3342687117ccef1f66efdc235a10ccd7d2c1e72a39653ca6cc7",
+      "grib2_bytes": 745412,
+      "grib2_sha256": "fb762eb983768f838ec8f68be891f67a432d6a9c2d60d30e9a5497ba27e4a25f",
+      "downloaded_utc": "2026-11-03T14:33:14+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_24_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_24_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 714306,
+      "bz2_sha256": "3973061bcb6e5f3fd5308c886e14d2fc6cfc17fc9710e3d0c83adec8f76ba8dd",
+      "grib2_bytes": 759771,
+      "grib2_sha256": "ed0d80b6151add271482993ce4741bbd6d723189a35d028b9613d9fd7a17d78f",
+      "downloaded_utc": "2026-11-03T14:33:14+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_25_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_25_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 649037,
+      "bz2_sha256": "ce94d9bdc0874fadb3a633f6cfd78eaae4c879561e87afbfae126195ee113fb4",
+      "grib2_bytes": 690343,
+      "grib2_sha256": "731965423347f23d47778a3a9c6393cf10d12b1caa90c2d196a0167c08867910",
+      "downloaded_utc": "2026-11-03T14:33:15+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_26_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_26_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 662983,
+      "bz2_sha256": "b9cb0cc3cb9a7fb186cae5e616b35b9e84735e2f0bc2167ff4137f6d3e8375d2",
+      "grib2_bytes": 704031,
+      "grib2_sha256": "addefa1cb2aaa96b13c21acf7459b0bd333616cce4708f7f4785ee6f2844414a",
+      "downloaded_utc": "2026-11-03T14:33:15+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_27_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_27_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 679515,
+      "bz2_sha256": "1cdf6f6087d2194f691a3997644b9b8dc5e1341128cd432a1619062e04e787d7",
+      "grib2_bytes": 718810,
+      "grib2_sha256": "6e79dee7ad11e9b2d94fb0fdcf304648afe5fb10e541c28d8bcb061e3877a95d",
+      "downloaded_utc": "2026-11-03T14:33:15+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_28_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_28_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 693612,
+      "bz2_sha256": "56c7ac9e0fbabfd6dc5208a469586c431376c69f5b072f7c4d447637dad06397",
+      "grib2_bytes": 732619,
+      "grib2_sha256": "889635313f90c7a5ac4d827bc4f7e44f8e045d860c75e779f354ea0e2f150545",
+      "downloaded_utc": "2026-11-03T14:33:15+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_29_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_29_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 708224,
+      "bz2_sha256": "0c5c6a7487edc7b2298fc36b4c43fde07d244154230d165d9156052f0beeb413",
+      "grib2_bytes": 746756,
+      "grib2_sha256": "4653fbf8bebc15111bd4b5472553a213b6ba66468f69cebb758edf88d4488cd8",
+      "downloaded_utc": "2026-11-03T14:33:16+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_30_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_30_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 723571,
+      "bz2_sha256": "d0e807e7360f83cb4fdc816ecdff618c9badec1c067df81630f9ebba1af1f3db",
+      "grib2_bytes": 761106,
+      "grib2_sha256": "e7e5033ebb3c19771b29f60a5025da56e941f6eee24646e64a922406e7cd2eb4",
+      "downloaded_utc": "2026-11-03T14:33:16+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_31_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_31_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 659600,
+      "bz2_sha256": "901de11fc3f91e42edf36015fc5ab351c1e0bf5cb640d0e408e2a3e0df8dbd80",
+      "grib2_bytes": 692330,
+      "grib2_sha256": "1a6b08476f1b9c5ba4d1cecb612a7111899912fd04b7ee12619c2164fbb32b28",
+      "downloaded_utc": "2026-11-03T14:33:16+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_32_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_32_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 673749,
+      "bz2_sha256": "54b7314bb1c448ecf2196a0dbdf212e900dd82a4fbb6de124d3e1c9d26be1bc1",
+      "grib2_bytes": 706250,
+      "grib2_sha256": "08a9db181de3c4c826cfa100554e72471fe7f66a857ee0dec2c06e7f8362be63",
+      "downloaded_utc": "2026-11-03T14:33:16+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_33_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_33_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 688443,
+      "bz2_sha256": "40e5978af490f9ab9253c3f953153e007123a8605e5d5b1506d03689f6bb2b32",
+      "grib2_bytes": 720292,
+      "grib2_sha256": "84de1f769e0dc2198cccd12b15a00d824f63ade341cb4ccea0edbf5df9936ed2",
+      "downloaded_utc": "2026-11-03T14:33:17+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_34_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_34_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 702821,
+      "bz2_sha256": "78d3a0733ee86f6782ec5bb9ad58522ee3f79a32e62f348b68e353f48a9b9e5a",
+      "grib2_bytes": 734508,
+      "grib2_sha256": "bc6a4fa27b9540e2ef1ea16cffa43a3be2544aa34f192f63cc4b6352be2e6414",
+      "downloaded_utc": "2026-11-03T14:33:17+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_35_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_35_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 718288,
+      "bz2_sha256": "042e706be93865b1761b34c324bbe2f28ab1fa4513cda6c01aa2177a28ae7e5f",
+      "grib2_bytes": 749128,
+      "grib2_sha256": "c00cbf7486bfad0ec58654fe338febea7c62ded304c4bc4ed450524b3da16ed8",
+      "downloaded_utc": "2026-11-03T14:33:17+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_36_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_36_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 733235,
+      "bz2_sha256": "78c7a4c84db332e3c6c9e7a105d3c8aeabf9ca2bb4caa112532669936554b759",
+      "grib2_bytes": 763552,
+      "grib2_sha256": "92d0156300e5c0642fa65c13cbf9719728b9aeac6e62c2a1bebfc1b613b6ea6f",
+      "downloaded_utc": "2026-11-03T14:33:17+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_37_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_37_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 749806,
+      "bz2_sha256": "1e17d273ee866ec80a5f6da17e6c682d567965bd6163a2e7d4f36da7142755b8",
+      "grib2_bytes": 778737,
+      "grib2_sha256": "296b12c8b8df5f46d9c31c4e4a12655091435672b2c57fb575687c6bc0b843db",
+      "downloaded_utc": "2026-11-03T14:33:18+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_38_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_38_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 683203,
+      "bz2_sha256": "fa429247b64d288efad54681e2ed667b7e49453287b7c7f93613343422db2007",
+      "grib2_bytes": 709245,
+      "grib2_sha256": "884d22cadb1e660223cb2eb9a34174ddef10e827c4180ee3316294a768f848ae",
+      "downloaded_utc": "2026-11-03T14:33:18+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_39_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_39_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 697379,
+      "bz2_sha256": "93503e32af1e2fc045c84540daf3b7b74cd69c3dde9f29b4bcfec7c504994f55",
+      "grib2_bytes": 723583,
+      "grib2_sha256": "00f148b3c58fbd5cefbab96192d8e72a4e235f51b891657e763016f30c945d47",
+      "downloaded_utc": "2026-11-03T14:33:18+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_40_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_40_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 712457,
+      "bz2_sha256": "23b088f70f20714df33e4c8624a55810d6f16e49c3922037ae34d1c05836c4f1",
+      "grib2_bytes": 738276,
+      "grib2_sha256": "561bfdbf2cfcda07a2528a4e2fb8076c7c1db1bfee118649954b4cac2f409b4e",
+      "downloaded_utc": "2026-11-03T14:33:18+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_41_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_41_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:12 GMT",
+      "bz2_bytes": 727721,
+      "bz2_sha256": "66ef8c7c722060f4c6990a311e2640666963c83ed5bdb46ba8ccfb2bb6e454f4",
+      "grib2_bytes": 753057,
+      "grib2_sha256": "0051ca4849abce66df98aadf360b350227196ac103d354d6331b9717d334a9f9",
+      "downloaded_utc": "2026-11-03T14:33:18+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_42_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_42_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 745226,
+      "bz2_sha256": "7fed8e105a6a610de7dddeda85350171548c5b5c5777b0fe6e12743ee3cc6086",
+      "grib2_bytes": 768899,
+      "grib2_sha256": "332930b2d1b008d7817ca232ea658514729a84052065b3a974b7fab7164917ec",
+      "downloaded_utc": "2026-11-03T14:33:19+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_43_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_43_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 757944,
+      "bz2_sha256": "428fce7779a84907e1e18ce521e95ee8c2274155a5edb7c82269e69f407fcde0",
+      "grib2_bytes": 782742,
+      "grib2_sha256": "ba7d820d8d752deca2c8e70832655933b8de944d163c8d02592687d51c333eba",
+      "downloaded_utc": "2026-11-03T14:33:19+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_44_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_44_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 691891,
+      "bz2_sha256": "d8b022543e3e2fa9da887738f91e704a84a426cd26b6cdd4168eaa8a740341e9",
+      "grib2_bytes": 713811,
+      "grib2_sha256": "0b1adb40e2b451c9c5e038833591b5c1ee3320be71fd605e8fe66f1a13b248a4",
+      "downloaded_utc": "2026-11-03T14:33:19+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_45_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_45_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 707333,
+      "bz2_sha256": "a906a1cff018d0d2fa06a992421b296fe72ea9e1ccd2e071abdf49e2cec774f3",
+      "grib2_bytes": 729011,
+      "grib2_sha256": "e2df5f201d21efd2a05601ab36601e3e638c5f679070cf98be6e04f822d3ec24",
+      "downloaded_utc": "2026-11-03T14:33:19+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_46_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_46_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 721499,
+      "bz2_sha256": "8e366cce8ce7a11d63374308fc2e1be8d6a47b7a7c7241282d46e4367a4de158",
+      "grib2_bytes": 743650,
+      "grib2_sha256": "b95624e7e86edc01048e6f9c7fb0d4102e6fea4847e32a0b4a1e59680b0cfe25",
+      "downloaded_utc": "2026-11-03T14:33:20+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_47_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_47_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:09 GMT",
+      "bz2_bytes": 736818,
+      "bz2_sha256": "3f1b56bc91c3c40bf0f428327adc8f1a03ff850c045511fc1cc19837d09034a9",
+      "grib2_bytes": 758746,
+      "grib2_sha256": "70a7abb4c324e6341133322da34c6f438dc41b01c941d3555911bf89c26fb629",
+      "downloaded_utc": "2026-11-03T14:33:20+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_48_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_48_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 752064,
+      "bz2_sha256": "5a3a0778254785bcbf2a4f20e067307a83057b591771c5cf00d2c42c48744df5",
+      "grib2_bytes": 773813,
+      "grib2_sha256": "df48713ec2fd6a90c3373950b1688ed994788c1aaa74f5a44d112ba6ad003c58",
+      "downloaded_utc": "2026-11-03T14:33:20+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_49_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_49_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 684939,
+      "bz2_sha256": "768000bac5399ff3b8992250f5b7347c5e81654f941bd8d05e04d3beb223132c",
+      "grib2_bytes": 704782,
+      "grib2_sha256": "3abc3ce21c092ac63d2afa13dcfc90d566728d17d3ac6b141dfddfb4ebcd5746",
+      "downloaded_utc": "2026-11-03T14:33:20+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_50_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_50_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 702897,
+      "bz2_sha256": "d38755467d95d27804359cd56d0f44ebebe2a1bedd29684c71eb5a07801fddde",
+      "grib2_bytes": 721044,
+      "grib2_sha256": "0d64abd1c1f1b7e5623c1085e5205c7c2f2358ee64f2d1701572b955111ce20b",
+      "downloaded_utc": "2026-11-03T14:33:21+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_51_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_51_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 713983,
+      "bz2_sha256": "aa5211d36969cf4546de62cdadfabcb79d43553a2f6b0a2a9126596a6011341c",
+      "grib2_bytes": 734359,
+      "grib2_sha256": "648812bcedf5da0dfc8025811726bcdff1856e6681d03f1d9cbe2cc173406ccf",
+      "downloaded_utc": "2026-11-03T14:33:21+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_52_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_52_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 728798,
+      "bz2_sha256": "0a3ca23fd09d6aa35a06ffd0f2ef787c8208fab59f1fa7ce0abde178ce1b725c",
+      "grib2_bytes": 749154,
+      "grib2_sha256": "f3c60b521c7a384e2962ad7f43a0eba49948a1f64ecf0559f79ed1b44dd5abed",
+      "downloaded_utc": "2026-11-03T14:33:21+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_53_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_53_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 743419,
+      "bz2_sha256": "78b734454c3d8d38f7d8a549897e8be2133af237dea4297b1f7e762d5052bc28",
+      "grib2_bytes": 764068,
+      "grib2_sha256": "aec317ef23c37c94ae689880159ec63c9ec39769d0cf9f3a06c3b0eb0aa736b5",
+      "downloaded_utc": "2026-11-03T14:33:21+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_54_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_54_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 757511,
+      "bz2_sha256": "eadc56ab34b8a4772d46fc152140cba3acbc1137f0b6eccf1b4d098074f1cb11",
+      "grib2_bytes": 778014,
+      "grib2_sha256": "53560d5963002022de304074e5f6f419b34a36ad90830d29832c8897e0d6aaf3",
+      "downloaded_utc": "2026-11-03T14:33:22+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_55_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_55_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 768830,
+      "bz2_sha256": "14748d1b387b9cf3cc22bfc6384e230cb0ae6f5bb02257104aabf956c8e1db61",
+      "grib2_bytes": 790700,
+      "grib2_sha256": "d1be01d528f31b01028346171fc7d73e82176b70db6eb7d2d697576e69abdeba",
+      "downloaded_utc": "2026-11-03T14:33:22+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_56_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_56_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 701258,
+      "bz2_sha256": "e258d3f499d19a477d3038d035002a59e5f84c7044df6482d2d9c538a3f72afc",
+      "grib2_bytes": 720266,
+      "grib2_sha256": "f94faca7998abdcec82638d41d4a7262a7f26eb87147555f52aa85b87d5abb03",
+      "downloaded_utc": "2026-11-03T14:33:22+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_57_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_57_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 713921,
+      "bz2_sha256": "2c968db20abb014f92756f56aa259a0779d3fca2bc8c88a8ee8f3e205c2dd7e5",
+      "grib2_bytes": 732793,
+      "grib2_sha256": "f857023a59f60b86ad15d486c238c9b55e5e3ad5de5836563ad6cd6196839e30",
+      "downloaded_utc": "2026-11-03T14:33:22+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_58_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_58_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 723871,
+      "bz2_sha256": "81cde6e9c94a51121df63efc626ecd1ed8f9fbdb20fe1813d1e87f6f267eed22",
+      "grib2_bytes": 743646,
+      "grib2_sha256": "1cb6324c6a3d3a2b6d03949a7a200d46bc538f0af333887714c0873445b436f1",
+      "downloaded_utc": "2026-11-03T14:33:22+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_59_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_59_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 733734,
+      "bz2_sha256": "f87df14a03d5963239f8cab69e2d4b6fc82c044910702c884486367eb9e05d48",
+      "grib2_bytes": 754258,
+      "grib2_sha256": "36986378ab6956c1288e29b6f7b782c785a0cc58db9f7eacf623eb36c01d5234",
+      "downloaded_utc": "2026-11-03T14:33:23+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_60_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_60_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 745453,
+      "bz2_sha256": "1415c079ad52630fffc316084158a79b80afe450082ec81054e9249291d62dc2",
+      "grib2_bytes": 765235,
+      "grib2_sha256": "0e7f7830407530a627696196d0cea0868b44103291c974d83819b15c650d348a",
+      "downloaded_utc": "2026-11-03T14:33:23+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_61_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_61_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 751526,
+      "bz2_sha256": "ae047a62c81ce309e50909404e907b8a7de53319ab3e1d9dc0dd0df8ddc4ef9c",
+      "grib2_bytes": 773142,
+      "grib2_sha256": "3d5b573cbff555abdc007474925bb6a209f539fc15275ec7ac14f19ea6065b09",
+      "downloaded_utc": "2026-11-03T14:33:23+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_62_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_62_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 759182,
+      "bz2_sha256": "07713929cbe5a18c72d1bbca946cb9ac1075ede6b3d80dd2693898f1af0d3ef4",
+      "grib2_bytes": 781474,
+      "grib2_sha256": "329e0c8e12b19241871f14635cf0f265d342850498ddfbcae4d54c0b10ab3ce3",
+      "downloaded_utc": "2026-11-03T14:33:24+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_63_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_63_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 764899,
+      "bz2_sha256": "b5305a3ba27765050fccd307e00c6ed3a10fa525e6542654164536a613fba9a0",
+      "grib2_bytes": 788705,
+      "grib2_sha256": "da084e14ceece6d99f76b148c294dc18e240fdba8bd1854018ce4ac49ecd9049",
+      "downloaded_utc": "2026-11-03T14:33:24+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_64_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_64_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 774680,
+      "bz2_sha256": "f785bc75bedb4a85d86314d68a948d40d5b95644d0c57b9b69f0454602e9918d",
+      "grib2_bytes": 797175,
+      "grib2_sha256": "784ef494a676dc1367c5bbb38d592b9539d379939ce3159f15c7c7653da93d8b",
+      "downloaded_utc": "2026-11-03T14:33:24+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_65_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_65_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 778957,
+      "bz2_sha256": "8ab63906e99f98529c9b4c6f6e05d20c2c09f032c80c2524f0f0e8296a0ab278",
+      "grib2_bytes": 802891,
+      "grib2_sha256": "b83513c89d157a1784c4774fa6c1427844d42bb6077a71fa852cacffc111efa8",
+      "downloaded_utc": "2026-11-03T14:33:24+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_66_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_66_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 782099,
+      "bz2_sha256": "867b87d7de81700f27e0e7d6ae48a68ad29980fa0eae56ee9331d6f40470b22f",
+      "grib2_bytes": 807814,
+      "grib2_sha256": "21642bf04b389d3691ea73dbc63fc3609388c9d0f0db6c3288b007cb85919646",
+      "downloaded_utc": "2026-11-03T14:33:25+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_67_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_67_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 787207,
+      "bz2_sha256": "a72bab07eca5d4dd8ffdb76bf62e0114e5736e7eef7b33d2177e7685bcdfce26",
+      "grib2_bytes": 813161,
+      "grib2_sha256": "138086dcd0d226658bb448323ba4355552e98d25ae353d689dbf926d563b874a",
+      "downloaded_utc": "2026-11-03T14:33:25+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_68_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_68_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 788961,
+      "bz2_sha256": "860b17ec8e80e3073a72fc903c9e61044ee5b8a0911351fae6fe676176bdf7f6",
+      "grib2_bytes": 816789,
+      "grib2_sha256": "0f8c0b3a5d41bbfc7d3a7403c94719a2d77948530da2e34af3eeb8e0cf846c0b",
+      "downloaded_utc": "2026-11-03T14:33:25+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_69_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_69_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 792627,
+      "bz2_sha256": "4e3f1b818fa06e7aa6de6ff7bb9926c65638020b853c14edfd2424b24c108cf1",
+      "grib2_bytes": 820893,
+      "grib2_sha256": "c45f03d69d188002fae5a0b036fe7e9404b6e082f97ab2ecd0c1994b4e4b29ce",
+      "downloaded_utc": "2026-11-03T14:33:26+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_70_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_70_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:12 GMT",
+      "bz2_bytes": 791286,
+      "bz2_sha256": "4dc0ed89612ee64f3a55e6892647b066c81aa3eafd1feeed8385e68bad19c1a0",
+      "grib2_bytes": 822535,
+      "grib2_sha256": "b0fe93caeb398161c6ac8741bd8eada54a2675132b9cebe43e9eee5814ae0ab3",
+      "downloaded_utc": "2026-11-03T14:33:26+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_71_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_71_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 790338,
+      "bz2_sha256": "cdda87e7a6731bd2a299312ddcb9ea494ecd83b6c951e1a11b0456e2d7c47c99",
+      "grib2_bytes": 824221,
+      "grib2_sha256": "ae5fa344eac0b44a136ef91c1585c8bca6e20298b4b0dd8c0a11ef83323fb0bf",
+      "downloaded_utc": "2026-11-03T14:33:26+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_72_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_72_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 715948,
+      "bz2_sha256": "6094f23837db33aab9f435d357d4eb2f4c5ed38d5d2b4de04a796d1fc2fdddd9",
+      "grib2_bytes": 746085,
+      "grib2_sha256": "e2e100281cf23a4cbc393984cc644d71f2be37dd819674664b6e4b0792e350ae",
+      "downloaded_utc": "2026-11-03T14:33:26+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_73_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_73_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 712893,
+      "bz2_sha256": "3f70ffc25a2c73e889b8108cf6a21bc04c8e581c292a61eb1594720e1ab865d4",
+      "grib2_bytes": 746481,
+      "grib2_sha256": "e30e803565c1dbb307dba0b7482305fbb2d899b380540fe8a466423ea38ccdd4",
+      "downloaded_utc": "2026-11-03T14:33:26+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_74_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_74_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 713335,
+      "bz2_sha256": "41e2e98a81f3a042c77d23c4fbde67d02927164931ad0e9c57ce2c33cab45a29",
+      "grib2_bytes": 747735,
+      "grib2_sha256": "89cde5590a6eab6d3a8413abaa2b8833b0983a751c23fda938fd358085310d13",
+      "downloaded_utc": "2026-11-03T14:33:27+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/hhl/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_75_HHL.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_time-invariant_2026110300_75_HHL.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:09 GMT",
+      "bz2_bytes": 709927,
+      "bz2_sha256": "bb67d8846668766a9267f218f2b7f71200a738a8219c14ffba069d4e6ad99dd8",
+      "grib2_bytes": 747076,
+      "grib2_sha256": "cf5190696e2e5e34a2ab8c34cdaaa111ff701b8ed81d30e57b15c969e5b1aafc",
+      "downloaded_utc": "2026-11-03T14:33:27+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/ps/icon-eu_europe_regular-lat-lon_single-level_2026110300_000_PS.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_single-level_2026110300_000_PS.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 914779,
+      "bz2_sha256": "8ce564e3ad536170934357cb9ebe29b7e8b3e9f5d3fea84a1ae579d330b2113c",
+      "grib2_bytes": 925675,
+      "grib2_sha256": "a05239cfa87c70858999a5d5fd3828e60a264c9be2ae4f49955652acc1926196",
+      "downloaded_utc": "2026-11-03T14:33:27+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t_2m/icon-eu_europe_regular-lat-lon_single-level_2026110300_000_T_2M.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_single-level_2026110300_000_T_2M.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1061213,
+      "bz2_sha256": "b7b8df333829649047ae715d6d04957c4afabd93b78ea421c89752d2c89f6fc0",
+      "grib2_bytes": 1060019,
+      "grib2_sha256": "7a998d24dcca3d6ecbe6e968a97970c99d4b54d37ffec6b9636f5d71098fbc06",
+      "downloaded_utc": "2026-11-03T14:33:28+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/td_2m/icon-eu_europe_regular-lat-lon_single-level_2026110300_000_TD_2M.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_single-level_2026110300_000_TD_2M.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1077542,
+      "bz2_sha256": "c59c06b90c825d8a29c6100caf830f30f2a22dbe75dc5f85577c5288b9fa3c16",
+      "grib2_bytes": 1075660,
+      "grib2_sha256": "fd56349f794de4717bf92be686570262c73b840b3c7c311fd27fdad1756cb597",
+      "downloaded_utc": "2026-11-03T14:33:28+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_1_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_1_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:41:32 GMT",
+      "bz2_bytes": 776979,
+      "bz2_sha256": "be730c38c81bc9f4fbc241072053dfa5fda6eaa62754f642dce2678e0b3475f8",
+      "grib2_bytes": 813429,
+      "grib2_sha256": "1ba0e542ccc9b0ecf2a2f7b96b999b427bfd7f3b0b746639d2a889b5bdce2fcc",
+      "downloaded_utc": "2026-11-03T14:33:28+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_2_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_2_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 792676,
+      "bz2_sha256": "4fb327c896a4823124b9a6aff6912e71db59ccf116acdc5bc8a3657e72810abb",
+      "grib2_bytes": 827558,
+      "grib2_sha256": "5db40087a08820f2bd45fb4eab59c3c9b25d60a4154e9d07460b328043875d26",
+      "downloaded_utc": "2026-11-03T14:33:28+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_3_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_3_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 809421,
+      "bz2_sha256": "c2249466f2b88255835e42367721f83992c820eef09f7013080ff82029a9547b",
+      "grib2_bytes": 843097,
+      "grib2_sha256": "b18fa2b5c053cf9b33f1eb185b1a4ec8c5171c9a2818b8382c05dbb82b471ffe",
+      "downloaded_utc": "2026-11-03T14:33:29+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_4_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_4_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 827308,
+      "bz2_sha256": "2e923d73b41f494c1cde1bd875347e6dd3f7842066a6656bd52b0eb679277751",
+      "grib2_bytes": 858921,
+      "grib2_sha256": "5564efdc64def6b10203a77abc6fd02f506cf91778e798a386c2a44adece6f3a",
+      "downloaded_utc": "2026-11-03T14:33:29+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_5_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_5_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 726339,
+      "bz2_sha256": "f22e3817567d64111ba85d3a85fb23c9a6f137cc35898fb75e9c5271bfcd9d73",
+      "grib2_bytes": 760688,
+      "grib2_sha256": "0753bb1b71235c3e116272457dcc0546825dd9ad083c3c58576eea0c0b99ffaa",
+      "downloaded_utc": "2026-11-03T14:33:29+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_6_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_6_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 743029,
+      "bz2_sha256": "ab963ba73d2dab2d1117232303819189b393ba1a772e26e072bf10edd938e98c",
+      "grib2_bytes": 777236,
+      "grib2_sha256": "ea2cea1905576c5cda607a7b4ba9d65d4fdaf5eda634aa8d5a31036c8df909f2",
+      "downloaded_utc": "2026-11-03T14:33:30+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_7_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_7_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 758646,
+      "bz2_sha256": "dccbfdad3e7533d27477680173ab02087df7c3ff3b7fe1dc8b27aa013eb235a0",
+      "grib2_bytes": 793606,
+      "grib2_sha256": "c9221067f9548871752e1ef942a21449bb52f08e312225cb28ae444173863145",
+      "downloaded_utc": "2026-11-03T14:33:30+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_8_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_8_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 776495,
+      "bz2_sha256": "8f1160f788c291117fb348d1ab2fa29a5efa76b3b98357daec1e8fbf8a7d156a",
+      "grib2_bytes": 809464,
+      "grib2_sha256": "4b7eef8eab57e5c25d3a4464927836d696762518f55dc99988985f676f0c0301",
+      "downloaded_utc": "2026-11-03T14:33:30+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_9_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_9_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 796103,
+      "bz2_sha256": "1b21d5b6eab67dfa3ad2dfadf0165b64a56a4553af87c14d2ab57809d673e897",
+      "grib2_bytes": 826526,
+      "grib2_sha256": "0fd406dd36cfd360aa273a011ae8171104a5773c876845828b42041e3f37079e",
+      "downloaded_utc": "2026-11-03T14:33:31+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_10_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_10_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 812186,
+      "bz2_sha256": "6ad953ef08b1d1d22cccbf3312c144af9fb38d1fced1e33ac56acc5deb646cb1",
+      "grib2_bytes": 843638,
+      "grib2_sha256": "70a7cbbea5d6462eeaf4fca61e7f7ae495322eade7121da3086ff326138d9b6d",
+      "downloaded_utc": "2026-11-03T14:33:31+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_11_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_11_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 706551,
+      "bz2_sha256": "d9acf63f72c94241a843beb6b5529b88746347babc3a69db738f77c9d2a678c7",
+      "grib2_bytes": 744240,
+      "grib2_sha256": "afc23ea4bdb79500420e1ee67eccdfcc4b7eb5236ae3930308e9f3d1daf4155a",
+      "downloaded_utc": "2026-11-03T14:33:31+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_12_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_12_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 720550,
+      "bz2_sha256": "d46b7416ed2407891114dfc64482d65e6d0aa614b5ebc82a46624f78a0da09e0",
+      "grib2_bytes": 758886,
+      "grib2_sha256": "1812484caa10a428ed799dfd4ed7b4c7f1c424bc044b263f9bebc805a6777124",
+      "downloaded_utc": "2026-11-03T14:33:31+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_13_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_13_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 736966,
+      "bz2_sha256": "302692233d6c675a4bc579e09dcb00563b45914ffba46823def516e019d5b685",
+      "grib2_bytes": 773412,
+      "grib2_sha256": "d7e53ff7037573ff347839156bdc3ba0d23e54400bd7419623fe9b99a3329be8",
+      "downloaded_utc": "2026-11-03T14:33:31+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_14_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_14_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 754931,
+      "bz2_sha256": "d1baa96964acd37669656f2290f2efe3eb6b36cd146830ccfc63c0d6f2c0bb34",
+      "grib2_bytes": 788507,
+      "grib2_sha256": "d9e06e6e3c502714e82cd7e8016b235819ebe62930221b439078d47c119e8cfa",
+      "downloaded_utc": "2026-11-03T14:33:32+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_15_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_15_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 767280,
+      "bz2_sha256": "0e4516f4b74509a75d7fc7af195a711b4fd04744634d969be8954fbea63ba97b",
+      "grib2_bytes": 801578,
+      "grib2_sha256": "d8bbe2505963e2b6e30e61d2097ca2cfd0b81b01f0dcfcc2162464ad6d130a62",
+      "downloaded_utc": "2026-11-03T14:33:32+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_16_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_16_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 779183,
+      "bz2_sha256": "0a1904454847e6e2c6c73bd0197bd662142096dc4b6db69e61a26990380e4035",
+      "grib2_bytes": 813224,
+      "grib2_sha256": "c9fd3ed4d6610927de6c33da26f4fcd0bf8befa76a2d0a283d5b9f0a3693695c",
+      "downloaded_utc": "2026-11-03T14:33:32+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_17_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_17_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 790145,
+      "bz2_sha256": "56008986bacb2c2fcb39d6626a12395a6c6919b806a8cf0859a375c5bdae35d9",
+      "grib2_bytes": 824224,
+      "grib2_sha256": "4cca70eca5fdb01cb869f002e6e6481736bf0971adb0a836f140e745c8fc6829",
+      "downloaded_utc": "2026-11-03T14:33:32+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_18_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_18_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:12 GMT",
+      "bz2_bytes": 800517,
+      "bz2_sha256": "b7c6f0f1fbae55f204944baefd898049bd3e0c8fc748c91e3474f0dca216f8e3",
+      "grib2_bytes": 833879,
+      "grib2_sha256": "06d576c2c7c934eafaa9c1167bb17d79ca15c46afcec9fcba0803dff3dc1fd51",
+      "downloaded_utc": "2026-11-03T14:33:33+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_19_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_19_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 691141,
+      "bz2_sha256": "13afc7897122f285be6dd12407ca95ee01ad7658a9ad145c539fb22b5abbf432",
+      "grib2_bytes": 729247,
+      "grib2_sha256": "89efa0f6b25af1829626c2cb7dbc02878b0c08b4890436cbbdc3c62c997754e3",
+      "downloaded_utc": "2026-11-03T14:33:33+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_20_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_20_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 703399,
+      "bz2_sha256": "c1f608b1eeac862ddb900d0c64332536300d001ba1e24aa98154e512cef7515d",
+      "grib2_bytes": 739862,
+      "grib2_sha256": "770e1524920e784de72423889dad11960a0e7838072c6ee8bc98439069d98819",
+      "downloaded_utc": "2026-11-03T14:33:33+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_21_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_21_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 715688,
+      "bz2_sha256": "0e6d170cc3ded627a2c3514cf7cab533e32d2e969ecc10731b048e2eafe47541",
+      "grib2_bytes": 751031,
+      "grib2_sha256": "bf3fce28e883279b845b852c0ca99f101cfbf89d699f5acf04b851225a8c0868",
+      "downloaded_utc": "2026-11-03T14:33:33+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_22_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_22_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 728170,
+      "bz2_sha256": "2cd5763712751b412659f1ec08de1c66083a29edfc5c351259b01e6831c052ae",
+      "grib2_bytes": 762562,
+      "grib2_sha256": "00fa6f85206f321da4730c4cd6fc632b393e1d3825b3cc7c3c73effcfbcfbc5d",
+      "downloaded_utc": "2026-11-03T14:33:34+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_23_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_23_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 739291,
+      "bz2_sha256": "8ae1b61865e0ccad86215972cc69e474066795788dd862c902591004c8a28bad",
+      "grib2_bytes": 773791,
+      "grib2_sha256": "6defef780f6a6986154a896f3bb8b27085b5f4e0c31e2d295602b6f77e5e3b03",
+      "downloaded_utc": "2026-11-03T14:33:34+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_24_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_24_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 751100,
+      "bz2_sha256": "79b6ea84b1493a1aa75dbfad152f0414ca40be7461bf5a14dfe35bbc165555fb",
+      "grib2_bytes": 784952,
+      "grib2_sha256": "2a10018ee1b9d05fddc5771a695cea24f497ece21095722ba035530a85c72e96",
+      "downloaded_utc": "2026-11-03T14:33:34+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_25_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_25_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 762940,
+      "bz2_sha256": "c25964c4dbb6d96af47972364188e44ecc09d1ee92ae100998f598e658f5bb46",
+      "grib2_bytes": 796031,
+      "grib2_sha256": "c48a51e13f338906006b46a49733dd027f839376b748d6afe803112590b89663",
+      "downloaded_utc": "2026-11-03T14:33:34+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_26_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_26_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 775416,
+      "bz2_sha256": "8c987404663d06945215dceccebc0a22c8d9b9a6a094b84171aeb83ce71d7492",
+      "grib2_bytes": 807420,
+      "grib2_sha256": "faa71649e3bff3936fc9adfd2bd6da7975810f020f33d9d6761bb32eb1625ed3",
+      "downloaded_utc": "2026-11-03T14:33:35+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_27_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_27_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 788679,
+      "bz2_sha256": "5996baac97449079aa3294629f84d3609551b2164f3def68a4d8650282e23bb0",
+      "grib2_bytes": 819282,
+      "grib2_sha256": "982ac65e7b5bce6e557bac18427aeb45fe360f82947e1d7daae22ce16f3ff8e0",
+      "downloaded_utc": "2026-11-03T14:33:35+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_28_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_28_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 801510,
+      "bz2_sha256": "3b60e2733020738b832db675f8641ab8400211b9b01283216e1b93c6ff5e0327",
+      "grib2_bytes": 831459,
+      "grib2_sha256": "1f63ad6576f2b9775d56d1f00a4e4c1e63386b75e12678ef4b0efdaf5ecf6ba9",
+      "downloaded_utc": "2026-11-03T14:33:35+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_29_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_29_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 814565,
+      "bz2_sha256": "9e4641d5ea12c331947766deddc0abec15e69b1ec8819c1845296c7c60f314b2",
+      "grib2_bytes": 844019,
+      "grib2_sha256": "0c462060a83746a9e43597558e84a645501a3ec22c1e00de589413c518e3bcaa",
+      "downloaded_utc": "2026-11-03T14:33:35+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_30_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_30_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 826900,
+      "bz2_sha256": "e8a9b47c9f97322b33c560011ca691e98aff09d36b3ed04788cdeeaa816f8cc5",
+      "grib2_bytes": 856297,
+      "grib2_sha256": "92b65fa183a4238677852dfb170df751d76f0b81da84e56aac4985021c1bb6b3",
+      "downloaded_utc": "2026-11-03T14:33:36+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_31_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_31_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 838926,
+      "bz2_sha256": "0359051799931ee8691009b2fb77916c26db9093e58fc17742b5c922fd79f116",
+      "grib2_bytes": 867970,
+      "grib2_sha256": "320118f76ccb85d264d56c87c3a63dd3172f22dc8970a4fe9500a01ecd07134b",
+      "downloaded_utc": "2026-11-03T14:33:36+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_32_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_32_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 850789,
+      "bz2_sha256": "7913a32dbf9cd39186d69e1a70d4f3d3dc67341aea3159b661995264075ba6a0",
+      "grib2_bytes": 878920,
+      "grib2_sha256": "bb9218f052495adbfa3fa90c560b82fb37570801fe47efda1166fb116d460ff7",
+      "downloaded_utc": "2026-11-03T14:33:36+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_33_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_33_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 861838,
+      "bz2_sha256": "de79f5c66d19e42b75e479e4417f3f433726c475f86545e05a8cf14385d01baf",
+      "grib2_bytes": 889377,
+      "grib2_sha256": "68c23ba91ff7aa55cf2cf4af3744275cc8a30a758456bfdb4e7dffe96b29a032",
+      "downloaded_utc": "2026-11-03T14:33:36+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_34_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_34_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 755386,
+      "bz2_sha256": "bac92e9ab70132548ce545bac51f18780fa2aad5e70a719373a9edad198f5106",
+      "grib2_bytes": 786487,
+      "grib2_sha256": "5e00f337cd657325b22b40b987f3a531502dae135d3dafb39a00affcc3699ea5",
+      "downloaded_utc": "2026-11-03T14:33:37+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_35_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_35_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 766791,
+      "bz2_sha256": "0587b3a7e5ffdcac0a545efc790b75917cde78985fabbc0e3d90ff8f72c8a232",
+      "grib2_bytes": 796675,
+      "grib2_sha256": "b7b2b1d430ba115e2daed27c473361bd2ddf9ba5c943a285f367075bf7c6639d",
+      "downloaded_utc": "2026-11-03T14:33:37+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_36_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_36_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 778869,
+      "bz2_sha256": "65a75f3a19dd230a9c434ac54aa47656c8227f3a97955d37f904ddccdbb8716a",
+      "grib2_bytes": 807309,
+      "grib2_sha256": "a16bb8af72c6f698c11a34e2f380316e03905ab9dfdae8191a6312a0415c16ec",
+      "downloaded_utc": "2026-11-03T14:33:37+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_37_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_37_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 791445,
+      "bz2_sha256": "44068acf82b262050bc64aea212ea01605133c0fb6593d43f66f1cefb0a45765",
+      "grib2_bytes": 818614,
+      "grib2_sha256": "3f5d72b9191e1cfb5d44dae65f3c4b1084087f678b97c0dd2d9c7ab61a3e0f7a",
+      "downloaded_utc": "2026-11-03T14:33:37+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_38_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_38_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 804501,
+      "bz2_sha256": "f0f851bc5744f140e378ffdeedd167e86aa3a91f1c58ba6046f40e2d90acda2a",
+      "grib2_bytes": 830453,
+      "grib2_sha256": "75ff5ef6fae40fffe6a78f80b284d025108f1528a9636e1b3364290d139988ba",
+      "downloaded_utc": "2026-11-03T14:33:38+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_39_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_39_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 818182,
+      "bz2_sha256": "dc99985eba5c885932848c34f3a641a97066afce1ed65f79f753f48b0b61977f",
+      "grib2_bytes": 842934,
+      "grib2_sha256": "63f26b49b7fa82f563681445510d0fe2e0fa0cd3d97d77279282f3d9e73455c0",
+      "downloaded_utc": "2026-11-03T14:33:38+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_40_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_40_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 832516,
+      "bz2_sha256": "21309293f4302e3eb1ae79e1dfe0086554232bf4ee02658721b64c6643b4e034",
+      "grib2_bytes": 856418,
+      "grib2_sha256": "0de0fe6101b5402186ba24f65b2bb2ee0d76fc5bdaef7aac2042cca257e385dc",
+      "downloaded_utc": "2026-11-03T14:33:38+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_41_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_41_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 847898,
+      "bz2_sha256": "7d8de6a6bbb6f53504401ef98575c26fce8b0e5e6c6e9d2b9896eed424df911f",
+      "grib2_bytes": 870709,
+      "grib2_sha256": "775a7f6a3b63d7ee15ed7321d1382949fb309794fb2a225d91da2ea41e6077f9",
+      "downloaded_utc": "2026-11-03T14:33:38+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_42_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_42_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 864476,
+      "bz2_sha256": "4b77f09cd3cfdbbbbfd15ccb38ea8e0dce20beff1202c3b471a8d169e31ee997",
+      "grib2_bytes": 885733,
+      "grib2_sha256": "88fa11c265e45aa4dae3997e900ab2aaae352fdbb6c62a5b853a47737bceaa21",
+      "downloaded_utc": "2026-11-03T14:33:39+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_43_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_43_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 881751,
+      "bz2_sha256": "5b003ab80d2411455167947a071bdbe6984991ef85862f2cb17be9777d940446",
+      "grib2_bytes": 901333,
+      "grib2_sha256": "f8a7f8dd93b922bbafc812320ddf84ca80fb18f3298a075963b9952302c6475d",
+      "downloaded_utc": "2026-11-03T14:33:39+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_44_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_44_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 899003,
+      "bz2_sha256": "37b6f20a6ec3cfae134bcd0506682af528dc4662f40d8cd7bc4e37688917edd8",
+      "grib2_bytes": 917464,
+      "grib2_sha256": "06f96d328a78dadc947708e3f2a64717d8064ada896bea1743b86f69e1bc7277",
+      "downloaded_utc": "2026-11-03T14:33:39+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_45_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_45_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 915819,
+      "bz2_sha256": "55c3354bf0df916936d19e80b6667a83b1e564aaccfc5fcc6c61af5a1c4d3b0e",
+      "grib2_bytes": 933885,
+      "grib2_sha256": "93a98dbc3df864691f1e4c7d880fe521f46338969018fbb00360bb64bcc645c1",
+      "downloaded_utc": "2026-11-03T14:33:40+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_46_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_46_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 933235,
+      "bz2_sha256": "091bbeb50f45fa809d6690071a20128a2b624cc51e3161d91cc24f7366f6c00d",
+      "grib2_bytes": 950527,
+      "grib2_sha256": "ff9fbff7cacb8aac80d65ba24fe722788f98ac3ff3f7defabd2d9b47565af202",
+      "downloaded_utc": "2026-11-03T14:33:40+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_47_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_47_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 951083,
+      "bz2_sha256": "6005d30083a933d4f28b95cbe6f91b87737aae1b5806235f0108f5de3c2b4c46",
+      "grib2_bytes": 967169,
+      "grib2_sha256": "339000a5aa9bc5de949e9c7402f45d5d517afa6e73eaf4499c85f19ce38a2eda",
+      "downloaded_utc": "2026-11-03T14:33:40+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_48_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_48_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 968509,
+      "bz2_sha256": "1fae22f75e8fd5303b3a3c82f1081fbfeb3cb39ffbda8ebd55c0ec09f62b0025",
+      "grib2_bytes": 983737,
+      "grib2_sha256": "4c476bd2c599b43df6bed0d2cd0e6f614fca1e0b6952e362818931c94b2fd288",
+      "downloaded_utc": "2026-11-03T14:33:40+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_49_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_49_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 869706,
+      "bz2_sha256": "eb9c7b8943e4eb13c8fb607ef14fa600ac10f9de5f20c3a89c0cd5f257308df8",
+      "grib2_bytes": 886875,
+      "grib2_sha256": "92994c0af5d625f6ba05572861cc7aa5433c5d1947e8125160655f7b001e190a",
+      "downloaded_utc": "2026-11-03T14:33:41+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_50_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_50_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 888249,
+      "bz2_sha256": "d30446de7bfaeb459cfc425670511bf43fc2ca08eb4c4aeea1f78e43357123c4",
+      "grib2_bytes": 903827,
+      "grib2_sha256": "2367f400fd7fb0d3d7e4554489d37ee43b2c43bc801c3dedaeba9470f1faf06e",
+      "downloaded_utc": "2026-11-03T14:33:41+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_51_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_51_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 906811,
+      "bz2_sha256": "cd4625805aa422bb42cb3d13f1ed9f7471d3a497c2880713301ed7b07ea6b809",
+      "grib2_bytes": 921609,
+      "grib2_sha256": "b7e18c3abd05d485a8a37b6b53639522b5f13a6de9e0a6d3d814cc07b748ea3d",
+      "downloaded_utc": "2026-11-03T14:33:41+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_52_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_52_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 925240,
+      "bz2_sha256": "acbe33e9673022bc8636bd130cf232e7760e7811482612c725da46ee37011def",
+      "grib2_bytes": 939833,
+      "grib2_sha256": "3cf5bbe35cbf17fef5c4033d287edd1b93fd7097e125388c57e525c0302ef821",
+      "downloaded_utc": "2026-11-03T14:33:41+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_53_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_53_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 943426,
+      "bz2_sha256": "44f747261513f29c49b91803420fddcaf335b8c140f3ee1a7ba782c21dff67de",
+      "grib2_bytes": 957468,
+      "grib2_sha256": "843b88d931b65ff43bc7ef63608fdb24c60a3c146edbfd4f3b6b2f8a76c9d4c8",
+      "downloaded_utc": "2026-11-03T14:33:42+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_54_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_54_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 960861,
+      "bz2_sha256": "27d158c2b49d9c94136b211c471f060418814316ca7a4d87dac111da6d50bc91",
+      "grib2_bytes": 974238,
+      "grib2_sha256": "7a0ef6a11736deb9c96e88540146ecd60b7f6e5f0f5341314d21833d7bfe2484",
+      "downloaded_utc": "2026-11-03T14:33:42+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_55_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_55_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 862446,
+      "bz2_sha256": "3588cf82a74ed654b485be771324954258fc04460213bdf28c408b94f1a59d8e",
+      "grib2_bytes": 876803,
+      "grib2_sha256": "ccc6769ba63da4c0e1536c19cc727b1b055f6bb029fc67981c0e70f047d77d69",
+      "downloaded_utc": "2026-11-03T14:33:42+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_56_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_56_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 878319,
+      "bz2_sha256": "66990ce92783fadd0cd940929657069ef5c081e05e5ca7651ef9763b11c85e6d",
+      "grib2_bytes": 891483,
+      "grib2_sha256": "cbd8dc48dfb6b56b0f6564cfea98bfc5931ad05e45c52cb5f3474d8a700d1b24",
+      "downloaded_utc": "2026-11-03T14:33:42+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_57_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_57_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 892627,
+      "bz2_sha256": "2c762dfc699f92475dbc9ebee411afa84229c19f72f80649d687e6d2412127b5",
+      "grib2_bytes": 904888,
+      "grib2_sha256": "77a93a89faa0ac62201496cdde11a52ea0af350f555b8b5dae9d829068ff1099",
+      "downloaded_utc": "2026-11-03T14:33:43+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_58_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_58_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 905530,
+      "bz2_sha256": "5a761c78a2c1de585a3efaaa47b6fd4b650f572cc31bbafb271c3cd287b78ee9",
+      "grib2_bytes": 917450,
+      "grib2_sha256": "9f7c2def88a315fc09736e616f260329c913d1b24a29d3253f30e9397d032bcd",
+      "downloaded_utc": "2026-11-03T14:33:43+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_59_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_59_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 918644,
+      "bz2_sha256": "caea05ab57cf4c638db6f079b502d1f39149603b170fd0deb89532877c032a37",
+      "grib2_bytes": 929807,
+      "grib2_sha256": "90895f0695347d9526a8b71725fb50c77eb7ef8464609db0bfaa08c4c36293ca",
+      "downloaded_utc": "2026-11-03T14:33:43+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_60_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_60_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 931331,
+      "bz2_sha256": "5e2a65c653729ab4ad3c82947b5d588156e6e85ee515022e480d2198e51d34aa",
+      "grib2_bytes": 941769,
+      "grib2_sha256": "13a289a1b2b58dbd37c0b9db63d81f6293403cfcdabba6b14c4673785901cece",
+      "downloaded_utc": "2026-11-03T14:33:43+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_61_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_61_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 943551,
+      "bz2_sha256": "1c0e4d5970e5623ca78b80669ff3454e98895a981a8abb8c00328b24ac14d357",
+      "grib2_bytes": 953594,
+      "grib2_sha256": "c514adc551784e2b40ac84d2d8e8db3cba3dd4eedcd0133b754ab08fa7718554",
+      "downloaded_utc": "2026-11-03T14:33:44+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_62_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_62_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 955577,
+      "bz2_sha256": "b27ddd17becb9cbbb47a24a678d97a779b29d32eef467ef2fa6396577c4d0c0e",
+      "grib2_bytes": 964395,
+      "grib2_sha256": "91f37d62f999a665cd49a27dc1dc3daf52b728d472abea81185ca8059edfbc8b",
+      "downloaded_utc": "2026-11-03T14:33:44+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_63_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_63_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 965758,
+      "bz2_sha256": "c9f798c8d58eaeee582750622b704f4840d0196ef2c8859ad3d553b403551e94",
+      "grib2_bytes": 974323,
+      "grib2_sha256": "921b90c232d191217290888e5fa61e04b4653715eeee286ba19245298be52ad5",
+      "downloaded_utc": "2026-11-03T14:33:44+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_64_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_64_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 975095,
+      "bz2_sha256": "3ad6b28fd44a8085ca11482d10c07fbddb3c6ccf67835be655862b7e71d2e7ae",
+      "grib2_bytes": 983785,
+      "grib2_sha256": "e8d6e68fc5b447f1a4a38a081e3d83cfdda420c1212b50914944055777801877",
+      "downloaded_utc": "2026-11-03T14:33:44+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_65_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_65_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 867808,
+      "bz2_sha256": "49d446ef0de5686652b6121fdf90b0985c8bb86e3c10cd1d72a332e4cc04eff3",
+      "grib2_bytes": 880118,
+      "grib2_sha256": "32f04781125a16a2c0b98d183c2d32e8dea3c37d7b7e058663a9e0672619d696",
+      "downloaded_utc": "2026-11-03T14:33:45+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_66_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_66_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 875600,
+      "bz2_sha256": "09f37dea29201f40c8322535fc2af45772bb7c3fcbf31aa90e5af09d2dc39af6",
+      "grib2_bytes": 888084,
+      "grib2_sha256": "5a8378cdc8da835d8752685d7a35352cbed0809d9949efbfa0569b8ff651e19c",
+      "downloaded_utc": "2026-11-03T14:33:45+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_67_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_67_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 882241,
+      "bz2_sha256": "139b8980f7ab07b3269f30276938ee24895e57fb0f2ec8fc3bf886cc31c0fba3",
+      "grib2_bytes": 895272,
+      "grib2_sha256": "00c1deee061f41b4297b97dfe9b3741cb17cf50a0812e14cc49c14224570da89",
+      "downloaded_utc": "2026-11-03T14:33:45+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_68_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_68_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 889409,
+      "bz2_sha256": "afd11719f88b9cae3754f7ab771a830b44dab6f332ddc86bb632513d63829d52",
+      "grib2_bytes": 901821,
+      "grib2_sha256": "5ff2077bbb10ef524e03cb1e2af372ed7fdf295cfff1fc297ffb5d744953a59d",
+      "downloaded_utc": "2026-11-03T14:33:45+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_69_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_69_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 895667,
+      "bz2_sha256": "d2d571cbbb6e965456df0ea56b2997fafe7d70e70b28fc549a58495ec0867e0b",
+      "grib2_bytes": 907673,
+      "grib2_sha256": "7780386892a028056b069ffef71085ec0bab4d643c15d20f44e147fbabd89c43",
+      "downloaded_utc": "2026-11-03T14:33:46+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_70_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_70_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 900951,
+      "bz2_sha256": "28974ac1869495406577a64b0625c2b1d7dddff86f3fd1440838939211ff100b",
+      "grib2_bytes": 912895,
+      "grib2_sha256": "520966f34349951459cc8c339707cd055babf592ec4a0fabcb122ee6fc9f4bdd",
+      "downloaded_utc": "2026-11-03T14:33:46+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_71_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_71_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 905780,
+      "bz2_sha256": "b6fb8b4dc9856f31549c388df4486981678983f8de59c893f8abedf9b2346fed",
+      "grib2_bytes": 917394,
+      "grib2_sha256": "f2cd357ab7c805041626f6e14fde51772a0d646ef31635110f5694a552f2b021",
+      "downloaded_utc": "2026-11-03T14:33:46+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_72_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_72_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 909907,
+      "bz2_sha256": "bfa370f23ac27fe6e5647cd29921588da67410fa110900f62c497e59e6d1530c",
+      "grib2_bytes": 921103,
+      "grib2_sha256": "c337c94fb88e2bdea9adf8bb7cb11e73774988f714657e1862a0d32f70abc7b2",
+      "downloaded_utc": "2026-11-03T14:33:46+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_73_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_73_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 913041,
+      "bz2_sha256": "eb8485aef79d92119a6ba70ca9a43badbf0e4e5a4ba3fba11d9a6abaf502a064",
+      "grib2_bytes": 923919,
+      "grib2_sha256": "314ebdc562aeba4f904d02d48a62d6c6b02e435fda8e112536ff93cecc8ea24f",
+      "downloaded_utc": "2026-11-03T14:33:47+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/p/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_74_P.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_74_P.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 914529,
+      "bz2_sha256": "2778e313fc306135a89ea5cafde588050bf7db45a5fdc2856800a7ac1d396bac",
+      "grib2_bytes": 925401,
+      "grib2_sha256": "10979c97aa8c1f03dc714b3ef4958265aed9fc1f4ebef2ea251540176e1660cc",
+      "downloaded_utc": "2026-11-03T14:33:47+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_1_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_1_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 804324,
+      "bz2_sha256": "3c7a5aed1606998192d914996a2a31e0e2c40bb6e3d075bccf731ab996bee02c",
+      "grib2_bytes": 871652,
+      "grib2_sha256": "827961387bb5d726fd5b091d7e19399893091e38971ab36fdc3fb8af1a09e612",
+      "downloaded_utc": "2026-11-03T14:33:47+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_2_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_2_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 773528,
+      "bz2_sha256": "b83dd3771227e8a5b12df77ee37c3d6a55932668d3abd6430c5dec9bc76e1d00",
+      "grib2_bytes": 853998,
+      "grib2_sha256": "a4cc029abf60c8f8eebfafb37994ed84a8e5d83cd80a8fc053f6fc52efe30c78",
+      "downloaded_utc": "2026-11-03T14:33:47+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_3_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_3_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 771920,
+      "bz2_sha256": "cc1e7302907a8ecd9a6e8976f8995281dbd886ec843d5e1a0ca11db2339ac2f6",
+      "grib2_bytes": 862689,
+      "grib2_sha256": "69a2fac69f17dfd4f2d26a9ff8338937b6da09bd339ce0cad06daa0d5ee75b60",
+      "downloaded_utc": "2026-11-03T14:33:48+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_4_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_4_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 762859,
+      "bz2_sha256": "0fd8f24843598419e8f8e5b75ca93540754408d9d09590e83b281419dc9e9179",
+      "grib2_bytes": 859150,
+      "grib2_sha256": "0ac627fe73ee9deb78a4a1181d854ad1b5600efab0aa2beef02f704ee4a426d2",
+      "downloaded_utc": "2026-11-03T14:33:48+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_5_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_5_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 769429,
+      "bz2_sha256": "a25c2fe6588fc4173fe9bcd89db17d3a6a5ba0b3b3a9d1cea5782725bb503890",
+      "grib2_bytes": 865051,
+      "grib2_sha256": "3fbc7a298b3b3b708a2e4194ee751bf3b474150a559ba4d3481548ce7ebe999a",
+      "downloaded_utc": "2026-11-03T14:33:48+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_6_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_6_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 783520,
+      "bz2_sha256": "47d8c5b31411cf450d97f2263465cf0c8da663311db4ff3ff09f5d0f838d234d",
+      "grib2_bytes": 877493,
+      "grib2_sha256": "da498e7a4586af10574526a5b387bb1748b2e3ed03c4adba42766ba9029cddab",
+      "downloaded_utc": "2026-11-03T14:33:48+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_7_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_7_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 793226,
+      "bz2_sha256": "acb4f22640442b8ecc5ab6a0a80d50855540b4ed9de35dea86f6389cdf5200bb",
+      "grib2_bytes": 879918,
+      "grib2_sha256": "8d2c819e5ef649317b1f2d648bd52ac04c8c8d61e6dd44c742f2d72135577bdc",
+      "downloaded_utc": "2026-11-03T14:33:49+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_8_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_8_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 803207,
+      "bz2_sha256": "03a5545ea745d0f97f2d4e5f1714441fb966276f006222c0efc5c5d1901af042",
+      "grib2_bytes": 884762,
+      "grib2_sha256": "c8b79a842dc5c66f41ce4c87e176f6bfe9c211dd8954acfeaabb530d40144de1",
+      "downloaded_utc": "2026-11-03T14:33:49+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_9_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_9_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 698083,
+      "bz2_sha256": "b661f282c47990de4b245a0d7954d371cedff7340bb4464d8e988aafbbb409e3",
+      "grib2_bytes": 785268,
+      "grib2_sha256": "90af6c4122a949223c9ebb45a2121ca977edb344d0550baa1fa6bb96f05ce2e6",
+      "downloaded_utc": "2026-11-03T14:33:49+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_10_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_10_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 718103,
+      "bz2_sha256": "5e7ee7ff632f88313e0121a1c05cce6488fbf3ec785ffb9c63f8aaa9677ba314",
+      "grib2_bytes": 803083,
+      "grib2_sha256": "7aea9e0d81bb6b0f428ffff790381aef3403759400897df6d6dcd51771668624",
+      "downloaded_utc": "2026-11-03T14:33:50+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_11_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_11_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 734684,
+      "bz2_sha256": "7812515a34a5275bb72777f1c45ba11021571aaf90a1b1a5f11e0ab8d12b7d28",
+      "grib2_bytes": 815057,
+      "grib2_sha256": "abf0448228182ce4a3f87f45d6e29df62bf82a457fccfe3063e5ca1de71e6284",
+      "downloaded_utc": "2026-11-03T14:33:50+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_12_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_12_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 746431,
+      "bz2_sha256": "d1ece7b1e4ddd4dd1114e70a7abb2deed18fdb37b56bb19b623400325db4e357",
+      "grib2_bytes": 822616,
+      "grib2_sha256": "8d8abda61698e38a29da1ab45bce9c4d4e37a7bef9342c4fb7fdd2453594fe72",
+      "downloaded_utc": "2026-11-03T14:33:50+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_13_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_13_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 758673,
+      "bz2_sha256": "6394c9a435ef5c0d657cd23ef706a9698921037b3d47862fa8b7ace6c06c896e",
+      "grib2_bytes": 832587,
+      "grib2_sha256": "4eb27d5e8d52c2730b36e1ccde73fc8b58c9054a2aa08b35d6e33ef328f91dc5",
+      "downloaded_utc": "2026-11-03T14:33:50+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_14_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_14_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 770603,
+      "bz2_sha256": "79cf5050f628cd6af21b344e6a49acad0b713fbdace88191fe09914944f4b06a",
+      "grib2_bytes": 840918,
+      "grib2_sha256": "5a7b4d41c2f3e4787bcfcc1a8dc054622279ac70699f325777b7a811ac697733",
+      "downloaded_utc": "2026-11-03T14:33:51+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_15_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_15_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 784451,
+      "bz2_sha256": "f3ce5abc754af93e33cbd1ecf360fee1ba11d03d945017ac8d2e441f31832558",
+      "grib2_bytes": 852225,
+      "grib2_sha256": "76860f01091cf7af8483927b6cec799ab9200b51c0040fd2874ed00d7d8dd799",
+      "downloaded_utc": "2026-11-03T14:33:51+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_16_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_16_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 792945,
+      "bz2_sha256": "92d80f8b17a25b06da3f7e875e55e881318c9072fad32e330e90b8aa2d63130c",
+      "grib2_bytes": 857066,
+      "grib2_sha256": "8b4255e20983f2153caf5b07f3f5f95f4e523a6c09218f8d25389262df38ad57",
+      "downloaded_utc": "2026-11-03T14:33:51+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_17_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_17_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 799474,
+      "bz2_sha256": "5f2b4d21b899ae08a2e06d968f17832badf66d4925100e912ae5119f7d943a6e",
+      "grib2_bytes": 859560,
+      "grib2_sha256": "2bb4bfdbb6cd74269238fe309c53e7aa9c00a09578967215d3654240dde0ed3f",
+      "downloaded_utc": "2026-11-03T14:33:52+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_18_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_18_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 809687,
+      "bz2_sha256": "0aa5d0b64ca464ef8a1dfa81f46e6b644a5d65399494fa62b5d3d94ff0f0f245",
+      "grib2_bytes": 867455,
+      "grib2_sha256": "f76f1f1f37cc14197dfb978080612c50d6bebb13c83830cc538ab17480172135",
+      "downloaded_utc": "2026-11-03T14:33:52+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_19_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_19_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:41:31 GMT",
+      "bz2_bytes": 824372,
+      "bz2_sha256": "4e4a3cbd8a995ac99a323cc348013be60066c318ee9866a5cbaf536899833da1",
+      "grib2_bytes": 879094,
+      "grib2_sha256": "5e6d57aab56e247f720c9587ba22f3dd4f1726e800bb66e1d9db958c202089fe",
+      "downloaded_utc": "2026-11-03T14:33:52+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_20_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_20_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 841178,
+      "bz2_sha256": "db6561b767ed1d988b1b9aa9ea39e493ea6e360d0c0a61c2f71905fccf0a9c64",
+      "grib2_bytes": 892968,
+      "grib2_sha256": "a645caee93efa3178fb1759713b399ea11a577e7a4dbc9fb6caf6beea81b731c",
+      "downloaded_utc": "2026-11-03T14:33:52+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_21_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_21_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 851489,
+      "bz2_sha256": "0c438d1d8d8e544af09601aa30011a98320712711b422122f079f8d8af112bcf",
+      "grib2_bytes": 903027,
+      "grib2_sha256": "db88bf9110a58a87b3d405bde2f2dffabd4de643386f07112d096613f27fa958",
+      "downloaded_utc": "2026-11-03T14:33:53+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_22_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_22_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 859427,
+      "bz2_sha256": "372614c126c2fc1b365c163a1f69aac2c6a8b1b3440a0a2d5659d25c8c38ec5a",
+      "grib2_bytes": 910946,
+      "grib2_sha256": "e45eb63cb3131f5a1a9b6c621777d7ab5b30a3a8e4f0682b21492ca64e061de7",
+      "downloaded_utc": "2026-11-03T14:33:53+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_23_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_23_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 857835,
+      "bz2_sha256": "9a9c64d1f78098ea67bd4a0ca726ddef1a789534e0cb6404cb0ae7281472a94b",
+      "grib2_bytes": 908501,
+      "grib2_sha256": "1efa69ed4290b997773b0d4c48006472d08a622c29135651f52acccb505d3179",
+      "downloaded_utc": "2026-11-03T14:33:53+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_24_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_24_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 854190,
+      "bz2_sha256": "9262e2365c355f6afd74f644c8bbc1f0b890a5c52534912006cac134d805c2bb",
+      "grib2_bytes": 905601,
+      "grib2_sha256": "a3cb9d15379a7d7569085580c2925099dfd41b2c2192db83c561ccdecb543c86",
+      "downloaded_utc": "2026-11-03T14:33:53+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_25_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_25_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 849422,
+      "bz2_sha256": "ddeb8f3fef49bc0838f602679dbd4c71231ae41bf1d03351f107a9c2e198c1b2",
+      "grib2_bytes": 901770,
+      "grib2_sha256": "bdc6c7e7747cc29e9dd58594c1863b4e3bb56712f93753a569be2288c08fc870",
+      "downloaded_utc": "2026-11-03T14:33:54+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_26_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_26_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 850469,
+      "bz2_sha256": "848840bcaeafbf5a84ba9f87a27a2d15d2dcaec20d421858f8a89de94ca287e6",
+      "grib2_bytes": 902005,
+      "grib2_sha256": "ac827b6c82cd29c6f54c85f99d7335f89cef87559530b260892bfcb8191fca87",
+      "downloaded_utc": "2026-11-03T14:33:54+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_27_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_27_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 852962,
+      "bz2_sha256": "b565f6a1f63fde0b654b25e1d078dbb21864ede0a8bf4387b1bb2fa3cdc29172",
+      "grib2_bytes": 905409,
+      "grib2_sha256": "3cab0a301bf05c1ea02220eb10b6d224ae36014bbcdf0e886a1656208b77e3dd",
+      "downloaded_utc": "2026-11-03T14:33:54+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_28_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_28_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 852335,
+      "bz2_sha256": "1f498c31539db4dc4746a9b80fc141acc9ccf51e651c4103d206d126fa7a2633",
+      "grib2_bytes": 906453,
+      "grib2_sha256": "39f4efa720673a7b65b9c4213d7ef8c02710d986f88505ee0cb3e7011f3bf958",
+      "downloaded_utc": "2026-11-03T14:33:54+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_29_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_29_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 851379,
+      "bz2_sha256": "e92be1492e91c9ef9d990328584bc7c1437bbf598d954c74bf4aaf67e1d68c76",
+      "grib2_bytes": 905206,
+      "grib2_sha256": "27ec207eba1d71419caf00ae61c9ce0834834210a6cf4bbe16664bc9d2e29cfa",
+      "downloaded_utc": "2026-11-03T14:33:55+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_30_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_30_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 847306,
+      "bz2_sha256": "94e04ec32f2639bb5ffd98a14db1ca41cc21ff5b2378801ef797ace91deefe83",
+      "grib2_bytes": 900443,
+      "grib2_sha256": "de6f83b0fcb5ef67b287abe7f1a21a11234b63efbe0293312faa58ee57b0d57c",
+      "downloaded_utc": "2026-11-03T14:33:55+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_31_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_31_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 844150,
+      "bz2_sha256": "54eb130c18bb5e3ea120ac3062cccf8b13b75c521949cefeac98d9a5acf3420d",
+      "grib2_bytes": 895725,
+      "grib2_sha256": "73ee5a7ba99f1c0ded78b57ec440f7ec8e60f5f054d7fbae894ecfad953d030f",
+      "downloaded_utc": "2026-11-03T14:33:55+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_32_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_32_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 843972,
+      "bz2_sha256": "5c51842dad46560ca7965f447ccad1e594fa3b6aa59986edb7543ff52feb2cc4",
+      "grib2_bytes": 892278,
+      "grib2_sha256": "24ac1dbcc083e61acd4b3b2a00a69f4dc21f3e071eaa9f0a8739fe1a3fd6e791",
+      "downloaded_utc": "2026-11-03T14:33:55+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_33_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_33_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 847843,
+      "bz2_sha256": "2959f8b639e3cd5bbc0930c7aee16c69dab016e81ed6818c44df53f3843b4f07",
+      "grib2_bytes": 893452,
+      "grib2_sha256": "cff9c6af64787fa876cf1f16534fd992df043193e9ac2818c7a82e8008674fa9",
+      "downloaded_utc": "2026-11-03T14:33:56+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_34_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_34_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 852741,
+      "bz2_sha256": "a69d91a85b64c44b313b399bbd4d161b7d5d30ab39b0fc937495a1885f77fbbe",
+      "grib2_bytes": 895040,
+      "grib2_sha256": "4c1e79ceba164388bdcf8e18ed98403357cb92d9364774ef250abacded8ba384",
+      "downloaded_utc": "2026-11-03T14:33:56+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_35_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_35_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 859425,
+      "bz2_sha256": "07ca98053aba7dfac3f67242c6e90d25f676a17162418bcd062576ac909379ba",
+      "grib2_bytes": 899177,
+      "grib2_sha256": "5d9eb5be2c73d2a846d2b078a8127d4353e319c638d8f6ce4410ce08e58578e8",
+      "downloaded_utc": "2026-11-03T14:33:56+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_36_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_36_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 866006,
+      "bz2_sha256": "e195c36756f35f2af3a7ce1b131d4ba14aca265ed268c584dc6c42b0bc6e8521",
+      "grib2_bytes": 903912,
+      "grib2_sha256": "6522cc91c4a8bcbcdaaf3a2b16df5dcb08170aaf4f44f8915966224544cf9b64",
+      "downloaded_utc": "2026-11-03T14:33:56+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_37_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_37_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 873224,
+      "bz2_sha256": "c62d2042dae09b54e85554f416f1ee89f430326bdbe7d50e42beb4c969a3939e",
+      "grib2_bytes": 909605,
+      "grib2_sha256": "b344bc3b2667a66e8c3238bcb2639b1db873e45f24a90b5001380ea92c23c483",
+      "downloaded_utc": "2026-11-03T14:33:57+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_38_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_38_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 882037,
+      "bz2_sha256": "064f17b9e2adaaea7b536da58228298d3f051ebdb630b9dcd3637cd562651a54",
+      "grib2_bytes": 916928,
+      "grib2_sha256": "9912102f5adc4290b8ced16f9261464244c0e444bbfc4d622d384749c8c2654f",
+      "downloaded_utc": "2026-11-03T14:33:57+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_39_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_39_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 891682,
+      "bz2_sha256": "e9a440c1d48ed6683eea6db9666b0245a564343464203fecb06f916b2a7ded09",
+      "grib2_bytes": 925828,
+      "grib2_sha256": "1daf94b5ca0da1c1fe0f17c6f83e91b3229338be25f39ccf037bc0c62f0ea6b6",
+      "downloaded_utc": "2026-11-03T14:33:57+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_40_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_40_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 900068,
+      "bz2_sha256": "54ea501feab39331ed83397844b0ae36e13ccb22ad17f72a15d18c52716a321f",
+      "grib2_bytes": 932147,
+      "grib2_sha256": "0bbdd8e869c9092399b39b17ca679c8137d4ea0371f1dce078c07e637eea102b",
+      "downloaded_utc": "2026-11-03T14:33:57+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_41_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_41_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 907764,
+      "bz2_sha256": "b6b628f63d57e94fe2c474f2a96fa30ff8cde5210cf35621ca7b9e4226098f7d",
+      "grib2_bytes": 938154,
+      "grib2_sha256": "1e301e5f5cd906c489fd24b516d061de001b255d441a843ab01db1615ffbd7a8",
+      "downloaded_utc": "2026-11-03T14:33:58+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_42_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_42_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 797492,
+      "bz2_sha256": "e8bb62f59ba55c05e9d724e228e146771069dcad43886a91311a85cbf0105c19",
+      "grib2_bytes": 829798,
+      "grib2_sha256": "7fcd423533b0310c72d1333aee3ef571600eb6c3ed39e1418983922441d5ef48",
+      "downloaded_utc": "2026-11-03T14:33:58+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_43_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_43_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 801704,
+      "bz2_sha256": "3ed48a1c40d344c6b134a82cb51798701ed385d9aaffbe47a7cf8417be2c4cfd",
+      "grib2_bytes": 832130,
+      "grib2_sha256": "4d9dc7a5c2cb807d6bf619bd34e822de52993527a507aeef5cbaa25b5ad67f95",
+      "downloaded_utc": "2026-11-03T14:33:58+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_44_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_44_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 805182,
+      "bz2_sha256": "d704dcbecaa0619ad86c175959b8a77427593ab93cbc5646b724f55b91f4222b",
+      "grib2_bytes": 832269,
+      "grib2_sha256": "2cabff532c5f37b927b6c5b3eeb29277356ba636e67d1c98497896573609ecd2",
+      "downloaded_utc": "2026-11-03T14:33:58+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_45_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_45_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 813090,
+      "bz2_sha256": "372dddce4ea94fddba6e67344429f5504877e8c76619c769b66017275661bd77",
+      "grib2_bytes": 837441,
+      "grib2_sha256": "e3c4641cec1663cd519cb5eb32d22a5f31b619c7314e5e9c1c61bfd89d3f31f1",
+      "downloaded_utc": "2026-11-03T14:33:59+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_46_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_46_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 822858,
+      "bz2_sha256": "952cef85f0b2702aafce22361c8baf406ecb09039830fece85f09f8d9d848175",
+      "grib2_bytes": 845100,
+      "grib2_sha256": "0a2bc3bc595b58931fae40aa75f4eac00b916265fb07bc5dc8abf5e76adf7875",
+      "downloaded_utc": "2026-11-03T14:33:59+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_47_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_47_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 948639,
+      "bz2_sha256": "93d0c5105016ed31565c4dcd77734fd8d9177187d3e3c75c0226658376d7cfa4",
+      "grib2_bytes": 966770,
+      "grib2_sha256": "36e12d8efce4faeaff5fff1b9755a2d371aa2cacaeb326bf71d51053bdb6c0c0",
+      "downloaded_utc": "2026-11-03T14:33:59+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_48_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_48_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 959879,
+      "bz2_sha256": "1408474b56775d366421dc1eb31713c3050039bff5513c66585927925bbaa156",
+      "grib2_bytes": 976134,
+      "grib2_sha256": "e62d16cc533d1abbb21e9233b2c3f7618cdc36e7191ae6b0daca6c548134b8d1",
+      "downloaded_utc": "2026-11-03T14:33:59+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_49_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_49_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 970026,
+      "bz2_sha256": "bf1467594db60be9e991c589667237a4c77023f9818c38436b98c4a07ecd9264",
+      "grib2_bytes": 984883,
+      "grib2_sha256": "c6df1a8b6a07e06ad7b1e95688318c68942a7c050bec57978e8f6c5743a30f12",
+      "downloaded_utc": "2026-11-03T14:34:00+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_50_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_50_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 979990,
+      "bz2_sha256": "00585cd17c3398a182eccc54b3375ab63b281acee12bf5b5ca78d6d90320fd92",
+      "grib2_bytes": 993563,
+      "grib2_sha256": "ff1d549b9a396d2c070ad6a9728e3b68ba8186f2bf9ea2e527fb93b4dc90e28c",
+      "downloaded_utc": "2026-11-03T14:34:00+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_51_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_51_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 990784,
+      "bz2_sha256": "897d59c28e39bb154d85a23d5c50b58bedb3a40e8ce0058f05f6833553901e4b",
+      "grib2_bytes": 1003623,
+      "grib2_sha256": "8f23a63621d3078177bab93e6b3dc73b2cbf69e236f9ee520b11bd2082eae9cc",
+      "downloaded_utc": "2026-11-03T14:34:00+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_52_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_52_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1000940,
+      "bz2_sha256": "533179a627d608308f1422b6e5dbc97e8ead6224db27d1b0e32798eb0c90470a",
+      "grib2_bytes": 1012177,
+      "grib2_sha256": "61ad7de2b09cd4ca7cc977a3cb28c2529c7d7d174062656e31db66ee78e3704d",
+      "downloaded_utc": "2026-11-03T14:34:00+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_53_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_53_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1011248,
+      "bz2_sha256": "6ababe22d666f0464e51b9f3cb4e51edfb3db0bbc66a29f7204733339e7d1382",
+      "grib2_bytes": 1021412,
+      "grib2_sha256": "8c528d0da386c60393c6d8651620f4b3b2caa32beac7a2b7cfc4660861ea43eb",
+      "downloaded_utc": "2026-11-03T14:34:01+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_54_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_54_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1021693,
+      "bz2_sha256": "4aa935da3ab6cc84ed1362c3150da3d95d8361df75b07721a9e1c2eaae810874",
+      "grib2_bytes": 1030670,
+      "grib2_sha256": "4ac73c075d25eb125d6262196535c37294007bf87b35f9336f105684ee31161f",
+      "downloaded_utc": "2026-11-03T14:34:01+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_55_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_55_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1030274,
+      "bz2_sha256": "37db710863bd8414a72b321713868515c8556247fa6e81dcf23ed0bcb448a90b",
+      "grib2_bytes": 1038551,
+      "grib2_sha256": "56f907f9cff1f60beac168f3dd1b5aec89c20e6e5d01f81b2710fa33347bcfcd",
+      "downloaded_utc": "2026-11-03T14:34:01+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_56_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_56_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 926876,
+      "bz2_sha256": "51064fd4f4b1caf7bcfd2cbdd87ab432bee50a38e7a488056964776e1a8f63a4",
+      "grib2_bytes": 934624,
+      "grib2_sha256": "0ba1460d1dacdff6b26bea124c06644594d0fda29db211ed5d57ff8460d54f42",
+      "downloaded_utc": "2026-11-03T14:34:02+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_57_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_57_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 938816,
+      "bz2_sha256": "19cc11e998b4fd3f89054c37529feb1d0d36b915739bc3ae743418ec6d7406e4",
+      "grib2_bytes": 945602,
+      "grib2_sha256": "96f4cca4c8f0efc54f78b9f75ad06f5a192d7f015e73c30571c4eb4fd47c9078",
+      "downloaded_utc": "2026-11-03T14:34:02+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_58_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_58_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 949731,
+      "bz2_sha256": "3a6505cbe6fab431882b3d744d022fc0dc3d2de7ebc284f1f8fc8b7fde23f0e0",
+      "grib2_bytes": 955206,
+      "grib2_sha256": "9ce38768c1a26bc00e1dab3dff94b938995a1f167228391c9a9e4509d1077c60",
+      "downloaded_utc": "2026-11-03T14:34:02+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_59_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_59_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 960865,
+      "bz2_sha256": "7bf25d7bdc5fdafad2d85be0a906ce554e3e480cb7cf3a1091720819ad8ceda3",
+      "grib2_bytes": 964869,
+      "grib2_sha256": "1abea80c900d882fbbabff800fb17fa9bfdaec08c9609f856890f914ae34a7cd",
+      "downloaded_utc": "2026-11-03T14:34:02+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_60_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_60_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 975729,
+      "bz2_sha256": "02783fe9ee2eded3ebe60c8f20b7a1c932c955c7ae5915df42313fc843e8b0c6",
+      "grib2_bytes": 978246,
+      "grib2_sha256": "55f28513b49f078d72990f2e8bd191d0327a913227719b180881dc80de0a0205",
+      "downloaded_utc": "2026-11-03T14:34:03+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_61_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_61_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 990292,
+      "bz2_sha256": "3afafc02450ccd9db496b3f5a667b79c494164b231a2caf64c62015ebca69ab8",
+      "grib2_bytes": 991700,
+      "grib2_sha256": "c255119cf924443d257c75ddd4fd194bbd5ac8d077372d6af45b62a7491bf7ef",
+      "downloaded_utc": "2026-11-03T14:34:03+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_62_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_62_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1000131,
+      "bz2_sha256": "9830c5d54f75cf7d7915b0854c0eab34e8f3aa85a567ca6cf32000bcc2e4e84e",
+      "grib2_bytes": 1000711,
+      "grib2_sha256": "d6a48c8e1e86cad31ff896a7ae9d12950d6748192e90f02d24c47030e82234a4",
+      "downloaded_utc": "2026-11-03T14:34:03+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_63_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_63_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1006850,
+      "bz2_sha256": "b169b67f4e6f684712755562b2e04632b928bc74790afceb8ff3dc726ddf427c",
+      "grib2_bytes": 1007153,
+      "grib2_sha256": "a25cacc7a8d0e7487bf63846ce6f3d32279d52b3d669802251ca5e81a60b74d9",
+      "downloaded_utc": "2026-11-03T14:34:03+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_64_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_64_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:41:31 GMT",
+      "bz2_bytes": 1011096,
+      "bz2_sha256": "08ef34666ae8955f52e6c1ddccd6fecdfa6e34414527bd7d598fa64d1e907d43",
+      "grib2_bytes": 1011219,
+      "grib2_sha256": "b0231fad5d94e06484d48be31fac5718464665e30ec6fc515218aba8a1c02f37",
+      "downloaded_utc": "2026-11-03T14:34:04+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_65_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_65_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1015398,
+      "bz2_sha256": "4d45be5eaa9c506c9dd0b05de8d8b602ce13e18a22337cd79a4e900d4ad2cdbf",
+      "grib2_bytes": 1015206,
+      "grib2_sha256": "367cb0a0f24eb62bef3d95e2ddab4252a284d39f8c0bce1e3c3b450e0cef591f",
+      "downloaded_utc": "2026-11-03T14:34:04+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_66_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_66_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1021979,
+      "bz2_sha256": "97ee391f9d8edd9addb88760f0701b126046ee54cac45d16bb1e29f01e03fdce",
+      "grib2_bytes": 1021158,
+      "grib2_sha256": "84b34b6620bb816eef2b51cdfd79aa673b0062a5be67332d18c5d94963ccc747",
+      "downloaded_utc": "2026-11-03T14:34:04+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_67_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_67_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1027482,
+      "bz2_sha256": "4241f3b03c5c53fd9ee5112a208c650a543c3072609745ae33655a186934f921",
+      "grib2_bytes": 1026529,
+      "grib2_sha256": "77901cd877607458c2aa7152014c8f27fdcd5d02682d0006d2e5e8ed9487d10c",
+      "downloaded_utc": "2026-11-03T14:34:05+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_68_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_68_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1027327,
+      "bz2_sha256": "f547f21a935bca3c70f9028305559a84a75b0757e770950857f3cd17078ba71e",
+      "grib2_bytes": 1026662,
+      "grib2_sha256": "be5b80d669e75f4f7828c2f025325d51e665dea6f2cd31ed139890f760f17736",
+      "downloaded_utc": "2026-11-03T14:34:05+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_69_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_69_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1025010,
+      "bz2_sha256": "cfe36785dd7c1bcef508c397c774728dd3d3acf59e9c898c941cb09605ec30a4",
+      "grib2_bytes": 1024272,
+      "grib2_sha256": "3210c2f3ea9ea9d2b4921cb1e0b2535c1ef4c5b3472f5847fca9c8aa79d159c8",
+      "downloaded_utc": "2026-11-03T14:34:05+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_70_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_70_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1024043,
+      "bz2_sha256": "bb916e2fbe035a505696870ab3e71f5f23ad22d59b93088a26bc863151a6e466",
+      "grib2_bytes": 1023128,
+      "grib2_sha256": "92cb5eb3147127ce3e128843fc68cc0d2195b88441839271c1666b731a2f63cb",
+      "downloaded_utc": "2026-11-03T14:34:05+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_71_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_71_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1025374,
+      "bz2_sha256": "9c471f927030eea8786df46dad4189c1fd594c3463c72f9f2426ea1adc416825",
+      "grib2_bytes": 1024745,
+      "grib2_sha256": "b089fc8f4c5f9baea87414fc7087593dae6c7f060563255b6b1cab0aebdecd82",
+      "downloaded_utc": "2026-11-03T14:34:06+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_72_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_72_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1030408,
+      "bz2_sha256": "18f9dd0a4399a0a95e67ccd6b19f4c14d8e0b81f705e59e4bf7ad82da9791b25",
+      "grib2_bytes": 1030007,
+      "grib2_sha256": "e791c756a62a7fdb8484fec8aa9eb87c1f4e74f559c206c62a511bd9d4816014",
+      "downloaded_utc": "2026-11-03T14:34:06+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_73_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_73_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1044388,
+      "bz2_sha256": "20c98b41766f4be6207fbb9b9477e3036764d5a3121b0cbf1a50e89a6b9f52b6",
+      "grib2_bytes": 1043703,
+      "grib2_sha256": "4d15831541b1eb7011ad081af0a3a28eceb89ec1ee3ab41f25e1a596b8fb73ec",
+      "downloaded_utc": "2026-11-03T14:34:06+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/t/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_74_T.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_74_T.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1061435,
+      "bz2_sha256": "8ed11cae981e4e55a2bef92c46835bd61cb4031c29305b34075c3d4d0a37542a",
+      "grib2_bytes": 1060244,
+      "grib2_sha256": "cc11d243ec9c40d83c25f7b2a447691ba2bb3838ac480ae7cb2c344f0a46bbaa",
+      "downloaded_utc": "2026-11-03T14:34:07+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_1_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_1_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 726268,
+      "bz2_sha256": "8eb1ea895397557c1098cb6c6a174e78668c1926f3c292d4395db77525b36821",
+      "grib2_bytes": 773271,
+      "grib2_sha256": "e664424d3843138c72fa899769ef1e4e50e341f1c887a18d1df2851364762456",
+      "downloaded_utc": "2026-11-03T14:34:07+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_2_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_2_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 807207,
+      "bz2_sha256": "704fb1d962f35cd9ca72d8e4bc4fb625d04b5fe0ca8e7e1d0e1279615df22357",
+      "grib2_bytes": 858691,
+      "grib2_sha256": "e7d7daa3d86a3182bc6dd5d6fb932c2a43d51a5f503fc5d3c271bfe23261447b",
+      "downloaded_utc": "2026-11-03T14:34:07+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_3_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_3_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 825442,
+      "bz2_sha256": "67d484676b00e39e9c1964aa763f3d6f7c55b48738301fc388a553992ef1cd53",
+      "grib2_bytes": 875685,
+      "grib2_sha256": "70e22cc31b4480eb28c30e3aeaea3ea02b180fa9e3e7197a2cedc9bf9a6edb5e",
+      "downloaded_utc": "2026-11-03T14:34:07+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_4_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_4_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 840563,
+      "bz2_sha256": "7ab7bad0adff0806c75a0a59114bc3ae338f49724fa68bfbd6356667853dd90f",
+      "grib2_bytes": 891833,
+      "grib2_sha256": "7bfe0b7625442f7e38262449ac9b1d11539096e3742dca5c9ce07b12599bf0a0",
+      "downloaded_utc": "2026-11-03T14:34:07+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_5_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_5_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 852517,
+      "bz2_sha256": "3f7944d9f26965a1049410e40408b3046373ca2f2d0fc3727c35b41fe02d61a3",
+      "grib2_bytes": 903043,
+      "grib2_sha256": "9abacb0310e6b3133c01ee5dc19c505798fcebcacae423512a1c527ecb048ecd",
+      "downloaded_utc": "2026-11-03T14:34:08+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_6_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_6_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:09 GMT",
+      "bz2_bytes": 856210,
+      "bz2_sha256": "708f5fbc23421d8134d00c54cd96a4afa1a2985c4061d4fc424477b913e9417c",
+      "grib2_bytes": 904443,
+      "grib2_sha256": "df8d795d1df73aefe3584943b4c64d490bd08301bfbdf44e2ae678cc6930e64b",
+      "downloaded_utc": "2026-11-03T14:34:08+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_7_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_7_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:41:32 GMT",
+      "bz2_bytes": 856671,
+      "bz2_sha256": "30a12ea19a1d99a1de45e456819129193dd6eeb171be9819be3978af21d328a5",
+      "grib2_bytes": 903532,
+      "grib2_sha256": "760e5759741e72e442855a3678308fcd2161c155229871521c83851194197720",
+      "downloaded_utc": "2026-11-03T14:34:08+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_8_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_8_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 848041,
+      "bz2_sha256": "f1cd40db08dc47b143d32530eaf1e11737cad6369848422564dae026e4a899cf",
+      "grib2_bytes": 893401,
+      "grib2_sha256": "231dcffc0bdec996a7cf36b973c799d65ebb220ac52a61f1691d57b1829734b8",
+      "downloaded_utc": "2026-11-03T14:34:08+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_9_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_9_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:12 GMT",
+      "bz2_bytes": 964405,
+      "bz2_sha256": "3a19a254ffc9356508260efe0d8b08380551d18fe7fabf052dd4dc07673ddcb4",
+      "grib2_bytes": 1009235,
+      "grib2_sha256": "cf38c0ebd35bc7dc7c3e26e67834776f184c233b10cd79d28983d916eddea324",
+      "downloaded_utc": "2026-11-03T14:34:09+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_10_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_10_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:12 GMT",
+      "bz2_bytes": 871337,
+      "bz2_sha256": "f4d6c53361aae2bc51809d1892233a6639a9569b4feff914524c0a88720b95d0",
+      "grib2_bytes": 915222,
+      "grib2_sha256": "fe826cd5dbfa9876ec97cf653b4d4fe5a2b2ac2b3be79d8aae13a703f302245c",
+      "downloaded_utc": "2026-11-03T14:34:09+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_11_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_11_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 797795,
+      "bz2_sha256": "7dfb8b59bcb3bcc39203d37d44962a4fb927237b0afd7057436075928310695f",
+      "grib2_bytes": 840885,
+      "grib2_sha256": "8a0a340c4aebc21b24a149298329e15cd5163dce73733c4c47f1634c1b85b395",
+      "downloaded_utc": "2026-11-03T14:34:09+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_12_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_12_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 739055,
+      "bz2_sha256": "e75cbcff9c7d9f7203ecab29dd8e68f68cecd5a8a63da88a1622d1f80809a1d2",
+      "grib2_bytes": 779292,
+      "grib2_sha256": "a1b9f8f13f89d9a701ec40b56c856ddffe2aac419ea8fb9de023573338c5b827",
+      "downloaded_utc": "2026-11-03T14:34:09+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_13_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_13_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:12 GMT",
+      "bz2_bytes": 846054,
+      "bz2_sha256": "c0f6dcaa4bb7147f658f38c22049363e623167358fc4b503b474ee939e430a05",
+      "grib2_bytes": 867262,
+      "grib2_sha256": "6169942c380283f647c0a535056800e855362f36734ecf6dfc6b36aaaceed837",
+      "downloaded_utc": "2026-11-03T14:34:10+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_14_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_14_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 800222,
+      "bz2_sha256": "3294d6b018b56fd493941cb9e42a8c0f247fd8b9843b869af09649051d4f9d3e",
+      "grib2_bytes": 821169,
+      "grib2_sha256": "ebc32cc4f92be110f22755411ebf160836f6188961845fb113c35d0524cf5e7d",
+      "downloaded_utc": "2026-11-03T14:34:10+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_15_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_15_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 750714,
+      "bz2_sha256": "e94ae2f2556f6790dbb484bd46081f8126632c54c8887bede9b5f6934e8ef5ee",
+      "grib2_bytes": 772569,
+      "grib2_sha256": "51524055b3a34f40a2f95fb8b789b112d403def571080cbdfe330a6c92787e79",
+      "downloaded_utc": "2026-11-03T14:34:10+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_16_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_16_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 816153,
+      "bz2_sha256": "8c870028414ab659669e4713602dc06c40c288d74450c1668b1095ceb0e2c5b5",
+      "grib2_bytes": 837378,
+      "grib2_sha256": "7a46240abbd3fc8a6e84ad8ae83a9f933961b3b06c33604545cbaaa02cbaccf2",
+      "downloaded_utc": "2026-11-03T14:34:10+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_17_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_17_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 770667,
+      "bz2_sha256": "58893ebe2c2926e2f6e1c99c3f79bed26d3e57a7173f764ac2785557b9601355",
+      "grib2_bytes": 792623,
+      "grib2_sha256": "24375c4cb33ed85eace0785f720dbe1aa9ee8cfc6a4444ec0a82eb452e1decd6",
+      "downloaded_utc": "2026-11-03T14:34:11+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_18_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_18_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 730965,
+      "bz2_sha256": "92ce09f3bbb640144f719832aafb91077ae00efb36df442c895f638f1614e779",
+      "grib2_bytes": 754219,
+      "grib2_sha256": "5386fd995794ccbbd8981065ae512d28505d61183454daea32152555044864fd",
+      "downloaded_utc": "2026-11-03T14:34:11+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_19_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_19_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 802965,
+      "bz2_sha256": "acf17796988f89f9de1a4a364c11dfcc6858d484777bcf7731509d7407a778cf",
+      "grib2_bytes": 826140,
+      "grib2_sha256": "abeac95ea1b7f4b4d3a456390e1178a9de040198d0f3e647e7a804d860557c26",
+      "downloaded_utc": "2026-11-03T14:34:11+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_20_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_20_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 877874,
+      "bz2_sha256": "78f5a94b8db18209c83116f56d6a075ce2671977f724ab15785d66e58864a580",
+      "grib2_bytes": 899905,
+      "grib2_sha256": "931de5efbe3df13eb82b3d7c9080eba97f8d03331cf16d92f331a6cb24aa07dc",
+      "downloaded_utc": "2026-11-03T14:34:12+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_21_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_21_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 829785,
+      "bz2_sha256": "556e30444a2c1d920a932396c051e872f9134dec528c5022966abda4cd0e1abc",
+      "grib2_bytes": 852153,
+      "grib2_sha256": "15fe70ad5d55a5fdf1e0176aee24dcefcb89624c5d3ae7d5e66a38e493e0f0ca",
+      "downloaded_utc": "2026-11-03T14:34:12+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_22_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_22_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 889342,
+      "bz2_sha256": "2888cfacf3a6e44d90531f476ccab7ed61720a4e8076c812a0daca0e6ff17ac5",
+      "grib2_bytes": 910886,
+      "grib2_sha256": "7d2801ed96360ea69684201f9d96524545878195a099e0cbb1aacdf6abed3895",
+      "downloaded_utc": "2026-11-03T14:34:12+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_23_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_23_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 948276,
+      "bz2_sha256": "e7bf5231dafb0c1d59dc0744a90a426f1964a278103050fde1b305f207cd8626",
+      "grib2_bytes": 968624,
+      "grib2_sha256": "4734d6d68fd581226078b8943983b7a6fe7f20cd955c29ad81bd0711ff800b63",
+      "downloaded_utc": "2026-11-03T14:34:12+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_24_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_24_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1008275,
+      "bz2_sha256": "c5ee77a3e5fd791a9f35081799f5165c3f3f5ccb09ca20e451a9728d62d3bf16",
+      "grib2_bytes": 1028872,
+      "grib2_sha256": "68557d96d0a190e17d8500cb9692625b02c71ecefc36910338ce7669541bcafa",
+      "downloaded_utc": "2026-11-03T14:34:13+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_25_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_25_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 951309,
+      "bz2_sha256": "ddf526e69ee987b367f4919a5fd88249be7541127ff5fa1d7902fdca363d3610",
+      "grib2_bytes": 972290,
+      "grib2_sha256": "1fc2c7dd9d958b5321d26ed7dda957e19b29278afffa8fff7ac48459d7cb079a",
+      "downloaded_utc": "2026-11-03T14:34:13+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_26_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_26_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1000485,
+      "bz2_sha256": "7ebb31ddcf02339a142778b7c599c5803999a3315bfc36ea9d2bf5b30bf7cce6",
+      "grib2_bytes": 1018860,
+      "grib2_sha256": "30fa9e6abe52481be3d8ef342e892de42b7854e4574678d89c72285ef402d2d4",
+      "downloaded_utc": "2026-11-03T14:34:13+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_27_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_27_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 935537,
+      "bz2_sha256": "151aef0d4f841420f711cc980783fa069a06811b053cf4d819c1e62a3db1280f",
+      "grib2_bytes": 952524,
+      "grib2_sha256": "662faab586c53d7627942548e3660c49b876aff679a01892dabc066fe5cfe48f",
+      "downloaded_utc": "2026-11-03T14:34:13+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_28_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_28_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:12 GMT",
+      "bz2_bytes": 980341,
+      "bz2_sha256": "f3a9e1c96f5ecdd9688ca61c071f6a65225c7dbfe412531b8de8a7e76124a455",
+      "grib2_bytes": 996573,
+      "grib2_sha256": "1af06b8822641a6378953883eb281614e3a3dd331e17832c898516408f48cee8",
+      "downloaded_utc": "2026-11-03T14:34:14+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_29_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_29_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1019908,
+      "bz2_sha256": "7750bdb794caa2447ee11991311d768daa43ab375d8524d390a695e8df3dcd76",
+      "grib2_bytes": 1036202,
+      "grib2_sha256": "d35b5bdd3dab8cc683da634f3ce0f53b7620c5ddffadcda8db8974725cb768c0",
+      "downloaded_utc": "2026-11-03T14:34:14+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_30_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_30_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 947148,
+      "bz2_sha256": "3810d0d0733e75f5a610a3e5758161261ddf7ffbc96ebe34a18a7c365544b3bc",
+      "grib2_bytes": 964356,
+      "grib2_sha256": "42173d954355ff0cc8d98df3c5e68c53c037dde3e880630490e6c217984d0a8a",
+      "downloaded_utc": "2026-11-03T14:34:14+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_31_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_31_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 992296,
+      "bz2_sha256": "ba6c3a3d5fbf0e2ae56b79d0d0dd826e3f5bd362abda53497724c8a8c424686a",
+      "grib2_bytes": 1009161,
+      "grib2_sha256": "f388ff1904889156648e92f1caa284d67aa4aa8339bc0a68816f5ea890ddc2ef",
+      "downloaded_utc": "2026-11-03T14:34:14+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_32_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_32_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1039066,
+      "bz2_sha256": "36e2ed81b663360ed58429080f461fa96d09e6d79f1efe7a254e6ccf302a6100",
+      "grib2_bytes": 1055667,
+      "grib2_sha256": "11ab0f34361b13560ba507cc7fef18a02674d7ef7330fa49f76c76b390f6e4b6",
+      "downloaded_utc": "2026-11-03T14:34:15+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_33_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_33_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 971282,
+      "bz2_sha256": "8d05c887489dc789b56160ac9b3370d8f7431ee2b82140bd476ffe40816b78cf",
+      "grib2_bytes": 987754,
+      "grib2_sha256": "b31dc4d6853e4466cf787911e7566e51f65f1552cbad730a488734078c23d2ff",
+      "downloaded_utc": "2026-11-03T14:34:15+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_34_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_34_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1018468,
+      "bz2_sha256": "9ef2d4816a02c2f4754a32f2b0178d59c10e671140296610028d7e5b40977f68",
+      "grib2_bytes": 1034512,
+      "grib2_sha256": "acfacbeb89493c8baa32d8e1efb0f2cd78aba04342289d04a2bc5880bd50cc6c",
+      "downloaded_utc": "2026-11-03T14:34:15+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_35_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_35_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1064434,
+      "bz2_sha256": "baf74322e53e848fe48ade7637b32a54d0897fc9872cf4ba83f237638e546803",
+      "grib2_bytes": 1079490,
+      "grib2_sha256": "786305d1acbf42f2074c7a18d8e95e7409186192cc34d2ec56e12384ed2528e4",
+      "downloaded_utc": "2026-11-03T14:34:15+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_36_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_36_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 995403,
+      "bz2_sha256": "a9c3d0cf4d75bf97f297207e3cc1de6e68bbc79a058a373a8e217223de17a2c9",
+      "grib2_bytes": 1010984,
+      "grib2_sha256": "aeb0a633ab58d2057f1a5f356d9504c427277de1a37c955881d0fb7e4f6092d5",
+      "downloaded_utc": "2026-11-03T14:34:16+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_37_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_37_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1037427,
+      "bz2_sha256": "e07095d1c0a254ac7c0c3f39da17d64cadf4df1f5848e47bbe523d36e5172612",
+      "grib2_bytes": 1052365,
+      "grib2_sha256": "d6f3ab4c7844c40ecefd9738f5102288fababf08eec19f87dafe462abf81f326",
+      "downloaded_utc": "2026-11-03T14:34:16+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_38_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_38_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1075112,
+      "bz2_sha256": "97d04f38f98f082ec02b5697538217cc9bfb1092620a1a7f46f29df707f6b535",
+      "grib2_bytes": 1089207,
+      "grib2_sha256": "2ac8bc172dc1ca88a5094da32571abcbbff9b051ca22ea92c584ca4de92a9a6d",
+      "downloaded_utc": "2026-11-03T14:34:16+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_39_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_39_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1109421,
+      "bz2_sha256": "2a65d623de16c620ae90d2a2aff2916ee86c7301c6c98c891dc8ba129644a5d9",
+      "grib2_bytes": 1123824,
+      "grib2_sha256": "1fe31d78b3c93aa702a27f8bb49c7f896133c09bc5a46489903dade8ff8633bc",
+      "downloaded_utc": "2026-11-03T14:34:17+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_40_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_40_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1025804,
+      "bz2_sha256": "a8742d10cbccd8b9f85f9343e66f87dc024fbc018cc278cacb70ad026c44683d",
+      "grib2_bytes": 1040576,
+      "grib2_sha256": "04427a653fc2f4caf77e90561d715f37e5b33a28fd9b0ae182902163bed330df",
+      "downloaded_utc": "2026-11-03T14:34:17+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_41_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_41_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1055471,
+      "bz2_sha256": "6525fe62b608a550038f10339a357217a36f14ba27ca5e61640a4b8ef66830de",
+      "grib2_bytes": 1068968,
+      "grib2_sha256": "d703ee2819c2878c18800b0541ca85ae83b927ff75185fdacd48e6ce9d4f1128",
+      "downloaded_utc": "2026-11-03T14:34:17+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_42_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_42_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1090834,
+      "bz2_sha256": "12517c8eff47111e3bd6e198281d4980dc74f433c482e0a22d7fd4614406f3c8",
+      "grib2_bytes": 1102944,
+      "grib2_sha256": "f1f7fb2ac861e3e9f797d192adfdf08937a44804ec3ad8ea915ff7db4e38678d",
+      "downloaded_utc": "2026-11-03T14:34:17+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_43_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_43_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1008389,
+      "bz2_sha256": "59c8b4b7a22e7685436b8aaa090382626ca3d4d4b1fb88002423c3ac3071df9f",
+      "grib2_bytes": 1020942,
+      "grib2_sha256": "ca089adff482a68d16a0190bb1d63cabcf476c0d526147ee371d21e19639137b",
+      "downloaded_utc": "2026-11-03T14:34:18+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_44_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_44_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1038787,
+      "bz2_sha256": "65642faf83f7012150d5a28a926488be0c70a1a1716020f094c686b7289100ef",
+      "grib2_bytes": 1050773,
+      "grib2_sha256": "7cf4800c68b5378f488727076e278789e3d4850cd1916ae45fafe977de7ad193",
+      "downloaded_utc": "2026-11-03T14:34:18+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_45_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_45_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1066682,
+      "bz2_sha256": "6e12bcdc3c084fcd723fd8a6d0721581855f0d7b4ccf762ca139706e98f2cb96",
+      "grib2_bytes": 1078020,
+      "grib2_sha256": "e9a1d9b70e45c2f23af5b84935c8df8994b95938805ae8c7c7bb321d73c28ec9",
+      "downloaded_utc": "2026-11-03T14:34:18+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_46_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_46_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1090564,
+      "bz2_sha256": "54c7d48783c315a9c83e999f4c49f450960d3ec876a2143bb783f20f422a3a4f",
+      "grib2_bytes": 1101234,
+      "grib2_sha256": "25a743eea9c2e56e792903c948a66fc190d1a889fd23c57e6fd77da9f4b00a7b",
+      "downloaded_utc": "2026-11-03T14:34:19+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_47_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_47_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1113424,
+      "bz2_sha256": "67688fe1ef5d9a752ce9db02fb67042313fa16ce9cc7044123ca99b3aa02b665",
+      "grib2_bytes": 1123343,
+      "grib2_sha256": "9583fd59474a1d5c3dfcfe56a2a333394a1e47a4b91ec3c128bb921297c93d88",
+      "downloaded_utc": "2026-11-03T14:34:19+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_48_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_48_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1135537,
+      "bz2_sha256": "489deb3d6fb58ba2a81348df9a58279f68f2f6823d46a5624cc72dcbbf296a8e",
+      "grib2_bytes": 1145030,
+      "grib2_sha256": "a87a8a7d963f0c898ff18be85a6bdcd59ca2fbd7aa9efe1390cfffbb731c3f30",
+      "downloaded_utc": "2026-11-03T14:34:19+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_49_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_49_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1043067,
+      "bz2_sha256": "b9c573aedb8559dbbfcba0e781420f4092afaa87e4c51feeb2e87d73f085f9a5",
+      "grib2_bytes": 1053223,
+      "grib2_sha256": "add37c3ad9d85d25a8c60bb0c25d3f52ffbaf1e4296fa115cdfa9dfd0bab49cc",
+      "downloaded_utc": "2026-11-03T14:34:19+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_50_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_50_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1063681,
+      "bz2_sha256": "e09153b205d6f44aa48aa982d25937a988e76d64c5f2cb82b1b45379362351e0",
+      "grib2_bytes": 1072842,
+      "grib2_sha256": "99269ee4092f3a0051a69ea6dc508b306e5da483410ae4af20a06081db5c7671",
+      "downloaded_utc": "2026-11-03T14:34:20+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_51_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_51_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1084629,
+      "bz2_sha256": "2d6af5bb4741b887667696ba3f199cfd177e1d936c869b433a443d0ede567674",
+      "grib2_bytes": 1092651,
+      "grib2_sha256": "6fb4db021d20717702c7a7b6b659886ba1cbe3df4609c63cc7770738d17ef5ea",
+      "downloaded_utc": "2026-11-03T14:34:20+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_52_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_52_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1106769,
+      "bz2_sha256": "1a41d9797480f91cee01ad0545092f22b87edc132bf0ea05e4f109abb7c92304",
+      "grib2_bytes": 1113961,
+      "grib2_sha256": "a5ea564de61c540ca17ad8ada39858301085fcce6a355bcb51954323cd91bfba",
+      "downloaded_utc": "2026-11-03T14:34:20+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_53_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_53_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1130531,
+      "bz2_sha256": "3e9fbedd1d60fcd6d53e4d3f6773df1675e55d0c4a2d44f65306460a18eb418e",
+      "grib2_bytes": 1136734,
+      "grib2_sha256": "ddc091100bfbf0009d72c63efcd045d6a706ddca85d056069bb640f5e9edd4fb",
+      "downloaded_utc": "2026-11-03T14:34:20+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_54_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_54_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1152887,
+      "bz2_sha256": "0c60be5ee1c0074e1e4178b8902a93a94c9ab732ef883985aecd640f7c4e8ce4",
+      "grib2_bytes": 1157721,
+      "grib2_sha256": "e09bc7c34d82448df894654410c9d7195f7a0c317947feba9ed06d5dea9ab016",
+      "downloaded_utc": "2026-11-03T14:34:21+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_55_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_55_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1172655,
+      "bz2_sha256": "32b6adb5959209a4fec9028ffcfba1aac9565fb1c7a0a0155ae9bfd9dda09396",
+      "grib2_bytes": 1176127,
+      "grib2_sha256": "b520273e4c01c672b0bf19c359e464b2fc3efbe466ff6658062e711b0620c14c",
+      "downloaded_utc": "2026-11-03T14:34:21+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_56_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_56_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1074843,
+      "bz2_sha256": "e4dd4dc89c4e5ad08458f3ceeab09c98488a55fa49fa9f5b849428cb5d4e5fb6",
+      "grib2_bytes": 1078195,
+      "grib2_sha256": "a64a14473694f836393f5e3072dbd66da0a9e2d044dd77b337f126f6c06a803b",
+      "downloaded_utc": "2026-11-03T14:34:21+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_57_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_57_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1088890,
+      "bz2_sha256": "406fcc2cf31bde64e4ab83d308cd7d9b74b8d78ae82806d81578a656ae8ef01e",
+      "grib2_bytes": 1091941,
+      "grib2_sha256": "37fc6887671bed4ab704c186b1139e733fc02eb620423dcecca4fc3ff272c30d",
+      "downloaded_utc": "2026-11-03T14:34:22+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_58_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_58_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1101920,
+      "bz2_sha256": "4b20b8b5983b8b6fd0244b760843bbc7c21f0c8fd34509acd8104c129a08bdd3",
+      "grib2_bytes": 1104022,
+      "grib2_sha256": "5c65c83b94dbbb6a447cc6e893628c00f45c6f1e8c875476cb7161cc27283b71",
+      "downloaded_utc": "2026-11-03T14:34:22+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_59_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_59_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1116438,
+      "bz2_sha256": "4846d66991727368ac51b3c4ee84f09413bd9454db028a32f8f7b30394889290",
+      "grib2_bytes": 1117443,
+      "grib2_sha256": "fddeaccb9264b84e658206371bc1b2dd82576c154e85bc10e576c12c45f8e900",
+      "downloaded_utc": "2026-11-03T14:34:22+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_60_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_60_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1133748,
+      "bz2_sha256": "1e339ed909f6c822e7f9ff509363b6b310963a1264376e33b1a93b77c1a56e37",
+      "grib2_bytes": 1133607,
+      "grib2_sha256": "406b950e58a30ebb07906093542443cf63bb07cca204878e99814d0c0e16295b",
+      "downloaded_utc": "2026-11-03T14:34:22+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_61_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_61_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1147311,
+      "bz2_sha256": "14a8c1f32a951bb6f461e5afedf4012a6e950e6934dd7981b1696fde1675e2db",
+      "grib2_bytes": 1146943,
+      "grib2_sha256": "2650c3e596b9f4f0d8291d92dc7cf553c6975cf99cebe8ab0f42a5cf1211f96e",
+      "downloaded_utc": "2026-11-03T14:34:23+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_62_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_62_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1156340,
+      "bz2_sha256": "0dd22790f35f100bff608f929bf787dbe683d9e41f01a5d04a65836baf129fb9",
+      "grib2_bytes": 1155413,
+      "grib2_sha256": "09915df63c157cd9907f6a4a169108a8e26f84c63703e04e23454cd7005ca971",
+      "downloaded_utc": "2026-11-03T14:34:23+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_63_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_63_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1165289,
+      "bz2_sha256": "805c70476f5878b31019ea317be50c3e6a6598b0a5c10c0ba189b77f235a7f9b",
+      "grib2_bytes": 1163663,
+      "grib2_sha256": "0443f6cb3ea659113bd5cee88c257345c23c543b7ed76942956a1483631da861",
+      "downloaded_utc": "2026-11-03T14:34:23+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_64_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_64_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1171152,
+      "bz2_sha256": "741a27010812812444f9a3074fae581c24c0fb533546fcac2874755099647192",
+      "grib2_bytes": 1169147,
+      "grib2_sha256": "fa10300c29bf6a75f419d60cd0e58f7f767c79614be3fd230359c804b97d8b2a",
+      "downloaded_utc": "2026-11-03T14:34:24+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_65_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_65_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1174372,
+      "bz2_sha256": "38a755c543a63a0f481ad5e30e1407006e57ef79e96aade426726b63036e570e",
+      "grib2_bytes": 1172204,
+      "grib2_sha256": "4f2f950b8445877cbd6cd2aabfbcc8fd6439da45adab2718cd094167d63212ae",
+      "downloaded_utc": "2026-11-03T14:34:24+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_66_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_66_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1176862,
+      "bz2_sha256": "d6c659abe6f7e6673552c6810ac89d0111898064d5917a713c8811b1d576ac9c",
+      "grib2_bytes": 1174388,
+      "grib2_sha256": "e65d41189731862a97c8bc6457eecf3c231be2c949e0dcd28ca5df2eb7b561c4",
+      "downloaded_utc": "2026-11-03T14:34:24+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_67_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_67_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1173796,
+      "bz2_sha256": "23479e7ffa7c704716bd5c474a229d7139313f75a97b9e3f5f0a230579f72aa5",
+      "grib2_bytes": 1171397,
+      "grib2_sha256": "b188d52bcfb366c75256025b2d0324ca55071f1bfe9bcddfd7fbec2a99ac3310",
+      "downloaded_utc": "2026-11-03T14:34:24+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_68_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_68_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1163741,
+      "bz2_sha256": "ed3439415b96044017fbfef048a4c0e56658ffdbf2acd1eab7f62c4c82699de3",
+      "grib2_bytes": 1161764,
+      "grib2_sha256": "06dec740fa384a51ed05971ad83276400e149226f9ff02e655f6e4d32a523ad9",
+      "downloaded_utc": "2026-11-03T14:34:25+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_69_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_69_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1154290,
+      "bz2_sha256": "a8c418594dc9fe4ad6cab4ebba31781d2063403663b29813c3ccaf3a84a6562f",
+      "grib2_bytes": 1153005,
+      "grib2_sha256": "ca7dc80ebf10b21cd0e8f4ea389c6467980d2436a815a3d82128575c97b2bf50",
+      "downloaded_utc": "2026-11-03T14:34:25+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_70_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_70_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1143935,
+      "bz2_sha256": "f0c152723179678a7de00c854a715c4fca25e7fa2d6742a049c5e46cda03badb",
+      "grib2_bytes": 1143388,
+      "grib2_sha256": "817013f4462b07714d833b3f4a9651adc9ade110d4116eff83355f549b5ff3c8",
+      "downloaded_utc": "2026-11-03T14:34:25+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_71_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_71_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1019931,
+      "bz2_sha256": "8c70de913af2e6426aa089855ce154cfc14c637a83adf6cc4d41fbb8e0bd9beb",
+      "grib2_bytes": 1020599,
+      "grib2_sha256": "52f2541f832d934fd0fc717e51fb600bdd75395f1d39a72ef1b729a7e01b3e44",
+      "downloaded_utc": "2026-11-03T14:34:26+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_72_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_72_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1015716,
+      "bz2_sha256": "c5935ae74fc436542dd8a19092b72961fda9185efb875dfa5a59f11b9d92f029",
+      "grib2_bytes": 1016404,
+      "grib2_sha256": "3a01fde30046bc75e2e3fa4f364176627b204f3541c73c77c89bb6eb325c0489",
+      "downloaded_utc": "2026-11-03T14:34:26+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_73_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_73_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1019767,
+      "bz2_sha256": "301c668a8edba0ef209cc0a577bbb753dcf3629b11438d578e7045c66b4872d0",
+      "grib2_bytes": 1020013,
+      "grib2_sha256": "a5e53d03c40fc7dab853cb4d52fd2f37b97e5884527ed31f962a5e555ead29f3",
+      "downloaded_utc": "2026-11-03T14:34:26+00:00"
+    },
+    {
+      "url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib/00/qv/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_74_QV.grib2.bz2",
+      "path": "2026110300/icon-eu_europe_regular-lat-lon_model-level_2026110300_000_74_QV.grib2.bz2",
+      "last_modified": "Tue, 03 Nov 2026 02:40:11 GMT",
+      "bz2_bytes": 1026466,
+      "bz2_sha256": "fed31aec5d11780b29df8e0f845de5e6e52fa2d1830b2872ec107f8f3d906b35",
+      "grib2_bytes": 1025456,
+      "grib2_sha256": "d5d1823f9c46f47a8d6df19cc8038143d2de322cb619761f538243d745ff5125",
+      "downloaded_utc": "2026-11-03T14:34:26+00:00"
+    }
+  ]
+}

@@ -101,9 +101,10 @@ This is an analogue by definition, not identical physics. The partition depends
 on each model's schemes, and no parity claim follows.
 
 **Graupel.** DWD adds `GRAU_GSP` (0,1,75) to TOT_PREC only for ICON-D2.
-ICON-EU publishes no graupel field and needs none. An unpublished component
-would show as a positive TOT_PREC residual, and no cell exceeds the closure
-bound positively at any sample step.
+ICON-EU publishes no graupel field and needs none. The closure detects an
+unpublished component only where it lifts the TOT_PREC residual above the
+closure bound (at most 0.0171 kg m-2 per cell in this sample). No cell exceeds
+the bound positively at any sample step.
 
 **Closure rule (fail closed).** For each step, every cell must satisfy
 
@@ -127,7 +128,7 @@ bound is inclusive, so the all-zero run-start anchor (all q = 0) passes.
 | 78, 81, 84 | 3 cells beyond the bound, all negative | `REJECT` |
 
 The three cells lie at the eastern domain edge, 69.50–69.56° N and
-62.44–62.50° E (columns 1375–1376 of 1377). Their residuals are −0.037,
+62.44–62.50° E (0-based columns 1375–1376 of 1377). Their residuals are −0.037,
 −0.056 and −0.030 kg m-2, so the components exceed TOT_PREC by up to 3.3 times
 the 0.0171 kg m-2 bound. The residuals are identical at 78, 81 and 84 h, so
 they formed between 48 and 78 h. The sample has no steps in between, and the
@@ -139,8 +140,8 @@ the half-quantum diagnostic but inside this bound.
 **Packing identity.** WMO template note 83 states that 5.42 scales and
 references the data exactly as template 5.0, `Y·10^D = R + X·2^E`
 (Regulation 92.9.4, Note 4). The resulting integers X are then coded with the
-lossless CCSDS 121.0 standard. Every sample message has `R = 0`, `D = 0` and no
-bitmap. Each uses 16 bits, except the run-start fields, which use 0 bits and
+lossless CCSDS 121.0 standard. Every sample message has `R = +0.0`, `D = 0` and
+no bitmap. Each uses 16 bits, except the run-start fields, which use 0 bits and
 are all zero.
 
 **Bound.** The derivation is the #216 one, with q = 2^E·10^-D in kg m-2:
@@ -153,19 +154,25 @@ Take a pair whose true component accumulations do not decrease. A component
 with identical (R, E, D) cannot decrease. A component with different keys
 decreases by less than `q_prev + q_cur`.
 
-In the admitted class, R = 0, D = 0 and `bitsPerValue ≤ 24`. Then every
-`Y = X·2^E` is exact in `f32` and `f64`, and the `f64` sum of two components is
-exact. The only further rounding is the `f32` conversion of each canonical sum:
+In the admitted class, R = +0.0, D = 0 and `bitsPerValue ≤ 16` (the evidenced
+width). Then every `Y = X·2^E` is exact in `f64`. The `f64` sum of the two
+components is exact as long as their binary scale factors differ by at most 37,
+since 16 + 37 = 53 significand bits; the class requires this. The only further
+rounding is the single round-to-nearest `f32` conversion of each canonical sum.
+It is bounded by half the `f32` spacing, and `ulp_f32(c)/2`, the upward
+spacing, bounds that conservatively:
 
 ```text
 B = Σ_{k: (R,E,D) differ} (q_prev,k + q_cur,k) + ulp_f32(c_prev)/2 + ulp_f32(c_cur)/2   [kg m-2]
-admit iff d = c_cur − c_prev < 0, not all components have identical keys, and −d < B
+admit iff d = c_cur − c_prev < 0, not all components have identical keys, and −d < B (strict)
 q = 0 for the bitsPerValue 0 run-start anchor
 ```
 
 GRIB does not record the encoder's rounding mode, and the bound does not
 assume one. Unlike #216, no `2^-50` terms are needed: decoding involves no
-unit scale, and the sum is exact.
+unit scale, and the sum is exact inside the class. Samples wider than 16 bits
+or components more than 37 binary scales apart would break that premise, and
+they stay `UNRESOLVED`.
 
 **Diagnostic tight bound.** With R = 0, nested power-of-two levels and
 round-to-nearest, a component decrease is at least `−max(q_prev, q_cur)/2`.
@@ -186,7 +193,8 @@ This is consistent with round-to-nearest but is reported as a diagnostic only.
 
 No canonical cell violates `B`. The LSP 1 → 2 h pair shows why the sum is
 taken per component: `RAIN_GSP` keeps E = −11, so only `SNOW_GSP` contributes
-to `B`.
+to `B`. The 48 → 78 h decreases are quantization-compatible, but step 78 fails
+the closure, so their pairs are rejected (§2).
 
 **Two decoders.** The 45 messages were decoded in the pinned
 `flexpart-fortran` container:
@@ -197,7 +205,10 @@ to `B`.
 The two decodings are bit-identical. Each value hash also equals the #230
 evidence, which records equality with ecCodes 2.48.0. The self-test re-decodes
 the committed subset with both decoders and reproduces the frozen component
-pairs, which cover E +1, E +2, identical keys and the run-start anchor.
+pairs, which cover E +1, E +2, identical keys and the run-start anchor. It
+skips where a decoder is missing. A skip is not proof:
+`ICON_PRECIP_REQUIRE_DECODERS=1` turns it into a failure and is set for the
+container run below.
 
 **Projection** is unchanged from #216/#219:
 
@@ -210,32 +221,42 @@ pairs, which cover E +1, E +2, identical keys and the run-start anchor.
 
 | Class | Verdict |
 | --- | --- |
-| ICON-EU regular-lat-lon, centre 78; four components plus TOT_PREC; template 5.42 with R = 0, D = 0, 1–24 bits (0 only at length 0), no bitmap; PDT 4.8 accumulation from the run start in minutes; reset = reference; closure verified | `ADMIT`; decreases `ADMIT_BOUNDED` inside `B` |
+| ICON-EU octet identity (centre 78, generating process type 2 / identifier 2, grid 3.0 1377 × 657 from 29.5° N 336.5° E at 0.0625°, scanning 64, earth shape 6); four components plus TOT_PREC; template 5.42 with R = +0.0, D = 0, 1–16 bits (0 only at length 0), component E span ≤ 37, no bitmap; PDT 4.8 accumulation from the run start, one time range, increment type 2, both time units minutes, end of interval = reference + length = valid time; reset = reference; closure verified | `ADMIT`; decreases `ADMIT_BOUNDED` inside `B` |
 | Decrease with identical (R, E, D) in every component, or `−d ≥ B` | `REJECT` |
 | Closure violated in any cell of the step | `REJECT` |
 | Missing, duplicate or foreign component (e.g. graupel or a convective component in LSP) | `REJECT` |
-| Time, reset, run or statistical-processing inconsistency; missing, non-finite or negative value | `REJECT` |
-| TOT_PREC absent | `UNRESOLVED` |
-| ICON global, ICON-D2 (graupel in TOT_PREC), ICON-EU-EPS, ICON-EU-NA2, native grid, third-party re-encodings | `UNRESOLVED` |
-| Templates 5.0/5.2/5.3/5.40/5.41/5.200, bitmap, D ≠ 0, R ≠ 0, more than 24 bits, 0 bits after the run start | `UNRESOLVED` |
-| Source unit other than kg m-2, other centres, GRIB1, NetCDF | `UNRESOLVED` |
+| Time, reset, run, time-unit or statistical-processing inconsistency; missing, non-finite, non-`f32` or negative value | `REJECT` |
+| TOT_PREC absent, or a closure result that is not a boolean | `UNRESOLVED` |
+| Other source identity: ICON global, ICON-D2 (graupel in TOT_PREC), ICON-EU-EPS, ICON-EU-NA2, native grid, other grids, generating processes or centres, third-party re-encodings | `UNRESOLVED` |
+| Templates 5.0/5.2/5.3/5.40/5.41/5.200, bitmap, D ≠ 0, R ≠ +0.0 (including −0.0), more than 16 bits, component E span > 37, 0 bits after the run start | `UNRESOLVED` |
+| Source unit other than kg m-2, GRIB1, NetCDF | `UNRESOLVED` |
+
+The source identity is read from octets. It never comes from the file name,
+which the provider does not trust. `source_unit` is not a message key: it is
+the WMO amount unit that the provider assigns from that octet identity.
 | Every current input (no provider populates component records) | `UNRESOLVED`; runtime rejects, as today |
 
-The artifact has 35 controls, each mutating the genuine LSP 1 → 2 h pair.
-Together they reach all 21 rule outcomes, among them the exact boundary: one
-`f32` step inside `B` is admitted, and the step at or beyond `B` is rejected.
+The artifact has 47 controls, each mutating the genuine LSP 1 → 2 h pair.
+Together they reach all 22 rule outcomes. The exact boundary uses a synthetic
+level of 1.5 kg m-2, where both ulp terms are 2^-23:
+
+- a decrease exactly equal to `B` is rejected, which locks the strict `<`;
+- one `f32` step inside `B` is admitted.
+
 The 8 genuine extreme-decrease cells, one per canonical pair with decreases,
-are all `ADMIT_BOUNDED`.
+follow the rule: 6 are `ADMIT_BOUNDED`. The two 48 → 78 h rows are
+`REJECT component_closure_violation`, because step 78 fails the closure.
 
 ## 5. Handoff
 
 - **#32 provider.** For each step and field, the provider must:
   - decode the four components and TOT_PREC from raw octets;
-  - record the component packing keys named in `handoff.provider_32`;
+  - record the component keys named in `handoff.provider_32` (source and grid
+    identity, time-range keys, packing keys), all read from octets;
   - evaluate the closure on decoded `f64` values;
   - produce `c = f32(Y_rain + Y_snow)`.
 
-  Nothing may come from ecCodes labels or defaults.
+  Nothing may come from file names, ecCodes labels or defaults.
 - **#75/#90 → [#240](https://github.com/Grodahn/flexpart-gpu/issues/240).**
   The #219 `SourceQuantization` record holds one GRIB1 `grid_simple` message
   per field. #240 extends it to two component records plus the closure result
@@ -266,16 +287,24 @@ python -I scripts/provider/test_icon_eu_precipitation_decision.py
 ```
 
 ```bash
+docker run --rm -e ICON_PRECIP_REQUIRE_DECODERS=1 -v "$PWD:/repo:ro" --entrypoint sh flexpart-fortran:latest -c 'cd /tmp && python3 -I /repo/scripts/provider/test_icon_eu_precipitation_decision.py'
+```
+
+```bash
 cargo test --test icon_eu_precipitation_decision
 ```
 
 - `evidence` fails closed on:
   - a byte difference from the manifest;
   - a disagreement between ecCodes and libaec;
-  - a value hash that differs from #230;
+  - a value hash that differs from #230, or a #230 row without two-version equality;
+  - a source or grid identity that differs from the #230 ICON-EU pin;
   - a parameter or length that does not match the file name.
 - `build` regenerates only `evidence_sha256`, `sample_step_admission`,
   `genuine_rows` and `controls`. The self-test requires that rebuild to be
   byte-identical.
-- The two-decoder self-test runs where ecCodes and libaec are installed (all
-  9 tests pass in the pinned container). Elsewhere it is skipped.
+- The two-decoder self-test runs where ecCodes and libaec are installed. All
+  9 tests pass in the pinned container with `ICON_PRECIP_REQUIRE_DECODERS=1`.
+  Elsewhere the decoder test is skipped, which is not decoder proof.
+- The Rust lock also fails when the #230 manifest or decoded evidence changes
+  after this evidence was generated.

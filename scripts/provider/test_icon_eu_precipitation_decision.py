@@ -5,6 +5,8 @@ The always-run tests use the committed decision, evidence and raw GRIB2 bytes
 with the independent octet reader only. The two-decoder re-decode of the
 committed raw subset (ecCodes plus libaec) runs when both libraries are
 installed, as in the pinned flexpart-fortran container, and is skipped otherwise.
+A skip is not decoder proof: set ICON_PRECIP_REQUIRE_DECODERS=1 (as in the container
+run of the decision note) to turn a missing decoder into a failure.
 
 Run: python -I scripts/provider/test_icon_eu_precipitation_decision.py
 """
@@ -32,6 +34,7 @@ MANIFEST = os.path.join(AUDIT, "retrieval-manifest.json")
 RAW_ROOTS = (os.path.join(FIXTURE, "raw"), os.path.join(AUDIT, "raw"))
 COMMITTED_SERIES = ("SNOW_CON", "SNOW_GSP")
 COMMITTED_STEPS = (0, 1, 2, 3, 47, 48)
+REQUIRE_DECODERS = os.environ.get("ICON_PRECIP_REQUIRE_DECODERS") == "1"
 
 
 def load(path):
@@ -82,16 +85,23 @@ class DecisionPolicyTest(unittest.TestCase):
                 self.assertEqual((verdict, code), (control["expected_verdict"], control["expected_code"]))
                 self.assertEqual(bound, control["bound_kg_m2"])
 
-    def test_icon_precip_genuine_rows_are_admitted_bounded(self):
+    def test_icon_precip_genuine_rows_follow_quantization_and_closure(self):
+        admitted = 0
         self.assertEqual(len(self.decision["genuine_rows"]), 8)
         for row in self.decision["genuine_rows"]:
             with self.subTest(row=row["name"]):
                 verdict, code, _ = decision.classify_pair(row["field"], row["previous"], row["current"])
-                self.assertEqual((verdict, code), ("ADMIT_BOUNDED", "quantization_compatible_decrease"))
+                self.assertEqual((verdict, code), (row["verdict"], row["code"]))
+                closed = row["previous"]["closure_verified"] and row["current"]["closure_verified"]
+                expected = (("ADMIT_BOUNDED", "quantization_compatible_decrease") if closed
+                            else ("REJECT", "component_closure_violation"))
+                self.assertEqual((verdict, code), expected)
+                admitted += verdict == "ADMIT_BOUNDED"
+        self.assertEqual(admitted, 6)
 
     def test_icon_precip_controls_cover_every_code(self):
         codes = {control["expected_code"] for control in self.decision["controls"]}
-        self.assertEqual(len(codes), 21)
+        self.assertEqual(len(codes), 22)
         self.assertTrue({"ADMIT_BOUNDED", "REJECT", "UNRESOLVED", "OUTSIDE_RULE"}
                         <= {control["expected_verdict"] for control in self.decision["controls"]})
 
@@ -144,7 +154,7 @@ class RawFixtureTest(unittest.TestCase):
                 expected = evidence_message(self.evidence, variable, step)
                 digest = decision.sha256_bytes(message)
                 self.assertEqual(digest, expected["packing"]["message_sha256"])
-                self.assertEqual(decision.packing_record(sections.parse(message), digest), expected["packing"])
+                self.assertEqual(decision.packing_record(message), expected["packing"])
 
     def test_icon_precip_mutated_sample_fails_closed(self):
         source = committed_path("TOT_PREC", 0)
@@ -157,20 +167,24 @@ class RawFixtureTest(unittest.TestCase):
             with self.assertRaisesRegex(decision.EvidenceError, "pinned retrieval manifest"):
                 decision.read_messages(directory, decision.load_manifest(MANIFEST), {}, None, None, None)
 
+    def skip_or_fail(self, reason):
+        if REQUIRE_DECODERS:
+            self.fail(f"{reason}; ICON_PRECIP_REQUIRE_DECODERS=1 forbids skipping the decoder proof")
+        self.skipTest(reason)
+
     def test_icon_precip_two_decoders_reproduce_committed_evidence(self):
         try:
             import eccodes
             import numpy
         except ImportError:
-            self.skipTest("ecCodes/numpy not installed")
+            self.skip_or_fail("ecCodes/numpy not installed")
         libaec = sections.load_libaec()
         if libaec is None:
-            self.skipTest("libaec not installed")
+            self.skip_or_fail("libaec not installed")
         decoded = {}
         for variable, step, path in self.committed():
             message = read(path)
-            parsed = sections.parse(message)
-            record = decision.packing_record(parsed, decision.sha256_bytes(message))
+            record = decision.packing_record(message)
             integers = decision.decode_integers(message, libaec, numpy)
             values, _ = decision.eccodes_values(message, eccodes, numpy)
             independent = record["referenceValue"] + integers * (decision.quantum(record) or 1.0)

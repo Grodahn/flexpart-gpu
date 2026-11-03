@@ -45,8 +45,36 @@ DWD_CENTRE = 78
 CCSDS_ENCODING = "grib2_template_5_42_ccsds"
 ACCUMULATION = 1
 MINUTES = 0
+# WMO code table 4.11 value 2: same forecast start, forecast time incremented.
+SAME_START_FORECAST_INCREMENTED = 2
 SECONDS_PER_MINUTE = 60
+# Decision-derived amount unit of an accumulated rate parameter (WMO code table 4.10
+# note 92); it is assigned by the provider from the octet identity, never read from
+# a decoder label, because GRIB2 carries no unit field.
 SOURCE_UNIT = "kg m-2"
+# Octet identity of the DWD ICON-EU forecast source pinned by #230 (section 1 centre,
+# section 4 octets 12 and 14, section 3 template 3.0 in micro-degrees).
+ICON_EU_SOURCE = {
+    "centre": DWD_CENTRE,
+    "typeOfGeneratingProcess": 2,
+    "generatingProcessIdentifier": 2,
+    "gridDefinitionTemplateNumber": 0,
+    "shapeOfTheEarth": 6,
+    "Ni": 1377,
+    "Nj": 657,
+    "latitudeOfFirstGridPoint": 29500000,
+    "longitudeOfFirstGridPoint": 336500000,
+    "latitudeOfLastGridPoint": 70500000,
+    "longitudeOfLastGridPoint": 62500000,
+    "iDirectionIncrement": 62500,
+    "jDirectionIncrement": 62500,
+    "scanningMode": 64,
+}
+# Evidenced packed width (all sample messages); wider samples have no decoder proof.
+MAX_ADMITTED_BITS = 16
+# The f64 sum X_a 2^E_a + X_b 2^E_b with X < 2^16 is exact iff the spanned bits fit
+# the 53-bit significand: |E_a - E_b| + 16 <= 53.
+MAX_COMPONENT_EXPONENT_SPAN = 53 - MAX_ADMITTED_BITS
 TOTAL = "TOT_PREC"
 # WMO code table 4.2-0-1 parameter numbers (discipline 0, category 1).
 PARAMETER_NUMBERS = {
@@ -90,6 +118,15 @@ def packing_tuple(record):
     return (record["referenceValue"], record["binaryScaleFactor"], record["decimalScaleFactor"])
 
 
+def is_f32(value):
+    """Whether a Python float is exactly representable as an IEEE ``f32``."""
+    return struct.unpack("<f", struct.pack("<f", value))[0] == value
+
+
+def is_positive_zero(value):
+    return value == 0.0 and math.copysign(1.0, value) > 0
+
+
 def ulp_f32(value):
     """Spacing from a finite non-negative ``f32`` value to the next larger ``f32``."""
     bits = struct.unpack("<I", struct.pack("<f", value))[0]
@@ -99,11 +136,16 @@ def ulp_f32(value):
 def _admitted_packing(record):
     if record["encoding"] != CCSDS_ENCODING or record["bitmap_present"]:
         return False
-    if record["decimalScaleFactor"] != 0 or record["referenceValue"] != 0.0:
+    if record["decimalScaleFactor"] != 0 or not is_positive_zero(record["referenceValue"]):
         return False
     if record["bitsPerValue"] == 0:
         return record["lengthOfTimeRange"] == 0
-    return 1 <= record["bitsPerValue"] <= 24
+    return 1 <= record["bitsPerValue"] <= MAX_ADMITTED_BITS
+
+
+def _exact_component_sum(records):
+    exponents = [r["binaryScaleFactor"] for r in records if r["bitsPerValue"] > 0]
+    return not exponents or max(exponents) - min(exponents) <= MAX_COMPONENT_EXPONENT_SPAN
 
 
 def classify_field(field, observation):
@@ -120,26 +162,28 @@ def classify_field(field, observation):
         return "REJECT", "component_set_mismatch"
     if len({r["message_sha256"] for r in records}) != len(records):
         return "REJECT", "packing_provenance_mismatch"
-    if any(r["centre"] != DWD_CENTRE or r["product"] != PRODUCT for r in records):
+    if any(any(r[key] != value for key, value in ICON_EU_SOURCE.items()) for r in records):
         return "UNRESOLVED", "unsupported_source_class"
-    if any(not _admitted_packing(r) for r in records):
+    if any(not _admitted_packing(r) for r in records) or not _exact_component_sum(records):
         return "UNRESOLVED", "unsupported_packing"
     if any(r["source_unit"] != SOURCE_UNIT for r in records):
         return "UNRESOLVED", "unsupported_conversion"
     statistics = {(r["productDefinitionTemplateNumber"], r["typeOfStatisticalProcessing"],
-                   r["numberOfTimeRanges"], r["indicatorOfUnitOfTimeRange"], r["forecastTime"])
+                   r["numberOfTimeRanges"], r["typeOfTimeIncrement"], r["indicatorOfUnitOfTimeRange"],
+                   r["indicatorOfUnitForTimeRange"], r["forecastTime"])
                   for r in records}
-    if statistics != {(8, ACCUMULATION, 1, MINUTES, 0)}:
+    if statistics != {(8, ACCUMULATION, 1, SAME_START_FORECAST_INCREMENTED, MINUTES, MINUTES, 0)}:
         return "REJECT", "statistical_processing_mismatch"
-    runs = {(r["forecast_reference_s"], r["lengthOfTimeRange"]) for r in records}
+    runs = {(r["forecast_reference_s"], r["lengthOfTimeRange"], r["end_of_interval_s"]) for r in records}
     if len(runs) != 1:
         return "REJECT", "run_identity_mismatch"
-    reference, length_minutes = runs.pop()
-    if (observation["reset_s"] != reference
-            or observation["valid_time_s"] != reference + SECONDS_PER_MINUTE * length_minutes):
+    reference, length_minutes, end_of_interval = runs.pop()
+    valid_time = reference + SECONDS_PER_MINUTE * length_minutes
+    if (observation["reset_s"] != reference or end_of_interval != valid_time
+            or observation["valid_time_s"] != valid_time):
         return "REJECT", "run_identity_mismatch"
     closure = observation.get("closure_verified")
-    if closure is None:
+    if not isinstance(closure, bool):
         return "UNRESOLVED", "missing_closure_reference"
     if not closure:
         return "REJECT", "component_closure_violation"
@@ -168,6 +212,8 @@ def classify_pair(field, previous, current):
         return "REJECT", "missing_value", None
     if any(not math.isfinite(value) for value in values):
         return "REJECT", "non_finite_value", None
+    if any(not is_f32(value) for value in values):
+        return "REJECT", "non_f32_canonical_value", None
     if any(value < 0 for value in values):
         return "REJECT", "negative_accumulated_amount", None
     times = [previous.get("valid_time_s"), current.get("valid_time_s"),
@@ -238,22 +284,46 @@ def epoch_seconds(timestamp):
     return int(parsed.replace(tzinfo=datetime.timezone.utc).timestamp())
 
 
-def packing_record(parsed, digest):
+def packing_record(message):
+    """Decision record of one message, every key read from its octets.
+
+    Only ``encoding`` (implied by template 5.42) and ``source_unit`` (the WMO amount
+    unit of an accumulated rate parameter) are decision-derived; nothing comes from
+    a file name or a decoder label.
+    """
+    parsed = sections.parse(message)
+    found = sections.sections(message)
+    grid, product_octets = found[3], found[4]
     rep, product = parsed["representation"], parsed["product"]
     return {
         "encoding": CCSDS_ENCODING,
-        "message_sha256": digest,
+        "message_sha256": sha256_bytes(message),
         "centre": parsed["identification"]["centre"],
-        "product": PRODUCT,
+        "typeOfGeneratingProcess": product["type_of_generating_process"],
+        "generatingProcessIdentifier": product_octets[13],
+        "gridDefinitionTemplateNumber": parsed["grid"]["template"],
+        "shapeOfTheEarth": grid[14],
+        "Ni": sections.u(grid, 30, 4),
+        "Nj": sections.u(grid, 34, 4),
+        "latitudeOfFirstGridPoint": sections.s(grid, 46, 4),
+        "longitudeOfFirstGridPoint": sections.s(grid, 50, 4),
+        "latitudeOfLastGridPoint": sections.s(grid, 55, 4),
+        "longitudeOfLastGridPoint": sections.s(grid, 59, 4),
+        "iDirectionIncrement": sections.u(grid, 63, 4),
+        "jDirectionIncrement": sections.u(grid, 67, 4),
+        "scanningMode": grid[71],
         "discipline": parsed["discipline"],
         "parameterCategory": product["parameter_category"],
         "parameterNumber": product["parameter_number"],
         "productDefinitionTemplateNumber": product["template"],
         "typeOfStatisticalProcessing": product.get("statistical_processing"),
         "numberOfTimeRanges": product.get("time_range_count"),
+        "typeOfTimeIncrement": product.get("time_increment_type"),
         "indicatorOfUnitOfTimeRange": product["unit_of_time_range"],
+        "indicatorOfUnitForTimeRange": product.get("unit_of_statistical_range"),
         "forecastTime": product["forecast_time"],
         "lengthOfTimeRange": product.get("statistical_range_length"),
+        "end_of_interval_s": epoch_seconds(product["end_of_interval"]) if "end_of_interval" in product else None,
         "forecast_reference_s": epoch_seconds(parsed["identification"]["reference_time"]),
         "referenceValue": rep["reference_value"],
         "binaryScaleFactor": rep["binary_scale_factor"],
@@ -288,7 +358,9 @@ def read_messages(sample, manifest, audit_rows, eccodes, libaec, numpy):
             if entry is None or entry["grib2_sha256"] != digest:
                 raise EvidenceError(f"{name}: bytes differ from the pinned retrieval manifest")
             parsed = sections.parse(message)
-            record = packing_record(parsed, digest)
+            record = packing_record(message)
+            if any(record[key] != value for key, value in ICON_EU_SOURCE.items()):
+                raise EvidenceError(f"{name}: source or grid identity differs from the #230 ICON-EU pin")
             if (record["parameterNumber"] != PARAMETER_NUMBERS[variable]
                     or record["lengthOfTimeRange"] != SECONDS_PER_MINUTE * step):
                 raise EvidenceError(f"{name}: parameter or accumulation length differs from the file name")
@@ -301,7 +373,8 @@ def read_messages(sample, manifest, audit_rows, eccodes, libaec, numpy):
                 raise EvidenceError(f"{name}: ecCodes and libaec values differ")
             values_hash = sha256_bytes(values.astype("<f8").tobytes())
             audit = audit_rows.get(name)
-            if audit is None or audit["values"]["values_sha256_f8le"] != values_hash:
+            if (audit is None or audit["values"]["values_sha256_f8le"] != values_hash
+                    or audit["values_identical_across_decoders"] is not True):
                 raise EvidenceError(f"{name}: values differ from the #230 two-version evidence")
             messages[(variable, step)] = {
                 "record": record, "grid": parsed["grid"], "integers": integers, "values": values,
@@ -314,7 +387,7 @@ def read_messages(sample, manifest, audit_rows, eccodes, libaec, numpy):
                     "decoders_bit_identical": identical,
                     "values_sha256_f8le": values_hash,
                     "values_sha256_matches_230_evidence": True,
-                    "values_identical_eccodes_2_24_2_and_2_48_0_per_230": audit["values_identical_across_decoders"],
+                    "values_identical_eccodes_2_24_2_and_2_48_0_per_230": True,
                     "eccodes_labels": {"2.24.2": labels, "2.48.0": audit["labels"]["secondary"]},
                 },
             }
@@ -355,7 +428,7 @@ def canonical_sum(numpy, messages, parts, step):
     return total.astype(numpy.float32)
 
 
-def composite_pair(numpy, messages, field, parts, before_step, after_step):
+def composite_pair(numpy, messages, closure_by_step, field, parts, before_step, after_step):
     c_before = canonical_sum(numpy, messages, parts, before_step)
     c_after = canonical_sum(numpy, messages, parts, after_step)
     source = 0.0
@@ -380,19 +453,21 @@ def composite_pair(numpy, messages, field, parts, before_step, after_step):
         index = int(numpy.argmin(delta))
         result["genuine_row"] = {
             "cell": index,
-            "previous": genuine_observation(messages, parts, before_step, float(c_before[index]), index),
-            "current": genuine_observation(messages, parts, after_step, float(c_after[index]), index),
+            "previous": genuine_observation(messages, parts, before_step, float(c_before[index]), index,
+                                            closure_by_step[before_step]),
+            "current": genuine_observation(messages, parts, after_step, float(c_after[index]), index,
+                                           closure_by_step[after_step]),
         }
     return result
 
 
-def genuine_observation(messages, parts, step, canonical, index):
+def genuine_observation(messages, parts, step, canonical, index, closure_verified):
     first = messages[(parts[0], step)]["record"]
     return {
         "canonical_value": canonical,
         "valid_time_s": first["forecast_reference_s"] + SECONDS_PER_MINUTE * first["lengthOfTimeRange"],
         "reset_s": first["forecast_reference_s"],
-        "closure_verified": True,
+        "closure_verified": closure_verified,
         "component_values_kg_m2": {part: float(messages[(part, step)]["values"][index]) for part in parts},
         "components": [messages[(part, step)]["record"] for part in parts],
     }
@@ -441,6 +516,8 @@ def build_evidence(sample, manifest_path, audit_path):
     manifest = load_manifest(manifest_path)
     messages = read_messages(sample, manifest, load_audit_rows(audit_path), eccodes, libaec, numpy)
     pairs = list(zip(STEPS, STEPS[1:]))
+    closures = [closure(numpy, messages, step) for step in STEPS]
+    closure_by_step = {entry["step"]: entry["closure_verified"] for entry in closures}
     return {
         "schema": EVIDENCE_SCHEMA,
         "version": SCHEMA_VERSION,
@@ -458,9 +535,9 @@ def build_evidence(sample, manifest_path, audit_path):
         "messages": [messages[(variable, step)]["summary"] for variable in VARIABLES for step in STEPS],
         "component_pairs": [component_pair(numpy, messages[(name, a)], messages[(name, b)])
                             for name in VARIABLES for a, b in pairs],
-        "canonical_pairs": [composite_pair(numpy, messages, field, parts, a, b)
+        "canonical_pairs": [composite_pair(numpy, messages, closure_by_step, field, parts, a, b)
                             for field, parts in COMPOSITION.items() for a, b in pairs],
-        "closure": [closure(numpy, messages, step) for step in STEPS],
+        "closure": closures,
     }
 
 
@@ -505,13 +582,14 @@ def control_cases(evidence):
     _, bound = admission_bound(previous, current)
     level = previous["canonical_value"]
     step = ulp_f32(level)
+    exact_bound_current = exact_bound_value(previous, current)
     cases = [
         ("genuine LSP 1->2 decrease", field, previous, current),
         ("flat pair is an ordinary interval", field, previous, mutate(current, canonical_value=level)),
         ("decrease just inside B", field, previous,
-         mutate(current, canonical_value=largest_f32_above(level - bound))),
-        ("decrease equal to or beyond B", field, previous,
-         mutate(current, canonical_value=smallest_f32_at_or_below(level - bound))),
+         mutate(current, canonical_value=next_f32_above(level - bound))),
+        ("decrease just beyond B", field, previous,
+         mutate(current, canonical_value=f32_at_or_below(level - bound))),
         ("twice the bound", field, previous, mutate(current, canonical_value=level - 2 * bound)),
         ("hidden restart to zero", field, previous, mutate(current, canonical_value=0.0)),
         ("identical packing in both components", field, previous,
@@ -531,27 +609,45 @@ def control_cases(evidence):
         ("duplicate message", field, previous,
          mutate_component(current, 1, message_sha256=current["components"][0]["message_sha256"])),
         ("other centre", field, previous, mutate_component(current, 0, centre=7)),
-        ("other DWD product (ICON-D2)", field, previous,
-         mutate_component(current, 0, product="icon-d2_germany_regular-lat-lon")),
+        ("other grid (e.g. ICON-D2)", field, previous, mutate_component(current, 0, Ni=1215)),
+        ("ensemble generating process", field, previous, mutate_component(current, 0, typeOfGeneratingProcess=4)),
+        ("other generating process identifier", field, previous,
+         mutate_component(current, 0, generatingProcessIdentifier=1)),
         ("simple packing template 5.0", field, previous,
          mutate_component(current, 0, encoding="grib2_template_5_0_simple")),
         ("bitmap present", field, previous, mutate_component(current, 0, bitmap_present=True)),
         ("decimal scale factor", field, previous, mutate_component(current, 0, decimalScaleFactor=1)),
         ("non-zero reference value", field, previous, mutate_component(current, 0, referenceValue=0.5)),
+        ("negative-zero reference value", field, previous, mutate_component(current, 0, referenceValue=-0.0)),
+        ("17 bits without decoder evidence", field, previous, mutate_component(current, 0, bitsPerValue=17)),
+        ("component exponent span breaks the exact f64 sum", field, previous,
+         mutate_component(current, 1, binaryScaleFactor=current["components"][0]["binaryScaleFactor"]
+                          - MAX_COMPONENT_EXPONENT_SPAN - 1)),
         ("constant field after run start", field, previous, mutate_component(current, 0, bitsPerValue=0)),
         ("rate unit claimed", field, previous, mutate_component(current, 0, source_unit="kg m-2 s-1")),
         ("average instead of accumulation", field, previous,
          mutate_component(current, 0, typeOfStatisticalProcessing=0)),
         ("hour time unit", field, previous, mutate_component(current, 0, indicatorOfUnitOfTimeRange=1)),
+        ("hour accumulation-length unit", field, previous, mutate_component(current, 0, indicatorOfUnitForTimeRange=1)),
+        ("other time increment type", field, previous, mutate_component(current, 0, typeOfTimeIncrement=1)),
         ("accumulation not from run start", field, previous, mutate_component(current, 0, forecastTime=60)),
         ("components of different steps", field, previous,
          mutate_component(current, 0, lengthOfTimeRange=previous["components"][0]["lengthOfTimeRange"])),
         ("valid time not reference plus length", field, previous,
          mutate(current, valid_time_s=current["valid_time_s"] + 60)),
+        ("end of interval not reference plus length", field, previous,
+         mutate_component(mutate_component(current, 0, end_of_interval_s=current["valid_time_s"] + 60),
+                          1, end_of_interval_s=current["valid_time_s"] + 60)),
         ("reset not the run start", field, mutate(previous, reset_s=previous["reset_s"] - 3600),
          mutate(current, reset_s=current["reset_s"] - 3600)),
         ("closure violated", field, previous, mutate(current, closure_verified=False)),
         ("closure reference absent", field, previous, mutate(current, closure_verified=None)),
+        ("closure result not a boolean", field, previous, mutate(current, closure_verified="true")),
+        ("canonical value not an f32", field, previous, mutate(current, canonical_value=level - bound / 7)),
+        ("decrease exactly equal to B", field, mutate(previous, canonical_value=EXACT_BOUND_LEVEL),
+         mutate(current, canonical_value=exact_bound_current)),
+        ("one f32 step inside B at the same binade", field, mutate(previous, canonical_value=EXACT_BOUND_LEVEL),
+         mutate(current, canonical_value=exact_bound_current + ulp_f32(EXACT_BOUND_LEVEL))),
     ]
     controls = []
     for name, case_field, before, after in cases:
@@ -561,14 +657,32 @@ def control_cases(evidence):
     return controls
 
 
-def largest_f32_above(value):
+# Synthetic previous level in the binade [1, 2): there both ulp terms equal 2^-23, so
+# B = source + 2^-23 and level - B is an f32 whenever the source bound is a multiple of it.
+EXACT_BOUND_LEVEL = 1.5
+
+
+def exact_bound_value(previous, current):
+    """Current value whose decrease from ``EXACT_BOUND_LEVEL`` equals B exactly."""
+    source, _ = admission_bound(previous, current)
+    value = EXACT_BOUND_LEVEL - (source + ulp_f32(EXACT_BOUND_LEVEL))
+    if not (1.0 <= value < 2.0 and is_f32(value)):
+        raise EvidenceError("the exact-bound control needs an f32 inside [1, 2)")
+    observed = admission_bound(mutate(previous, canonical_value=EXACT_BOUND_LEVEL),
+                               mutate(current, canonical_value=value))[1]
+    if EXACT_BOUND_LEVEL - value != observed:
+        raise EvidenceError("the exact-bound control does not sit at B")
+    return value
+
+
+def next_f32_above(value):
     candidate = struct.unpack("<f", struct.pack("<f", value))[0]
     while candidate <= value:
         candidate += ulp_f32(candidate)
     return candidate
 
 
-def smallest_f32_at_or_below(value):
+def f32_at_or_below(value):
     candidate = struct.unpack("<f", struct.pack("<f", value))[0]
     if candidate > value:
         bits = struct.unpack("<I", struct.pack("<f", candidate))[0]

@@ -22,22 +22,49 @@ const RAW_ROOTS: [&str; 2] = [
     "fixtures/meteorology/icon-eu-audit-v1/raw/2026103100",
 ];
 /// Pinned SHA-256 of the canonical LF artifacts; update deliberately.
-const DECISION_SHA256: &str = "98d6458e2afbb40b4ff871b1f17223eeeb5dabece4aff7a27fc1c38aec17135f";
-const EVIDENCE_SHA256: &str = "9efe409f72f98193c64c28d78e4cb20c7f5b4c497ac88878cccffe5f605a75a5";
+const DECISION_SHA256: &str = "46344ee5f88e6fd8099ccc447aee4133f8d70f8c29bc70cf4b7d70f92e072286";
+const EVIDENCE_SHA256: &str = "1ea7d316120537e8f1e29a11d67e3f5d2b2dcb7a138a9fe342c34de9471ac45c";
 const COMMITTED_SERIES: [&str; 2] = ["SNOW_CON", "SNOW_GSP"];
 const COMMITTED_STEPS: [u64; 6] = [0, 1, 2, 3, 47, 48];
 const SAMPLE_MESSAGES: usize = 45;
 /// Implementation issue that owns the #75/#90 adoption of this decision.
 const IMPLEMENTATION_ISSUE: i64 = 240;
 const REJECTED_SAMPLE_STEPS: [&str; 3] = ["78", "81", "84"];
-const DWD_CENTRE: u64 = 78;
-const PRODUCT: &str = "icon-eu_europe_regular-lat-lon";
+/// Octet identity of the #230-pinned DWD ICON-EU forecast source: centre,
+/// generating process (section 4 octets 12 and 14) and grid template 3.0 in micro-degrees.
+const ICON_EU_SOURCE: [(&str, i64); 14] = [
+    ("centre", 78),
+    ("typeOfGeneratingProcess", 2),
+    ("generatingProcessIdentifier", 2),
+    ("gridDefinitionTemplateNumber", 0),
+    ("shapeOfTheEarth", 6),
+    ("Ni", 1377),
+    ("Nj", 657),
+    ("latitudeOfFirstGridPoint", 29_500_000),
+    ("longitudeOfFirstGridPoint", 336_500_000),
+    ("latitudeOfLastGridPoint", 70_500_000),
+    ("longitudeOfLastGridPoint", 62_500_000),
+    ("iDirectionIncrement", 62_500),
+    ("jDirectionIncrement", 62_500),
+    ("scanningMode", 64),
+];
+const AUDIT_MANIFEST_PATH: &str = "fixtures/meteorology/icon-eu-audit-v1/retrieval-manifest.json";
+const AUDIT_EVIDENCE_PATH: &str = "fixtures/meteorology/icon-eu-audit-v1/decoded-evidence.json";
 const CCSDS_ENCODING: &str = "grib2_template_5_42_ccsds";
 const CCSDS_TEMPLATE: u64 = 42;
 const SOURCE_UNIT: &str = "kg m-2";
 const SECONDS_PER_MINUTE: i64 = 60;
-/// Largest `bitsPerValue` for which `X * 2^E` is exact in `f32`.
-const F32_EXACT_BITS: u64 = 24;
+/// Largest evidenced `bitsPerValue`; wider samples have no two-decoder proof.
+const MAX_ADMITTED_BITS: u64 = 16;
+/// Largest component exponent span for which the `f64` sum of two
+/// `X * 2^E` values with `X < 2^16` stays exact (53-bit significand).
+const MAX_COMPONENT_EXPONENT_SPAN: i64 = 53 - 16;
+/// WMO code table 4.11 value 2: same forecast start, forecast time incremented.
+const SAME_START_FORECAST_INCREMENTED: u64 = 2;
+/// Number of distinct rule outcomes the controls must reach.
+const RULE_OUTCOMES: usize = 22;
+/// Genuine extreme-decrease rows whose steps both pass the closure (48 -> 78 h fails).
+const GENUINE_ADMITTED_ROWS: usize = 6;
 const LARGE_SCALE: &str = "large_scale_precipitation";
 const CONVECTIVE: &str = "convective_precipitation";
 /// WMO code table 4.2-0-1 numbers of `RAIN_GSP`, `SNOW_GSP`, `RAIN_CON`, `SNOW_CON`.
@@ -160,6 +187,13 @@ fn packing_keys(record: &Value) -> (u64, i64, i64) {
     )
 }
 
+/// Whether a finite `f64` is exactly an `f32` value.
+fn is_f32(value: f64) -> bool {
+    #[allow(clippy::cast_possible_truncation)]
+    let level = value as f32;
+    f64::from(level).to_bits() == value.to_bits()
+}
+
 /// Spacing from a non-negative `f32` value to the next larger `f32`.
 fn ulp_f32(value: f64) -> f64 {
     #[allow(clippy::cast_possible_truncation)]
@@ -177,13 +211,31 @@ fn admitted_packing(record: &Value) -> bool {
     {
         return false;
     }
-    if int(record, "decimalScaleFactor") != 0 || float(record, "referenceValue") != 0.0 {
+    if int(record, "decimalScaleFactor") != 0 || float(record, "referenceValue").to_bits() != 0 {
         return false;
     }
     match uint(record, "bitsPerValue") {
         0 => uint(record, "lengthOfTimeRange") == 0,
-        bits => bits <= F32_EXACT_BITS,
+        bits => bits <= MAX_ADMITTED_BITS,
     }
+}
+
+fn exact_component_sum(records: &[Value]) -> bool {
+    let exponents: Vec<i64> = records
+        .iter()
+        .filter(|r| uint(r, "bitsPerValue") > 0)
+        .map(|r| int(r, "binaryScaleFactor"))
+        .collect();
+    match (exponents.iter().max(), exponents.iter().min()) {
+        (Some(high), Some(low)) => high - low <= MAX_COMPONENT_EXPONENT_SPAN,
+        _ => true,
+    }
+}
+
+fn icon_eu_source(record: &Value) -> bool {
+    ICON_EU_SOURCE
+        .iter()
+        .all(|(key, value)| int(record, key) == *value)
 }
 
 fn expected_components(field: &str) -> Option<[u64; 2]> {
@@ -223,13 +275,10 @@ fn classify_field(field: &str, observation: &Value) -> Verdict {
     if hashes.len() != records.len() {
         return ("REJECT", "packing_provenance_mismatch");
     }
-    if records
-        .iter()
-        .any(|r| uint(r, "centre") != DWD_CENTRE || text(r, "product") != PRODUCT)
-    {
+    if !records.iter().all(icon_eu_source) {
         return ("UNRESOLVED", "unsupported_source_class");
     }
-    if !records.iter().all(admitted_packing) {
+    if !records.iter().all(admitted_packing) || !exact_component_sum(records) {
         return ("UNRESOLVED", "unsupported_packing");
     }
     if records
@@ -242,22 +291,32 @@ fn classify_field(field: &str, observation: &Value) -> Verdict {
         uint(r, "productDefinitionTemplateNumber") == 8
             && uint(r, "typeOfStatisticalProcessing") == 1
             && uint(r, "numberOfTimeRanges") == 1
+            && uint(r, "typeOfTimeIncrement") == SAME_START_FORECAST_INCREMENTED
             && uint(r, "indicatorOfUnitOfTimeRange") == 0
+            && uint(r, "indicatorOfUnitForTimeRange") == 0
             && uint(r, "forecastTime") == 0
     });
     if !accumulation_from_run_start {
         return ("REJECT", "statistical_processing_mismatch");
     }
-    let runs: BTreeSet<(i64, i64)> = records
+    let runs: BTreeSet<(i64, i64, i64)> = records
         .iter()
-        .map(|r| (int(r, "forecast_reference_s"), int(r, "lengthOfTimeRange")))
+        .map(|r| {
+            (
+                int(r, "forecast_reference_s"),
+                int(r, "lengthOfTimeRange"),
+                int(r, "end_of_interval_s"),
+            )
+        })
         .collect();
-    let [(reference, length_minutes)] = runs.into_iter().collect::<Vec<_>>()[..] else {
+    let [(reference, length_minutes, end_of_interval)] = runs.into_iter().collect::<Vec<_>>()[..]
+    else {
         return ("REJECT", "run_identity_mismatch");
     };
+    let valid_time = reference + SECONDS_PER_MINUTE * length_minutes;
     if opt_int(&observation["reset_s"]) != Some(reference)
-        || opt_int(&observation["valid_time_s"])
-            != Some(reference + SECONDS_PER_MINUTE * length_minutes)
+        || end_of_interval != valid_time
+        || opt_int(&observation["valid_time_s"]) != Some(valid_time)
     {
         return ("REJECT", "run_identity_mismatch");
     }
@@ -298,6 +357,9 @@ fn classify_pair(field: &str, previous: &Value, current: &Value) -> (Verdict, Op
     };
     if !before.is_finite() || !after.is_finite() {
         return (("REJECT", "non_finite_value"), None);
+    }
+    if !is_f32(before) || !is_f32(after) {
+        return (("REJECT", "non_f32_canonical_value"), None);
     }
     if before < 0.0 || after < 0.0 {
         return (("REJECT", "negative_accumulated_amount"), None);
@@ -356,7 +418,9 @@ fn evidence_message<'a>(evidence: &'a Value, variable: &str, step: u64) -> &'a V
 }
 
 fn committed_bytes(variable: &str, step: u64) -> Vec<u8> {
-    let name = format!("{PRODUCT}_single-level_2026103100_{step:03}_{variable}.grib2");
+    let name = format!(
+        "icon-eu_europe_regular-lat-lon_single-level_2026103100_{step:03}_{variable}.grib2"
+    );
     RAW_ROOTS
         .iter()
         .map(|root| format!("{root}/{name}"))
@@ -398,6 +462,16 @@ fn sign_magnitude(octets: [u8; 2]) -> i64 {
     }
 }
 
+/// WMO sign-and-magnitude 32-bit integer.
+fn sign_magnitude32(octets: &[u8]) -> i64 {
+    let raw = i64::from(u32::from_be_bytes(octets.try_into().expect("four octets")));
+    if raw & 0x8000_0000 == 0 {
+        raw
+    } else {
+        -(raw & 0x7fff_ffff)
+    }
+}
+
 fn be_u32(octets: &[u8]) -> u64 {
     u64::from(u32::from_be_bytes(octets.try_into().expect("four octets")))
 }
@@ -415,6 +489,17 @@ fn test_icon_precip_artifacts_are_pinned() {
         "evidence changed without updating the pin"
     );
     assert_eq!(text(&parse(DECISION_PATH), "evidence_sha256"), evidence);
+    let evidence = parse(EVIDENCE_PATH);
+    for (key, path) in [
+        ("retrieval_manifest_sha256", AUDIT_MANIFEST_PATH),
+        ("audit_evidence_sha256", AUDIT_EVIDENCE_PATH),
+    ] {
+        assert_eq!(
+            text(&evidence, key),
+            sha256_hex(read_canonical(path).as_bytes()),
+            "#232 evidence is stale against {path}"
+        );
+    }
 }
 
 #[test]
@@ -475,25 +560,35 @@ fn test_icon_precip_independent_predicate_reproduces_controls() {
         );
         codes.insert(verdict.1);
     }
-    assert_eq!(codes.len(), 21, "every rule outcome has a control");
+    assert_eq!(
+        codes.len(),
+        RULE_OUTCOMES,
+        "every rule outcome has a control"
+    );
 }
 
 #[test]
-fn test_icon_precip_genuine_decreases_are_admitted_bounded() {
+fn test_icon_precip_genuine_decreases_follow_quantization_and_closure() {
     let decision = parse(DECISION_PATH);
     let rows = decision["genuine_rows"].as_array().expect("rows");
     let fields: BTreeSet<&str> = rows.iter().map(|row| text(row, "field")).collect();
     assert_eq!(fields, BTreeSet::from([LARGE_SCALE, CONVECTIVE]));
+    let mut admitted = 0;
     for row in rows {
         let (verdict, bound) = classify_pair(text(row, "field"), &row["previous"], &row["current"]);
-        assert_eq!(
-            verdict,
-            ("ADMIT_BOUNDED", "quantization_compatible_decrease"),
-            "{}",
-            text(row, "name")
-        );
+        let closed = row["previous"]["closure_verified"] == Value::Bool(true)
+            && row["current"]["closure_verified"] == Value::Bool(true);
+        let expected = if closed {
+            ("ADMIT_BOUNDED", "quantization_compatible_decrease")
+        } else {
+            ("REJECT", "component_closure_violation")
+        };
+        assert_eq!(verdict, expected, "{}", text(row, "name"));
+        assert_eq!(verdict, (text(row, "verdict"), text(row, "code")));
         assert!(same_bound(bound, opt_real(&row["bound_kg_m2"])));
+        admitted += usize::from(closed);
     }
+    assert_eq!(admitted, GENUINE_ADMITTED_ROWS);
 }
 
 #[test]
@@ -507,6 +602,11 @@ fn test_icon_precip_evidence_supports_bound_and_closure() {
             message["values_sha256_matches_230_evidence"],
             Value::Bool(true)
         );
+        assert_eq!(
+            message["values_identical_eccodes_2_24_2_and_2_48_0_per_230"],
+            Value::Bool(true)
+        );
+        assert!(icon_eu_source(packing), "source outside class: {packing}");
         assert!(
             admitted_packing(packing),
             "packing outside class: {packing}"
@@ -565,7 +665,50 @@ fn test_icon_precip_committed_raw_octets_match_evidence() {
             let packing = &evidence_message(&evidence, variable, step)["packing"];
             assert_eq!(sha256_hex(&message), text(packing, "message_sha256"));
             assert_eq!(u64::from(message[6]), uint(packing, "discipline"));
+            let identification = section(&message, 1);
+            assert_eq!(
+                u64::from(u16::from_be_bytes([identification[5], identification[6]])),
+                uint(packing, "centre")
+            );
+            let grid = section(&message, 3);
+            let grid_octets = [
+                (
+                    "gridDefinitionTemplateNumber",
+                    i64::from(u16::from_be_bytes([grid[12], grid[13]])),
+                ),
+                ("shapeOfTheEarth", i64::from(grid[14])),
+                ("Ni", sign_magnitude32(&grid[30..34])),
+                ("Nj", sign_magnitude32(&grid[34..38])),
+                ("latitudeOfFirstGridPoint", sign_magnitude32(&grid[46..50])),
+                ("longitudeOfFirstGridPoint", sign_magnitude32(&grid[50..54])),
+                ("latitudeOfLastGridPoint", sign_magnitude32(&grid[55..59])),
+                ("longitudeOfLastGridPoint", sign_magnitude32(&grid[59..63])),
+                ("iDirectionIncrement", sign_magnitude32(&grid[63..67])),
+                ("jDirectionIncrement", sign_magnitude32(&grid[67..71])),
+                ("scanningMode", i64::from(grid[71])),
+            ];
+            for (key, octets) in grid_octets {
+                assert_eq!(octets, int(packing, key), "{key}");
+            }
             let product = section(&message, 4);
+            assert_eq!(
+                u64::from(product[11]),
+                uint(packing, "typeOfGeneratingProcess")
+            );
+            assert_eq!(
+                u64::from(product[13]),
+                uint(packing, "generatingProcessIdentifier")
+            );
+            assert_eq!(
+                u64::from(product[17]),
+                uint(packing, "indicatorOfUnitOfTimeRange")
+            );
+            assert_eq!(u64::from(product[41]), uint(packing, "numberOfTimeRanges"));
+            assert_eq!(u64::from(product[47]), uint(packing, "typeOfTimeIncrement"));
+            assert_eq!(
+                u64::from(product[48]),
+                uint(packing, "indicatorOfUnitForTimeRange")
+            );
             assert_eq!(
                 u64::from(u16::from_be_bytes([product[7], product[8]])),
                 uint(packing, "productDefinitionTemplateNumber")

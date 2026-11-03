@@ -141,6 +141,14 @@ jobs:
           cargo test --test precipitation_temporal_gpu -- --test-threads=1 > target/ci-gate/precipitation-temporal.log 2>&1
           python3 scripts/precipitation/check_genuine_production_replay.py --temporal target/ci-gate/precipitation-temporal/software_wgsl.json --software
           python3 scripts/precipitation/test_check_precipitation_temporal.py
+      - name: Prove pair-shared resident precipitation sampling (#227)
+        id: precipitation-resident-227
+        run: |
+          set -euo pipefail
+          cargo test --lib precipitation_resident -- --test-threads=1 > target/ci-gate/precipitation-resident-unit.log 2>&1
+          cargo test --test precipitation_resident_gpu -- --test-threads=1 > target/ci-gate/precipitation-resident.log 2>&1
+          python3 scripts/precipitation/check_genuine_production_replay.py --resident target/ci-gate/precipitation-resident/report-software_wgsl.json --software
+          python3 scripts/precipitation/test_check_precipitation_resident.py
       - name: Prove accumulated-field GPU oracle parity
         id: original-9
         run: |

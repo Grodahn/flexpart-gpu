@@ -89,7 +89,8 @@ new WGSL kernel and a resident #207 adapter. Under the #114 stop rule that is
 split out as [#227](https://github.com/Grodahn/flexpart-gpu/issues/227),
 with measurable memory/dispatch bounds, bitwise identity to the existing
 batch API, and dual-adapter acceptance. The validated #119 batch API is
-unchanged.
+unchanged. #227 is [implemented](precipitation-resident-sampling.md); no
+deposition consumer uses it yet (#33/#34).
 
 ## Production evidence
 

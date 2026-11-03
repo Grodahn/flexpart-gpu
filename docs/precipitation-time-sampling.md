@@ -166,8 +166,8 @@ planes between queries with the same memory pair.
 
 #114 [assessed](deposition-meteorology-migration.md#119-particle-scale-assessment)
 that the pair-shared, particle-scale resident layout needs a new lane-parallel
-kernel. It is split out as [#227](https://github.com/Grodahn/flexpart-gpu/issues/227);
-this batch API stays unchanged. No production wet-deposition consumer of these
+kernel. [#227](precipitation-resident-sampling.md) implements it on #171 lanes,
+bitwise equal to this batch API, which stays unchanged. No production wet-deposition consumer of these
 rates exists yet (#33/#34). Cloud-mask
 physics, deposition rates (#33), numpf=3 (#212), provider decoding (#32) and
 full wet-deposition/FLEXPART parity are outside this change.

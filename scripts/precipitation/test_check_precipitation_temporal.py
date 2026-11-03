@@ -81,6 +81,7 @@ class TemporalEvidenceTests(unittest.TestCase):
             'NaN': lambda r: r['rows'][0].update(candidate=[float('nan'), 0.0]),
             'infinity': lambda r: r['rows'][0].update(candidate=[float('inf'), 0.0]),
             'changed original': lambda r: r['rows'][0].update(original=[1000.0, 1000.0]),
+            'vacuous comparison': lambda r: r['rows'][0].update(absolute_differences=[]),
             'false pass': lambda r: r.update(verdict='failed'),
         }
         for label, mutation in mutations.items():

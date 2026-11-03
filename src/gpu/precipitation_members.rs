@@ -97,6 +97,10 @@ pub const STATUS_NON_FINITE_RATE: u32 = 1;
 /// Status bit: a reconstructed member was not finite.
 pub const STATUS_NON_FINITE_MEMBER: u32 = 2;
 
+/// Status bit set at allocation and cleared only by executed [`PreparedPrecipitationMembers::encode`]
+/// work, so zero-initialized members are never consumed as dry weather (#227).
+pub const STATUS_NOT_EXECUTED: u32 = 8;
+
 /// `flex_extract` disaggregation routine selected for precipitation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -567,6 +571,7 @@ pub struct PreparedPrecipitationMembers<'a, 'ctx> {
     params: wgpu::Buffer,
     metadata: PrecipitationMemberMetadata,
     stages: Vec<PrecipitationMemberStage>,
+    encoded: bool,
 }
 
 /// Device-side handoff of encoded members for the #119 temporal consumer.
@@ -658,6 +663,7 @@ pub fn prepare_precipitation_members<'a, 'ctx>(
         params: resources.params,
         metadata,
         stages: Vec::new(),
+        encoded: false,
     })
 }
 
@@ -731,14 +737,15 @@ impl MemberResources {
         Self {
             large_scale: members("precipitation_members_lsp_mmh"),
             convective: members("precipitation_members_cp_mmh"),
-            status: ctx.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("precipitation_members_status"),
-                size: size_of::<u32>() as u64,
-                usage: wgpu::BufferUsages::STORAGE
-                    | wgpu::BufferUsages::COPY_SRC
-                    | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }),
+            status: ctx
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("precipitation_members_status"),
+                    contents: bytemuck::bytes_of(&STATUS_NOT_EXECUTED),
+                    usage: wgpu::BufferUsages::STORAGE
+                        | wgpu::BufferUsages::COPY_SRC
+                        | wgpu::BufferUsages::COPY_DST,
+                }),
             params: ctx
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -760,6 +767,19 @@ impl PreparedPrecipitationMembers<'_, '_> {
         ctx: &GpuContext,
     ) -> Result<u32, PrecipitationMemberError> {
         Ok(download_status(ctx, &self.status).await?)
+    }
+
+    /// Member/status handoff of the last complete [`Self::encode`] for #227
+    /// consumers sharing one reconstruction; `None` before any encode. Until
+    /// that work executes, `status` keeps [`STATUS_NOT_EXECUTED`].
+    pub(crate) fn encoded_handoff(&self) -> Option<EncodedPrecipitationMembers<'_>> {
+        self.encoded.then_some(EncodedPrecipitationMembers {
+            large_scale_mm_per_h: &self.large_scale_members,
+            convective_mm_per_h: &self.convective_members,
+            status: &self.status,
+            metadata: &self.metadata,
+            stages: &self.stages,
+        })
     }
 
     /// Typed handoff metadata, available before encoding.
@@ -789,6 +809,7 @@ impl PreparedPrecipitationMembers<'_, '_> {
                 "prepared members or kernels belong to another GPU context",
             ));
         }
+        self.encoded = false;
         self.stages.clear();
         encoder.clear_buffer(&self.status, 0, None);
         for source in [self.large_scale, self.convective] {
@@ -820,6 +841,7 @@ impl PreparedPrecipitationMembers<'_, '_> {
                     grid.field_id,
                 ));
         }
+        self.encoded = true;
         Ok(EncodedPrecipitationMembers {
             large_scale_mm_per_h: &self.large_scale_members,
             convective_mm_per_h: &self.convective_members,

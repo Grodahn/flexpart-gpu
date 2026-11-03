@@ -67,6 +67,10 @@ TRANSPORT_TOP_TECHNICAL_STEP = '      - name: Compare production transport-top a
 
 PRECIPITATION_TEMPORAL_STEP = 'name: Prove reconstructed precipitation temporal sampling (#119)\n        id: precipitation-temporal-119\n        run: |\n          set -euo pipefail\n          cargo test --lib precipitation_temporal -- --test-threads=1 > target/ci-gate/precipitation-temporal-unit.log 2>&1\n          cargo test --test precipitation_temporal_gpu -- --test-threads=1 > target/ci-gate/precipitation-temporal.log 2>&1\n          python3 scripts/precipitation/check_genuine_production_replay.py --temporal target/ci-gate/precipitation-temporal/software_wgsl.json --software\n          python3 scripts/precipitation/test_check_precipitation_temporal.py\n'
 
+PRECIPITATION_RESIDENT_STEP = 'name: Prove pair-shared resident precipitation sampling (#227)\n        id: precipitation-resident-227\n        run: |\n          set -euo pipefail\n          cargo test --lib precipitation_resident -- --test-threads=1 > target/ci-gate/precipitation-resident-unit.log 2>&1\n          cargo test --test precipitation_resident_gpu -- --test-threads=1 > target/ci-gate/precipitation-resident.log 2>&1\n          python3 scripts/precipitation/check_genuine_production_replay.py --resident target/ci-gate/precipitation-resident/report-software_wgsl.json --software\n          python3 scripts/precipitation/test_check_precipitation_resident.py\n'
+
+PRECIPITATION_RESIDENT_TECHNICAL_STEP = '      - name: Compare resident precipitation sampling with fresh original inputs (#227)\n        working-directory: flexpart-gpu\n        env:\n          FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}\n        run: |\n          set -euo pipefail\n          # The #227 evidence requires a clean candidate; name any path an earlier step dirtied.\n          dirty=$(git status --porcelain)\n          if [ -n "$dirty" ]; then\n            echo "::error::candidate checkout is dirty before #227 evidence"\n            echo "$dirty"\n            exit 1\n          fi\n          cargo test --test precipitation_resident_gpu -- --test-threads=1 > target/ci-gate/precipitation-resident.log 2>&1\n          python3 scripts/precipitation/temporal_oracle.py run target/ci-gate/precipitation-resident/original-software --checkout ../flexpart --device-report target/ci-gate/precipitation-resident/report-software_wgsl.json --output target/ci-gate/precipitation-resident/matched-software.json\n          python3 scripts/precipitation/check_genuine_production_replay.py --resident target/ci-gate/precipitation-resident/report-software_wgsl.json --software --matched target/ci-gate/precipitation-resident/matched-software.json\n          python3 scripts/precipitation/test_check_precipitation_resident.py\n\n'
+
 DEPOSITION_METEOROLOGY_STEP = 'name: Prove canonical deposition consumer boundary (#114)\n        id: deposition-meteorology-114\n        run: |\n          set -euo pipefail\n          cargo test --test deposition_meteorology_inventory > target/ci-gate/deposition-inventory.log 2>&1\n          for mode in validation-0-compaction-0 validation-1-compaction-0 validation-0-compaction-1; do\n            export FLEXPART_GPU_VALIDATION=0 FLEXPART_GPU_COMPACTION=0\n            if [ "$mode" = validation-1-compaction-0 ]; then export FLEXPART_GPU_VALIDATION=1; fi\n            if [ "$mode" = validation-0-compaction-1 ]; then export FLEXPART_GPU_COMPACTION=1; fi\n            cargo test --lib gpu::meteorology::deposition_production_tests -- --nocapture --test-threads=1 > "target/ci-gate/deposition-meteorology-$mode.log" 2>&1\n            grep -q \'DEPOSITION-METEOROLOGY-114: .* on software_wgsl\' "target/ci-gate/deposition-meteorology-$mode.log"\n            mv target/ci-gate/deposition-meteorology/report-software_wgsl.json "target/ci-gate/deposition-meteorology/$mode-report.json"\n          done\n'
 
 PRECIPITATION_TEMPORAL_TECHNICAL_STEP = '      - name: Compare precipitation temporal sampling with fresh original inputs (#119)\n        working-directory: flexpart-gpu\n        env:\n          FLEXPART_GPU_CANDIDATE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}\n        run: |\n          set -euo pipefail\n          # The #119 evidence requires a clean candidate; name any path an earlier step dirtied.\n          dirty=$(git status --porcelain)\n          if [ -n "$dirty" ]; then\n            echo "::error::candidate checkout is dirty before #119 evidence"\n            echo "$dirty"\n            exit 1\n          fi\n          cargo test --test precipitation_temporal_gpu -- --test-threads=1 > target/ci-gate/precipitation-temporal.log 2>&1\n          python3 scripts/precipitation/temporal_oracle.py run target/ci-gate/precipitation-temporal/original-software --checkout ../flexpart --device-report target/ci-gate/precipitation-temporal/software_wgsl.json --output target/ci-gate/precipitation-temporal/matched-software.json\n          python3 scripts/precipitation/check_genuine_production_replay.py --temporal target/ci-gate/precipitation-temporal/software_wgsl.json --software --matched target/ci-gate/precipitation-temporal/matched-software.json\n          python3 scripts/precipitation/test_check_precipitation_temporal.py\n\n'
@@ -110,6 +114,12 @@ def contract():
     result['artifacts']['gpu-meteorology'].extend([
         'target/ci-gate/precipitation-temporal-unit.log', 'target/ci-gate/precipitation-temporal.log',
         'target/ci-gate/precipitation-temporal/*.json'])
+    result['steps'].append({'name': 'Prove pair-shared resident precipitation sampling (#227)',
+                           'block': PRECIPITATION_RESIDENT_STEP, 'owners': ['gpu-meteorology'],
+                           'sha256': hashlib.sha256(coverage.normalized(PRECIPITATION_RESIDENT_STEP).encode()).hexdigest()})
+    result['artifacts']['gpu-meteorology'].extend([
+        'target/ci-gate/precipitation-resident-unit.log', 'target/ci-gate/precipitation-resident.log',
+        'target/ci-gate/precipitation-resident/*.json'])
     result['steps'].append({'name': 'Prove canonical deposition consumer boundary (#114)',
                            'block': DEPOSITION_METEOROLOGY_STEP, 'owners': ['gpu-transport-physics'],
                            'sha256': hashlib.sha256(coverage.normalized(DEPOSITION_METEOROLOGY_STEP).encode()).hexdigest()})
@@ -336,6 +346,10 @@ def audit_payload(root, domain):
                                  '--temporal', str((root / 'target/ci-gate/precipitation-temporal/software_wgsl.json').resolve()), '--software'],
                                 cwd=root, capture_output=True, text=True)
         require(result.returncode == 0, 'precipitation temporal sampling: '+result.stderr[-2000:])
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/precipitation/check_genuine_production_replay.py'),
+                                 '--resident', str((root / 'target/ci-gate/precipitation-resident/report-software_wgsl.json').resolve()), '--software'],
+                                cwd=root, capture_output=True, text=True)
+        require(result.returncode == 0, 'resident precipitation sampling: '+result.stderr[-2000:])
         paths = [p for p in files if p.startswith('target/ci-gate/accumulation-gpu/') and p.endswith('.json')]
         for prefix in ('large_scale_precipitation', 'convective_precipitation'):
             require(sum(Path(p).name.startswith(prefix+'-cell-') for p in paths) == 12, 'accumulation cell count')
@@ -454,6 +468,8 @@ def audit_independent_workflow(path, text, expected):
         text = text.replace(TRANSPORT_TOP_TECHNICAL_STEP, '', 1)
         require(text.count(PRECIPITATION_TEMPORAL_TECHNICAL_STEP) == 1, 'missing/changed precipitation temporal gate')
         text = text.replace(PRECIPITATION_TEMPORAL_TECHNICAL_STEP, '', 1)
+        require(text.count(PRECIPITATION_RESIDENT_TECHNICAL_STEP) == 1, 'missing/changed resident precipitation gate')
+        text = text.replace(PRECIPITATION_RESIDENT_TECHNICAL_STEP, '', 1)
     require(hashlib.sha256(text.encode()).hexdigest() == expected, 'independent workflow changed: '+path)
 
 

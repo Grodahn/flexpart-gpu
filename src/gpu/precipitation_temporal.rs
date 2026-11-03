@@ -54,6 +54,9 @@ pub enum PrecipitationTemporalError {
     /// Batch-wide producer or sampling failure; no lane can be published.
     #[error("precipitation GPU fatal status: {0}")]
     DeviceStatus(u32),
+    /// Existing #171 resident lane/status failure (#227).
+    #[error(transparent)]
+    Resident(#[from] crate::gpu::meteorology::MeteorologyCompositionError),
 }
 
 /// A particle's unshifted sampling time and canonical regional grid position.
@@ -136,15 +139,15 @@ pub fn select_precipitation_memory_pair(
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
-struct TimeParameters {
-    dt1_seconds: i32,
-    dt2_seconds: i32,
-    dt_seconds: i32,
+pub(crate) struct TimeParameters {
+    pub(crate) dt1_seconds: i32,
+    pub(crate) dt2_seconds: i32,
+    pub(crate) dt_seconds: i32,
     output_pair: u32,
 }
 
 impl TimeParameters {
-    fn new(
+    pub(crate) fn new(
         pair: &PrecipitationMemoryPair,
         itime: i64,
         index: usize,
@@ -293,7 +296,7 @@ pub struct EncodedPrecipitationTimeSamples<'a> {
 ///
 /// Sized for bounded validation batches: every query allocates four full-grid
 /// #87 planes, so memory grows with `queries * cell_count`. Particle-scale
-/// resident queries are #114's adoption work.
+/// resident lanes use [`super::precipitation_resident`] (#227).
 ///
 /// # Errors
 /// Rejects context, direction, query, complete-window and resource errors before

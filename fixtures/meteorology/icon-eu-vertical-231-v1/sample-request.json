@@ -1,0 +1,35 @@
+{
+  "schema": "flexpart-gpu.icon-eu-sample-request",
+  "version": 1,
+  "issue": 231,
+  "purpose": "Bounded real-source sample for the #231 ICON-EU vertical-geometry decision: complete half-level heights and complete full-level pressure/thermodynamic columns at one valid time. Research input only; not an operational retrieval set.",
+  "base_url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib",
+  "product": "icon-eu_europe_regular-lat-lon",
+  "cycle": "2026110300",
+  "groups": [
+    {
+      "role": "terrain",
+      "kind": "time-invariant",
+      "variables": ["HSURF"]
+    },
+    {
+      "role": "complete half-level geometric height column set",
+      "kind": "time-invariant",
+      "variables": ["HHL"],
+      "levels": "1-75"
+    },
+    {
+      "role": "surface pressure and the FLEXPART hypsometric surface boundary (T2m, Td2m)",
+      "kind": "single-level",
+      "variables": ["PS", "T_2M", "TD_2M"],
+      "steps": [0]
+    },
+    {
+      "role": "complete full-level pressure, temperature and specific humidity columns",
+      "kind": "model-level",
+      "variables": ["P", "T", "QV"],
+      "steps": [0],
+      "levels": "1-74"
+    }
+  ]
+}

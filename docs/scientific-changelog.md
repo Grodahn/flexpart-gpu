@@ -14,6 +14,19 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ---
 
+### 2026-11-03 - Decide admission of ICON-EU GRIB2 precipitation run accumulations (#232)
+**Impact**: none (decision only; no production Rust/WGSL, tolerance or #75/#90 behaviour change).
+**Files**: `docs/research/icon-eu-precipitation-232.md`,
+`fixtures/meteorology/icon-eu-precipitation-232/`, `tests/icon_eu_precipitation_decision.rs`.
+**Validation**: 45 real ICON-EU messages decoded bit-identically by ecCodes 2.24.2 and an
+independent octet reader plus libaec; WMO GRIB2 tables `ad61905d` and DWD ICON database
+reference 2.5.6 cited for units and TOT_PREC composition.
+
+Decides kg m-2 amounts, LSP = RAIN_GSP + SNOW_GSP and CP = RAIN_CON + SNOW_CON with a
+per-cell TOT_PREC closure check, and the template-5.42 analogue of the #216 bound. ICON-EU
+has no FLEXPART reader, so this defines a provider mapping rather than a deviation from a
+Fortran routine; #240 owns adoption and no parity claim is made.
+
 ### 2026-11-01 - Audit real deterministic IFS Open Data 0.1 degrees (#238)
 **Impact**: none (research decision; no production scientific behavior changes).
 **Files**: `docs/research/ifs-open-provider-238.md`, versioned IFS provider

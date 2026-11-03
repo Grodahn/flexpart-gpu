@@ -1,0 +1,254 @@
+{
+ "schema": "flexpart-gpu.icon-eu-vertical-geometry-decision",
+ "version": 1,
+ "issue": 231,
+ "parent_issues": [
+  32,
+  230
+ ],
+ "tracking_issue": 12,
+ "status": "DECIDED",
+ "evidence_level": "research: real-source decoding plus decoded-value consistency checks and a diagnostic FLEXPART height replay tied to pinned routine output; no production-path, FLEXPART-oracle or GPU validation",
+ "scope": "Decision only. No #29 schema change, no #30 implementation, no provider decoder, no GPU kernel, no assumed ICON/ECMWF equivalence, no level reduction. Vertical velocity belongs to #234.",
+ "provider": {
+  "product": "icon-eu_europe_regular-lat-lon",
+  "centre": 78,
+  "coordinate": "GRIB2 generalized vertical height coordinate, typeOfFirstFixedSurface 150; HHL second fixed surface 101 (mean sea level)",
+  "half_levels": 75,
+  "full_levels": 74,
+  "level_1": "model top",
+  "vertical_grid": {
+   "nlev": 75,
+   "number_of_vgrid_used": 4,
+   "uuid_of_vgrid": "f4e27f3af03da229299dca84d11c2e40"
+  },
+  "sample_cycle": "2026-11-03T00:00:00Z",
+  "same_vertical_grid_uuid_as_230": true
+ },
+ "evidence": {
+  "decoded_evidence": {
+   "path": "fixtures/meteorology/icon-eu-vertical-231-v1/decoded-evidence.json",
+   "sha256_lf": "6547e77ea8a33a3aecc7028934ae5e76359e22aadc661037c57b4155a5f3ace9"
+  },
+  "sample_request": {
+   "path": "fixtures/meteorology/icon-eu-vertical-231-v1/sample-request.json",
+   "sha256_lf": "c664df351e008415cebf08255fa7ed4c152f6a1bbf90160db0adb43bd0460e86"
+  },
+  "retrieval_manifest": {
+   "path": "fixtures/meteorology/icon-eu-vertical-231-v1/retrieval-manifest.json",
+   "sha256_lf": "8e81433b81c3a5d2b8061244ffee776e94432523e22d2f0f1ad56b71598a09a4"
+  },
+  "decoders": [
+   "ecCodes 2.24.2 in flexpart-fortran:latest (primary)",
+   "independent octet reader + libaec 1.0.6 (all values, primary run)",
+   "ecCodes 2.48.0 (secondary)"
+  ]
+ },
+ "normative_references": {
+  "flexpart": {
+   "version": "11.1",
+   "pinned_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+   "locations": [
+    "verttransform_mod.f90:1975-2051 verttransform_ecmwf_heights (hypsometric uvzlev from akz+bkz*ps with the T2m/Td2m surface boundary; wzlev as mean of adjacent level heights with extrapolated top)",
+    "verttransform_mod.f90:296-353 verttransform_init (run-global target height[] from the first column with ps > 100000 Pa)",
+    "windfields_mod.f90:819-864 (half-level A/B reversal, artificial surface level)",
+    "conv_mod.f90:606,626-631 (convection interface pressure phconv: akm+bkm*ps for ECMWF, arithmetic mean of level pressures otherwise)",
+    "qvsat_mod.f90:144-196 (ew)",
+    "par_mod.f90:61 (r_air, ga)"
+   ]
+  },
+  "icon": {
+   "repository": "https://gitlab.dkrz.de/icon/icon-model",
+   "release_tag": "release-2024.10-public",
+   "sources": [
+    {
+     "path": "src/atm_dyn_iconam/mo_vertical_grid.f90",
+     "lines": "170-174",
+     "definition": "z_mc(jk) = 0.5*(z_ifc(jk) + z_ifc(jk+1)): the geometric height of a full level is the arithmetic mean of its two half-level heights",
+     "sha256": "7ecebe825e6297675f72c3c874c0ee78ae1dd116085bebe4c188b56a5fbf7c59"
+    },
+    {
+     "path": "src/shared/mo_physical_constants.f90",
+     "lines": "96,108,121,148",
+     "definition": "grav = 9.80665, rd = 287.04, rv = 461.51, vtmpc1 = rv/rd - 1",
+     "sha256": "42a144f39a174624ec825ed1b13dab2ce89efc34c26e67a9f34d9fa115a057c2"
+    }
+   ],
+   "caveat": "Public ICON release source; the DWD operational ICON-EU build is not separately pinned. The decoded hydrostatic check is the independent confirmation on the operational data."
+  },
+  "wmo_grib2": "Code table 4.5 type 150; every model-level message carries the layer bounds (150, k) and (150, k+1)"
+ },
+ "questions": [
+  {
+   "id": "model_level_height_authority",
+   "question": "Which quantity is authoritative for canonical model-level heights: provider HHL geometry, or FLEXPART's hypsometric reconstruction from P/T/q with the T2m/Td2m surface boundary?",
+   "verdict": "SUPPORTED_WITH_PROVEN_TRANSFORMATION",
+   "authority": "provider_hhl",
+   "transformation": "model-level height ASL = 0.5*(HHL(k)+HHL(k+1)), AGL = ASL - HSURF, k = 1..74 (top-down)",
+   "rationale": "ICON uses a height-based coordinate. HHL is the time-invariant geometry on which the model's U/V/T/QV/P are defined: heights are the coordinate and pressure is diagnosed. FLEXPART's verttransform_ecmwf_heights integrates heights from akz+bkz*ps. ICON has no A/B coefficients, so no pinned routine invocation consumes ICON pressure, and replaying it with provider P assumes ECMWF equivalence.",
+   "rejected_alternative": {
+    "name": "flexpart_hypsometric_reconstruction",
+    "verdict": "UNSUPPORTED",
+    "reason": "no pinned FLEXPART path for non-hybrid pressure; the diagnostic replay differs from HHL by up to 49.4 m (median -2.11 m; top level median -6.45 m)"
+   },
+   "normative_reference": [
+    "icon mo_vertical_grid.f90:170-174",
+    "flexpart verttransform_mod.f90:1975-2051"
+   ],
+   "evidence_keys": [
+    "science.flexpart_reconstruction_minus_hhl_full_levels",
+    "science.terrain",
+    "science.half_levels"
+   ],
+   "follow_up_issues": [
+    241,
+    243
+   ]
+  },
+  {
+   "id": "full_level_height_convention",
+   "question": "Full-level height convention and its evidence.",
+   "verdict": "SUPPORTED_WITH_PROVEN_TRANSFORMATION",
+   "transformation": "z_full(k) = 0.5*(HHL(k)+HHL(k+1)); full level k is the GRIB2 layer bounded by half levels k and k+1",
+   "rationale": "Defined by the ICON source (z_mc) and confirmed on decoded data. The hydrostatic thickness between adjacent full levels matches the mean-convention geometry to a median |ratio-1| of 3.9e-05 (p01-p99 0.9989-1.0012). Among the three candidate conventions it is closest in 83.3% of all 73 x 904689 layer samples.",
+   "normative_reference": [
+    "icon mo_vertical_grid.f90:170-174",
+    "wmo_grib2 code table 4.5 type 150 layer bounds"
+   ],
+   "evidence_keys": [
+    "science.full_level_convention",
+    "science.identity.full_level_layer_bounds"
+   ],
+   "follow_up_issues": [
+    243
+   ]
+  },
+  {
+   "id": "interface_height_coordinate",
+   "question": "How FLEXPART's W/interface coordinate (wzlev) and the #184/#188/#190 shared-height preparation relate to ICON half levels, including the surface interface.",
+   "verdict": "SUPPORTED_WITH_PROVEN_TRANSFORMATION",
+   "transformation": "interface height ASL = HHL(h), AGL = HHL(h) - HSURF, h = 1..75; HHL(75) = HSURF exactly, so the surface interface is 0 m AGL, matching FLEXPART wzlev(1) = 0",
+   "rationale": "ICON W and the half-level geometry share the native half levels exactly. FLEXPART's wzlev is a construction: the mean of adjacent level heights, with an extrapolated top. It approximates interfaces that FLEXPART does not know. Applied to ICON, it would displace the interior interfaces from HHL by one quarter of the HHL second difference, up to 11.4 m (top -3.17 m). The canonical role 'W/interface height' therefore takes HHL, not the wzlev formula. The #184/#188/#190 preparation consumes the #30 per-column AGL level and interface heights plus a run-global AGL target grid from the first column with ps > 100000 Pa. That target follows from the same HHL-derived level heights. W semantics and the slope correction belong to #234.",
+   "normative_reference": [
+    "icon mo_vertical_grid.f90:170-174",
+    "flexpart verttransform_mod.f90:2001-2002,2025-2029",
+    "flexpart verttransform_mod.f90:296-353"
+   ],
+   "evidence_keys": [
+    "science.interfaces",
+    "science.shared_height_init_column"
+   ],
+   "follow_up_issues": [
+    243,
+    234
+   ]
+  },
+  {
+   "id": "interface_pressure",
+   "question": "Interface pressure: required or not for the supported consumers; if required, a justified derivation.",
+   "verdict": "UNSUPPORTED",
+   "transformation": "surface interface pressure = PS (as-is); no interior or top interface pressure is admitted",
+   "rationale": "Interface pressure is required: the #30 runtime geometry carries it, and FLEXPART convection consumes it (conv_mod.f90:626-631 phconv, dpr). ICON-EU publishes neither interface pressure nor A/B coefficients. The candidate derivations disagree by up to 81 Pa, and none has an ICON reference: the arithmetic mean (FLEXPART's non-ECMWF branch), the geometric mean, and ln P linear in height. Extrapolating ln P to HHL(75) reproduces PS within 5.2 Pa, which shows consistency only. Consumers that need interior interface pressure fail closed until #242.",
+   "normative_reference": [
+    "flexpart conv_mod.f90:606,626-631",
+    "icon-eu provider field inventory (fixtures/meteorology/icon-eu-audit-v1/provider-contract.json)"
+   ],
+   "evidence_keys": [
+    "science.interface_pressure_candidates",
+    "science.full_level_pressure"
+   ],
+   "follow_up_issues": [
+    242
+   ]
+  },
+  {
+   "id": "canonical_schema",
+   "question": "Whether #29 needs a schema-v2 coordinate kind.",
+   "verdict": "REQUIRES_SCHEMA_EXTENSION",
+   "transformation": "none in schema v1",
+   "rationale": "#29 v1 GeometricHeight holds a single 1-D level profile, but HHL varies per column below level 13. #30 reconstruct_hybrid_pressure rejects every non-hybrid coordinate. #241 defines a new coordinate kind that carries 3-D half-level heights, full-level pressure and the vertical-grid identity; #243 owns its #30 derivation. No schema change is made here.",
+   "normative_reference": [
+    "src/meteorology/coordinate.rs VerticalCoordinate (schema v1)",
+    "docs/vertical-transform.md"
+   ],
+   "evidence_keys": [
+    "science.half_levels.horizontally_constant_levels"
+   ],
+   "follow_up_issues": [
+    241,
+    243
+   ]
+  }
+ ],
+ "derived_quantities": [
+  {
+   "quantity": "terrain_asl",
+   "source": "HSURF (= HHL(75) exactly)",
+   "classification": "SUPPORTED_AS_IS"
+  },
+  {
+   "quantity": "model_level_height_asl",
+   "source": "0.5*(HHL(k)+HHL(k+1))",
+   "classification": "SUPPORTED_WITH_PROVEN_TRANSFORMATION"
+  },
+  {
+   "quantity": "model_level_height_agl",
+   "source": "model-level ASL - HSURF",
+   "classification": "SUPPORTED_WITH_PROVEN_TRANSFORMATION"
+  },
+  {
+   "quantity": "interface_height_asl",
+   "source": "HHL(h)",
+   "classification": "SUPPORTED_AS_IS"
+  },
+  {
+   "quantity": "interface_height_agl",
+   "source": "HHL(h) - HSURF; surface exactly 0",
+   "classification": "SUPPORTED_WITH_PROVEN_TRANSFORMATION"
+  },
+  {
+   "quantity": "model_level_pressure",
+   "source": "P (0/3/0, full levels)",
+   "classification": "SUPPORTED_AS_IS"
+  },
+  {
+   "quantity": "surface_interface_pressure",
+   "source": "PS",
+   "classification": "SUPPORTED_AS_IS"
+  },
+  {
+   "quantity": "interior_and_top_interface_pressure",
+   "source": "none",
+   "classification": "UNSUPPORTED",
+   "blocker": 242
+  }
+ ],
+ "evidence_claims": {
+  "flexpart_reconstruction_max_abs_m": 49.356681469333125,
+  "wzlev_style_interior_max_abs_m": 11.3968505859375,
+  "interface_pressure_candidate_spread_max_abs_pa": 80.5783607440535
+ },
+ "follow_ups": [
+  {
+   "issue": 241,
+   "title": "Schema-v2 coordinate kind for column-varying half-level heights (ICON HHL)",
+   "kind": "contract"
+  },
+  {
+   "issue": 242,
+   "title": "ICON interior/top interface pressure",
+   "kind": "research/decision"
+  },
+  {
+   "issue": 243,
+   "title": "#30 runtime height geometry from the schema-v2 HHL coordinate",
+   "kind": "implementation"
+  },
+  {
+   "issue": 234,
+   "title": "FLEXPART-compatible use of ICON geometric W (existing)",
+   "kind": "research/decision"
+  }
+ ],
+ "reproduction": "docs/research/icon-eu-vertical-231.md#reproduction"
+}

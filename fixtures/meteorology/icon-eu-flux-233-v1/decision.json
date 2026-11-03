@@ -1,0 +1,312 @@
+{
+  "schema": "flexpart-gpu.icon-eu-flux-decision",
+  "version": 1,
+  "issue": 233,
+  "status": "DECIDED",
+  "validation_level": "research: real-source decoding plus decoded-value consistency checks; no oracle, production-path or GPU validation",
+  "summary": "ICON-EU run-start averages are admissible only as sign-normalized canonical IntervalMean values over consecutive published steps, with an exact per-interval quantization bound and fail-closed checks. They are never Instantaneous. calcpar-equivalent (FLEXPART PBL and deposition) use requires the point-value reconstruction oracle owned by #244.",
+  "evidence": {
+    "evidence_path": "fixtures/meteorology/icon-eu-flux-233-v1/flux-evidence.json",
+    "evidence_sha256": "d1631a4ef4376a13a7e246820e896940a814975836dd02d8d9f018ddfbf439ed",
+    "retrieval_manifest_path": "fixtures/meteorology/icon-eu-flux-233-v1/retrieval-manifest.json",
+    "retrieval_manifest_sha256": "cb10d5c072b6982713c041e4e393eefa9e537ea7389e2bed6bb10cae1cafe85b",
+    "request_sha256": "817fc34d12fe9b27978ffe08b20e2e97e9400aaad1b33f10e28bb51005ff0084",
+    "cycle": "2026-11-03T00:00:00Z",
+    "file_count": 426,
+    "primary_decoder": "container-eccodes-2.24.2",
+    "secondary_decoder": "host-eccodes-2.48.0",
+    "decoder_agreement": "icon_eu_flux_audit.py compare: 0 mismatches (relative 1e-9 for floats, exact otherwise)"
+  },
+  "supersedes": {
+    "provider_contract_path": "fixtures/meteorology/icon-eu-audit-v1/provider-contract.json",
+    "provider_contract_sha256": "699ccf8fe09c5c87366446973f168fbf53f9ff5e829a87f74311626d08213d68",
+    "note": "The frozen #230 contract v1 keeps its REQUIRES_SCIENTIFIC_DECISION rows. This decision replaces their #233 blocker. A later provider adapter (#32-B/C) consumes this decision instead of editing contract v1."
+  },
+  "normative_references": {
+    "flexpart": {
+      "commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+      "grib2_parameter_mapping": "windfields_mod.f90:504-511 (SHF 0/0/11 surface 1, SR 0/4/9 surface 1, EWSS 0/2/38, NSSS 0/2/37)",
+      "readers": "windfields_mod.f90:2351-2387 (sshf unscaled, ssr clipped at 0 on :2367, ewss/nsss)",
+      "sshf_sign_use": "getfields_mod.f90:1449 thetastar=hf/(rhoa*cpa*ustar); :1682-1684 convective branch for hf<0 (downward-positive input)",
+      "ssr_use": "getfields_mod.f90:1064-1067 -> getvdep gr (drydepo_mod.f90:867,1010,1518,1533)",
+      "stress_use": "windfields_mod.f90:2579 sfcstress=sqrt(ewss**2+nsss**2) -> scalev ustar (getfields_mod.f90:978-981)"
+    },
+    "flex_extract": {
+      "commit": "e0005c99ac81d12faa45a8ff799debbd592b0dc0",
+      "deacc_fluxes": "EcFlexpart.py:1123-1143",
+      "dapoly": "disaggregation.py:62-103",
+      "period_edges": "EcFlexpart.py:1193-1250"
+    },
+    "dwd_icon_database_manual": {
+      "title": "Database Reference Manual for ICON and ICON-EPS",
+      "version": "2.5.6",
+      "year": 2026,
+      "url": "https://www.dwd.de/SharedDocs/downloads/DE/modelldokumentationen/nwv/icon/icon_dbbeschr_aktuell.pdf",
+      "pdf_sha256": "ef804f22bb4d72bf62d226a78c931afa51042a1ef0e702b2aafcc2e088dcfe41",
+      "sections": {
+        "table_5.6": "ASHFL_S 0/0/11, ASOB_S 0/4/9, AUMFL_S/AVMFL_S momentum flux; all avg, average since model start, BCT interpolation",
+        "6.3": "ASOB_S is the surface short-wave net flux; ASWDIR_S is diagnosed a posteriori from F_net = F_dir + F_dif_down - F_dif_up",
+        "7.1.1": "averages over [0, t]; zero at t = 0; mean over [t1, t2] = (t2*A(t2) - t1*A(t1)) / (t2 - t1); PDT 4.8 keys",
+        "7.2": "BCT barycentric interpolation to the lat-lon grid (linear, fixed weights)"
+      },
+      "sign_statement": "none: the manual states no flux sign convention; signs are decided from decoded checks and the FLEXPART reader semantics"
+    },
+    "eccodes_definitions": "pinned ecCodes 2.24.2 grib2/shortName.def (ssr and sshf: same parameter with typeOfStatisticalProcessing=1; ewss 0/2/38, nsss 0/2/37) and localConcepts/edzw/shortName.def (ASHFL_S, ASOB_S, AUMFL_S, AVMFL_S with typeOfStatisticalProcessing=0)"
+  },
+  "verdict_vocabulary": [
+    "ADMISSIBLE_WITH_PROVEN_TRANSFORMATION",
+    "NOT_ADMISSIBLE",
+    "REQUIRES_NEW_TEMPORAL_ORACLE"
+  ],
+  "sign_evidence_thresholds": {
+    "minimum_agreement_fraction": 0.99
+  },
+  "fields": [
+    {
+      "canonical_id": "sensible_heat_flux",
+      "source": "ASHFL_S",
+      "source_parameter": [
+        0,
+        0,
+        11
+      ],
+      "flexpart_source": "ECMWF SSHF (0/0/11, accumulated), read into sshf",
+      "quantity_equivalence": "SAME_WMO_PARAMETER",
+      "source_unit": "W m-2",
+      "canonical_unit": "watt_per_square_meter",
+      "source_sign": "positive_downward",
+      "sign_transformation": "negate",
+      "canonical_sign": "positive_upward_flux",
+      "sign_evidence": [
+        "sensible_heat_sign"
+      ],
+      "canonical_temporal_kind": "interval_mean",
+      "interval_mean_verdict": "ADMISSIBLE_WITH_PROVEN_TRANSFORMATION",
+      "instantaneous_verdict": "NOT_ADMISSIBLE",
+      "calcpar_consumer_verdict": "REQUIRES_NEW_TEMPORAL_ORACLE"
+    },
+    {
+      "canonical_id": "surface_solar_radiation",
+      "source": "ASOB_S",
+      "source_parameter": [
+        0,
+        4,
+        9
+      ],
+      "flexpart_source": "ECMWF SSR (0/4/9 surface, accumulated net short-wave), read into ssr and consumed by getvdep as gr",
+      "quantity_equivalence": "SAME_WMO_PARAMETER",
+      "source_unit": "W m-2",
+      "canonical_unit": "watt_per_square_meter",
+      "source_sign": "positive_downward",
+      "sign_transformation": "identity_then_clip_negative_within_bound_to_zero",
+      "canonical_sign": "non_negative",
+      "sign_evidence": [
+        "shortwave_budget",
+        "shortwave_interval_consistency"
+      ],
+      "note": "ASOB_S is net short-wave (downward minus reflected), not global radiation: the land-mean net/downward ratio is 0.84 and net never exceeds downward. The getvdep comment says global radiation, but its input is ECMWF net SSR, the same quantity. The within-bound clip is the readwind_ecmwf ssr clip (windfields_mod.f90:2367).",
+      "canonical_temporal_kind": "interval_mean",
+      "interval_mean_verdict": "ADMISSIBLE_WITH_PROVEN_TRANSFORMATION",
+      "instantaneous_verdict": "NOT_ADMISSIBLE",
+      "calcpar_consumer_verdict": "REQUIRES_NEW_TEMPORAL_ORACLE"
+    },
+    {
+      "canonical_id": "surface_stress_eastward",
+      "source": "AUMFL_S",
+      "source_parameter": [
+        0,
+        2,
+        17
+      ],
+      "flexpart_source": "ECMWF EWSS (0/2/38, accumulated stress), read into ewss",
+      "quantity_equivalence": "DIFFERENT_WMO_PARAMETER_EQUIVALENT_BY_DEFINITION_AND_DECODED_SIGN",
+      "source_unit": "N m-2",
+      "canonical_unit": "newton_per_square_meter",
+      "source_sign": "positive_eastward",
+      "sign_transformation": "identity",
+      "canonical_sign": "positive_eastward",
+      "sign_evidence": [
+        "stress_sign"
+      ],
+      "note": "The downward flux of eastward momentum is the eastward stress on the surface. The pinned FLEXPART GRIB2 reader does not recognise 0/2/17, so an adapter must map it explicitly. FLEXPART uses only the magnitude sqrt(ewss**2+nsss**2).",
+      "canonical_temporal_kind": "interval_mean",
+      "interval_mean_verdict": "ADMISSIBLE_WITH_PROVEN_TRANSFORMATION",
+      "instantaneous_verdict": "NOT_ADMISSIBLE",
+      "calcpar_consumer_verdict": "REQUIRES_NEW_TEMPORAL_ORACLE"
+    },
+    {
+      "canonical_id": "surface_stress_northward",
+      "source": "AVMFL_S",
+      "source_parameter": [
+        0,
+        2,
+        18
+      ],
+      "flexpart_source": "ECMWF NSSS (0/2/37, accumulated stress), read into nsss",
+      "quantity_equivalence": "DIFFERENT_WMO_PARAMETER_EQUIVALENT_BY_DEFINITION_AND_DECODED_SIGN",
+      "source_unit": "N m-2",
+      "canonical_unit": "newton_per_square_meter",
+      "source_sign": "positive_northward",
+      "sign_transformation": "identity",
+      "canonical_sign": "positive_northward",
+      "sign_evidence": [
+        "stress_sign"
+      ],
+      "canonical_temporal_kind": "interval_mean",
+      "interval_mean_verdict": "ADMISSIBLE_WITH_PROVEN_TRANSFORMATION",
+      "instantaneous_verdict": "NOT_ADMISSIBLE",
+      "calcpar_consumer_verdict": "REQUIRES_NEW_TEMPORAL_ORACLE"
+    }
+  ],
+  "derived_fields": [
+    {
+      "canonical_id": "friction_velocity",
+      "verdict": "REQUIRES_NEW_TEMPORAL_ORACLE",
+      "blocker_issues": [
+        244
+      ],
+      "reason": "FLEXPART derives it in calcpar from point-value fluxes at memtime; interval means are not that input"
+    },
+    {
+      "canonical_id": "inverse_obukhov_length",
+      "verdict": "REQUIRES_NEW_TEMPORAL_ORACLE",
+      "blocker_issues": [
+        244,
+        231
+      ],
+      "reason": "FLEXPART derives it in calcpar from point-value fluxes at memtime; interval means are not that input"
+    },
+    {
+      "canonical_id": "convective_velocity_scale",
+      "verdict": "REQUIRES_NEW_TEMPORAL_ORACLE",
+      "blocker_issues": [
+        244,
+        231
+      ],
+      "reason": "FLEXPART derives it in calcpar from point-value fluxes at memtime; interval means are not that input"
+    },
+    {
+      "canonical_id": "mixing_height",
+      "verdict": "REQUIRES_NEW_TEMPORAL_ORACLE",
+      "blocker_issues": [
+        244,
+        231
+      ],
+      "reason": "FLEXPART derives it in calcpar from point-value fluxes at memtime; interval means are not that input"
+    }
+  ],
+  "temporal": {
+    "source_representation": "PDT 4.8 average (statistical processing 0) over [run start, valid time], time unit minutes, zero at step 0",
+    "derivation": "(t2*A(t2) - t1*A(t1)) / (t2 - t1) for consecutive published steps t1 < t2 of one cycle (DWD manual 7.1.1)",
+    "canonical_time": "TemporalKind::IntervalMean with interval_start = cycle + t1 and interval_end = valid_time = cycle + t2",
+    "step_zero": "never a canonical value: it has no interval, and its zeros would read as an absent flux (FLEXPART hflswitch/strswitch)",
+    "interval_lengths": {
+      "cycles_00_06_12_18_utc": "1 h through 78 h, then 3 h to 120 h",
+      "cycles_03_09_15_21_utc": "1 h through 30 h, then 6 h (36, 42, 48 h)"
+    },
+    "instantaneous": "NOT_ADMISSIBLE: an interval mean is not a point value and is never relabelled (#120 unchanged; #74/#89 sampling stays unavailable)",
+    "calcpar_equivalent_use": "REQUIRES_NEW_TEMPORAL_ORACLE: pinned FLEXPART reads flex_extract dapoly point values at memtime and applies nonlinear calcpar diagnostics (ustar from |stress|, Obukhov length). Applying dapoly to ICON means is structurally possible but unproven; #244 owns that decision and its pinned-routine oracle."
+  },
+  "quantization": {
+    "packing": "CCSDS template 5.42, 16 bits; decoded value = (R + X*2^E) / 10^D with float32 reference R",
+    "per_message_error_bound": "0.5*2^E/10^D + 0.5*spacing(float32(R))/10^D (round-to-nearest plus float32 reference rounding)",
+    "interval_bound": "(t2*e(t2) + t1*e(t1)) / (t2 - t1); grows linearly with lead time for a fixed interval length",
+    "rounding_evidence": "night-time interior ASOB_S interval means fill [-bound, +bound] symmetrically (77-78 h: -0.3008 to +0.3008 W m-2 for a 0.3027 bound), as round-to-nearest predicts and floor packing would not",
+    "bounds_by_field": {
+      "ASHFL_S": {
+        "first_hourly_interval_bound": 0.00391387939453125,
+        "bound_12_13h": 0.09784698486328125,
+        "bound_47_48h": 0.18590927124023438,
+        "last_hourly_interval": [
+          77,
+          78
+        ],
+        "last_hourly_interval_bound": 0.3033256530761719,
+        "max_hourly_bound": 0.3033256530761719,
+        "max_three_hourly_bound": 0.15475082397460938
+      },
+      "ASOB_S": {
+        "first_hourly_interval_bound": 0.00048828125,
+        "bound_12_13h": 0.09765681624412537,
+        "bound_47_48h": 0.18555253744125366,
+        "last_hourly_interval": [
+          77,
+          78
+        ],
+        "last_hourly_interval_bound": 0.3027389943599701,
+        "max_hourly_bound": 0.3027389943599701,
+        "max_three_hourly_bound": 0.15430039167404175
+      },
+      "AUMFL_S": {
+        "first_hourly_interval_bound": 6.115436553955078e-05,
+        "bound_12_13h": 0.0007659196853637695,
+        "bound_47_48h": 0.002904832363128662,
+        "last_hourly_interval": [
+          77,
+          78
+        ],
+        "last_hourly_interval_bound": 0.0047394633293151855,
+        "max_hourly_bound": 0.0047394633293151855,
+        "max_three_hourly_bound": 0.002413243055343628
+      },
+      "AVMFL_S": {
+        "first_hourly_interval_bound": 3.063678741455078e-05,
+        "bound_12_13h": 0.0007651448249816895,
+        "bound_47_48h": 0.0014552474021911621,
+        "last_hourly_interval": [
+          77,
+          78
+        ],
+        "last_hourly_interval_bound": 0.0023697316646575928,
+        "max_hourly_bound": 0.0024767518043518066,
+        "max_three_hourly_bound": 0.001207798719406128
+      }
+    },
+    "bounds_by_field_units": {
+      "ASHFL_S": "W m-2",
+      "ASOB_S": "W m-2",
+      "AUMFL_S": "N m-2",
+      "AVMFL_S": "N m-2"
+    },
+    "magnitude_cap": null,
+    "magnitude_cap_reason": "The normative flex_extract de-accumulation of ECMWF forecast accumulations has the same lead-time amplification and no cap. A cap would be a new consumer-sensitivity tolerance outside #233."
+  },
+  "fail_closed_rules": [
+    "Reject any message whose octets are not the expected parameter, PDT 4.8, statistical processing 0, averaging start 0, one time range, minute units, range length = 60*step and interval end = valid time; file names are never evidence.",
+    "Derive means only between consecutive published steps of one cycle; reject missing steps, mixed cycles and duplicate message identities.",
+    "Never emit step 0 or any derived mean as Instantaneous.",
+    "Carry the per-interval quantization bound with each derived field; reject when the packing metadata needed for it is absent or not template 5.42/5.0.",
+    "ASOB_S: clip derived means in [-bound, 0) to 0; reject the field when any ingested cell is below -bound, or any night cell (sun below -1 deg for the whole interval) is outside +-bound.",
+    "ASHFL_S: negate after derivation; no other sign handling."
+  ],
+  "shortwave_consistency": {
+    "asob_negative_beyond_bound_cell_intervals": 53,
+    "asob_night_beyond_bound_cell_intervals": 63,
+    "asob_violation_columns_from_east_edge": [
+      0,
+      1,
+      2
+    ],
+    "asob_violation_latitude_range": [
+      68.0,
+      69.9375
+    ],
+    "edge_band_columns": 3,
+    "finding": "All violations lie in the three easternmost columns (62.375-62.5 E) at 68-70 N, up to 6.2x the bound. The cause is not established. Under the fail-closed rule, a domain that contains these cells rejects ASOB_S for the affected intervals; #244 decides their admission for point reconstruction.",
+    "budget_finding": "ASOB_S = ASWDIR_S + ASWDIFD_S - ASWDIFU_S within packing error in all but at most 0.74% of cells per sampled step. The residuals are almost always negative and concentrate over elevated land. This does not change the net-downward sign verdict."
+  },
+  "open_items": [
+    "Cause of the eastern-edge ASOB_S de-averaging inconsistency; it is undetectable for the other three fields, which have no physical bound.",
+    "Cause of the short-wave budget non-closure over elevated land (terrain radiation treatment is suspected, not established)."
+  ],
+  "follow_up_issues": [
+    244
+  ],
+  "non_scope": [
+    "#120 change",
+    "PBL or deposition code",
+    "relabelling means as instantaneous",
+    "decoder or adapter",
+    "edit of the #230 provider contract v1"
+  ]
+}

@@ -297,6 +297,8 @@ From `science.surface_fluxes`:
   AUMFL_S/AVMFL_S correlate +0.80/+0.78 with U_10M/V_10M.
 - #120 admits only instantaneous point values for surface-flux time sampling,
   so averages may not be relabelled. **#233** owns the decision.
+- Decided in [#233](icon-eu-surface-fluxes-233.md): de-averaged sign-normalized
+  `IntervalMean` only; `calcpar`-equivalent use needs the #244 point-value oracle.
 
 ## 48-hour operational feasibility
 

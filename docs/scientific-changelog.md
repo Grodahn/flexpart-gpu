@@ -27,6 +27,16 @@ per-cell TOT_PREC closure check, and the template-5.42 analogue of the #216 boun
 has no FLEXPART reader, so this defines a provider mapping rather than a deviation from a
 Fortran routine; #240 owns adoption and no parity claim is made.
 
+### 2026-11-03 - Decide ICON-EU time-averaged surface-flux semantics (#233)
+**Impact**: none (research decision; no production scientific behavior changes).
+**Files**: `docs/research/icon-eu-surface-fluxes-233.md`, versioned decision and
+decoded evidence under `fixtures/meteorology/icon-eu-flux-233-v1/`, research-only tooling.
+**Validation**: real ICON-EU cycle decoded with ecCodes 2.24.2/2.48.0 (0 mismatches),
+offline identity/formula/hash tests and a Rust decision lock. Averages become
+sign-normalized `IntervalMean` with an exact quantization bound, never
+`Instantaneous`; FLEXPART-equivalent PBL/deposition use is deferred to #244. No
+original FLEXPART behavior is changed and no parity claim is made.
+
 ### 2026-11-01 - Audit real deterministic IFS Open Data 0.1 degrees (#238)
 **Impact**: none (research decision; no production scientific behavior changes).
 **Files**: `docs/research/ifs-open-provider-238.md`, versioned IFS provider

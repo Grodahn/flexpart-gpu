@@ -40,7 +40,12 @@ class CoverageTests(unittest.TestCase):
                          text.count('cargo test --lib gpu::meteorology::deposition_production_tests')
                          for text in self.workflows().values())
         self.assertEqual(deposition, 2)
-        self.assertLess(result['after_invocations'] - 1 - temporal - deposition,
+        # #227 adds two resident device runs and one isolated lane-kernel gate.
+        resident = sum(text.count('cargo test --test precipitation_resident_gpu') +
+                       text.count('cargo test --lib precipitation_resident')
+                       for text in self.workflows().values())
+        self.assertEqual(resident, 3)
+        self.assertLess(result['after_invocations'] - 1 - temporal - deposition - resident,
                         result['baseline_invocations'])
 
     def test_missing_secondary_validation_cell_fails(self):

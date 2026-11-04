@@ -11,6 +11,8 @@ or a composition that is not one encoder and one submission.
 
     python scripts/precipitation/check_genuine_production_replay.py REPORT [--software|--hardware]
     python scripts/precipitation/check_genuine_production_replay.py --both DIR
+    python scripts/precipitation/check_genuine_production_replay.py --resident REPORT [--software|--hardware] [--matched FRESH]
+    python scripts/precipitation/check_genuine_production_replay.py --resident --both DIR
 """
 import argparse
 import hashlib
@@ -294,6 +296,34 @@ def check_temporal(path, software=False, hardware=False, matched=None):
     require(json.loads(r['input_manifest']) == r['metadata'] and
             hashlib.sha256(r['input_manifest'].encode()).hexdigest() == evidence['candidate']['input_sha256'], 'temporal input manifest')
     metadata = r['metadata']['members']
+    check_member_window(r, metadata, adapter, decision, fixture)
+    pairs = r['metadata']['memory_pairs']
+    queries = r['metadata']['queries']
+    rows = r['rows']
+    expected_rows = [(c, row) for c in fixture['cases'][:-1] for row in c['rows']]
+    require(len(rows) == len(pairs) == len(queries) == len(expected_rows) == 588, 'complete temporal comparisons')
+    for index, (row, query, pair, (case, oracle_row)) in enumerate(zip(rows, queries, pairs, expected_rows)):
+        x, y, t = oracle_row['query']
+        require(query == row['query'] == {'xt': x, 'yt': y, 'itime_epoch_seconds': t + EPOCH_UNIX_S}
+                and row['index'] == index and row['case'] == case['id'], 'query identity')
+        left, right = case['slots']
+        require(pair == {'left': metadata['members'][left], 'right': metadata['members'][right]}, 'selected memory pair')
+        require(row['original'] == [oracle_row['lsp'], oracle_row['cp']], 'temporal original outputs')
+        require(len(row['candidate']) == len(row['candidate_bits']) == len(row['absolute_differences']) == 2,
+                'both precipitation fields')
+        for c, b, o, difference in zip(row['candidate'], row['candidate_bits'], row['original'], row['absolute_differences']):
+            require(f32_from_bits(b) == c and within_policy(c, o) and difference == abs(c-o), 'temporal mismatch')
+        require(row['verdict'] == 'passed', 'row verdict')
+    if matched is not None:
+        fresh = json.loads(matched.read_text())
+        require(fresh['device_report_sha256'] == digest(path) and fresh['candidate'] == r['candidate'], 'fresh candidate attribution')
+        check_matched_temporal(r, fixture, fresh)
+    return r
+
+
+def check_member_window(r, metadata, adapter, decision, fixture):
+    """Shared #119/#227 check of the genuine #207 window and the original fixture."""
+    import temporal_oracle as original
     require(metadata['calendar'] == 'gregorian' and metadata['cell_count'] == 9 and
             metadata['horizontal_grid'] == {'nx': 3, 'ny': 3, 'dx_deg': 1.0, 'dy_deg': 1.0,
                 'xlon0_deg': 10.0, 'ylat0_deg': 50.0, 'longitude_domain': 'minus180_to180'}, 'genuine grid/calendar')
@@ -347,38 +377,21 @@ def check_temporal(path, software=False, hardware=False, matched=None):
     golden = fixture['cases'][-1]['rows']
     require([[row['lsp'], row['cp']] for row in golden] ==
             [[9.75, 1.5], [84.75, 2.25], [159.75, 3.0], [234.75, 3.75], [309.75, 4.5]], 'frozen arithmetic control')
-    pairs = r['metadata']['memory_pairs']
-    queries = r['metadata']['queries']
-    rows = r['rows']
-    expected_rows = [(c, row) for c in fixture['cases'][:-1] for row in c['rows']]
-    require(len(rows) == len(pairs) == len(queries) == len(expected_rows) == 588, 'complete temporal comparisons')
-    for index, (row, query, pair, (case, oracle_row)) in enumerate(zip(rows, queries, pairs, expected_rows)):
-        x, y, t = oracle_row['query']
-        require(query == row['query'] == {'xt': x, 'yt': y, 'itime_epoch_seconds': t + EPOCH_UNIX_S}
-                and row['index'] == index and row['case'] == case['id'], 'query identity')
-        left, right = case['slots']
-        require(pair == {'left': metadata['members'][left], 'right': metadata['members'][right]}, 'selected memory pair')
-        require(row['original'] == [oracle_row['lsp'], oracle_row['cp']], 'temporal original outputs')
-        require(len(row['candidate']) == len(row['candidate_bits']) == 2, 'both precipitation fields')
-        for c, b, o, difference in zip(row['candidate'], row['candidate_bits'], row['original'], row['absolute_differences']):
-            require(f32_from_bits(b) == c and within_policy(c, o) and difference == abs(c-o), 'temporal mismatch')
-        require(row['verdict'] == 'passed', 'row verdict')
-    if matched is not None:
-        fresh = json.loads(matched.read_text())
-        require(fresh['device_report_sha256'] == digest(path) and fresh['candidate'] == r['candidate'], 'fresh candidate attribution')
-        check_matched_temporal(r, fixture, fresh)
-    return r
 
 
 def check_temporal_residency_sources():
     """Extend #76's bounded no-host-completion audit to the actual called stages."""
-    functions = {
+    check_residency({
         'src/gpu/precipitation_temporal.rs': ["pub fn encode<'s>", 'fn encode_time('],
         'src/gpu/precipitation_members.rs': ["pub fn encode<'s>", 'fn encode_darain('],
         'src/gpu/meteorology/interval_rates.rs': ['pub fn encode_interval_rates('],
         'src/gpu/horizontal.rs': ['pub fn encode_horizontal_samples('],
         'src/gpu/accumulation.rs': ['pub fn encode_accumulated_intervals_gpu_with_kernel('],
-    }
+    })
+
+
+def check_residency(functions):
+    """Reject submit/poll/readback/upload inside the named encode bodies."""
     for path, names in functions.items():
         source = (ROOT / path).read_text()
         for name in names:
@@ -431,6 +444,177 @@ def check_temporal_both(directory):
     return hardware, software
 
 
+RESIDENT_SCHEMA = 'flexpart-gpu.precipitation-resident-device.v1'
+RESIDENT_CAPACITY, RESIDENT_ACTIVE = 16, 14
+RESIDENT_POSITION_LANES = [0, 1, 2, 4, 5, 6, 7, 9, 10, 11, 12, 13]
+RESIDENT_INACTIVE_LANES, RESIDENT_TAIL_LANES = [3, 8], [14, 15]
+RESIDENT_STAGES = (['status_reset', 'particle_producer'] + ['plane_copy', 'resident_adapter', 'horizontal'] * 4
+                   + ['temporal_rates', 'publish'])
+RESIDENT_CLASS_ROWS = {'interior': 432, 'exact_interior_member': 144, 'final': 12}
+QUIET_NAN_BITS = '7fc00000'
+
+
+def check_resident_residency_sources():
+    """#227 per-step encode bodies: no submission, wait, readback or upload."""
+    check_temporal_residency_sources()
+    check_residency({
+        'src/gpu/precipitation_resident.rs': ["pub fn encode_from_particles<'s>", "fn encode_sampling<'s>"],
+        'src/gpu/meteorology/resident.rs': ['pub fn encode_particles(', 'pub(crate) fn encode_surface_adapter('],
+    })
+
+
+def check_adapter(adapter, software, hardware, label):
+    require(adapter['name'] and adapter['backend'] in BACKENDS, label + ' adapter')
+    adapter_class = 'software_wgsl' if adapter['device_type'] == 'cpu' else 'hardware_gpu'
+    require(adapter['adapter_class'] == adapter_class, label + ' adapter classification')
+    require(not software or adapter_class == 'software_wgsl', label + ' software execution')
+    require(not hardware or adapter_class == 'hardware_gpu', label + ' hardware execution')
+
+
+def check_resident_allocation(audit, cell_count):
+    """Planes once per step, an O(capacity) remainder and constant work (#227)."""
+    small, large = audit['small'], audit['large']
+    require(audit['cell_count'] == cell_count and audit['per_lane_bind_groups'] == 0, 'resident audit identity')
+    require(small['capacity'] == RESIDENT_CAPACITY and small['active_count'] == RESIDENT_ACTIVE
+            and large['capacity'] > small['capacity'], 'resident audit capacities')
+    for step in (small, large):
+        require(step['plane_bytes'] == 4 * cell_count * 4, 'resident shared planes')
+        require(step['bound_bytes'] == step['plane_bytes'] + audit['per_lane_bytes'] * step['capacity']
+                + audit['control_bytes_bound'] and step['device_bytes'] <= step['bound_bytes'], 'resident memory bound')
+        require(step['stages'] == RESIDENT_STAGES and step['dispatches'] == 12 and step['copies'] == 4,
+                'resident constant work')
+    require(large['device_bytes'] - small['device_bytes'] ==
+            audit['per_lane_bytes'] * (large['capacity'] - small['capacity']), 'resident per-lane growth')
+
+
+def check_resident(path, software=False, hardware=False, matched=None):
+    """Audit #227 resident lanes: original rows, #119 bitwise identity, scalability.
+
+    ``matched`` additionally requires the fresh original execution on the exact
+    post-submission member bytes, as for #119.
+    """
+    check_resident_residency_sources()
+    require(path.is_file(), 'missing resident report')
+    r = json.loads(path.read_text())
+    fixture = json.loads(TEMPORAL_FIXTURE.read_text())
+    require(r['schema'] == RESIDENT_SCHEMA, 'resident schema')
+    revision = os.environ.get('FLEXPART_GPU_CANDIDATE_REVISION') or subprocess.check_output(
+        ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    require(r['candidate'] == {'revision': revision, 'worktree_clean': True}, 'stale resident candidate')
+    require(r['fixture_sha256'] == digest(TEMPORAL_FIXTURE) == TEMPORAL_FIXTURE_SHA256, 'original fixture identity')
+    require(fixture['flexpart_revision'] == FLEXPART_PIN and fixture['flex_extract_revision'] == FLEX_EXTRACT_PIN,
+            'resident original pins')
+    require(fixture['darain_oracle_sha256'] == r['darain_oracle_sha256'] == digest(ORACLE), 'member oracle')
+    require(r['decision_216_sha256'] == digest(DECISION), '#216 decision')
+    decision = json.loads(DECISION.read_text())
+    require(dict(r['grib_files_sha256']) == {k: v['sha256'] for k, v in decision['consumed']['grib_files'].items()},
+            'resident GRIB identities')
+    shaders = {**SHADERS, **{name: ROOT / f'src/shaders/{name}.wgsl' for name in (
+        'particle_query', 'resident_status_reset', 'resident_query_adapter', 'precipitation_resident_rates',
+        'precipitation_resident_publish', 'precipitation_temporal')},
+        'horizontal': ROOT / 'src/shaders/horizontal_interpolation.wgsl'}
+    require(r['shaders'] == {k: digest(p) for k, p in shaders.items()}, 'resident shader hashes')
+    for name, sha in fixture['harness_sha256'].items():
+        require(sha in harness_digests(ROOT / 'scripts/interpolation' / name), 'modified original harness')
+    require(r['encoders'] == r['submissions'] == r['member_reconstructions'] == 1
+            and r['host_transfers_between_stages'] == 0 and r['host_coordinate_uploads'] == 0, 'resident residency')
+    adapter = r['adapter']
+    check_adapter(adapter, software, hardware, 'resident')
+    require(r['status'] == 0 and r['verdict'] == 'passed', 'fatal resident status/verdict')
+    require(r['unit'] == r['metadata']['unit'] == 'millimeter_per_hour', 'resident units')
+    require(r['comparison_policy'] == {'absolute': ABS_TOL, 'relative': REL_TOL}, 'resident policy')
+    sources = {'resident': 'src/gpu/precipitation_resident.rs', 'test': 'tests/precipitation_resident_gpu.rs',
+               'lanes': 'src/gpu/meteorology/resident.rs', 'temporal': 'src/gpu/precipitation_temporal.rs',
+               'member': 'src/gpu/precipitation_members.rs', 'spatial': 'src/gpu/horizontal.rs'}
+    require(r['source_sha256'] == {k: digest(ROOT / p) for k, p in sources.items()}, 'resident source identity')
+    evidence = r['gpu_evidence']
+    require(evidence['schema'] == {'id': 'flexpart-gpu.gpu-execution-evidence', 'version': 1}
+            and evidence['candidate']['revision'] == revision
+            and evidence['candidate']['implementation_id'] == 'precipitation-resident-gpu-227'
+            and evidence['candidate']['shader_sha256'] == r['shaders']['precipitation_resident_rates'],
+            '#91 resident candidate')
+    require(evidence['execution'] == {'status': 'passed', 'calculation_path': 'wgsl_device', 'adapter': adapter,
+                                     'failure': None, 'skip_reason': None}, '#91 resident execution')
+    require(evidence['comparison']['verdict'] == 'passed' and evidence['comparison']['compared_value_count'] == 1176
+            and evidence['comparison']['policy'] == {'absolute_tolerance': ABS_TOL, 'relative_tolerance': REL_TOL},
+            '#91 resident comparison')
+    require(evidence['oracle']['revision'] == FLEXPART_PIN
+            and evidence['oracle']['executable_sha256'] == fixture['executable_sha256']
+            and evidence['oracle']['output_sha256'] == digest(TEMPORAL_FIXTURE), '#91 original identity')
+    manifest = json.loads(r['input_manifest'])
+    require(manifest['members'] == r['metadata'] and
+            hashlib.sha256(r['input_manifest'].encode()).hexdigest() == evidence['candidate']['input_sha256'],
+            'resident input manifest')
+    metadata = r['metadata']
+    check_member_window(r, metadata, adapter, decision, fixture)
+    require(manifest['lanes'] == {'capacity': RESIDENT_CAPACITY, 'active_count': RESIDENT_ACTIVE,
+                                  'position_lanes': RESIDENT_POSITION_LANES}
+            and r['lanes'] == {**manifest['lanes'], 'inactive_lanes': RESIDENT_INACTIVE_LANES,
+                               'tail_lanes': RESIDENT_TAIL_LANES}, 'resident lane layout')
+    check_resident_allocation(r['allocation_audit'], metadata['cell_count'])
+    require(r['bitwise_equal'] == {k: {'rows': n, 'bitwise_equal': True} for k, n in RESIDENT_CLASS_ROWS.items()},
+            'resident bitwise identity with the #119 batch API')
+    members = metadata['members']
+    member_times = [m['valid_time_epoch_seconds'] for m in members]
+    cases = [c for c in fixture['cases'] if c['id'] != 'arithmetic-control']
+    expected_steps = [(c, c['rows'][i:i + 12]) for c in cases for i in range(0, len(c['rows']), 12)]
+    steps = r['steps']
+    require(len(steps) == len(expected_steps) == len(manifest['steps']) == 49 and r['steps_per_submission'] == 50,
+            'complete resident steps')
+    rows = r['rows']
+    require(len(rows) == 588, 'complete resident comparisons')
+    index = 0
+    for step_index, (step, declared, (case, oracle_rows)) in enumerate(zip(steps, manifest['steps'], expected_steps)):
+        itime = oracle_rows[0]['query'][2] + EPOCH_UNIX_S
+        left, right = case['slots']
+        t0, t1 = member_times[left], member_times[right]
+        require(step['itime_epoch_seconds'] == declared['itime_epoch_seconds'] == itime
+                and step['memory_pair_slots'] == [left, right]
+                and declared['memory_pair'] == {'left': members[left], 'right': members[right]}
+                and step['time_differences_seconds'] == declared['time_differences_seconds']
+                == [itime - t0, t1 - itime, t1 - t0], 'resident step pair/time')
+        require(step['capacity'] == RESIDENT_CAPACITY and step['active_count'] == RESIDENT_ACTIVE
+                and step['fatal_status'] == 0, 'resident step status')
+        require(step['lane_status'] == [2 if lane in RESIDENT_POSITION_LANES else 0
+                                        for lane in range(RESIDENT_CAPACITY)], 'resident lane status')
+        require(step['inactive_or_tail_bits'] == [[QUIET_NAN_BITS] * 2] * 4, 'explicit inactive/tail lanes')
+        time_class = ('final' if itime == member_times[-1] else
+                      'exact_interior_member' if itime in member_times else 'interior')
+        for position, oracle_row in enumerate(oracle_rows):
+            row = rows[index]
+            x, y, _ = oracle_row['query']
+            require(row['index'] == index and row['step'] == step_index and row['position'] == position
+                    and row['lane'] == RESIDENT_POSITION_LANES[position] and row['case'] == case['id']
+                    and row['query'] == [x, y, itime] and row['time_class'] == time_class, 'resident query identity')
+            require(row['original'] == [oracle_row['lsp'], oracle_row['cp']], 'resident original outputs')
+            require(len(row['candidate']) == len(row['candidate_bits']) == len(row['batch_bits'])
+                    == len(row['absolute_differences']) == 2, 'both precipitation fields')
+            require(row['candidate_bits'] == row['batch_bits'] and row['bitwise_equal'] is True,
+                    'resident lane differs from the #119 batch API')
+            for c, b, o, difference in zip(row['candidate'], row['candidate_bits'], row['original'],
+                                           row['absolute_differences']):
+                require(f32_from_bits(b) == c and within_policy(c, o) and difference == abs(c - o),
+                        'resident mismatch')
+            require(row['verdict'] == 'passed', 'resident row verdict')
+            index += 1
+    if matched is not None:
+        fresh = json.loads(matched.read_text())
+        require(fresh['device_report_sha256'] == digest(path) and fresh['candidate'] == r['candidate'],
+                'fresh candidate attribution')
+        check_matched_temporal(r, fixture, fresh)
+    return r
+
+
+def check_resident_both(directory):
+    """Require hardware and software resident reports plus both fresh original runs."""
+    hardware = check_resident(directory / 'report-hardware_gpu.json', hardware=True,
+                              matched=directory / 'matched-hardware.json')
+    software = check_resident(directory / 'report-software_wgsl.json', software=True,
+                              matched=directory / 'matched-software.json')
+    require(hardware['candidate'] == software['candidate'], 'same resident candidate on both adapters')
+    return hardware, software
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -439,9 +623,18 @@ if __name__ == '__main__':
     parser.add_argument('--hardware', action='store_true')
     parser.add_argument('--both', type=Path, metavar='DIR')
     parser.add_argument('--temporal', action='store_true')
+    parser.add_argument('--resident', action='store_true')
     parser.add_argument('--matched', type=Path)
     args = parser.parse_args()
-    if args.temporal and args.both:
+    if args.resident and args.both:
+        check_resident_both(args.both)
+        print('#227 resident sampling: hardware and software PASS, #119-bitwise, fresh matched original (1176 outputs each)')
+    elif args.resident:
+        require(args.report is not None, 'resident report required')
+        check_resident(args.report, args.software, args.hardware, args.matched)
+        print('#227 resident sampling: PASS (49 steps, 588 lanes bitwise equal to #119, 1176 original comparisons' +
+              (', fresh matched inputs)' if args.matched else ', frozen original fixture)'))
+    elif args.temporal and args.both:
         check_temporal_both(args.both)
         print('#119 temporal sampling: hardware and software PASS, fresh matched original (1176 outputs each)')
     elif args.temporal:

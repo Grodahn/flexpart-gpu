@@ -79,6 +79,20 @@ pub(crate) struct ResidentQueryWriteTarget<'a> {
     pub(crate) context: &'a GpuContext,
 }
 
+/// Step-owned resources for [`ResidentQueryBatch::encode_surface_adapter`].
+pub(crate) struct SurfaceAdapterBindings<'a> {
+    /// From [`ResidentQueryBatch::surface_adapter_params`] of the same batch.
+    pub(crate) params: &'a wgpu::Buffer,
+    /// Device-written scalar plane, x-fastest; corners are checked per lane.
+    pub(crate) plane: &'a wgpu::Buffer,
+    /// #87 query geometry tied to `plane`, `capacity` entries.
+    pub(crate) horizontal_queries: &'a wgpu::Buffer,
+    /// Adapter height output, `capacity` entries; unused by surface sampling.
+    pub(crate) query_heights: &'a wgpu::Buffer,
+    /// Unwritten in surface mode; any small storage buffer.
+    pub(crate) lane_heights: &'a wgpu::Buffer,
+}
+
 fn incompatible(reason: &'static str) -> MeteorologyCompositionError {
     MeteorologyCompositionError::Incompatible(reason)
 }
@@ -251,6 +265,65 @@ impl<'ctx> ResidentQueryBatch<'ctx> {
             ctx,
             &[&particles.particle_buffer, target.lanes, &params],
             target.capacity,
+            encoder,
+        );
+        Ok(())
+    }
+
+    pub(crate) fn belongs_to(&self, ctx: &GpuContext) -> bool {
+        std::ptr::eq(self.context, ctx)
+    }
+
+    pub(crate) const fn grid(&self) -> &HorizontalGrid {
+        &self.grid
+    }
+
+    /// Shared fatal word followed by one lane reason, for crate-local consumers.
+    pub(crate) const fn status_buffer(&self) -> &wgpu::Buffer {
+        &self.status
+    }
+
+    /// Control parameters for [`Self::encode_surface_adapter`]: one regional
+    /// scalar surface plane, no height columns.
+    pub(crate) fn surface_adapter_params(
+        &self,
+        ctx: &GpuContext,
+    ) -> Result<wgpu::Buffer, MeteorologyCompositionError> {
+        let nx = u32::try_from(self.grid.nx).map_err(|_| incompatible("nx"))?;
+        let ny = u32::try_from(self.grid.ny).map_err(|_| incompatible("ny"))?;
+        Ok(uniform(
+            ctx,
+            &[self.capacity, self.active_count, nx, ny, 0, 1, 0, 0],
+        ))
+    }
+
+    /// Adapt the batch lanes into #87 geometry for one device-written surface
+    /// plane (#227), including the existing per-lane corner/domain status.
+    /// The status reset and lane producer must precede this in the same encoder.
+    /// # Errors
+    /// Rejects context mismatches before encoding.
+    pub(crate) fn encode_surface_adapter(
+        &self,
+        ctx: &GpuContext,
+        kernels: &ResidentQueryKernels<'_>,
+        bindings: &SurfaceAdapterBindings<'_>,
+        encoder: &mut wgpu::CommandEncoder,
+    ) -> Result<(), MeteorologyCompositionError> {
+        self.validate(ctx, kernels)?;
+        // Model mode 0 never reads heights; the plane fills the unused binding.
+        kernels.adapter.encode(
+            ctx,
+            &[
+                &self.lanes,
+                bindings.horizontal_queries,
+                bindings.plane,
+                bindings.plane,
+                bindings.lane_heights,
+                bindings.query_heights,
+                &self.status,
+                bindings.params,
+            ],
+            self.capacity,
             encoder,
         );
         Ok(())

@@ -75,7 +75,8 @@ Owner: [`src/gpu/precipitation_members.rs`](../src/gpu/precipitation_members.rs)
 5. The returned `EncodedPrecipitationMembers` exposes:
    - `large_scale_mm_per_h`, `convective_mm_per_h`: `STORAGE | COPY_SRC` `f32`,
      `[slot * cell_count + cell]`, x-fastest, mm/h;
-   - `status`: one `u32`; bit 1 non-finite rate, bit 2 non-finite member. A
+   - `status`: one `u32`; bit 1 non-finite rate, bit 2 non-finite member,
+     bit 8 set from allocation until encoded work executes (#227). A
      consumer must reject any nonzero value;
    - `metadata`: representation `flex_extract-7.1.2-rrint0-darain`, unit,
      calendar, `Δ`, `s0`, grid, cell count, source snapshot hashes, #75

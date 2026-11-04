@@ -91,7 +91,7 @@ The [software workflow](../.github/workflows/software-wgpu.yml) requires both.
 migrations remain #112–#115; within-stencil differing profiles remain #118;
 precipitation time sampling remains #119. #114 found no deposition consumer
 of resident meteorology (see [the inventory](deposition-meteorology-migration.md)).
-v1 rejects accumulated fields; pair-shared #207/#119 lanes are #227. #120 admits instantaneous surface fluxes
+v1 rejects accumulated fields; [#227](precipitation-resident-sampling.md) samples #207/#119 precipitation on these lanes. #120 admits instantaneous surface fluxes
 to the shared #89 resolver; its paired evidence covers the #89 and #76 host-query
 paths, not resident lane batches. ASL conversion,
 interface-W extension and #117 cleanup are outside this change.

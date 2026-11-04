@@ -485,6 +485,53 @@ impl HorizontalFieldBuffers {
         })
     }
 
+    /// Allocate a cell-center plane that only device copies fill (#227).
+    ///
+    /// No host values are uploaded. `identity` replaces the content hash in
+    /// the #87 query/field identity, so only resident queries created from
+    /// this plane can sample it.
+    ///
+    /// # Errors
+    /// Returns [`GpuHorizontalError`] for malformed grids or oversized planes.
+    pub(crate) fn device_plane(
+        ctx: &GpuContext,
+        grid: &HorizontalGrid,
+        identity: String,
+    ) -> Result<Self, GpuHorizontalError> {
+        let is_periodic_x = validate_horizontal_grid(grid)?;
+        let (nx, ny) = (grid.nx, grid.ny);
+        let element_count = nx.checked_mul(ny).ok_or(GpuHorizontalError::Horizontal(
+            HorizontalError::MalformedDimensions { nx, ny },
+        ))?;
+        u32::try_from(nx).map_err(|_| GpuHorizontalError::ValueTooLarge {
+            field: "nx",
+            value: nx,
+        })?;
+        u32::try_from(ny).map_err(|_| GpuHorizontalError::ValueTooLarge {
+            field: "ny",
+            value: ny,
+        })?;
+        let size = checked_f32_byte_len(element_count, "horizontal_field")?;
+        validate_storage_size(ctx, size, "horizontal_field")?;
+        push_device_error_scopes(&ctx.device);
+        let buffer = ctx.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("horizontal_device_plane"),
+            size,
+            usage: storage_usage(),
+            mapped_at_creation: false,
+        });
+        pop_device_error_scopes(&ctx.device, "device plane allocation")?;
+        Ok(Self {
+            buffer,
+            nx,
+            ny,
+            is_periodic_x,
+            element_count,
+            grid: grid.clone(),
+            field_sha256: identity,
+        })
+    }
+
     /// Horizontal dimension.
     #[must_use]
     pub const fn nx(&self) -> usize {
@@ -584,6 +631,13 @@ pub struct HorizontalUniforms {
     nx: usize,
     ny: usize,
     is_periodic_x: bool,
+}
+
+impl HorizontalUniforms {
+    /// Allocated uniform bytes, for allocation audits.
+    pub(crate) fn buffer_size(&self) -> u64 {
+        self.buffer.size()
+    }
 }
 
 fn storage_usage() -> wgpu::BufferUsages {

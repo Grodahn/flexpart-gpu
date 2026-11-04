@@ -14,6 +14,17 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ---
 
+### 2026-11-03 - Sample #207 precipitation on resident particle lanes (#227)
+**Impact**: numerics (new lane-parallel port of the unchanged #119 arithmetic; no new semantic).
+**Files**: `src/gpu/precipitation_resident.rs`, `src/shaders/precipitation_resident_rates.wgsl`,
+`src/shaders/precipitation_resident_publish.wgsl`.
+**Validation**: 49 genuine steps / 588 resident lanes are bitwise equal to the
+#119 batch API (interior, exact-member, final) and match the pinned FLEXPART
+11.1 `interpol_rain` fixture under the unchanged #71 rule, on hardware Vulkan
+and software WGSL, plus fresh matched-input original replay. Memory is
+`4 x cell_count x 4 B + 164 B/lane`; 12 dispatches + 4 copies per step. No
+deposition consumer and no wet-deposition or FLEXPART parity claim.
+
 ### 2026-11-03 - Decide ICON-EU time-averaged surface-flux semantics (#233)
 **Impact**: none (research decision; no production scientific behavior changes).
 **Files**: `docs/research/icon-eu-surface-fluxes-233.md`, versioned decision and

@@ -7,7 +7,7 @@ license = "GPL-3.0-or-later"
 
 [features]
 default = []
-eccodes = ["dep:eccodes"]
+eccodes = ["dep:eccodes", "dep:eccodes-sys"]
 netcdf = ["dep:netcdf"]
 
 [dependencies]
@@ -23,6 +23,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = { version = "0.10", default-features = false, features = ["std"] }
 eccodes = { version = "0.14", optional = true }
+eccodes-sys = { version = "0.7", optional = true }
 netcdf = { version = "0.12.0", optional = true }
 
 [dev-dependencies]
@@ -37,3 +38,7 @@ lto = "thin"
 [[bench]]
 name = "advection"
 harness = false
+
+[[bin]]
+name = "era5-etex-decode"
+required-features = ["eccodes"]

@@ -550,6 +550,7 @@ dependencies = [
  "bytemuck",
  "criterion",
  "eccodes",
+ "eccodes-sys",
  "env_logger",
  "log",
  "ndarray 0.16.1",

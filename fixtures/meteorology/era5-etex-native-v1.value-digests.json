@@ -1,0 +1,62 @@
+{
+  "encoding": "IEEE-754 f32 little-endian; x fastest, latitude ascending, levels 1 through 137",
+  "sources": [
+    {
+      "file": "era5-19941023-151821-ml.grib",
+      "raw_sha256": "0e059410504dc3d1b2ba13628372a0be81054ff30a75017cf5b06cf9144b5023",
+      "pv_f32_le_sha256": "a767c2208bf3f831f2b69ec7a2553f1cd5c918ebaa47205f44b3fd311c3e9d17",
+      "volumes_by_epoch": {
+        "782924400": {
+          "specific_humidity": "46bdeb8fd11ee26ee89021dfbd9d6cbb9b3f96f5d2762fa5681f78f2414dd2d2",
+          "temperature": "b127646a874e6da1d5d216d197cad890072f2f40fa80006b35f8fd520c880fa6",
+          "wind_u": "47fb336a986ae49d30f570eae2dde88d31ee25bced7d9885828766a79b11cf85",
+          "wind_v": "a021dc77ddd64e60639963f7a6e59bb1aec72b772f77a1584ac986010402fa48"
+        },
+        "782935200": {
+          "specific_humidity": "67835f61c326e8ccb4d5723293c24f2aa881e9fcff4eddedab3e51fb8605280f",
+          "temperature": "ee3d08afb21c76ec1ecd6b77567ae6d67bfd3a9e204eacff4674db3fa037ddf7",
+          "wind_u": "1ae62b11e25bfc23cae858e46c10c0e9e2aedf392773bbd3d60809c9175a0a04",
+          "wind_v": "209febded80c34d69b483b5d8cdefa8dbd66fde34aa4e72103a4f7cff78abb36"
+        },
+        "782946000": {
+          "specific_humidity": "93fe75b2342927f7e6cd49c0f23905c08c8fa078572695dde0f1768889a9488a",
+          "temperature": "0d7d13e8b649ed3db0d9e0399f106460be8ab8e0eb2ec178aa7450405a289b8b",
+          "wind_u": "fc67d62c03fa918b7b58a232e275bfc5db24dc59417ce65cec98c6808c67f393",
+          "wind_v": "5e58893cb58013a77a1bc4096327dbc61bb7110df62efd9c58427ba79a1f9c68"
+        }
+      }
+    },
+    {
+      "file": "era5-19941024-000306-ml.grib",
+      "raw_sha256": "893c39cbf0b70129895588aa5c8b43dc819abb129973604147e621c05d5a472b",
+      "pv_f32_le_sha256": "a767c2208bf3f831f2b69ec7a2553f1cd5c918ebaa47205f44b3fd311c3e9d17",
+      "volumes_by_epoch": {
+        "782956800": {
+          "specific_humidity": "926573bc38e3513ea67e0d01cbfb74dd7561490a5d42b84333b176db139bdbce",
+          "temperature": "6059d7f7ace389a8c9e515ba40f2419f3079621cfd8728e901e4a23a3afd6da2",
+          "wind_u": "58d481d713b508a46e65dbad816bc1c9ac57c1a1c3aedb1e0b1b4522c221ee3b",
+          "wind_v": "ed07cedb7c270ad152a9a6f9978e78654e4c93eb3060284dfbc0050b9b3599a5"
+        },
+        "782967600": {
+          "specific_humidity": "6c0783f8a83363dc246758d682f185fb443b28e4bac0d970ba27ed3b6bf5311f",
+          "temperature": "2c3d4f564d9f88b29acdbd7cfcb61a59d0c9a6bc69e2da7f888e109a92e9472d",
+          "wind_u": "f9b252fa06b3322f8f4dae68b8c93f221cc3cd03bf9e355d0d190d94711fb061",
+          "wind_v": "541afe5b1cf16830719b4e79a53898a2cffad541eeaa387c0d0799838475cf87"
+        },
+        "782978400": {
+          "specific_humidity": "247d7b433a361502d5d4e9d2288dede38e1fa899272187faad9780b59d176035",
+          "temperature": "08eb775f12c5f38c860f33799ae820b290282bd9811ab99ca6a50f1d110be6cd",
+          "wind_u": "0086951f09d2bd4d53a9f00fb29cf5f3517ac7630153ca2bfd927c385f5de3cb",
+          "wind_v": "09f03e959dbadb41f147e309e20e7db7eb2a7ac563fd58318ad4286d5a506cbb"
+        }
+      }
+    }
+  ],
+  "surface_audit": {
+    "file": "era5-surface-19941023-24.npz",
+    "raw_sha256": "88cd4dcb5e8ff89aeae6c065e3f2c2f75ad09c125f5d15290bfe7a56b059668d",
+    "bytes": 531362,
+    "valid_times_and_grid_match": true,
+    "admission": "blocked_missing_original_analysis_identity"
+  }
+}

@@ -1,0 +1,29 @@
+name: Native ERA5 ETEX decoder
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  offline-decoder:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install native ecCodes and independent Python bindings
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libeccodes-dev libclang-dev pkg-config python3-eccodes python3-numpy
+          rustc -vV
+          pkg-config --modversion eccodes
+      - name: Recompute reference digests from checked-in GRIB bytes
+        run: /usr/bin/python3 -I scripts/fixtures/check_era5_etex_native_values.py
+      - name: Test native decoder and fail-closed controls
+        run: |
+          cargo test --locked --features eccodes --lib io::era5_etex
+          cargo test --locked --features eccodes --test era5_etex_decoder

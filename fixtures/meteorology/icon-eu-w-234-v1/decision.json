@@ -1,0 +1,62 @@
+{
+  "schema": "flexpart-gpu.icon-eu-vertical-motion-decision",
+  "version": 1,
+  "issue": 234,
+  "verdict": "UNSUPPORTED",
+  "product": "icon-eu_europe_regular-lat-lon",
+  "vertical_grid_uuid": "f4e27f3af03da229299dca84d11c2e40",
+  "provenance": "GPT-6 Sol",
+  "validation_level": "research",
+  "input": {
+    "grib2_parameter": [
+      0,
+      2,
+      9
+    ],
+    "units": "m/s",
+    "positive": "upward",
+    "reference": "earth_relative_geometric",
+    "staggering": "75_half_levels_top_to_bottom"
+  },
+  "continuum_identity": {
+    "native_interface_relative": "W - U_half * dHHL_dx - V_half * dHHL_dy",
+    "agl_rate": "W - U_half * dHSURF_dx - V_half * dHSURF_dy",
+    "geometry": "static"
+  },
+  "boundary_findings": {
+    "ground": "zero_coordinate_relative_motion_for_impermeable_surface",
+    "top": "flat_asl_nonzero_exported_W_no_validated_agl_endpoint_rule",
+    "horizontal_edges": "excluded_from_centered_diagnostic"
+  },
+  "admitted_motion_kind": null,
+  "blockers": [
+    "independent_pointwise_regular_grid_reference_missing",
+    "half_level_wind_and_horizontal_edge_reconstruction_unvalidated",
+    "agl_remap_and_upper_endpoint_handoff_unvalidated"
+  ],
+  "real_data_coverage": {
+    "wind_cycle": "2026103100",
+    "wind_evidence": "retained_decoded_statistics_and_extrema",
+    "geometry_archive_cycle": "2026110300",
+    "geometry_evidence": "raw_grib2_redecoded_and_bit_identical_to_pinned_wind_cycle_HHL",
+    "pointwise_paired_motion_comparison": false
+  },
+  "references": {
+    "flexpart_commit": "c70586c2b7f5258850705325881c61f557ea9bd8",
+    "icon_release": "release-2024.10-public",
+    "icon_release_source_sha256": {
+      "mo_solve_nonhydro.f90": "7f6699738447c944bec14838c319a3bb08a1b4eb836d925c1097a6854f4144f2",
+      "mo_velocity_advection.f90": "371899286d6bd4392eda432ddf384936cef20a95f18e3109e3f9ffc9d489a1fe",
+      "mo_vertical_grid.f90": "7ecebe825e6297675f72c3c874c0ee78ae1dd116085beb4c188b56a5fbf7c59"
+    }
+  },
+  "artifact_sha256": {
+    "fixtures/meteorology/icon-eu-w-234-v1/evidence.json": "3323e27c07ef5b8f822e944335bc08769585e995ee7e8a278fbb5d6c6f93407b",
+    "fixtures/meteorology/icon-eu-audit-v1/decoded-evidence.json": "6e439c99e7f8cf875abb945049b08d498ad72e5b8dbe16cbd3d0dd702306e29f",
+    "fixtures/meteorology/icon-eu-audit-v1/retrieval-manifest.json": "f2b571964caabe7757e170dde3e20151d36ce74520f8d258ddb2ba9935c048d0",
+    "fixtures/meteorology/icon-eu-vertical-231-v1/decoded-evidence.json": "6547e77ea8a33a3aecc7028934ae5e76359e22aadc661037c57b4155a5f3ace9",
+    "fixtures/meteorology/icon-eu-vertical-231-v1/retrieval-manifest.json": "8e81433b81c3a5d2b8061244ffee776e94432523e22d2f0f1ad56b71598a09a4",
+    "fixtures/meteorology/icon-eu-vertical-231-v1/decision.json": "cd987e2ccbdd953f0f826c6973ba2f4bd28abb8cf247f05f461c11e1f6f383b3",
+    "fixtures/interpolation/interior-w-v1/report.json": "17191f5aba9cc0273e95d17dee29c06e651570adc8f98491eb69a9dffc1130a0"
+  }
+}

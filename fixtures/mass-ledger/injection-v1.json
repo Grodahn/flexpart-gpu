@@ -1,0 +1,40 @@
+{
+  "schema": "flexpart-gpu.mass-ledger.v1",
+  "species": [
+    {
+      "id": "A",
+      "requested_kg": 16
+    }
+  ],
+  "sync_interval_seconds": 60,
+  "end_seconds": 60,
+  "steps": [
+    {
+      "time_seconds": 0,
+      "species": [
+        [
+          {"phase": "wet", "transfer_kg": 0, "airborne_kg": 0},
+          {"phase": "release", "transfer_kg": 12, "airborne_kg": 12},
+          {"phase": "sample", "transfer_kg": 0, "airborne_kg": 12},
+          {"phase": "horizontal_exit", "transfer_kg": 0, "airborne_kg": 12},
+          {"phase": "dry", "transfer_kg": 0, "airborne_kg": 12},
+          {"phase": "maximum_age_exit", "transfer_kg": 0, "airborne_kg": 12},
+          {"phase": "minimum_mass_exit", "transfer_kg": 0, "airborne_kg": 12},
+          {"phase": "minimum_mass_and_maximum_age_exit", "transfer_kg": 0, "airborne_kg": 12},
+          {"phase": "close", "transfer_kg": 0, "airborne_kg": 12}
+        ]
+      ]
+    },
+    {
+      "time_seconds": 60,
+      "species": [
+        [
+          {"phase": "wet", "transfer_kg": 0, "airborne_kg": 12},
+          {"phase": "release", "transfer_kg": 4, "airborne_kg": 16},
+          {"phase": "sample", "transfer_kg": 0, "airborne_kg": 16},
+          {"phase": "close", "transfer_kg": 0, "airborne_kg": 16}
+        ]
+      ]
+    }
+  ]
+}

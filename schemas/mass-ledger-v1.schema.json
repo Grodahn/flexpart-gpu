@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FLEXPART-GPU stable forward mass ledger v1",
+  "description": "Independent mass observations and transfer credits in kg. The Rust audit checks chronology, transitions and closure.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "species",
+    "sync_interval_seconds",
+    "end_seconds",
+    "steps"
+  ],
+  "properties": {
+    "schema": {
+      "const": "flexpart-gpu.mass-ledger.v1"
+    },
+    "species": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/species"
+      },
+      "minItems": 1,
+      "maxItems": 4
+    },
+    "sync_interval_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18446744073709551615
+    },
+    "end_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/step"
+      },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "kg": {
+      "type": "number",
+      "minimum": 0
+    },
+    "species": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "requested_kg"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "requested_kg": {
+          "$ref": "#/$defs/kg"
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "time_seconds",
+        "species"
+      ],
+      "properties": {
+        "time_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "species": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/full_step"
+              },
+              {
+                "$ref": "#/$defs/terminal_boundary"
+              }
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 4
+        }
+      }
+    },
+    "full_step": {
+      "type": "array",
+      "minItems": 9,
+      "items": false,
+      "prefixItems": [
+        {"$ref": "#/$defs/observation", "properties": {"phase": {"const": "wet"}}},
+        {"$ref": "#/$defs/observation", "properties": {"phase": {"const": "release"}}},
+        {"$ref": "#/$defs/observation", "properties": {"phase": {"const": "sample"}, "transfer_kg": {"const": 0}}},
+        {"$ref": "#/$defs/observation", "properties": {"phase": {"const": "horizontal_exit"}}},
+        {"$ref": "#/$defs/observation", "properties": {"phase": {"const": "dry"}}},
+        {"$ref": "#/$defs/observation", "properties": {"phase": {"const": "maximum_age_exit"}}},
+        {"$ref": "#/$defs/observation", "properties": {"phase": {"const": "minimum_mass_exit"}, "transfer_kg": {"const": 0}}},
+        {"$ref": "#/$defs/observation", "properties": {"phase": {"const": "minimum_mass_and_maximum_age_exit"}, "transfer_kg": {"const": 0}}},
+        {"$ref": "#/$defs/observation", "properties": {"phase": {"const": "close"}, "transfer_kg": {"const": 0}}}
+      ]
+    },
+    "terminal_boundary": {
+      "type": "array",
+      "minItems": 4,
+      "items": false,
+      "prefixItems": [
+        {"$ref": "#/$defs/observation", "properties": {"phase": {"const": "wet"}}},
+        {"$ref": "#/$defs/observation", "properties": {"phase": {"const": "release"}}},
+        {"$ref": "#/$defs/observation", "properties": {"phase": {"const": "sample"}, "transfer_kg": {"const": 0}}},
+        {"$ref": "#/$defs/observation", "properties": {"phase": {"const": "close"}, "transfer_kg": {"const": 0}}}
+      ]
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase",
+        "transfer_kg",
+        "airborne_kg"
+      ],
+      "properties": {
+        "phase": {
+          "type": "string"
+        },
+        "transfer_kg": {
+          "$ref": "#/$defs/kg"
+        },
+        "airborne_kg": {
+          "$ref": "#/$defs/kg"
+        }
+      }
+    }
+  }
+}

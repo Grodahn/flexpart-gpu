@@ -10,6 +10,8 @@
 pub mod candidate_physics;
 pub mod case;
 pub mod input_equivalence;
+/// Versioned forward mass-ledger artifact audit.
+pub mod mass_ledger;
 
 use std::fs;
 use std::path::{Path, PathBuf};

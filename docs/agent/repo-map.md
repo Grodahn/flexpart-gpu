@@ -30,6 +30,8 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## Meteorology
 
+- ERA5/ETEX native GRIB (#237): [provider boundary](../../src/io/era5_etex.rs), [profile and normalization](../../src/io/era5_etex/native.rs), [contract](../era5-etex-native-decoder.md), [focused verification](test-map.md#meteorology).
+
 - IFS Open provider audit (#238): [decision](../research/ifs-open-provider-238.md), [30-field contract](../../fixtures/meteorology/ifs-open-audit-v1/provider-contract.json), [source ranges/hashes](../../fixtures/meteorology/ifs-open-audit-v1/retrieval-manifest.json), [fetch](../../scripts/provider/ifs_open_fetch.py), [offline audit](../../scripts/provider/ifs_open_audit.py), [value diagnostics](../../scripts/provider/ifs_open_comparisons.py), [checks](../../scripts/provider/test_ifs_open_audit.py), [canonical lock](../../tests/ifs_open_provider_contract.rs). Research only: pressure-level Open Data is `NO_GO` for existing production consumers; no decoder or GPU change. [Focused verification](test-map.md#meteorology).
 
 - Precipitation time sampling (#119): [owner](../../src/gpu/precipitation_temporal.rs), [kernel](../../src/shaders/precipitation_temporal.wgsl), [contract and lifecycle](../precipitation-time-sampling.md), [genuine device proof](../../tests/precipitation_temporal_gpu.rs), [original-routine fixture](../../fixtures/interpolation/precipitation-temporal-v1.json), [original replay](../../scripts/precipitation/temporal_oracle.py), [extended #219 auditor](../../scripts/precipitation/check_genuine_production_replay.py). Reuses [#207 members](../../src/gpu/precipitation_members.rs), #90 and #87; #114 owns consumer migration. [Focused checks](test-map.md#meteorology).

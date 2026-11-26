@@ -10,6 +10,9 @@
 //! - Temporal interpolation between two meteorological snapshots (IO-04).
 //! - NetCDF output writer for concentration/deposition grids (I-03).
 
+/// Bounded canonical model-level ingestion for the native ERA5/ETEX fixture.
+#[cfg(feature = "eccodes")]
+pub mod era5_etex;
 pub mod grib2;
 pub mod grib2_async;
 pub mod netcdf;

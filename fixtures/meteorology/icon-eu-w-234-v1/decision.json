@@ -51,7 +51,7 @@
     }
   },
   "artifact_sha256": {
-    "fixtures/meteorology/icon-eu-w-234-v1/evidence.json": "3323e27c07ef5b8f822e944335bc08769585e995ee7e8a278fbb5d6c6f93407b",
+    "fixtures/meteorology/icon-eu-w-234-v1/evidence.json": "eed8aba63174bfce4c6b217ae8193eaf0e8ef7a88f79ad452f53cf2201847e29",
     "fixtures/meteorology/icon-eu-audit-v1/decoded-evidence.json": "6e439c99e7f8cf875abb945049b08d498ad72e5b8dbe16cbd3d0dd702306e29f",
     "fixtures/meteorology/icon-eu-audit-v1/retrieval-manifest.json": "f2b571964caabe7757e170dde3e20151d36ce74520f8d258ddb2ba9935c048d0",
     "fixtures/meteorology/icon-eu-vertical-231-v1/decoded-evidence.json": "6547e77ea8a33a3aecc7028934ae5e76359e22aadc661037c57b4155a5f3ace9",

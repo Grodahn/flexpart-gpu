@@ -2,7 +2,9 @@
 """Offline lock and analytical checks for the ICON-EU W research decision."""
 from pathlib import Path
 import sys
+from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import icon_eu_w_234 as research  # noqa: E402
@@ -10,20 +12,37 @@ import icon_eu_w_234 as research  # noqa: E402
 
 class ResearchDecisionTests(unittest.TestCase):
     def test_versioned_verdict_and_artifact_digests(self):
-        path = research.DECISION / "decision.json"
-        self.assertEqual(research.digest(path),
-                         "61eae71722f488cfbba9742d1febbb2f0efe524de49a500a78c5084f9da73f17")
-        decision = research.load(path)
+        root = research.ROOT
+        decision = research.locked_decision(root)
         self.assertEqual((decision["issue"], decision["version"], decision["verdict"]),
                          (234, 1, "UNSUPPORTED"))
         self.assertIsNone(decision["admitted_motion_kind"])
         self.assertFalse(decision["real_data_coverage"]["pointwise_paired_motion_comparison"])
-        root = research.METEO.parents[1]
-        for artifact, expected in decision["artifact_sha256"].items():
-            with self.subTest(artifact=artifact):
-                self.assertEqual(research.digest(root / artifact), expected)
+        research.verify_artifacts(root, decision["artifact_sha256"], replay=False)
         reference = research.load(root / "reference" / "flexpart-11.1.json")
         self.assertEqual(decision["references"]["flexpart_commit"], reference["pinned_commit"])
+
+    def test_replay_rejects_changed_wind_statistics_before_decoding(self):
+        source = research.AUDIT / "decoded-evidence.json"
+        data = source.read_bytes()
+        changed = data.replace(b"0.9151400453154171", b"0.8151400453154171")
+        self.assertNotEqual(changed, data)
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            decision = research.locked_decision(research.ROOT)
+            for artifact in (*decision["artifact_sha256"], research.DECISION_PATH):
+                if Path(artifact) == research.EVIDENCE_PATH:
+                    continue
+                path = root / artifact
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(changed if research.ROOT / artifact == source
+                                 else (research.ROOT / artifact).read_bytes())
+            with (patch.object(research, "ROOT", root),
+                  patch.object(sys, "argv", ["replay", "--geometry-archive", directory]),
+                  patch.object(research, "geometry") as decode):
+                with self.assertRaisesRegex(ValueError, "icon-eu-audit-v1/decoded-evidence.json"):
+                    research.main()
+                decode.assert_not_called()
 
     def test_exact_analytical_and_independent_particle_reference(self):
         cases = research.analytical()

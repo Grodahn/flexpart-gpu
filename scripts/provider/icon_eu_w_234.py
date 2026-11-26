@@ -10,10 +10,14 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from icon_eu_audit import eccodes_messages, sha256_bytes, value_summary  # noqa: E402
 
-METEO = Path(__file__).resolve().parents[2] / "fixtures" / "meteorology"
+ROOT = Path(__file__).resolve().parents[2]
+METEO = ROOT / "fixtures" / "meteorology"
 AUDIT = METEO / "icon-eu-audit-v1"
 VERTICAL = METEO / "icon-eu-vertical-231-v1"
 DECISION = METEO / "icon-eu-w-234-v1"
+DECISION_PATH = (DECISION / "decision.json").relative_to(ROOT)
+EVIDENCE_PATH = (DECISION / "evidence.json").relative_to(ROOT)
+DECISION_SHA256 = "b344483b8bbbe71bc3afde51dfa7e8d6f3c9861a94ae48227f79348909c19313"
 LEVELS = (1, 37, 73, 74, 75)
 RADIUS_M = 6_371_229
 
@@ -24,6 +28,23 @@ def load(path):
 
 def digest(path):
     return sha256_bytes(path.read_bytes())
+
+
+def locked_decision(root):
+    path = root / DECISION_PATH
+    data = path.read_bytes()
+    if sha256_bytes(data) != DECISION_SHA256:
+        raise ValueError(f"{DECISION_PATH}: decision digest mismatch")
+    return json.loads(data)
+
+
+def verify_artifacts(root, artifacts, *, replay):
+    for artifact, expected in artifacts.items():
+        path = Path(artifact)
+        if replay and path == EVIDENCE_PATH:
+            continue
+        if digest(root / path) != expected:
+            raise ValueError(f"{artifact}: artifact digest mismatch")
 
 
 def half_wind(upper, lower, upper_height, lower_height, interface_height):
@@ -130,7 +151,8 @@ def geometry(archive):
         raise ValueError("unexpected grid orientation or Earth shape")
     latitude = np.radians(lat0 + dy * np.arange(1, ny - 1))[:, None]
     east_distance = 2 * RADIUS_M * np.cos(latitude) * math.radians(dx)
-    north_distance = 2 * RADIUS_M * math.radians(dy)
+    # Keep both spacings f64 even when the diagnostic numerator is f32.
+    north_distance = np.float64(2 * RADIUS_M * math.radians(dy))
 
     def gradients(height):
         return (centered_slope(height[1:-1, 2:], height[1:-1, :-2], east_distance),
@@ -175,7 +197,7 @@ def geometry(archive):
     w74_weight = (heights[73] - heights[74]) / (heights[73] - heights[75])
     if not np.all((w74_weight > 0) & (w74_weight < 1)):
         raise ValueError("level 74 has unbracketed full-to-half wind")
-    return {"archive_cycle": "2026110300", "eccodes": eccodes_version,
+    return {"archive_cycle": "2026110300", "eccodes": eccodes_version, "numpy": np.__version__,
             "centered_interior_count": (nx - 2) * (ny - 2), "hhl": provenance,
             "slopes": slopes, "half_level_74_lower_wind_weight_min_max":
             [float(w74_weight.min()), float(w74_weight.max())]}
@@ -204,6 +226,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--geometry-archive", type=Path, required=True)
     args = parser.parse_args()
+    decision = locked_decision(ROOT)
+    verify_artifacts(ROOT, decision["artifact_sha256"], replay=True)
     measured_geometry = geometry(args.geometry_archive)
     wind = retained_wind()
     result = {"schema": "flexpart-gpu.icon-eu-w-research-evidence", "version": 1,

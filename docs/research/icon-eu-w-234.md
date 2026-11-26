@@ -149,9 +149,9 @@ The #230 raw W/U/V arrays were unavailable for a new pointwise comparison.
 
 For level 74, casting heights and performing the stencil numerator
 subtractions in f32 while retaining f64 spacings changes the east/north slopes
-by at most 1.29 × 10⁻⁸ and 9.07 × 10⁻⁹. With the pinned
+by at most 1.29 × 10⁻⁸ and 4.40 × 10⁻⁹. With the pinned
 wind extrema, the induced error in the slope correction is bounded by
-3.53 × 10⁻⁷ m/s. This covers only those f32 operations. It excludes
+2.63 × 10⁻⁷ m/s. This covers only those f32 operations. It excludes
 wind rounding, coordinate metrics, the differencing and interpolation error,
 source packing and native-to-export remapping. The high surface correlation
 supports the sign and physical interpretation. Its regression coefficient
@@ -162,8 +162,9 @@ measured pointwise transformation error for the operational export.
 
 Run from the repository root. The archive path contains the cycle directory
 and the uncompressed messages identified in the [#231 retrieval manifest](../../fixtures/meteorology/icon-eu-vertical-231-v1/retrieval-manifest.json).
-The tool requires NumPy and ecCodes for that replay. The lock runs offline with
-the standard library. Both fail closed on mismatched evidence.
+The tool requires NumPy and ecCodes for that replay and records both versions.
+It verifies the decision and upstream artifact digests before decoding.
+The offline standard-library test also checks the frozen output digest.
 
 ```text
 python -I scripts/provider/icon_eu_w_234.py --geometry-archive <231-archive>

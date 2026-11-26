@@ -56,6 +56,7 @@
         "values_sha256_f8le": "12e0dc361b6b670bbe1c8a5992bbee3feda0912031ef140f70a751628246dddf"
       }
     },
+    "numpy": "2.5.3",
     "slopes": {
       "1": {
         "max_abs_agl_slope": [
@@ -82,7 +83,7 @@
         ],
         "max_abs_f32_height_slope_difference": [
           0.0,
-          2.9698463393373897e-10
+          0.0
         ]
       },
       "74": {
@@ -96,7 +97,7 @@
         ],
         "max_abs_f32_height_slope_difference": [
           1.2877204375733031e-08,
-          9.060905692415133e-09
+          4.391060959285653e-09
         ]
       },
       "75": {
@@ -110,7 +111,7 @@
         ],
         "max_abs_f32_height_slope_difference": [
           0.0,
-          9.060905692415133e-09
+          0.0
         ]
       }
     }
@@ -118,7 +119,7 @@
   "interior_bounds_from_extrema": {
     "level_74_abs_agl_slope_term_upper_bound_m_s": 0.003603792595299096,
     "level_74_abs_slope_correction_upper_bound_m_s": 5.063888192974289,
-    "level_74_f32_height_slope_effect_upper_bound_m_s": 3.5258058161414737e-07,
+    "level_74_f32_height_slope_effect_upper_bound_m_s": 2.6299273036071296e-07,
     "level_74_relative_w_enclosure_m_s": [
       -5.9094142921793065,
       5.390420199238022

@@ -1,0 +1,201 @@
+{
+  "analytic_exact": {
+    "flat": {
+      "agl_rate_m_s": 3,
+      "interface_relative_m_s": 3
+    },
+    "flat_lid_over_slopes": {
+      "agl_rate_m_s": -11,
+      "interface_relative_m_s": 0
+    },
+    "northward_downhill": {
+      "agl_rate_m_s": 2,
+      "interface_relative_m_s": 2
+    },
+    "tilted_interior": {
+      "agl_rate_m_s": -9,
+      "interface_relative_m_s": -1
+    },
+    "tilted_surface": {
+      "agl_rate_m_s": 0,
+      "interface_relative_m_s": 0
+    }
+  },
+  "geometry_redecoded": {
+    "archive_cycle": "2026110300",
+    "centered_interior_count": 900625,
+    "eccodes": "2.48.0",
+    "half_level_74_lower_wind_weight_min_max": [
+      0.46299381608540385,
+      0.6993122052610152
+    ],
+    "hhl": {
+      "1": {
+        "archive_grib2_sha256": "33fa0aa42b28c59de440f172ca58ecdf8f3623d8c9d2ee3f660e775ce40c13da",
+        "audit_230_grib2_sha256": "10da4ea0128c1408a1b71f6cecade47d8ca4ce15dcd010353bad7816448bf938",
+        "values_sha256_f8le": "e1c740807cc387477a5be77bdccde850e0991601b269398dc90baa3fbc33dc5f"
+      },
+      "37": {
+        "archive_grib2_sha256": "296b12c8b8df5f46d9c31c4e4a12655091435672b2c57fb575687c6bc0b843db",
+        "audit_230_grib2_sha256": "9e807747076612c5d46d31a91d5e3f563079eb7a604658db59d84b4ba972aeb9",
+        "values_sha256_f8le": "50590d85f6c91945eca1e21bc934325f17b5e7f49cec88bcf62f6727104d0bce"
+      },
+      "73": {
+        "archive_grib2_sha256": "e30e803565c1dbb307dba0b7482305fbb2d899b380540fe8a466423ea38ccdd4",
+        "audit_230_grib2_sha256": "f4dfe14e959627267889896b38c7e40fbdd80e3a238d4cfd26d2d9d98bde6199",
+        "values_sha256_f8le": "6636078dcbc1fd6aac40d1c2b6132edd9b59880785b120195930a57369d521b8"
+      },
+      "74": {
+        "archive_grib2_sha256": "89cde5590a6eab6d3a8413abaa2b8833b0983a751c23fda938fd358085310d13",
+        "audit_230_grib2_sha256": "82ef3b70ac4f6b36e17ace9613d556eb101969c08599a3896369733e7f4bad6b",
+        "values_sha256_f8le": "0409e039ef0c545eebf82d35ff4f8eaddcb0d9366603dc6aed485445c19edd88"
+      },
+      "75": {
+        "archive_grib2_sha256": "cf5190696e2e5e34a2ab8c34cdaaa111ff701b8ed81d30e57b15c969e5b1aafc",
+        "audit_230_grib2_sha256": "6b9f96e92ad11236415a2b4115b4fa8b2c70a3352dfcc068db2810f9f92bd93e",
+        "values_sha256_f8le": "12e0dc361b6b670bbe1c8a5992bbee3feda0912031ef140f70a751628246dddf"
+      }
+    },
+    "numpy": "2.5.3",
+    "slopes": {
+      "1": {
+        "max_abs_agl_slope": [
+          0.155067726137356,
+          0.15176405918901634
+        ],
+        "max_abs_asl_slope": [
+          0.0,
+          0.0
+        ],
+        "max_abs_f32_height_slope_difference": [
+          0.0,
+          0.0
+        ]
+      },
+      "37": {
+        "max_abs_agl_slope": [
+          0.15193313281952078,
+          0.14658330984240442
+        ],
+        "max_abs_asl_slope": [
+          0.00465793822262486,
+          0.00548510256290594
+        ],
+        "max_abs_f32_height_slope_difference": [
+          0.0,
+          0.0
+        ]
+      },
+      "74": {
+        "max_abs_agl_slope": [
+          0.0001477584515622772,
+          8.093603535797268e-05
+        ],
+        "max_abs_asl_slope": [
+          0.15505652991164212,
+          0.15176405918901634
+        ],
+        "max_abs_f32_height_slope_difference": [
+          1.2877204375733031e-08,
+          4.391060959285653e-09
+        ]
+      },
+      "75": {
+        "max_abs_agl_slope": [
+          0.0,
+          0.0
+        ],
+        "max_abs_asl_slope": [
+          0.155067726137356,
+          0.15176405918901634
+        ],
+        "max_abs_f32_height_slope_difference": [
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  "interior_bounds_from_extrema": {
+    "level_74_abs_agl_slope_term_upper_bound_m_s": 0.003603792595299096,
+    "level_74_abs_slope_correction_upper_bound_m_s": 5.063888192974289,
+    "level_74_f32_height_slope_effect_upper_bound_m_s": 2.6299273036071296e-07,
+    "level_74_relative_w_enclosure_m_s": [
+      -5.9094142921793065,
+      5.390420199238022
+    ]
+  },
+  "schema": "flexpart-gpu.icon-eu-w-research-evidence",
+  "version": 1,
+  "wind_230_retained": {
+    "cycle": "2026103100",
+    "fields": {
+      "000_1_W": {
+        "grib2_sha256": "9815d74dd367952f8d8d43a6bbfe14b20fc4a35f9ecce515604a0df3b2e0fc22",
+        "max": 0.0756363645195961,
+        "mean": -4.1196521345978205e-05,
+        "min": -0.053990863263607025,
+        "values_sha256_f8le": "89cb171080fe1ee26b34f1f715763059945d662b315bb0bb57451b8b9d01ca61"
+      },
+      "000_37_W": {
+        "grib2_sha256": "95bb6b563797af56d367f2be22441cfc62b2482240b8ad1d17eff80bf6933b3f",
+        "max": 3.0363128185272217,
+        "mean": 0.0005380599996192384,
+        "min": -0.9762604236602783,
+        "values_sha256_f8le": "096123a9ab0966fa688a001efda789eee945979672e6aad2489cc5101296e7a7"
+      },
+      "000_73_U": {
+        "grib2_sha256": "48c36a9317335775b8795e49735bec4a0f2e08ef8538596df42c144f8b5ea03b",
+        "max": 12.717268943786621,
+        "mean": 0.2804276818999396,
+        "min": -13.881363868713379,
+        "values_sha256_f8le": "f6772b4714044fc09339cf764d1f398b69b5965b76b8d2c1ab2a24d59ee3e406"
+      },
+      "000_73_V": {
+        "grib2_sha256": "553578983794cc35a163a54c3b83dc381bd0da84a6f726421e2fcf1bcf9a7b0f",
+        "max": 19.1843318939209,
+        "mean": 0.4629262851979008,
+        "min": -18.0832462310791,
+        "values_sha256_f8le": "d9ef212fb63877d985db0929d8433560323ace27edefbb74c0ed70a2b58ecf5d"
+      },
+      "000_74_U": {
+        "grib2_sha256": "416e939c7c67e4b08df32b020f00ae6be7cd0bd22a8dc40111dd0bfb0faf68e4",
+        "max": 11.601531028747559,
+        "mean": 0.24576384875877239,
+        "min": -12.605988502502441,
+        "values_sha256_f8le": "b3c7e35d6004510eb1c076f18f7eaa364134f355fb593c7f272e1045b8d67126"
+      },
+      "000_74_V": {
+        "grib2_sha256": "7243a633b1fdf7dce5a470db44b7bb717182b32063b9b0704599e561218bb363",
+        "max": 16.456527709960938,
+        "mean": 0.38109477048014634,
+        "min": -15.899917602539062,
+        "values_sha256_f8le": "6fafc4694bc50d58aaf8033ad6389e9edf2cfd45f1f9753d92127df3bc1438df"
+      },
+      "000_74_W": {
+        "grib2_sha256": "d5c8ad0a9c55bc3f8735e5ae9c0742b03d5fb93c5e7e9de28c30f0de660960b8",
+        "max": 0.3265320062637329,
+        "mean": -0.004929624949764991,
+        "min": -0.8455260992050171,
+        "values_sha256_f8le": "43395b41e02b8540f6d396c2eb0696a74682105f0b6f4d5c98882327fd8b9c0c"
+      },
+      "000_75_W": {
+        "grib2_sha256": "bac36fcbaafa5a4d5ee94dfe51bc7dccaa2ccf3d97a4933a5a84dce5e1eefeb8",
+        "max": 0.3126746416091919,
+        "mean": -0.0049131036252892364,
+        "min": -0.7312401533126831,
+        "values_sha256_f8le": "2677bd1cb971b3192a95f14286c274e8e432298d3c8b4a8cabd3cbe773bb08ce"
+      }
+    },
+    "forecast_hour": 0,
+    "surface_diagnostic": {
+      "definition": "v.grad(h) = U74*dHSURF/dx + V74*dHSURF/dy, centred differences on the message grid, sphere R=6371229 m; flat cells |grad h| < 1e-5",
+      "w74_vs_w75_correlation": 0.9695977263423176,
+      "w75_abs_max_m_s": 0.7312401533126831,
+      "w75_abs_mean_over_flat_cells_m_s": 1.5474509415011934e-05,
+      "w75_fraction_nonzero": 1.0,
+      "w75_vs_v_grad_h_correlation": 0.9151400453154171,
+      "w75_vs_v_grad_h_regression_slope": 0.7947303429175704
+    }
+  }
+}

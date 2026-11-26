@@ -8,7 +8,7 @@ import subprocess
 
 def check(reference, repository):
     def git(*args):
-        return subprocess.check_output(["git", "-C", str(repository), *args])
+        return subprocess.check_output(["git", "--no-replace-objects", "-C", str(repository), *args])
 
     revision = reference["revision"]
     if revision != "c70586c2b7f5258850705325881c61f557ea9bd8":

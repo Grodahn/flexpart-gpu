@@ -239,14 +239,14 @@ impl MassLedger {
             for (slot, (observations, inventory)) in
                 step.species.iter().zip(&mut inventories).enumerate()
             {
-                audit_species_step(step.time_seconds, slot, observations, phases, inventory)?;
-                if self.species[slot].requested_kg == 0.0 && inventory.injected_kg != 0.0 {
-                    return Err(MassLedgerError::Transition {
-                        time_seconds: step.time_seconds,
-                        slot,
-                        phase: Release,
-                    });
-                }
+                audit_species_step(
+                    step.time_seconds,
+                    slot,
+                    self.species[slot].requested_kg,
+                    observations,
+                    phases,
+                    inventory,
+                )?;
             }
             let total = inventories
                 .iter()
@@ -270,6 +270,7 @@ impl MassLedger {
 fn audit_species_step(
     time_seconds: u64,
     slot: usize,
+    requested_kg: f64,
     observations: &[LedgerObservation],
     phases: &[LedgerPhase],
     inventory: &mut MassInventory,
@@ -282,6 +283,7 @@ fn audit_species_step(
         };
         let observation = observations.get(index).ok_or_else(invalid)?;
         if phase != observation.phase
+            || (phase == Release && requested_kg == 0.0 && observation.transfer_kg != 0.0)
             || !inventory.apply(observation, time_seconds == 0)
             || (phase == Close && observations.len() != phases.len())
         {
@@ -305,43 +307,27 @@ impl MassInventory {
         if !valid_mass(amount) || !valid_mass(after) {
             return false;
         }
-        let (expected, credit) = match observation.phase {
-            Wet if startup => (before, None),
-            // Original minmassfrac is zero (par_mod.f90:178).
-            MinimumMassExit | MinimumMassAndMaximumAgeExit if amount != 0.0 => return false,
-            Sample | Close => (before, None),
-            Release => (before + amount, Some(&mut self.injected_kg)),
-            Wet => (before - amount, Some(&mut self.wet_kg)),
-            Dry => (before - amount, Some(&mut self.dry_kg)),
-            HorizontalExit => (before - amount, Some(&mut self.horizontal_exit_kg)),
-            MaximumAgeExit => (before - amount, Some(&mut self.maximum_age_exit_kg)),
-            MinimumMassExit => (before - amount, Some(&mut self.minimum_mass_exit_kg)),
-            MinimumMassAndMaximumAgeExit => (
-                before - amount,
-                Some(&mut self.minimum_mass_and_maximum_age_exit_kg),
-            ),
-        };
-        if !valid_mass(expected) {
-            return false;
-        }
         if amount == 0.0 {
             return before - after == 0.0;
         }
-        let Some(credit) = credit else {
+        let is_release = observation.phase == Release;
+        let (observed, credit) = match observation.phase {
+            Release => (after - before, &mut self.injected_kg),
+            Wet if !startup => (before - after, &mut self.wet_kg),
+            Dry => (before - after, &mut self.dry_kg),
+            HorizontalExit => (before - after, &mut self.horizontal_exit_kg),
+            MaximumAgeExit => (before - after, &mut self.maximum_age_exit_kg),
+            // Checkpoints and startup wet deposition transfer no mass. Original
+            // minmassfrac is zero (par_mod.f90:178), so neither minimum-mass
+            // retirement category carries residual inventory in this profile.
+            Wet | Sample | Close | MinimumMassExit | MinimumMassAndMaximumAgeExit => return false,
+        };
+        if !is_release && (amount > before || (before - amount == 0.0 && after != 0.0)) {
             return false;
-        };
-        let reference = if observation.phase == Release {
-            if after < before {
-                return false;
-            }
-            expected
-        } else {
-            if after > before {
-                return false;
-            }
-            before
-        };
-        if (expected == 0.0 && after != 0.0) || !closes(expected, after, reference) {
+        }
+        // Using the whole stock as the reference can hide a missing debit or
+        // injection whenever the transfer is small relative to that stock.
+        if !closes(amount, observed, amount) {
             return false;
         }
         *credit += amount;

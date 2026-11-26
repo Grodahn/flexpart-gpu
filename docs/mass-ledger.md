@@ -20,7 +20,7 @@ from run start. The airborne stock is a snapshot of live particles.
 | Quantity | Owner and semantics |
 | --- | --- |
 | Requested | Nominal configured mass for the entire run. This is a source diagnostic outside the conservation sum. Unscheduled or unspawned mass stays outside injected inventory. |
-| Injected | Cumulative mass actually assigned to spawned particles after the mass-unit conversion and represented particle split. Injection credits airborne by the same amount. The audit does not infer injection from requested mass. |
+| Injected | Cumulative mass actually assigned to spawned particles after the mass-unit conversion and represented particle split. Injection credits airborne by the same amount. The audit does not infer injection from requested mass. Release scheduling and duplicate spawn checks belong to the source producer because the reference can apply species-specific time corrections. |
 | Airborne | Mass carried by live particles. Pure transport, mixing, settling and reflecting boundaries preserve each species mass. |
 | Wet | Airborne debit from scavenging, credited at the wet-deposition phase. Use the unadjusted transfer before output-grid decay corrections. |
 | Dry | Airborne debit from dry deposition, credited once after transport. Use the post-primary-decay contribution from the coupled branch when decay is supported, before output-grid correction. |
@@ -82,15 +82,14 @@ must never increase the physical ledger or debit airborne again.
   exactly. Missing phases, unknown exit reasons, inactive slot reads as live
   stock, and negative or invalid arithmetic are fatal. A zero-mass source must
   contribute zero mass.
-- Per phase the audit compares the observed stock with the prior stock plus or
-  minus the independently reported transfer. The relative denominator is the
-  pre-debit airborne stock for removals and the expected post-injection stock for
-  release. Per boundary, each species and the total must close relative to
-  actual cumulative injection. The ceiling is the issue's `1e-4`, with zero
-  absolute tolerance and exact comparison for zero reference, complete debit
-  or no-op. These are
-  validation bounds. No operator may put the residual in a sink, clamp a
-  negative result, or renormalize masses to attain closure.
+- Per phase the audit compares the observed airborne change with the
+  independently reported transfer, using the transfer as the relative
+  denominator. Unresolvable transfers fail validation. Per boundary, each
+  species and the total must close relative to actual cumulative injection.
+  The ceiling is the issue's `1e-4`, with zero absolute tolerance and exact
+  comparison for zero reference, complete debit or no-op. No operator may put
+  the residual in a sink, clamp a negative result, or renormalize masses to
+  attain closure.
 - The device producer owns exactly one debit/credit pair per active particle,
   species and phase. Snapshot and credit must originate independently of the
   closure equation. Physical ledger and gridding consumers use the same transfer

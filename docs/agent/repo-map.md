@@ -163,9 +163,10 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## Decay-mass-ledger
 
-- Production: [decay operator](../../src/simulation/timeloop/forward/operators.rs), [step reports](../../src/simulation/timeloop/reports.rs), [particle species masses](../../src/particles/mod.rs), [species decay constants](../../src/physics/species.rs). Accounting spans these surfaces; no separate mass-ledger module exists.
+- Production: [decay operator](../../src/simulation/timeloop/forward/operators.rs), [step reports](../../src/simulation/timeloop/reports.rs), [particle species masses](../../src/particles/mod.rs), [species decay constants](../../src/physics/species.rs). Production accounting spans these surfaces. The separate audit validates explicit records supplied by its caller.
 - GPU: [decay](../../src/gpu/decay.rs) / [kernel](../../src/shaders/decay.wgsl); deposition removal uses the two preceding GPU rows.
-- Authority: [species configuration](../species-config.md), [GPU contract](../GPU_CONTRACT.md), issue-owned conservation tolerances.
+- Authority: [species configuration](../species-config.md), [GPU contract](../GPU_CONTRACT.md), [#38 forward ledger](../mass-ledger.md).
+- Ledger evidence handoff: [stable v1 schema](../../schemas/mass-ledger-v1.schema.json), [record audit](../../src/validation/mass_ledger.rs) and [pinned source crosswalk](../../fixtures/mass-ledger/reference-v1.json).
 - Fixtures: [inert species](../../reference/species-physics/species-024-inert-v1.json); analytical per-species decay inputs in [module tests](../../src/gpu/decay.rs).
 - Tests: [mass conservation](../../tests/integration/mass_conservation.rs), [species/nuclides](../../tests/integration/species_nuclide.rs), [deposition accounting](../../tests/integration/scientific_invariants.rs); [verification](test-map.md#decay-mass-ledger).
 - Dependencies: release inventory -> transport/deposition/decay -> remaining/removed mass -> output. Kernel decay agreement is distinct from production budget closure.

@@ -105,6 +105,7 @@ fn test_mass_ledger_malformed_or_incomplete_run_is_rejected() {
     }
     let mut ledger = read(MIXED);
     ledger.species[0].requested_kg = 0.0;
+    ledger.steps[0].species[0][2].airborne_kg = -1.0;
     assert_eq!(
         ledger.audit(),
         Err(MassLedgerError::Transition {
@@ -172,17 +173,22 @@ fn test_mass_ledger_wrong_phase_and_losses_fail_at_first_observation() {
 #[test]
 fn test_mass_ledger_small_local_errors_cannot_cancel_between_species() {
     let mut ledger = read(MIXED);
-    // Individually admissible local differences accumulate above the cumulative
-    // bound. Leave the endpoint consistent so the cumulative check must catch it.
+    // Each transfer discrepancy is within 1e-4 of its own credit. The
+    // cumulative discrepancy for A exceeds 1e-4 of its injected mass even
+    // though the summed discrepancy across A and B is small enough to pass.
+    for observation in &mut ledger.steps[0].species[0][1..] {
+        observation.airborne_kg += 0.00108;
+    }
     for (observation, offset) in ledger.steps[1].species[0].iter_mut().zip([
-        0.001, 0.002, 0.002, 0.003, 0.003, 0.003, 0.003, 0.003, 0.003,
+        0.00135, 0.00171, 0.00171, 0.00171, 0.00171, 0.00171, 0.00171, 0.00171, 0.00171,
     ]) {
         observation.airborne_kg += offset;
     }
-    for (observation, offset) in ledger.steps[1].species[1].iter_mut().zip([
-        0.0007, 0.0007, 0.0007, 0.0007, 0.0012, 0.0012, 0.0012, 0.0012, 0.0012,
-    ]) {
-        observation.airborne_kg -= offset;
+    for observation in &mut ledger.steps[0].species[1][1..] {
+        observation.airborne_kg -= 0.0007;
+    }
+    for observation in &mut ledger.steps[1].species[1] {
+        observation.airborne_kg -= 0.0007;
     }
     assert_eq!(
         ledger.audit(),
@@ -191,4 +197,32 @@ fn test_mass_ledger_small_local_errors_cannot_cancel_between_species() {
             slot: Some(0),
         })
     );
+}
+
+#[test]
+fn test_mass_ledger_small_unobserved_transfers_fail_despite_large_stock() {
+    for (phase, index, amount, observed_change) in [
+        (LedgerPhase::Wet, 0, 0.0001, 0.0),
+        (LedgerPhase::Wet, 0, 0.0002, -0.0001),
+        (LedgerPhase::Release, 1, 0.0001, 0.0),
+    ] {
+        let mut ledger = read(include_str!("../fixtures/mass-ledger/wet-v1.json"));
+        let phases = &mut ledger.steps[1].species[0];
+        for observation in &mut *phases {
+            observation.transfer_kg = 0.0;
+            observation.airborne_kg = 12.0;
+        }
+        phases[index].transfer_kg = amount;
+        for observation in &mut phases[index..] {
+            observation.airborne_kg += observed_change;
+        }
+        assert_eq!(
+            ledger.audit(),
+            Err(MassLedgerError::Transition {
+                time_seconds: 60,
+                slot: 0,
+                phase,
+            })
+        );
+    }
 }

@@ -214,7 +214,9 @@ docker run --rm -v "$PWD:/workspace/flexpart-gpu" \
 ```
 
 Compare scientific rows, input hashes and source hashes with the committed
-transcript. Build and image fingerprints describe the particular execution
+transcript. The report generator checks the prepared case against the exact
+driver input and verifies the bytes recorded in the original harness
+checksum log. Build and image fingerprints describe the particular execution
 environment. A second fresh scratch build reproduced all scientific evidence
 and original input/output bytes. Only the compiled executable hash differed.
 

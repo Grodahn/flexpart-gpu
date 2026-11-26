@@ -3,6 +3,7 @@
 import bisect
 import math
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -109,6 +110,28 @@ class DecisionTests(unittest.TestCase):
             replay.check_rows(case, rows)
         with self.assertRaisesRegex(ValueError, "mismatched oracle query"):
             replay.check_rows(case, rows[:-1])
+
+    def test_replay_rejects_changed_or_unrecorded_driver_bytes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            log = directory / "hashes.txt"
+            for kind, name in (("input", "rain-lsp-pair.txt"), ("output", "rain-lsp-pair-output.txt")):
+                path = directory / name
+                case = EVIDENCE["cases"][0]
+                data = case[f"raw_{kind}"].encode()
+                line = f"{case[f'{kind}_sha256']}  /container mount/{name}\n"
+                path.write_bytes(data)
+                log.write_text(line)
+                checksums = replay.replay_hashes(log)
+                self.assertEqual(replay.checked_replay_bytes(path, checksums), data)
+                with self.assertRaisesRegex(ValueError, "missing or mismatched original harness checksum"):
+                    replay.checked_replay_bytes(path, {})
+                path.write_bytes(data + b"\n")
+                with self.assertRaisesRegex(ValueError, "missing or mismatched original harness checksum"):
+                    replay.checked_replay_bytes(path, checksums)
+                log.write_text(line * 2)
+                with self.assertRaisesRegex(ValueError, "duplicate original harness checksum"):
+                    replay.replay_hashes(log)
 
     def test_edge_brackets(self):
         hourly = DECISION["coverage"]["schedules"]["main"]["segments"][0]

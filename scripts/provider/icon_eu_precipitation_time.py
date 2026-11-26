@@ -231,18 +231,51 @@ def check_rows(case, rows):
     return max_error
 
 
+def replay_hashes(path):
+    """Read the original harness checksum log independent of mount paths."""
+    checksums = {}
+    for line in path.read_text().splitlines():
+        checksum, recorded_path = line.split("  ", 1)
+        name = Path(recorded_path).name
+        if name in checksums:
+            raise ValueError(f"duplicate original harness checksum: {name}")
+        checksums[name] = checksum
+    return checksums
+
+
+def checked_replay_bytes(path, checksums):
+    data = path.read_bytes()
+    if checksums.get(path.name) != admission.sha256_bytes(data):
+        raise ValueError(f"missing or mismatched original harness checksum: {path.name}")
+    return data
+
+
 def finish(directory, output, image_id):
     run = directory / "oracle"
     preparation = read_json(directory / "preparation.json")
     revision = read_json(ROOT / "reference/flexpart-11.1.json")["pinned_commit"]
     if any((run / f"checkout-{phase}.txt").read_text().strip() != revision for phase in ("before", "after")):
         raise ValueError("unverified original FLEXPART checkout")
+    expected_cases = [f"{field}-{suffix}" for field in FIELDS for suffix in ("pair", "final")]
+    if [case["id"] for case in preparation["cases"]] != expected_cases:
+        raise ValueError("missing, repeated or unexpected original case")
+    checksums = replay_hashes(run / "hashes.txt")
+    driver = ROOT / "scripts/interpolation/direct_interpolation_oracle.f90"
+    executable = run / "build/interpolation-oracle"
+    source_names = ("interpol_mod.f90", "getfields_mod.f90", "windfields_mod.f90", "par_mod.f90")
+    sources = [run / "build/upstream" / name for name in source_names]
+    for path in (driver, executable, *sources):
+        checked_replay_bytes(path, checksums)
     for case in preparation["cases"]:
-        raw = (directory / "rain-inputs" / f"rain-{case['id']}.txt").read_bytes()
+        input_path = directory / "rain-inputs" / f"rain-{case['id']}.txt"
+        raw = checked_replay_bytes(input_path, checksums)
+        if raw != driver_input(case).encode():
+            raise ValueError(f"original input differs from prepared case: {case['id']}")
         result_path = run / "runs" / f"rain-{case['id']}-output.txt"
-        case.update(raw_input=raw.decode(), raw_output=result_path.read_bytes().decode())
-        case["input_sha256"] = admission.sha256_bytes(raw)
-        case["output_sha256"] = digest(result_path)
+        result = checked_replay_bytes(result_path, checksums)
+        case.update(raw_input=raw.decode(), raw_output=result.decode())
+        case["input_sha256"] = checksums[input_path.name]
+        case["output_sha256"] = checksums[result_path.name]
         case["rows"] = parse_output(case["raw_output"])
         case["max_candidate_error_mm_h"] = check_rows(case, case["rows"])
         if case["id"].endswith("-pair"):
@@ -259,10 +292,10 @@ def finish(directory, output, image_id):
         "flex_extract_revision": read_json(ROOT / "reference/flex-extract.json")["pinned_commit"],
         "execution_image_id": image_id,
         "compiler": (run / "compiler-version.txt").read_text().strip(),
-        "executable_sha256": digest(run / "build/interpolation-oracle"),
+        "executable_sha256": checksums[executable.name],
         "source_sha256": {name: digest(run / "build/upstream" / name) for name in
                           ("interpol_mod.f90", "getfields_mod.f90", "windfields_mod.f90", "wetdepo_mod.f90")},
-        "driver_sha256": digest(ROOT / "scripts/interpolation/direct_interpolation_oracle.f90"),
+        "driver_sha256": checksums[driver.name],
         **preparation,
     })
 

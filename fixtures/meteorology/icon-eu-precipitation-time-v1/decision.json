@@ -1,0 +1,207 @@
+{
+  "schema": "flexpart-gpu.icon-eu-precipitation-time-decision",
+  "version": 1,
+  "issue": 235,
+  "provenance": "GPT-6 Sol",
+  "verdict": "REQUIRES_NEW_ORACLE",
+  "runtime_admission": "REJECT",
+  "validation_level": "research_isolated_original_routines",
+  "scope": {
+    "product": "DWD deterministic ICON-EU regular latitude/longitude GRIB2",
+    "direction": "forward",
+    "legacy": {
+      "rrint": 0,
+      "numpf": 1,
+      "purefc": 0,
+      "basetime": null,
+      "eta": "no"
+    }
+  },
+  "input": {
+    "upstream_issue": 232,
+    "contract": "fixtures/meteorology/icon-eu-precipitation-232/decision-v1.json",
+    "components": [
+      "RAIN_GSP",
+      "RAIN_CON",
+      "SNOW_GSP",
+      "SNOW_CON"
+    ],
+    "tot_prec_required_for_closure": true,
+    "reference_role": "forecast_start_and_reset",
+    "validity_role": "run_accumulation_end",
+    "step_metadata": {
+      "pdt": 8,
+      "statistical_process": 1,
+      "forecast_time": 0,
+      "time_range_unit": "minute"
+    },
+    "interval_closure": "(start,end]",
+    "interval_rate_mm_h": "3600 * admitted_interval_amount_mm / (end_s - start_s)"
+  },
+  "legacy_diagnostic": {
+    "equal_duration_input": "MATHEMATICALLY_APPLICABLE",
+    "provider_forcing": "UNPROVEN",
+    "conserves_interval_amount": false,
+    "member_stamp": "end(b) = start(c)",
+    "member_support_offsets_delta": [
+      -2,
+      -1,
+      0,
+      1,
+      2
+    ],
+    "sample": "(r0*dt2 + r1*dt1)/(dt/3)",
+    "final_duplicate": {
+      "dt": 1,
+      "dt1": 0,
+      "dt2": 1
+    },
+    "reference_pins": {
+      "flex_extract": "e0005c99ac81d12faa45a8ff799debbd592b0dc0",
+      "flexpart": "c70586c2b7f5258850705325881c61f557ea9bd8"
+    },
+    "reference_tolerance": {
+      "absolute": 1e-06,
+      "relative": 1e-05
+    }
+  },
+  "coverage": {
+    "offset_unit": "forecast_hour_since_initialization",
+    "single_forecast_run": true,
+    "ordinary_pair": {
+      "left_inclusive": true,
+      "right_exclusive": true,
+      "required_endpoint_offsets_delta": [
+        -2,
+        -1,
+        0,
+        1,
+        2,
+        3
+      ],
+      "dynamic_fields_offsets_delta": [
+        0,
+        1
+      ]
+    },
+    "final_exact_member": {
+      "required_endpoint_offsets_delta": [
+        -2,
+        -1,
+        0,
+        1,
+        2
+      ],
+      "dynamic_fields_offsets_delta": [
+        0
+      ],
+      "minimum_total_members": 2
+    },
+    "schedules": {
+      "main": {
+        "cycles_utc": [
+          0,
+          6,
+          12,
+          18
+        ],
+        "segments": [
+          {
+            "start": 0,
+            "end": 78,
+            "delta": 1,
+            "first_member": 2,
+            "last_member": 76
+          },
+          {
+            "start": 78,
+            "end": 120,
+            "delta": 3,
+            "first_member": 84,
+            "last_member": 114
+          }
+        ]
+      },
+      "intermediate": {
+        "cycles_utc": [
+          3,
+          9,
+          15,
+          21
+        ],
+        "segments": [
+          {
+            "start": 0,
+            "end": 30,
+            "delta": 1,
+            "first_member": 2,
+            "last_member": 28
+          },
+          {
+            "start": 30,
+            "end": 48,
+            "delta": 6,
+            "first_member": null,
+            "last_member": null
+          }
+        ]
+      }
+    },
+    "bridge_segments": false
+  },
+  "reject": [
+    "upstream_admission_failed",
+    "missing_expected_endpoint_or_component",
+    "different_forecast_run",
+    "duplicate_or_out_of_order_endpoint",
+    "invalid_accumulation_metadata",
+    "nonpositive_or_wrong_duration",
+    "missing_meteorological_bracket",
+    "insufficient_accumulation_halo",
+    "mixed_cadence_or_unsupported_gap",
+    "extrapolation_padding_shift_or_rebinning"
+  ],
+  "evidence": {
+    "cycle": "2026112600",
+    "hourly_leads": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "transition_reference": "fixtures/meteorology/icon-eu-precipitation-232/evidence-v1.json",
+    "transition_cycle": "2026103100",
+    "transition_leads_rejected_by_232": [
+      78,
+      81,
+      84
+    ],
+    "case_ids": [
+      "lsp-pair",
+      "lsp-final",
+      "cp-pair",
+      "cp-final"
+    ],
+    "query_count": 24,
+    "precipitation_comparison_count": 48
+  },
+  "follow_up": {
+    "existing_admission_issue": 240,
+    "related_submember_issue": 212,
+    "required": [
+      "independent_ICON_preparation_and_sampling_authority",
+      "explicit_supported_boundary_and_cadence_envelope",
+      "production_consumer_budget_gate"
+    ]
+  },
+  "input_sha256": {
+    "fixtures/meteorology/icon-eu-precipitation-time-v1/sample-request.json": "53dcba68aa308f665c288f2c9f2b91ef2568e37c0cfb3381579422106462d377",
+    "fixtures/meteorology/icon-eu-precipitation-time-v1/retrieval-manifest.json": "7d323d6822b2b05abcdb4f2f8926290524c94f19a9103e85114c9b9b2eff317d",
+    "fixtures/meteorology/icon-eu-precipitation-time-v1/evidence.json": "ad3c9589062a9773b3e223169c0f119b24880df5bd6072cb482faa83304f2ff6",
+    "fixtures/meteorology/icon-eu-precipitation-232/decision-v1.json": "46344ee5f88e6fd8099ccc447aee4133f8d70f8c29bc70cf4b7d70f92e072286",
+    "fixtures/meteorology/icon-eu-precipitation-232/evidence-v1.json": "1ea7d316120537e8f1e29a11d67e3f5d2b2dcb7a138a9fe342c34de9471ac45c",
+    "fixtures/meteorology/icon-eu-audit-v1/provider-contract.json": "699ccf8fe09c5c87366446973f168fbf53f9ff5e829a87f74311626d08213d68"
+  }
+}

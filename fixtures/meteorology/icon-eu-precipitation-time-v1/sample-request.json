@@ -1,0 +1,29 @@
+{
+  "schema": "flexpart-gpu.icon-eu-sample-request",
+  "version": 1,
+  "issue": 235,
+  "base_url": "https://opendata.dwd.de/weather/nwp/icon-eu/grib",
+  "product": "icon-eu_europe_regular-lat-lon",
+  "cycle": "2026112600",
+  "groups": [
+    {
+      "role": "first complete hourly support for two unpadded members",
+      "kind": "single-level",
+      "variables": [
+        "TOT_PREC",
+        "RAIN_GSP",
+        "RAIN_CON",
+        "SNOW_GSP",
+        "SNOW_CON"
+      ],
+      "steps": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    }
+  ]
+}

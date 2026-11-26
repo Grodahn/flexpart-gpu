@@ -995,8 +995,23 @@ fn test_shared_vector_real_drivers_oracle_replay_and_reuse() {
             };
             let forcing = ForwardStepForcing::default();
             let (particles, status, metadata, values, queries) = if let Some(d) = &mut forward {
-                pollster::block_on(d.run_timestep(&met, &forcing)).unwrap();
-                pollster::block_on(d.test_advection_state())
+                let report = pollster::block_on(d.run_timestep(&met, &forcing)).unwrap();
+                assert_eq!(report.released_count, if step == 0 { 2 } else { 0 });
+                let state = pollster::block_on(d.test_advection_state());
+                // Independently check the live mass from this stable, no-loss production
+                // step against the two represented 1 kg releases. Exact values require
+                // no rounding allowance here. This does not exercise loss credits.
+                let airborne = state.0.iter().filter(|particle| particle.is_active()).fold(
+                    [0.0_f64; crate::particles::MAX_SPECIES],
+                    |mut totals, particle| {
+                        for (total, mass) in totals.iter_mut().zip(particle.mass) {
+                            *total += f64::from(mass);
+                        }
+                        totals
+                    },
+                );
+                assert_eq!(airborne, [2.0, 0.0, 0.0, 0.0]);
+                state
             } else {
                 let d = reverse.as_mut().unwrap();
                 pollster::block_on(d.run_timestep(&met, &forcing)).unwrap();

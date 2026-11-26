@@ -1,0 +1,88 @@
+{
+  "schema": "flexpart-gpu.mass-ledger.v1",
+  "species": [
+    {
+      "id": "A",
+      "requested_kg": 16
+    },
+    {
+      "id": "B",
+      "requested_kg": 8
+    }
+  ],
+  "sync_interval_seconds": 60,
+  "end_seconds": 120,
+  "steps": [
+    {
+      "time_seconds": 0,
+      "species": [
+        [
+          {"phase": "wet", "transfer_kg": 0, "airborne_kg": 0},
+          {"phase": "release", "transfer_kg": 12, "airborne_kg": 12},
+          {"phase": "sample", "transfer_kg": 0, "airborne_kg": 12},
+          {"phase": "horizontal_exit", "transfer_kg": 0, "airborne_kg": 12},
+          {"phase": "dry", "transfer_kg": 0, "airborne_kg": 12},
+          {"phase": "maximum_age_exit", "transfer_kg": 0, "airborne_kg": 12},
+          {"phase": "minimum_mass_exit", "transfer_kg": 0, "airborne_kg": 12},
+          {"phase": "minimum_mass_and_maximum_age_exit", "transfer_kg": 0, "airborne_kg": 12},
+          {"phase": "close", "transfer_kg": 0, "airborne_kg": 12}
+        ],
+        [
+          {"phase": "wet", "transfer_kg": 0, "airborne_kg": 0},
+          {"phase": "release", "transfer_kg": 8, "airborne_kg": 8},
+          {"phase": "sample", "transfer_kg": 0, "airborne_kg": 8},
+          {"phase": "horizontal_exit", "transfer_kg": 0, "airborne_kg": 8},
+          {"phase": "dry", "transfer_kg": 0, "airborne_kg": 8},
+          {"phase": "maximum_age_exit", "transfer_kg": 0, "airborne_kg": 8},
+          {"phase": "minimum_mass_exit", "transfer_kg": 0, "airborne_kg": 8},
+          {"phase": "minimum_mass_and_maximum_age_exit", "transfer_kg": 0, "airborne_kg": 8},
+          {"phase": "close", "transfer_kg": 0, "airborne_kg": 8}
+        ]
+      ]
+    },
+    {
+      "time_seconds": 60,
+      "species": [
+        [
+          {"phase": "wet", "transfer_kg": 3, "airborne_kg": 9},
+          {"phase": "release", "transfer_kg": 4, "airborne_kg": 13},
+          {"phase": "sample", "transfer_kg": 0, "airborne_kg": 13},
+          {"phase": "horizontal_exit", "transfer_kg": 2, "airborne_kg": 11},
+          {"phase": "dry", "transfer_kg": 1, "airborne_kg": 10},
+          {"phase": "maximum_age_exit", "transfer_kg": 4, "airborne_kg": 6},
+          {"phase": "minimum_mass_exit", "transfer_kg": 0, "airborne_kg": 6},
+          {"phase": "minimum_mass_and_maximum_age_exit", "transfer_kg": 0, "airborne_kg": 6},
+          {"phase": "close", "transfer_kg": 0, "airborne_kg": 6}
+        ],
+        [
+          {"phase": "wet", "transfer_kg": 2, "airborne_kg": 6},
+          {"phase": "release", "transfer_kg": 0, "airborne_kg": 6},
+          {"phase": "sample", "transfer_kg": 0, "airborne_kg": 6},
+          {"phase": "horizontal_exit", "transfer_kg": 0, "airborne_kg": 6},
+          {"phase": "dry", "transfer_kg": 2, "airborne_kg": 4},
+          {"phase": "maximum_age_exit", "transfer_kg": 0, "airborne_kg": 4},
+          {"phase": "minimum_mass_exit", "transfer_kg": 0, "airborne_kg": 4},
+          {"phase": "minimum_mass_and_maximum_age_exit", "transfer_kg": 0, "airborne_kg": 4},
+          {"phase": "close", "transfer_kg": 0, "airborne_kg": 4}
+        ]
+      ]
+    },
+    {
+      "time_seconds": 120,
+      "species": [
+        [
+          {"phase": "wet", "transfer_kg": 0, "airborne_kg": 6},
+          {"phase": "release", "transfer_kg": 0, "airborne_kg": 6},
+          {"phase": "sample", "transfer_kg": 0, "airborne_kg": 6},
+          {"phase": "close", "transfer_kg": 0, "airborne_kg": 6}
+        ],
+        [
+          {"phase": "wet", "transfer_kg": 0, "airborne_kg": 4},
+          {"phase": "release", "transfer_kg": 0, "airborne_kg": 4},
+          {"phase": "sample", "transfer_kg": 0, "airborne_kg": 4},
+          {"phase": "close", "transfer_kg": 0, "airborne_kg": 4}
+        ]
+      ]
+    }
+  ]
+}

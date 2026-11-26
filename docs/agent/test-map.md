@@ -218,6 +218,7 @@ Start at the [stable facade](../../src/meteorology/vertical.rs) and select its
 
 ## Decay-mass-ledger
 
+- Stable ledger record audit: `cargo test --test mass_ledger`. Check the pinned source anchors with `python scripts/check_mass_ledger_reference.py --repository <FLEXPART repository>`. [Scope and remaining production handoffs](../mass-ledger.md).
 - Fast conservation diagnostic: `cargo test --lib physics::species::tests::decay_mass_step_conserves_mass -- --exact`.
 - Device diagnostic: `cargo test --lib gpu::decay::tests`; integration: `cargo test --test integration mass_conservation` and `cargo test --test integration scientific_invariants`.
 - Evidence: per-species decay and released/remaining/removed mass under issue-owned tolerances; adapter execution and full driver budgets for production claims.

@@ -342,7 +342,10 @@ fn repository_policy_forces_lf_for_every_text_fixture_class() {
         .iter()
         .copied()
         .filter(|path| {
-            !path.ends_with(".grib") && !path.ends_with(".grib2") && !path.ends_with(".npz")
+            !path.ends_with(".grib")
+                && !path.ends_with(".grib2")
+                && !path.ends_with(".npz")
+                && !path.ends_with(".zip")
         })
         .collect();
     assert!(!text_paths.is_empty());

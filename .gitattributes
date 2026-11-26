@@ -8,6 +8,7 @@ fixtures/**/*.json text eol=lf
 fixtures/**/*.md text eol=lf
 fixtures/**/*.spec text eol=lf
 fixtures/**/*.txt text eol=lf
+fixtures/**/*.zip binary
 fixtures/**/AGECLASSES text eol=lf
 fixtures/**/COMMAND text eol=lf
 fixtures/**/OUTGRID text eol=lf

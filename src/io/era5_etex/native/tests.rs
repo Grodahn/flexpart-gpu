@@ -83,11 +83,17 @@ fn test_era5_etex_mismatched_source_units_rejected() {
     let bytes = std::fs::read(SAMPLE).unwrap()[..MESSAGE_BYTES].to_vec();
     let mut file = CodesFile::new_from_memory(bytes, ProductKind::GRIB).unwrap();
     let message = file.ref_message_iter().next().unwrap().unwrap();
-    let temperature_units: String = message.read_key("units").unwrap();
-    assert_eq!(temperature_units, "K");
-    let wind_units = PARAMETERS[0].units;
+    let temperature = PARAMETERS
+        .iter()
+        .find(|entry| entry.param_id == 130)
+        .unwrap();
+    validate_parameter(&message, 1, temperature).unwrap();
+    let incompatible_units = Parameter {
+        units: "m s**-1",
+        ..*temperature
+    };
     assert!(matches!(
-        check(1, "units", temperature_units.as_str(), wind_units),
+        validate_parameter(&message, 1, &incompatible_units),
         Err(DecodeError::Key { key: "units", .. })
     ));
 }

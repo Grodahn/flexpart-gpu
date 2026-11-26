@@ -5,6 +5,7 @@ import argparse
 from collections import defaultdict
 from datetime import datetime, timezone
 import hashlib
+from io import BytesIO
 import json
 from pathlib import Path
 
@@ -18,6 +19,20 @@ EVIDENCE = ROOT / "fixtures/meteorology/era5-etex-native-v1.value-digests.json"
 FIELDS = {130: "temperature", 131: "wind_u", 132: "wind_v", 133: "specific_humidity"}
 
 
+def grib2_frames(raw):
+    """Pass complete messages from the checksum-verified buffer to ecCodes."""
+    offset = 0
+    while offset < len(raw):
+        header = raw[offset:offset + 16]
+        if len(header) != 16 or header[:4] != b"GRIB" or header[7] != 2:
+            raise ValueError(f"invalid GRIB2 header at byte {offset}")
+        end = offset + int.from_bytes(header[8:], "big")
+        if end < offset + 20 or end > len(raw) or raw[end - 4:end] != b"7777":
+            raise ValueError(f"invalid GRIB2 frame at byte {offset}")
+        yield raw[offset:end]
+        offset = end
+
+
 def audit(manifest):
     metadata = json.loads(manifest.read_bytes())
     path = RAW / metadata["file"]
@@ -28,41 +43,41 @@ def audit(manifest):
     volumes = defaultdict(dict)
     sort_order = None
     pv_digest = None
-    with path.open("rb") as file:
-        while (message := eccodes.codes_grib_new_from_file(file)) is not None:
-            try:
-                parameter = eccodes.codes_get_long(message, "paramId")
-                if parameter not in FIELDS:
-                    continue
-                date = eccodes.codes_get_long(message, "validityDate")
-                time = eccodes.codes_get_long(message, "validityTime")
-                level = eccodes.codes_get_long(message, "level")
-                dt = datetime.strptime(f"{date}{time:04}", "%Y%m%d%H%M")
-                epoch = int(dt.replace(tzinfo=timezone.utc).timestamp())
-                if sort_order is None:
-                    pv = eccodes.codes_get_array(message, "pv")
-                    if pv.shape != (276,) or not np.isfinite(pv).all():
-                        raise ValueError(f"invalid PV vector in {path.name}")
-                    pv_digest = hashlib.sha256(pv.astype("<f4").tobytes()).hexdigest()
-                    lat = eccodes.codes_get_array(message, "latitudes")
-                    lon = eccodes.codes_get_array(message, "longitudes")
-                    lon = (lon + 180) % 360 - 180
-                    sort_order = np.lexsort((lon, lat))
-                    np.testing.assert_array_equal(
-                        lat[sort_order], np.repeat(np.linspace(43, 53, 41), 65)
-                    )
-                    np.testing.assert_array_equal(
-                        lon[sort_order], np.tile(np.linspace(-8, 8, 65), 41)
-                    )
-                cells = eccodes.codes_get_values(message)[sort_order]
-                if not np.isfinite(cells).all():
-                    raise ValueError(f"nonfinite values at {epoch}/{parameter}/{level}")
-                levels = volumes[epoch, FIELDS[parameter]]
-                if level in levels:
-                    raise ValueError(f"duplicate {epoch}/{parameter}/{level}")
-                levels[level] = cells.astype("<f4").tobytes()
-            finally:
-                eccodes.codes_release(message)
+    for frame in grib2_frames(raw):
+        message = eccodes.codes_new_from_message(frame)
+        try:
+            parameter = eccodes.codes_get_long(message, "paramId")
+            if parameter not in FIELDS:
+                continue
+            date = eccodes.codes_get_long(message, "validityDate")
+            time = eccodes.codes_get_long(message, "validityTime")
+            level = eccodes.codes_get_long(message, "level")
+            dt = datetime.strptime(f"{date}{time:04}", "%Y%m%d%H%M")
+            epoch = int(dt.replace(tzinfo=timezone.utc).timestamp())
+            if sort_order is None:
+                pv = eccodes.codes_get_array(message, "pv")
+                if pv.shape != (276,) or not np.isfinite(pv).all():
+                    raise ValueError(f"invalid PV vector in {path.name}")
+                pv_digest = hashlib.sha256(pv.astype("<f4").tobytes()).hexdigest()
+                lat = eccodes.codes_get_array(message, "latitudes")
+                lon = eccodes.codes_get_array(message, "longitudes")
+                lon = (lon + 180) % 360 - 180
+                sort_order = np.lexsort((lon, lat))
+                np.testing.assert_array_equal(
+                    lat[sort_order], np.repeat(np.linspace(43, 53, 41), 65)
+                )
+                np.testing.assert_array_equal(
+                    lon[sort_order], np.tile(np.linspace(-8, 8, 65), 41)
+                )
+            cells = eccodes.codes_get_values(message)[sort_order]
+            if not np.isfinite(cells).all():
+                raise ValueError(f"nonfinite values at {epoch}/{parameter}/{level}")
+            levels = volumes[epoch, FIELDS[parameter]]
+            if level in levels:
+                raise ValueError(f"duplicate {epoch}/{parameter}/{level}")
+            levels[level] = cells.astype("<f4").tobytes()
+        finally:
+            eccodes.codes_release(message)
     if len(volumes) != 3 * len(FIELDS):
         raise ValueError(f"missing time or field in {path.name}")
     result = {}
@@ -87,19 +102,8 @@ def audit_surface(sources):
     if len(raw) != metadata["bytes"] or digest != metadata["sha256"]:
         raise ValueError(f"unexpected ARCO source identity: {path.name}")
     model_epochs = sorted(epoch for source in sources for epoch in source["volumes_by_epoch"])
-    with np.load(path, allow_pickle=False) as surface:
-        times = [time.decode("ascii") for time in surface["times"]]
-        if times != metadata["times"]:
-            raise ValueError("ARCO archive times differ from its request record")
-        epochs = [int(datetime.fromisoformat(time).replace(tzinfo=timezone.utc).timestamp())
-                  for time in times]
-        if epochs != model_epochs:
-            raise ValueError("ARCO times differ from GRIB valid times")
-        np.testing.assert_array_equal(surface["latitudes"], np.linspace(53, 43, 41))
-        np.testing.assert_array_equal(surface["longitudes"], np.linspace(-8, 8, 65))
-        pressure = surface["surface_pressure"]
-        if pressure.shape != (6, 41, 65) or not (np.isfinite(pressure) & (pressure > 0)).all():
-            raise ValueError("invalid ARCO surface pressure array")
+    with np.load(BytesIO(raw), allow_pickle=False) as surface:
+        check_surface_content(surface, metadata["times"], model_epochs)
     return {
         "file": path.name,
         "raw_sha256": digest,
@@ -107,6 +111,23 @@ def audit_surface(sources):
         "valid_times_and_grid_match": True,
         "admission": "blocked_missing_original_analysis_identity",
     }
+
+
+def check_surface_content(surface, expected_times, model_epochs):
+    times = [time.decode("ascii") for time in surface["times"]]
+    if times != expected_times:
+        raise ValueError("ARCO archive times differ from its request record")
+    epochs = [
+        int(datetime.fromisoformat(time).replace(tzinfo=timezone.utc).timestamp())
+        for time in times
+    ]
+    if epochs != model_epochs:
+        raise ValueError("ARCO times differ from GRIB valid times")
+    np.testing.assert_array_equal(surface["latitudes"], np.linspace(53, 43, 41))
+    np.testing.assert_array_equal(surface["longitudes"], np.linspace(-8, 8, 65))
+    pressure = surface["surface_pressure"]
+    if pressure.shape != (6, 41, 65) or not (np.isfinite(pressure) & (pressure > 0)).all():
+        raise ValueError("invalid ARCO surface pressure array")
 
 
 def main():

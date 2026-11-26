@@ -108,6 +108,7 @@ JSON bytes of the actual `model_levels` payload. Local execution may also
 retain `rustc -vV` and `pkg-config --modversion eccodes` with the report.
 
 ```sh
+python3 -I -m unittest discover -s scripts/fixtures -p test_era5_etex_native_values.py
 python3 -I scripts/fixtures/check_era5_etex_native_values.py
 cargo test --locked --features eccodes --lib io::era5_etex
 cargo test --locked --features eccodes --test era5_etex_decoder

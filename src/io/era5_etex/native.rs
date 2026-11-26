@@ -365,19 +365,7 @@ fn read_record(
         long("scaledValueOfFirstFixedSurface")?,
         raw_level,
     )?;
-    check(
-        ordinal,
-        "parameterCategory",
-        long("parameterCategory")?,
-        parameter.category,
-    )?;
-    check(
-        ordinal,
-        "parameterNumber",
-        long("parameterNumber")?,
-        parameter.number,
-    )?;
-    check(ordinal, "units", string("units")?.as_str(), parameter.units)?;
+    validate_parameter(message, ordinal, parameter)?;
 
     let pv = KeyRead::<Vec<f64>>::read_key(message, "pv")?;
     check(ordinal, "pv length", pv.len(), 2 * INTERFACES)?;
@@ -409,6 +397,31 @@ fn read_record(
         true,
     )?;
     Ok((time, *parameter, level, values))
+}
+
+fn validate_parameter(
+    message: &RefMessage<'_>,
+    ordinal: usize,
+    parameter: &Parameter,
+) -> Result<(), DecodeError> {
+    check(
+        ordinal,
+        "parameterCategory",
+        KeyRead::<i64>::read_key(message, "parameterCategory")?,
+        parameter.category,
+    )?;
+    check(
+        ordinal,
+        "parameterNumber",
+        KeyRead::<i64>::read_key(message, "parameterNumber")?,
+        parameter.number,
+    )?;
+    check(
+        ordinal,
+        "units",
+        KeyRead::<String>::read_key(message, "units")?.as_str(),
+        parameter.units,
+    )
 }
 
 fn decode_verified(

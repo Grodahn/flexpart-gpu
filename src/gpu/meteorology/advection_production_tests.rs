@@ -1433,11 +1433,11 @@ fn test_shared_vector_driver_preparation_failures() {
             };
             let forcing = ForwardStepForcing::default();
             let (initial, particles, status) = if let Some(d) = &mut forward {
+                let initial = pollster::block_on(d.test_raw_particles());
                 assert!(
                     pollster::block_on(d.run_timestep(&met, &forcing)).is_err(),
                     "{variant}"
                 );
-                let initial = d.particle_store().as_slice().to_vec();
                 let (p, s, _, _, _) = pollster::block_on(d.test_advection_state());
                 (initial, p, s)
             } else {

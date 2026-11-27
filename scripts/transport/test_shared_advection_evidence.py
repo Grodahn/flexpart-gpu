@@ -76,6 +76,17 @@ class EvidenceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             device(self.path)
 
+    def test_failed_forward_release_cannot_be_published(self):
+        path = self.path.with_name('negative.json')
+        evidence = json.loads(path.read_text())
+        row = next(row for row in evidence['rows'] if not row['backward'])
+        for field in ('initial_bytes', 'final_bytes'):
+            row[field][20] |= 1
+            row[field][116] |= 1
+        path.write_text(json.dumps(evidence))
+        with self.assertRaisesRegex(ValueError, 'negative active/inactive particle state'):
+            device(self.path)
+
     def control(self):
         inputs = json.loads(self.path.with_name('inputs.json').read_text())
         parent = Path('fixtures/interpolation/interior-w-v1')

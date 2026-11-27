@@ -37,12 +37,7 @@ services:
       OMP_WAIT_POLICY: "PASSIVE"
     command: ["bash"]
 
-  # flex_extract calc_etadot oracle service (#70). Built on top of the
-  # flexpart-fortran image (adds EMOSLIB/libopenjp2). The pinned flex_extract
-  # checkout is bind-mounted read-write only for convenience, but the oracle
-  # harness (scripts/vertical/flex_extract_etadot_oracle.sh) copies the
-  # sources and example inputs into scratch dirs and never modifies this
-  # checkout, so it stays byte-for-byte pristine.
+  # flex_extract calc_etadot oracle service (#70), with read-only sources.
   flex-extract:
     build:
       context: ..
@@ -55,11 +50,11 @@ services:
     volumes:
       # Pinned flex_extract sources (must pass `reference-check -- verify`
       # with reference/flex-extract.json).
-      - ${FLEXEXTRACT_DIR:-../../flex_extract}:/workspace/flex_extract
+      - ${FLEXEXTRACT_DIR:-../../flex_extract}:/workspace/flex_extract:ro
       # This repository (comparison scripts, fixtures).
       - ..:/workspace/flexpart-gpu
       # Host-visible result directories for the comparison scripts.
-      - ../target:/workspace/target
+      - ${FLEXEXTRACT_OUTPUT_DIR:-../target/ci-gate/flex-extract-oracle}:/workspace/etadot-out
     environment:
       FC: "gfortran"
       OMP_NUM_THREADS: "1"

@@ -248,28 +248,40 @@ use the `pinmconv` produced by the actual directly linked FLEXPART
 
 ### Raw eta-dot
 
-Raw ECMWF eta-coordinate velocity (`dη/dt`) is represented by the native
-contract so provider adapters can identify it explicitly, but **#30 does not
-currently normalize it in production**.
+`eta_dot_to_pressure_velocity` is the validation-only boundary for full-level
+ECMWF parameter 77 in `1/s`, with positive values pointing toward increasing
+eta. The pinned `flex_extract` 7.1.2 `calc_etadot.f90` reads that encoding
+directly. It has no sign-conversion mode for the opposite convention, so
+`PositiveEtaDecreasing` is rejected. Both canonical array orderings are usable
+when the full levels and the half-level A/B coefficients agree with the ordering.
 
-The FLEXPART-facing reference is clear about the boundary: FLEXPART consumes a
-pressure vertical velocity in `Pa/s`; ECMWF parameter 77 (`dη/dt`) is
-preprocessed by `flex_extract` / `calc_etadot`, including multiplication by
-`dp/dη`, before it becomes FLEXPART-ready input. What is not yet pinned in
-this repository is an independent executable/golden reference for the complete
-full-level-to-half-level preprocessing and its indexing/sign semantics.
+Let `p_j = A_j + B_j p_s` be half-level pressure, `p_s` the local surface
+pressure, and `P₀ = 101325 Pa`. Walk full levels `k = 1..N` from the top
+toward the surface. The routine evaluates the following in double precision.
 
-Therefore `NativeVerticalMotionKind::EtaCoordinateVelocity` fails closed with
-`InvalidNativeVerticalMotion` even when its unit/sign/staggering metadata are
-otherwise valid. No candidate-side recurrence is accepted as scientific
-evidence for itself.
+```text
+ΔA = A[k] - A[k-1],   ΔB = B[k] - B[k-1]
+F[k] = 2 (dη/dt)[k] (ΔA + p_s ΔB) / (ΔA/P₀ + ΔB)
+W[0] = 0
+W[k] = F[k] - W[k-1]
+```
 
-Eta-dot support may only be enabled after a pinned independent preprocessing
-reference (for example the matching `flex_extract calc_etadot` implementation
-or golden outputs produced by it) is added and compared against the candidate.
-Follow-up #70 owns that work.
-Until then, the supported FLEXPART parity boundary is preprocessed pressure
-velocity / omega in `Pa/s`.
+`W[k]` is positive toward increasing pressure, in `Pa/s`, on the interface
+immediately below full level `k`. The subtraction uses the previous **output**
+interface. `fort.15` encodes interfaces `1..N` as parameter 77 with the
+corresponding full-level labels, including `N` at the surface. The canonical
+array explicitly stores the initialized zero at the model top. The candidate
+requires positive local and reference layer thickness and the physical surface
+interface `A=0, B=1`, and rounds the f64 recurrence output to f32 for storage.
+
+`NativeVerticalMotionKind::EtaCoordinateVelocity` still fails closed with
+`InvalidNativeVerticalMotion` in production normalization. The complete ETEX
+replay combines real native ERA5 profiles with a separately sourced ARCO-ERA5
+surface pressure. #253 owns the missing proof of matched original ECMWF pressure.
+The controlled and ETEX diagnostic results establish the tested preprocessing
+arithmetic. Production consumes preprocessed, interface-staggered pressure
+velocity in `Pa/s`. See [the #70 oracle gate](ci-gates.md#2-small-deterministic-ci-gate)
+and the [frozen L137 columns](../fixtures/vertical/calc-etadot-l137-v1.json).
 
 ## Integration boundaries for #28 and #31
 

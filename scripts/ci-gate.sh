@@ -870,6 +870,8 @@ if [ "${SKIP_ORACLE_BUILD}" != "1" ]; then
     --artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/oracle-run/source-provenance.json" \
     --artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/run-provenance.json" \
     --artifact "${OUTPUT_DIR}/flex-extract-oracle/real-era5-137/comparison-report.json" \
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/synthetic-72000/comparison-report.json" \
+    --artifact "${OUTPUT_DIR}/flex-extract-oracle/synthetic-101325/comparison-report.json" \
     --candidate-artifact "${CANDIDATE_OUTPUT}" \
     --candidate-artifact "${CANDIDATE_LOG}" \
     --oracle-artifact "${OUTPUT_DIR}/interpolation/oracle-output" \

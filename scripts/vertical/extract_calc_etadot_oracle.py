@@ -23,7 +23,8 @@ rust candidate (eta_dot_to_pressure_velocity, mdpdeta=1):
 
   * candidate interface index K == calc_etadot level K (both top-first);
   * motion values are indexed by level k-1 (level 1 first = top), 0 for the
-    pristine levels below the MLEVELIST window (READLATLON zero-fills);
+    missing levels above the upstream installation MLEVELIST window, which
+    READLATLON zero-fills. Full-column cases require every input level;
   * the vertical coordinate uses one canonical reference surface pressure
     (max of the psi-field) so that a+b*ps_ref reconstructs an interface row.
 """
@@ -32,6 +33,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import math
 import os
 import sys
 
@@ -172,11 +174,20 @@ def main():
     )
 
     handle = read_first_handle(hybrid_path)
+    spectral_t0 = None
     try:
         pv = list(ec.codes_get_array(handle, "pv"))
+        if args.fixture_classification == "synthetic_era5_hybrid_full_column":
+            coefficients = ec.codes_get_values(handle)
+            if (ec.codes_get(handle, "unpackedSubsetPrecision") != 2
+                    or not all(value == 0.0 for value in coefficients[1:])):
+                raise ValueError("controlled pressure requires a constant IEEE64 spectral field")
+            spectral_t0 = float(coefficients[0])
     finally:
         ec.codes_release(handle)
 
+    if len(pv) < 4 or len(pv) % 2 or not all(math.isfinite(value) for value in pv):
+        raise ValueError("invalid hybrid A/B coefficient array")
     nlev = len(pv) // 2 - 1
     a = pv[: nlev + 1]
     b = pv[nlev + 1 :]
@@ -184,12 +195,38 @@ def main():
     nx, ny = grid["Ni"], grid["Nj"]
     nxy = nx * ny
     ps_flat = sp[0][2]
-    if len(ps_flat) != nxy:
+    if len(ps_flat) != nxy or not all(math.isfinite(value) and value > 0.0 for value in ps_flat):
         raise ValueError("surface-pressure field length mismatch")
+
+    source_provenance_path = args.source_provenance
+    source_provenance = None
+    if source_provenance_path is not None:
+        with open(source_provenance_path, "r", encoding="utf-8") as source:
+            source_provenance = json.load(source)
+
+    candidate_ps = ps_flat
+    if spectral_t0 is not None:
+        if source_provenance is None:
+            raise ValueError("controlled pressure requires source provenance")
+        prescribed = source_provenance["selected_column"]["surface_pressure_pa"]
+        expected_t0 = math.log(prescribed)
+        if not math.isfinite(spectral_t0) or abs(spectral_t0 - expected_t0) > 2 * math.ulp(expected_t0):
+            raise ValueError("controlled spectral T0 differs from the prescribed pressure")
+        # The output GRIB reference value can round down by one binary32 ULP
+        # even when the internal pressure is only a binary64 ULP below an integer.
+        packing_ulp_pa = math.ldexp(1.0, math.frexp(prescribed)[1] - 24)
+        if any(abs(value - prescribed) > packing_ulp_pa for value in ps_flat):
+            raise ValueError("controlled fort.15 pressure differs by more than one binary32 ULP")
+        candidate_ps = [prescribed] * nxy
 
     levels = sorted({lvl for (_, lvl, _) in raw})
     raw_by_level = {lvl: vals for (_, lvl, vals) in raw}
     oracle_by_level = {lvl: vals for (_, lvl, vals) in oracle}
+    if len(raw_by_level) != len(raw) or len(oracle_by_level) != len(oracle):
+        raise ValueError("duplicate raw or oracle eta-dot level")
+    for field in (raw_by_level, oracle_by_level):
+        if any(len(row) != nxy or not all(math.isfinite(value) for value in row) for row in field.values()):
+            raise ValueError("invalid raw or oracle eta-dot field values")
 
     try:
         first_text, last_text = args.expected_levels.split("/to/")
@@ -220,7 +257,7 @@ def main():
         for idx in range(nxy):
             motion_values[(lvl - 1) * nxy + idx] = raw_by_level[lvl][idx]
 
-    reference_ps = float(max(ps_flat))
+    reference_ps = float(max(candidate_ps))
     xlon0 = float(grid["longitudeOfFirstGridPointInDegrees"])
     if xlon0 >= 180.0:
         xlon0 -= 360.0
@@ -264,7 +301,7 @@ def main():
                     "kind": "instantaneous",
                     "valid_time_epoch_seconds": valid_time,
                 },
-                "values": [float(v) for v in ps_flat],
+                "values": [float(v) for v in candidate_ps],
             }
         ],
     }
@@ -304,6 +341,7 @@ def main():
         "nlev": nlev,
         "levels_present": levels,
         "surface_pressure_pa_xy": [float(v) for v in ps_flat],
+        "candidate_surface_pressure_pa_xy": [float(v) for v in candidate_ps],
         "raw_etadot_per_s_xy_by_level": {
             str(lvl): [float(v) for v in raw_by_level[lvl]] for lvl in levels
         },
@@ -312,12 +350,7 @@ def main():
         },
     }
 
-    if args.source_provenance is not None:
-        source_provenance_path = args.source_provenance
-        if not os.path.isfile(source_provenance_path):
-            raise ValueError(f"source provenance missing: {source_provenance_path}")
-        with open(source_provenance_path, "r", encoding="utf-8") as source:
-            source_provenance = json.load(source)
+    if source_provenance is not None:
         reference["source_fixture"]["source_provenance"] = {
             "path": source_provenance_path,
             "sha256": sha256_file(source_provenance_path),
@@ -336,7 +369,7 @@ def main():
             json.dump(payload, f, indent=2)
     print(
         f"wrote {snapshot_path}, {motion_path}, {oracle_path} "
-        f"(nx={nx}, ny={ny}, nlev={nlev}, levels={levels})",
+        f"(nx={nx}, ny={ny}, nlev={nlev}, levels={levels[0]}..{levels[-1]})",
         file=sys.stderr,
     )
 

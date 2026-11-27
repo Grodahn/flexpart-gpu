@@ -7,6 +7,85 @@ use super::super::{
 };
 use super::*;
 use approx::assert_relative_eq;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct FrozenColumns {
+    hybrid_a_interface_pa: Vec<f32>,
+    hybrid_b_interface: Vec<f32>,
+    columns: Vec<FrozenColumn>,
+}
+
+#[derive(Deserialize)]
+struct FrozenColumn {
+    id: String,
+    surface_pressure_pa: f32,
+    eta_dot_per_s: Vec<f32>,
+    oracle_below_level_pa_s: Vec<f64>,
+}
+
+#[test]
+fn eta_dot_full_l137_matches_frozen_original_for_both_array_orderings() {
+    let fixture: FrozenColumns = serde_json::from_str(include_str!(
+        "../../../../fixtures/vertical/calc-etadot-l137-v1.json"
+    ))
+    .expect("frozen calc_etadot columns");
+    assert_eq!(fixture.hybrid_a_interface_pa.len(), 138);
+    assert_eq!(fixture.hybrid_b_interface.len(), 138);
+    assert_eq!(fixture.columns.len(), 3);
+    const ABS_TOL_PA_S: f64 = 1.0e-7;
+    const REL_TOL: f64 = 3.0e-5;
+
+    for column in fixture.columns {
+        assert_eq!(column.eta_dot_per_s.len(), 137);
+        assert_eq!(column.oracle_below_level_pa_s.len(), 137);
+        for ordering in [VerticalOrdering::Increasing, VerticalOrdering::Decreasing] {
+            let mut snapshot = eta_dot_snapshot(ordering);
+            let mut a = fixture.hybrid_a_interface_pa.clone();
+            let mut b = fixture.hybrid_b_interface.clone();
+            let mut motion = column.eta_dot_per_s.clone();
+            if ordering == VerticalOrdering::Decreasing {
+                a.reverse();
+                b.reverse();
+                motion.reverse();
+            }
+            let ps = column.surface_pressure_pa;
+            let interfaces: Vec<_> = a.iter().zip(&b).map(|(a, b)| a + b * ps).collect();
+            let vertical = &mut snapshot.vertical_coordinate;
+            vertical.level_values = interfaces
+                .windows(2)
+                .map(|pair| (pair[0] + pair[1]) / 2.0)
+                .collect();
+            vertical.interface_values = Some(interfaces);
+            vertical.hybrid_a_interface_pa = Some(a);
+            vertical.hybrid_b_interface = Some(b);
+            vertical.reference_surface_pressure_pa = Some(ps);
+            snapshot.fields[0].values = vec![ps];
+
+            let mut output = eta_dot_to_pressure_velocity(&snapshot, &eta_dot_motion(motion))
+                .expect("valid complete hybrid column")
+                .values_interface_pa_s;
+            if ordering == VerticalOrdering::Decreasing {
+                output.reverse();
+            }
+            assert_eq!(output.len(), 138);
+            assert_eq!(output[0].to_bits(), 0.0_f32.to_bits());
+            for (k, (&actual, &expected)) in output[1..]
+                .iter()
+                .zip(&column.oracle_below_level_pa_s)
+                .enumerate()
+            {
+                let error = (f64::from(actual) - expected).abs();
+                assert!(
+                    error <= ABS_TOL_PA_S.max(REL_TOL * expected.abs()),
+                    "{} {ordering:?} interface below level {}: {actual} vs {expected}",
+                    column.id,
+                    k + 1
+                );
+            }
+        }
+    }
+}
 
 #[test]
 fn eta_dot_transform_matches_pinned_calc_etadot_formula_hand_check() {
@@ -73,6 +152,14 @@ fn eta_dot_output_composes_with_flexpart_geometry_consumers() {
 #[test]
 fn eta_dot_rejects_non_canonical_semantics_fail_closed() {
     let snapshot = eta_dot_snapshot(VerticalOrdering::Increasing);
+    let mut geometric = eta_dot_motion(vec![1.0, 2.0, 3.0]);
+    geometric.kind = NativeVerticalMotionKind::GeometricVelocity;
+    geometric.unit = NativeVerticalMotionUnit::MeterPerSecond;
+    geometric.sign = NativeVerticalMotionSign::PositiveUpward;
+    assert!(matches!(
+        eta_dot_to_pressure_velocity(&snapshot, &geometric),
+        Err(VerticalTransformError::InvalidNativeVerticalMotion { .. })
+    ));
     let mut wrong_unit = eta_dot_motion(vec![-1.0e-5, -2.0e-5, 3.0e-5]);
     wrong_unit.unit = NativeVerticalMotionUnit::PascalPerSecond;
     assert!(matches!(
@@ -98,6 +185,43 @@ fn eta_dot_rejects_non_canonical_semantics_fail_closed() {
     assert!(matches!(
         eta_dot_to_pressure_velocity(&snapshot, &wrong_shape),
         Err(VerticalTransformError::ShapeMismatch { .. })
+    ));
+
+    let mut wrong_order = snapshot;
+    wrong_order.vertical_coordinate.ordering = VerticalOrdering::Decreasing;
+    assert!(matches!(
+        eta_dot_to_pressure_velocity(&wrong_order, &eta_dot_motion(vec![1.0, 2.0, 3.0])),
+        Err(VerticalTransformError::Contract(_))
+    ));
+}
+
+#[test]
+fn eta_dot_rejects_invalid_layer_thickness_and_surface_anchor() {
+    let mut snapshot = eta_dot_snapshot(VerticalOrdering::Increasing);
+    let motion = eta_dot_motion(vec![1.0e-5, -2.0e-5, 3.0e-5]);
+    // The serialized reference geometry remains valid at 100 kPa. With 5 kPa
+    // locally the last layer inverts and must not get a signed or zero factor.
+    snapshot.fields[0].values = vec![5_000.0];
+    assert!(matches!(
+        eta_dot_to_pressure_velocity(&snapshot, &motion),
+        Err(VerticalTransformError::InvalidEtaDotTransform { k: 3, .. })
+    ));
+
+    snapshot.fields[0].values = vec![100_000.0];
+    // The modified coefficients agree only at the reference surface pressure.
+    snapshot
+        .vertical_coordinate
+        .hybrid_a_interface_pa
+        .as_mut()
+        .expect("A")[3] = 10_000.0;
+    snapshot
+        .vertical_coordinate
+        .hybrid_b_interface
+        .as_mut()
+        .expect("B")[3] = 0.9;
+    assert!(matches!(
+        eta_dot_to_pressure_velocity(&snapshot, &motion),
+        Err(VerticalTransformError::InvalidNativeVerticalMotion { .. })
     ));
 }
 

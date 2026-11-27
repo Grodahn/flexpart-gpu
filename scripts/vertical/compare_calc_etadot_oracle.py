@@ -26,6 +26,7 @@ Candidate indexing contract (validated against the oracle):
 import argparse
 import hashlib
 import json
+import math
 import subprocess
 from pathlib import Path
 
@@ -35,6 +36,8 @@ PRESSURE_VELOCITY_REL_TOL = 3.0e-5
 PINNED_CALC_ETADOT_SHA256 = "160F267F8741F23D13FDBA2F7A88F110BB131AA84AD7894FA43605258E55B0D9"
 PINNED_CALC_ETADOT_GIT_BLOB = "741eba91eab049df23a560219d0f2656a6cc9881"
 REAL_ERA5_CLASSIFICATION = "real_era5_native_model_level_full_column"
+SYNTHETIC_CLASSIFICATION = "synthetic_era5_hybrid_full_column"
+REQUIRED_INPUTS = {"fort.4", "fort.10", "fort.11", "fort.12", "fort.17", "fort.21"}
 
 REQUIRED_TRANSFORM_SNIPPETS = (
     "P00=101325.",
@@ -68,6 +71,13 @@ def sha256(path):
 
 def sha256_bytes(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def verify_artifact(record):
+    path = Path(record["path"])
+    if sha256(path) != record["sha256"]:
+        raise ValueError(f"artifact bytes differ from recorded SHA-256: {path}")
+    return path
 
 
 def git(checkout, *args):
@@ -179,6 +189,9 @@ def main():
         raise ValueError("candidate report has the wrong schema")
     source_snapshot_sha = sha256(args.source_snapshot)
     source_motion_sha = sha256(args.source_motion)
+    if (candidate.get("source_snapshot_sha256") != source_snapshot_sha
+            or candidate.get("source_motion_sha256") != source_motion_sha):
+        raise ValueError("candidate report did not use the supplied snapshot and motion bytes")
 
     oracle = json.loads(args.oracle.read_text(encoding="utf-8"))
     source_fixture = oracle.get("source_fixture", {})
@@ -186,6 +199,7 @@ def main():
     if classification not in {
         "upstream_flex_extract_native_model_level",
         REAL_ERA5_CLASSIFICATION,
+        SYNTHETIC_CLASSIFICATION,
     }:
         raise ValueError(
             f"oracle fixture has unsupported classification: {classification!r}"
@@ -255,34 +269,24 @@ def main():
     fixture_hashes = source_fixture.get("source_hashes_sha256", {})
     run_inputs = run_provenance.get("oracle_inputs", {})
     run_outputs = run_provenance.get("oracle_outputs", {})
+    if set(run_inputs) != REQUIRED_INPUTS or set(run_outputs) != {"fort.15"}:
+        raise ValueError("run provenance has incomplete input or output inventory")
+    for artifact in (*run_inputs.values(), *run_outputs.values(), run_provenance["oracle_executable"]):
+        verify_artifact(artifact)
 
-    if classification == REAL_ERA5_CLASSIFICATION:
-        fort4_path = Path(run_inputs.get("fort.4", {}).get("path", ""))
-        if not fort4_path.is_file():
-            raise ValueError("real ERA5 oracle run provenance lacks fort.4")
-        real_namgen = parse_namgen(fort4_path)
-        real_expected = {
-            "maxl": 6,
-            "maxb": 6,
-            "mlevel": 137,
-            "mlevelist": "1/to/137",
-            "mnauf": 106,
-            "metapar": 77,
-            "momega": 0,
-            "momegadiff": 0,
-            "mgauss": 0,
-            "msmooth": 0,
-            "meta": 1,
-            "metadiff": 0,
-            "mdpdeta": 1,
-        }
-        for key, expected in real_expected.items():
-            actual_value = real_namgen.get(key)
-            if actual_value != expected:
-                raise ValueError(
-                    f"real ERA5 calc_etadot namelist mismatch: "
-                    f"{key}={actual_value!r} expected {expected!r}"
-                )
+    full_column = classification != "upstream_flex_extract_native_model_level"
+    expected_namgen = dict(EXPECTED_NAMGEN, mlevelist="88/to/91")
+    if full_column:
+        expected_namgen.update(mlevel=137, mlevelist="1/to/137")
+        source = source_fixture["source_provenance"]
+        source_record = run_provenance["source_provenance"]
+        if (source["sha256"] != source_record["sha256"]
+                or source["content"] != json.loads(verify_artifact(source_record).read_bytes())):
+            raise ValueError("extracted source provenance differs from run source bytes")
+    namgen = parse_namgen(Path(run_inputs["fort.4"]["path"]))
+    for key, expected in expected_namgen.items():
+        if namgen.get(key) != expected:
+            raise ValueError(f"executed calc_etadot namelist mismatch for {key}")
     for name in ("fort.12", "fort.21"):
         if fixture_hashes.get(name) != run_inputs.get(name, {}).get("sha256"):
             raise ValueError(f"{name} hash differs between extracted fixture and run provenance")
@@ -293,12 +297,24 @@ def main():
     levels = oracle["levels_present"]
     nx, ny = oracle["nx"], oracle["ny"]
     nxy = nx * ny
-    if classification == REAL_ERA5_CLASSIFICATION:
-        if nlev != 137 or levels != list(range(1, 138)) or (nx, ny) != (6, 6):
-            raise ValueError(
-                "real ERA5 oracle coverage changed: "
-                f"nlev={nlev}, levels={levels[:3]}..{levels[-3:]}, grid={(nx, ny)}"
-            )
+    expected_nlev = expected_namgen["mlevel"]
+    expected_first = 1 if full_column else 88
+    if nlev != expected_nlev or levels != list(range(expected_first, nlev + 1)) or (nx, ny) != (6, 6):
+        raise ValueError("oracle grid or level coverage differs from the executed case")
+    snapshot = json.loads(args.source_snapshot.read_bytes())
+    motion = json.loads(args.source_motion.read_bytes())
+    motion_values = motion["values"]
+    raw_rows = oracle["raw_etadot_per_s_xy_by_level"]
+    expected_motion = [0.0] * ((expected_first - 1) * nxy)
+    for level in levels:
+        row = raw_rows[str(level)]
+        if len(row) != nxy or not all(math.isfinite(value) for value in row):
+            raise ValueError(f"invalid decoded raw input at level {level}")
+        expected_motion.extend(row)
+    pressures = next(field["values"] for field in snapshot["fields"] if field["id"] == "surface_pressure")
+    if motion_values != expected_motion or pressures != oracle["candidate_surface_pressure_pa_xy"]:
+        raise ValueError("candidate forcing values differ from the decoded oracle inputs")
+    if full_column:
         source_provenance = source_fixture["source_provenance"]["content"]
         selected = source_provenance.get("selected_column", {})
         if (
@@ -316,7 +332,9 @@ def main():
             oracle_grid.get("nx") != 6
             or oracle_grid.get("ny") != 6
             or oracle_grid.get("construction")
-            != "selected real ERA5 column replicated horizontally"
+            != ("selected real ERA5 column replicated horizontally"
+                if classification == REAL_ERA5_CLASSIFICATION
+                else "synthetic eta-dot and pressure replicated horizontally")
         ):
             raise ValueError(f"unexpected real-column oracle grid: {oracle_grid!r}")
 
@@ -324,8 +342,6 @@ def main():
         eta_profile = selected_profiles.get("77")
         if not isinstance(eta_profile, list) or len(eta_profile) != 137:
             raise ValueError("real ERA5 provenance lacks the complete eta-dot profile")
-        motion = json.loads(args.source_motion.read_text(encoding="utf-8"))
-        motion_values = motion.get("values", [])
         if len(motion_values) != 137 * nxy:
             raise ValueError("real ERA5 motion does not contain 137 replicated levels")
         for level_index, expected_eta in enumerate(eta_profile):
@@ -352,17 +368,22 @@ def main():
         raise ValueError(
             f"candidate interface value count {len(values)} != {(nlev + 1) * nxy}"
         )
+    if any(value != 0.0 for value in values[:nxy]):
+        raise ValueError("candidate top boundary must be exactly zero")
 
     per_level = {}
     row_overall = True
-    compact_report = classification == REAL_ERA5_CLASSIFICATION
+    compact_report = full_column
     overall_max_abs = 0.0
     overall_max_rel = 0.0
+    overall_max_tolerance_fraction = 0.0
     failure_count = 0
     failures = []
     for lvl in levels:
         k = lvl
         search = oracle["oracle_etadot_pa_s_xy_by_level"][str(lvl)]
+        if len(search) != nxy or not all(math.isfinite(value) for value in search):
+            raise ValueError(f"invalid oracle output at native level {lvl}")
         comparisons = []
         level_overall = True
         level_max_abs = 0.0
@@ -373,8 +394,10 @@ def main():
                 point = y * nx + x
                 actual = values[k * nxy + point]
                 expected = search[point]
+                if not math.isfinite(actual):
+                    raise ValueError(f"non-finite candidate output at level {lvl}, point {point}")
                 diff = abs(actual - expected)
-                relative = diff / abs(expected) if expected != 0.0 else (0.0 if diff == 0.0 else float("inf"))
+                relative = diff / abs(expected) if expected != 0.0 else 0.0
                 limit = max(
                     PRESSURE_VELOCITY_ABS_TOL_PA_S,
                     PRESSURE_VELOCITY_REL_TOL * abs(expected),
@@ -385,6 +408,7 @@ def main():
                 level_max_rel = max(level_max_rel, relative)
                 overall_max_abs = max(overall_max_abs, diff)
                 overall_max_rel = max(overall_max_rel, relative)
+                overall_max_tolerance_fraction = max(overall_max_tolerance_fraction, diff / limit)
                 if not passed:
                     level_failures += 1
                     failure_count += 1
@@ -445,6 +469,7 @@ def main():
             "points_per_level": nxy,
             "comparisons": len(levels) * nxy,
             "complete_real_native_column": classification == REAL_ERA5_CLASSIFICATION,
+            "source_matched_surface_pressure": False if classification == REAL_ERA5_CLASSIFICATION else None,
             "selected_real_column": (
                 source_fixture.get("source_provenance", {})
                 .get("content", {})
@@ -453,8 +478,10 @@ def main():
                 else None
             ),
             "failure_count": failure_count,
+            "canonical_top_zero_points": nxy,
             "max_absolute_difference_pa_s": overall_max_abs,
             "max_relative_difference": overall_max_rel,
+            "max_tolerance_fraction": overall_max_tolerance_fraction,
             "first_failures": failures,
             "report_mode": "compact" if compact_report else "full",
         },
@@ -472,6 +499,7 @@ def main():
         "inputs": {
             "snapshot": {"path": str(args.source_snapshot), "sha256": source_snapshot_sha},
             "motion": {"path": str(args.source_motion), "sha256": source_motion_sha},
+            "decoded_oracle": {"path": str(args.oracle), "sha256": sha256(args.oracle)},
             "calc_etadot_f90": {
                 "path": str(calc_etadot),
                 "git_blob": source_blob,
@@ -496,7 +524,7 @@ def main():
         "levels": per_level,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    args.output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     if not row_overall:
         raise SystemExit("eta-dot oracle field comparison failed")
 

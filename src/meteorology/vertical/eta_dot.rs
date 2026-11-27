@@ -7,7 +7,7 @@ use super::layout::{
     field_values, interface_offset, model_level_index_from_surface, surface_offset, volume_offset,
 };
 use super::motion::validate_native_motion_semantics;
-use super::{NativeVerticalMotion, VerticalTransformError};
+use super::{NativeVerticalMotion, NativeVerticalMotionKind, VerticalTransformError};
 use serde::Serialize;
 
 /// Reference pressure used by flex_extract's `calc_etadot` for the eta-dot
@@ -77,10 +77,9 @@ pub struct EtaDotPressureVelocity {
 /// The input raw field is a full-level (`LevelCenter`) field in `PerSecond`
 /// using the `PositiveEtaIncreasing` convention validated by the pinned
 /// calc_etadot oracle. The opposite eta sign convention remains fail-closed
-/// until it has independent oracle evidence. The
-/// result is deliberately **not** wired into `normalize_vertical_motion`:
-/// production consumers keep rejecting `EtaCoordinateVelocity` until a
-/// follow-up flips the switch after this validated preprocessing is adopted.
+/// because the pinned entry point only consumes the ECMWF parameter 77
+/// convention. The result is a validation artifact. Production normalization
+/// requires preprocessed interface pressure velocity.
 ///
 /// Source of truth: `reference/flex-extract.json` (pinned commit
 /// `e0005c99ac81d12faa45a8ff799debbd592b0dc0`, tag 7.1.2;
@@ -94,7 +93,8 @@ pub struct EtaDotPressureVelocity {
 /// sigma-pressure, the A/B coefficients or surface pressure are missing or
 /// malformed, the native motion violates the eta-dot contract (unit, sign,
 /// staggering, shape, finite values), or an operand of the pinned arithmetic
-/// is not finite.
+/// is not finite. Nonpositive layer thickness at the local pressure or P00
+/// and a missing physical surface interface also fail closed.
 pub fn eta_dot_to_pressure_velocity(
     snapshot: &Snapshot,
     native_motion: &NativeVerticalMotion,
@@ -114,6 +114,11 @@ pub fn eta_dot_to_pressure_velocity(
         .as_deref()
         .ok_or(VerticalTransformError::UnsupportedVerticalCoordinate)?;
 
+    if native_motion.kind != NativeVerticalMotionKind::EtaCoordinateVelocity {
+        return Err(VerticalTransformError::InvalidNativeVerticalMotion {
+            reason: "calc_etadot preprocessing requires raw eta-coordinate velocity",
+        });
+    }
     validate_native_motion_semantics(native_motion)?;
     if native_motion.vertical_staggering != VerticalStaggering::LevelCenter {
         return Err(VerticalTransformError::InvalidNativeVerticalMotion {
@@ -180,7 +185,21 @@ pub fn eta_dot_to_pressure_velocity(
         }
     }
 
-    let mut interface_pa_s = vec![0.0_f32; horizontal * (nz + 1)];
+    let interface_count =
+        volume
+            .checked_add(horizontal)
+            .ok_or(VerticalTransformError::ShapeMismatch {
+                field: "eta_dot_interfaces",
+                expected: usize::MAX,
+                actual: 0,
+            })?;
+    let surface = interface_index_from_top(vertical.ordering, nz, nz + 1);
+    if a[surface] != 0.0 || b[surface] != 1.0 {
+        return Err(VerticalTransformError::InvalidNativeVerticalMotion {
+            reason: "raw eta-dot requires the physical surface interface A=0 and B=1",
+        });
+    }
+    let mut interface_pa_s = vec![0.0_f32; interface_count];
     for y in 0..ny {
         for x in 0..nx {
             let horizontal_index = surface_offset(x, y, nx);
@@ -210,7 +229,12 @@ pub fn eta_dot_to_pressure_velocity(
                 let deta_dt =
                     f64::from(native_motion.values[volume_offset(x, y, level_index, nx, ny)]);
 
-                let scaled = 2.0_f64 * deta_dt * ps * (dak_pa / ps + dbk) / (dak_pa / p00 + dbk);
+                let local_thickness = dak_pa / ps + dbk;
+                let reference_thickness = dak_pa / p00 + dbk;
+                if local_thickness <= 0.0 || reference_thickness <= 0.0 {
+                    return Err(VerticalTransformError::InvalidEtaDotTransform { x, y, k });
+                }
+                let scaled = 2.0_f64 * deta_dt * ps * local_thickness / reference_thickness;
                 if !scaled.is_finite() {
                     return Err(VerticalTransformError::InvalidEtaDotTransform { x, y, k });
                 }

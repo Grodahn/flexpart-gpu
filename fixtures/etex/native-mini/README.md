@@ -4,7 +4,15 @@ This checked-in fixture contains real ERA5 meteorology for the ETEX-1 release
 window. The native model-level GRIB files were retrieved from ERA5 Complete
 through the CDS API on 2026-09-16. The surface archive contains six matching
 snapshots selected from independently downloaded ARCO-ERA5 hourly arrays.
-The request and SHA-256 records are in `request.json`,
+Two original ERA5 Complete responses retrieved through the CDS API on
+2026-11-27 also provide the source-matched log surface pressure for all six
+analyses. Their filenames end in `-lnsp.grib` and their paired request records
+end in `-lnsp.request.json`. The
+[decoder documentation](../../../docs/era5-etex-native-decoder.md) gives the
+retrieval recipe and verification evidence. The ARCO archive remains a rejected
+cross-source control for canonical snapshot publication.
+
+The original request and SHA-256 records are in `request.json`,
 `request-next-day.json`, `request-etadot.json` and `surface-request.json`.
 
 | Property | Value |
@@ -34,5 +42,6 @@ the run.
 
 Contains modified Copernicus Climate Change Service information 2026.
 Neither the European Commission nor ECMWF is responsible for any use that may
-be made of this information. ERA5 Complete:
-https://cds.climate.copernicus.eu/datasets/reanalysis-era5-complete
+be made of this information. The CDS catalogue lists the CC BY licence for
+the [ERA5 Complete dataset](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-complete?tab=overview)
+with DOI [10.24381/cds.143582cf](https://doi.org/10.24381/cds.143582cf).

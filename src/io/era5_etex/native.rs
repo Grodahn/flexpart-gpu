@@ -19,6 +19,8 @@ const SOURCE_DIR: &str = "fixtures/etex/native-mini";
 const FIRST_REQUEST: &[u8] = include_bytes!("../../../fixtures/etex/native-mini/request.json");
 const SECOND_REQUEST: &[u8] =
     include_bytes!("../../../fixtures/etex/native-mini/request-next-day.json");
+mod surface;
+pub use surface::{load_snapshot_with_surface, VerifiedSnapshot};
 const NX: usize = 65;
 const NY: usize = 41;
 const LEVELS: usize = 137;
@@ -188,18 +190,68 @@ pub fn decode_model_levels(
     path: &Path,
     valid_time_epoch_seconds: i64,
 ) -> Result<ModelLevelsDiagnostic, DecodeError> {
-    let (request_bytes, date, times) = if FIRST_TIMES
-        .iter()
-        .any(|&(_, epoch)| epoch == valid_time_epoch_seconds)
-    {
-        (FIRST_REQUEST, 19_941_023, FIRST_TIMES)
-    } else {
-        (SECOND_REQUEST, 19_941_024, SECOND_TIMES)
-    };
-    let (hhmm, _) = times
-        .iter()
-        .find(|&&(_, epoch)| epoch == valid_time_epoch_seconds)
-        .ok_or(DecodeError::UnsupportedTime(valid_time_epoch_seconds))?;
+    let mut result = decode_model_analysis(path, &Analysis::select(valid_time_epoch_seconds)?)?;
+    result.provenance["surface_pressure"] = json!({
+        "status": "unavailable_unverified_cross_source_join",
+        "ancillary_inputs_consumed": []
+    });
+    Ok(result)
+}
+
+struct Analysis {
+    model_request: &'static [u8],
+    surface_request: &'static [u8],
+    date: i64,
+    times: [i64; 3],
+    hhmm: i64,
+    epoch: i64,
+}
+
+impl Analysis {
+    fn select(epoch: i64) -> Result<Self, DecodeError> {
+        let (model_request, surface_request, date, times) =
+            if FIRST_TIMES.iter().any(|&(_, candidate)| candidate == epoch) {
+                (
+                    FIRST_REQUEST,
+                    surface::FIRST_REQUEST,
+                    19_941_023,
+                    FIRST_TIMES,
+                )
+            } else {
+                (
+                    SECOND_REQUEST,
+                    surface::SECOND_REQUEST,
+                    19_941_024,
+                    SECOND_TIMES,
+                )
+            };
+        let &(hhmm, _) = times
+            .iter()
+            .find(|&&(_, candidate)| candidate == epoch)
+            .ok_or(DecodeError::UnsupportedTime(epoch))?;
+        Ok(Self {
+            model_request,
+            surface_request,
+            date,
+            times: times.map(|(time, _)| time),
+            hhmm,
+            epoch,
+        })
+    }
+}
+
+fn decode_model_analysis(
+    path: &Path,
+    analysis: &Analysis,
+) -> Result<ModelLevelsDiagnostic, DecodeError> {
+    let Analysis {
+        model_request: request_bytes,
+        date,
+        times,
+        hhmm,
+        epoch,
+        ..
+    } = *analysis;
     let request: SourceRequest = serde_json::from_slice(request_bytes)?;
     let metadata = path.metadata()?;
     if !metadata.is_file() || metadata.len() != SOURCE_BYTES as u64 {
@@ -213,13 +265,7 @@ pub fn decode_model_levels(
     if bytes.len() != SOURCE_BYTES || bytes.len() != request.bytes || digest != request.sha256 {
         return Err(DecodeError::SourceIdentity);
     }
-    let model_levels = decode_verified(
-        bytes,
-        date,
-        &times.map(|(time, _)| time),
-        *hhmm,
-        valid_time_epoch_seconds,
-    )?;
+    let model_levels = decode_verified(bytes, date, &times, hhmm, epoch)?;
     let payload = serde_json::to_vec(&model_levels)?;
     // SAFETY: This ecCodes function takes no arguments and returns the linked library version by value.
     let eccodes_api_version = unsafe { eccodes_sys::codes_get_api_version() };
@@ -233,10 +279,6 @@ pub fn decode_model_levels(
             "verified_sha256": digest,
             "request_record": request,
             "request_record_sha256": sha256(request_bytes)
-        },
-        "surface_pressure": {
-            "status": "unavailable_unverified_cross_source_join",
-            "ancillary_inputs_consumed": []
         },
         "toolchain": {
             "crate_version": env!("CARGO_PKG_VERSION"),
@@ -252,7 +294,7 @@ pub fn decode_model_levels(
             "parameter_map": PARAMETERS,
             "dataDate": date, "validityDate": date,
             "dataTime": hhmm, "validityTime": hhmm,
-            "accepted_file_times_hhmm": times.map(|(time, _)| time),
+            "accepted_file_times_hhmm": times,
             "levels": [1, LEVELS],
             "pv_f64_le_sha256": PV_SHA256,
             "validated_message_count": 3 * PARAMETERS.len() * LEVELS
@@ -313,14 +355,11 @@ fn check<T: Copy + PartialEq + ToString>(
     })
 }
 
-fn read_record(
+fn validate_header(
     message: &RefMessage<'_>,
     ordinal: usize,
     date: i64,
-    times: &[i64; 3],
-    seen: &mut BTreeSet<(i64, i64, usize)>,
-    pv_anchor: &mut Option<Vec<f64>>,
-) -> Result<(i64, Parameter, usize, Vec<f64>), DecodeError> {
+) -> Result<i64, DecodeError> {
     let long = |key| {
         // ecCodes exposes these coded table values with string labels by default.
         if matches!(key, "typeOfProcessedData" | "typeOfFirstFixedSurface") {
@@ -340,7 +379,19 @@ fn read_record(
     check(ordinal, "dataDate", long("dataDate")?, date)?;
     check(ordinal, "validityDate", long("validityDate")?, date)?;
     check(ordinal, "validityTime", long("validityTime")?, time)?;
+    Ok(time)
+}
 
+fn read_record(
+    message: &RefMessage<'_>,
+    ordinal: usize,
+    date: i64,
+    times: &[i64; 3],
+    seen: &mut BTreeSet<(i64, i64, usize)>,
+    pv_anchor: &mut Option<Vec<f64>>,
+) -> Result<(i64, Parameter, usize, Vec<f64>), DecodeError> {
+    let time = validate_header(message, ordinal, date)?;
+    let long = |key| KeyRead::<i64>::read_key(message, key);
     let param_id = long("paramId")?;
     let raw_level = long("level")?;
     let record_error = || DecodeError::Record {
@@ -359,14 +410,34 @@ fn read_record(
     {
         return Err(record_error());
     }
+    validate_parameter(message, ordinal, parameter)?;
+    let values = read_hybrid_values(message, ordinal, raw_level, pv_anchor)?;
+    check(
+        ordinal,
+        "valid values",
+        values.iter().copied().all(|value| {
+            value.is_finite()
+                && value.abs() <= f64::from(f32::MAX)
+                && (param_id != 133 || (0.0..=1.0).contains(&value))
+                && (param_id != 130 || value > 0.0)
+        }),
+        true,
+    )?;
+    Ok((time, *parameter, level, values))
+}
+
+fn read_hybrid_values(
+    message: &RefMessage<'_>,
+    ordinal: usize,
+    level: i64,
+    pv_anchor: &mut Option<Vec<f64>>,
+) -> Result<Vec<f64>, DecodeError> {
     check(
         ordinal,
         "scaledValueOfFirstFixedSurface",
-        long("scaledValueOfFirstFixedSurface")?,
-        raw_level,
+        KeyRead::<i64>::read_key(message, "scaledValueOfFirstFixedSurface")?,
+        level,
     )?;
-    validate_parameter(message, ordinal, parameter)?;
-
     let pv = KeyRead::<Vec<f64>>::read_key(message, "pv")?;
     check(ordinal, "pv length", pv.len(), 2 * INTERFACES)?;
     if let Some(expected) = pv_anchor {
@@ -385,21 +456,24 @@ fn read_record(
     }
     let values = KeyRead::<Vec<f64>>::read_key(message, "values")?;
     check(ordinal, "values length", values.len(), NX * NY)?;
-    check(
-        ordinal,
-        "valid values",
-        values.iter().copied().all(|value| {
-            value.is_finite()
-                && value.abs() <= f64::from(f32::MAX)
-                && (param_id != 133 || (0.0..=1.0).contains(&value))
-                && (param_id != 130 || value > 0.0)
-        }),
-        true,
-    )?;
-    Ok((time, *parameter, level, values))
+    Ok(values)
 }
 
 fn validate_parameter(
+    message: &RefMessage<'_>,
+    ordinal: usize,
+    parameter: &Parameter,
+) -> Result<(), DecodeError> {
+    validate_parameter_codes(message, ordinal, parameter)?;
+    check(
+        ordinal,
+        "units",
+        KeyRead::<String>::read_key(message, "units")?.as_str(),
+        parameter.units,
+    )
+}
+
+fn validate_parameter_codes(
     message: &RefMessage<'_>,
     ordinal: usize,
     parameter: &Parameter,
@@ -415,12 +489,6 @@ fn validate_parameter(
         "parameterNumber",
         KeyRead::<i64>::read_key(message, "parameterNumber")?,
         parameter.number,
-    )?;
-    check(
-        ordinal,
-        "units",
-        KeyRead::<String>::read_key(message, "units")?.as_str(),
-        parameter.units,
     )
 }
 

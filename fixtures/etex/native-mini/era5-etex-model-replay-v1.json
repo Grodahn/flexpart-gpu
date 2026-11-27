@@ -1,0 +1,49 @@
+{
+  "profile": "era5-etex-model-replay-v1",
+  "sources": {
+    "request.json": {
+      "source": "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-complete",
+      "dataset": "reanalysis-era5-complete",
+      "retrieved_utc": "2026-11-27T23:02:33+00:00",
+      "request": {
+        "date": "1994-10-23",
+        "time": "15/18/21",
+        "levelist": "1/to/137",
+        "levtype": "ml",
+        "param": "130/131/132/133/135",
+        "stream": "oper",
+        "type": "an",
+        "area": "53/-8/43/8",
+        "grid": "0.25/0.25",
+        "format": "grib"
+      },
+      "file": "era5-19941023-151821-ml.grib",
+      "bytes": 13624650,
+      "sha256": "0e059410504dc3d1b2ba13628372a0be81054ff30a75017cf5b06cf9144b5023",
+      "model_request_sha256": "928824b4d881f8c21cfc1268912d2445451dfc48d42ec2f5f5fe8564f3ab20f4",
+      "model_sha256": "0e059410504dc3d1b2ba13628372a0be81054ff30a75017cf5b06cf9144b5023"
+    },
+    "request-next-day.json": {
+      "source": "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-complete",
+      "dataset": "reanalysis-era5-complete",
+      "retrieved_utc": "2026-11-27T22:59:05+00:00",
+      "request": {
+        "date": "1994-10-24",
+        "time": "00/03/06",
+        "levelist": "1/to/137",
+        "levtype": "ml",
+        "param": "130/131/132/133/135",
+        "stream": "oper",
+        "type": "an",
+        "area": "53/-8/43/8",
+        "grid": "0.25/0.25",
+        "format": "grib"
+      },
+      "file": "era5-19941024-000306-ml.grib",
+      "bytes": 13624650,
+      "sha256": "893c39cbf0b70129895588aa5c8b43dc819abb129973604147e621c05d5a472b",
+      "model_request_sha256": "984eec6a85f5b753479b70d05845ab7600ebbde0dcd4245035393f84d7164625",
+      "model_sha256": "893c39cbf0b70129895588aa5c8b43dc819abb129973604147e621c05d5a472b"
+    }
+  }
+}

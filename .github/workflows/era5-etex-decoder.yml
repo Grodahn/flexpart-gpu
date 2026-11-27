@@ -21,11 +21,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends libeccodes-dev libclang-dev pkg-config python3-eccodes python3-numpy
           rustc -vV
           pkg-config --modversion eccodes
-      - name: Recompute reference digests from checked-in GRIB bytes
+      - name: Recompute model and surface-pressure digests from checked-in GRIB
         run: |
           /usr/bin/python3 -I -m unittest discover -s scripts/fixtures -p test_era5_etex_native_values.py
           /usr/bin/python3 -I scripts/fixtures/check_era5_etex_native_values.py
-      - name: Test native decoder and fail-closed controls
+      - name: Test verified snapshots and fail-closed controls
         run: |
           cargo test --locked --features eccodes --lib io::era5_etex
           cargo test --locked --features eccodes --test era5_etex_decoder

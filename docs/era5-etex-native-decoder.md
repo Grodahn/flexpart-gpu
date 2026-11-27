@@ -4,11 +4,11 @@
 `era5-etex-native-model-levels-v1`. The ecCodes-backed API reads the two
 [ERA5 Complete native fixtures](../fixtures/etex/native-mini/README.md). Each
 file contains 2,055 GRIB2 messages for three analysis times, five parameters
-and 137 model levels. The selected time returns four full-grid fields as an
-explicit `model_levels_only_diagnostic`. A request for a validated hybrid
-`meteorology::Snapshot` returns `SurfacePressureUnavailable` after successful
-model-level decoding. Schema v1 requires actual surface pressure for hybrid
-snapshots.
+and 137 model levels. A model-only decode returns four full-grid fields as an
+explicit `model_levels_only_diagnostic`. A snapshot request without the
+pressure file returns `SurfacePressureUnavailable`. [#253](https://github.com/Grodahn/flexpart-gpu/issues/253)
+adds profile `era5-etex-native-lnsp-pair-v1` for publication with the two
+verified ERA5 Complete log surface pressure files.
 
 ## Accepted raw bytes and keys
 
@@ -66,26 +66,57 @@ describe the coordinate and supply no local atmospheric pressure or height.
 
 ## Surface pressure and handoff
 
-The [surface NPZ manifest](../fixtures/etex/native-mini/surface-request.json)
+ERA5 Complete archives `lnsp` as a two-dimensional field stored at model
+level 1. The matching CDS requests retain the original dates, hours, grid,
+area, stream, analysis type and GRIB format. They set `levtype=ml`,
+`levelist=1` and `param=152`. ECMWF identifies the ERA5 Complete archive
+as MARS class `ea`, experiment `0001`. [ERA5 archive organisation](https://confluence.ecmwf.int/pages/viewpage.action?pageId=235634513)
+and [ECMWF lnsp retrieval and interpretation](https://confluence.ecmwf.int/pages/viewpage.action?pageId=226496386).
+
+| Original CDS GRIB2 output | Valid UTC on stated date | SHA-256 |
+| --- | --- | --- |
+| `era5-19941023-151821-lnsp.grib` | 1994-10-23 15:00, 18:00, 21:00 | `5ed2501645d4bbc3adea25bb54d10462d87f6ada8fbc3a3c55e5dc2f9cb0d03d` |
+| `era5-19941024-000306-lnsp.grib` | 1994-10-24 00:00, 03:00, 06:00 | `78973555cb774d831925f70252de582d602cce1e12fa4e2a04205d176dfaee4a` |
+
+Each 19,890-byte file holds exactly three messages. The [23 October request](../fixtures/etex/native-mini/era5-19941023-151821-lnsp.request.json)
+and [24 October request](../fixtures/etex/native-mini/era5-19941024-000306-lnsp.request.json)
+bind the original CDS responses to the original ML request hashes and raw ML
+SHA-256. Both original ML requests were replayed through CDS and returned files
+identical to the committed ML bytes. The [replay record](../fixtures/etex/native-mini/era5-etex-model-replay-v1.json)
+retains the requests and resulting checksums. The join checks the actual
+`ecmf/0` origin, `ea/oper/an` experiment
+`0001`, generating process 145, local definition 1, analysis reference and
+validity date and hour, and instantaneous step zero. It also verifies the full
+grid and scan metadata and all raw hybrid coefficients. The independent audit
+compares the exact GRIB grid-section bytes by SHA-256 and the binary64 PV digest
+at each timestamp. These checks establish the shared ECMWF analysis identity for
+this pinned pair.
+
+The pressure messages identify discipline 0, category 3, number 25, parameter
+152. ecCodes 2.48.0 labels its units `Numeric`, and 2.28.0 uses `~` for the
+same coded parameter. The archived value is the natural
+logarithm of pressure in Pa. The decoder exponentiates in binary64, checks
+the inclusive 50,000–110,000 Pa sanity envelope for this regional fixture,
+then narrows to binary32. The surface field is cell-centred X,Y with the same
+longitude normalization, row reversal and X-fastest ordering as the four
+model-level volumes. Exactly five fields satisfy
+`Requirements::real_data_native_levels()`, with 137 levels and 138 interfaces.
+
+The historical [surface NPZ manifest](../fixtures/etex/native-mini/surface-request.json)
 pins a 531,362-byte ARCO-ERA5 derivative with SHA-256
 `88cd4dcb5e8ff89aeae6c065e3f2c2f75ad09c125f5d15290bfe7a56b059668d`.
 The offline audit checks that its six times and normalized grid coincide and
 that its pressure array is present and positive. The archive carries a
 variable name and time labels, with no original ECMWF product, reference
-cycle or packing record tying its surface pressure to these model-level
-analyses. Matching valid times and spatial coordinates alone cannot verify
-that join. The decoder consumes no ancillary bytes. Its provenance states this
-and records the missing surface-pressure decision.
+cycle or packing record tying its pressure to these model-level analyses.
+It remains a rejected cross-source control. The snapshot API requires the
+exact pressure GRIB bytes and returns a typed source-identity error for ARCO.
 
-For #32-C, admit a checksum-pinned surface-pressure source and prove its
-analysis/cycle, grid points and scan order, parameter/unit and valid-time
-identity against the model source. Any alternative or logarithmic
-representation needs its own verified semantics and explicit preprocessing.
-The diagnostic exposes typed canonical field and coordinate metadata for
-testing that handoff. For #32-D, first obtain validated snapshots with the
-mandatory surface and applicable ancillary fields. Then validate the actual
-#30 geometry and vertical motion, #31 interpolation and #76 composition
-through the production path and its governing gates.
+The handoff for the remaining #32-C preprocessing is the validated native
+snapshot plus its source-pair provenance. Validated vertical W and any required
+surface or static fields remain prerequisites for #32-D, which owns the
+production-path proof through #30 geometry, #31 interpolation and #76
+composition. This profile covers the six ETEX analyses and five named fields.
 
 ## Run and reproduce
 
@@ -96,16 +127,22 @@ existing Rust ecCodes binding, and the Rust toolchain. From the repository root:
 cargo run --locked --features eccodes --bin era5-etex-decode -- \
   diagnostic fixtures/etex/native-mini/era5-19941023-151821-ml.grib \
   782924400 > era5-etex-19941023T15.diagnostic.json
+
+cargo run --locked --features eccodes --bin era5-etex-decode -- \
+  snapshot fixtures/etex/native-mini/era5-19941023-151821-ml.grib \
+  782924400 fixtures/etex/native-mini/era5-19941023-151821-lnsp.grib \
+  > era5-etex-19941023T15.snapshot.json
 ```
 
 The CLI writes a diagnostic envelope. Its `model_levels` payload uses
-canonical metadata, with the mandatory surface dependency unresolved. The
-`snapshot` mode exits nonzero and produces no JSON for the existing inputs.
-Provenance includes raw and request-record SHA-256, the tested keys, the PV
-hash, output schema, transformations, linked ecCodes API version, decoder
-source and Cargo dependency-lock SHA-256, and SHA-256 over the compact Serde
-JSON bytes of the actual `model_levels` payload. Local execution may also
-retain `rustc -vV` and `pkg-config --modversion eccodes` with the report.
+canonical metadata with the mandatory surface dependency unresolved. The
+`snapshot` mode writes a `snapshot` payload and sibling `provenance` only after
+both raw inputs and the canonical payload pass validation. Rust callers can
+use `load_snapshot_with_surface` and extract the validated `Snapshot`. The
+provenance records raw and request-record SHA-256, tested GRIB keys, PV hash,
+output schema, transformations, linked ecCodes API version, decoder-source
+and Cargo dependency-lock SHA-256, and the SHA-256 of the compact Serde JSON
+bytes of the payload.
 
 ```sh
 python3 -I -m unittest discover -s scripts/fixtures -p test_era5_etex_native_values.py
@@ -116,8 +153,14 @@ cargo test --locked --features eccodes --test era5_etex_decoder
 
 The Python check uses ecCodes coordinates to sort raw cells and regenerates
 [24 volume digests](../fixtures/meteorology/era5-etex-native-v1.value-digests.json)
-independently of the Rust normalization. Rust verifies every cell across all
-six times and all levels by binary32 digest. At the first time it also compares
+and [six pressure-grid digests](../fixtures/meteorology/era5-etex-native-lnsp-v1.value-digests.json)
+independently of the Rust normalization. The pressure audit applies Python
+`math.exp` before binary32 rounding and records each raw GRIB message's SHA-256,
+analysis metadata, grid and PV hashes, and pressure extrema. The six grids
+span 74,612.28125–101,580.0703125 Pa. Rust verifies every cell across all six
+times and all levels by binary32 digest and checks the
+[canonical payload SHA-256](../fixtures/meteorology/era5-etex-native-lnsp-v1.snapshot-digests.json)
+for each time. At the first time it also compares
 the four fields to the checked-in [2 × 2 canonical reference](../fixtures/meteorology/era5-etex-native-v1.json)
 at all levels and checks both complete PV arrays and reference pressure arrays.
 The direct ecCodes payload and PV digests require exact equality. The frozen
@@ -129,6 +172,19 @@ The reference is read only after decoding for comparison and is absent from
 both the Rust decoder input and the direct-ecCodes audit. The checks provide
 source-decoding evidence and do not establish FLEXPART simulation parity.
 
-See the [fixture README](../fixtures/etex/native-mini/README.md) for the
-Copernicus notice, licence information and retrieval procedure. Offline
-verification uses the committed data and requires no CDS credentials.
+After accepting the ERA5 Complete terms, install `cdsapi` and configure the
+personal access token in `~/.cdsapirc` or `CDS_API`. From the repository root,
+run the original MARS requests through CDS in fresh output directories.
+
+```sh
+python scripts/etex/retrieve_etex_lnsp.py 23 target/etex-lnsp
+python scripts/etex/retrieve_etex_lnsp.py 24 target/etex-lnsp
+python scripts/etex/retrieve_etex_lnsp.py 23 target/etex-replay --replay-model
+python scripts/etex/retrieve_etex_lnsp.py 24 target/etex-replay --replay-model
+```
+
+The recipe records requests and original output hashes. A fresh retrieval
+must match the committed bytes before using this versioned decoder profile.
+Retrieval failures report the client error class and any HTTP status. Offline
+verification requires no CDS credentials. See the
+[fixture README](../fixtures/etex/native-mini/README.md) for the Copernicus notice.

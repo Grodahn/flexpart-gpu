@@ -54,7 +54,7 @@ Keep the final checks and owner-specific pinned-oracle gates described below.
 
 ## Meteorology
 
-- ERA5/ETEX native GRIB (#237): `cargo test --locked --features eccodes --lib io::era5_etex` for GRIB mutations and `cargo test --locked --features eccodes --test era5_etex_decoder` for all six analysis times and the canonical reference slice. Run `python3 -I scripts/fixtures/check_era5_etex_native_values.py` for independent ecCodes reproduction. [Profile and pressure blocker](../era5-etex-native-decoder.md).
+- ERA5/ETEX native GRIB (#237/#253): `cargo test --locked --features eccodes --lib io::era5_etex` for GRIB and source-lineage mutations and `cargo test --locked --features eccodes --test era5_etex_decoder` for six paired snapshots and the canonical reference slice. Run `python3 -I scripts/fixtures/check_era5_etex_native_values.py` for independent model-level and surface-pressure ecCodes reproduction. [Profile and source-pair evidence](../era5-etex-native-decoder.md).
 
 - IFS Open provider audit (#238): `python -I scripts/provider/test_ifs_open_audit.py` (offline real-byte identity and semantic mutations, required ecCodes/numpy, regenerated value diagnostics) and `cargo test --test ifs_open_provider_contract` (all canonical fields and checksummed source/decoder evidence). Full independent value reproduction follows [the research note](../research/ifs-open-provider-238.md#reproduction-and-checks). Research only; no decoder, GPU or parity gate.
 

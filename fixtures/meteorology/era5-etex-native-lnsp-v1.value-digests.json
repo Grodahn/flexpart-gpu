@@ -1,0 +1,163 @@
+{
+  "profile": "era5-etex-native-lnsp-pair-v1",
+  "model_replay_manifest_sha256": "fa57b82a57bb9aadf1c72dd57d00492f8ae7f395f4144e288507f5a448a07f44",
+  "product": {
+    "centre": "ecmf",
+    "subCentre": 0,
+    "marsClass": "ea",
+    "marsStream": "oper",
+    "marsType": "an",
+    "experimentVersionNumber": "0001",
+    "localDefinitionNumber": 1,
+    "generatingProcessIdentifier": 145,
+    "productionStatusOfProcessedData": 0,
+    "typeOfProcessedData": "an",
+    "significanceOfReferenceTime": 1,
+    "productDefinitionTemplateNumber": 0,
+    "startStep": 0,
+    "endStep": 0,
+    "stepType": "instant",
+    "second": 0
+  },
+  "normalization": "Sort by ascending latitude and normalized longitude; exp(lnsp) in binary64, round to binary32 Pa",
+  "sources": [
+    {
+      "model_sha256": "0e059410504dc3d1b2ba13628372a0be81054ff30a75017cf5b06cf9144b5023",
+      "pressure_sha256": "5ed2501645d4bbc3adea25bb54d10462d87f6ada8fbc3a3c55e5dc2f9cb0d03d",
+      "pressure_request_sha256": "efe37dc91b6ef651434a62b36a2dfd8520c16cb406f9fa39163637015f4f6ab1",
+      "parameter": {
+        "paramId": 152,
+        "parameterCategory": 3,
+        "parameterNumber": 25,
+        "shortName": "lnsp",
+        "typeOfLevel": "hybrid",
+        "level": 1,
+        "NV": 276,
+        "packingType": "grid_simple",
+        "bitsPerValue": 16,
+        "bitmapPresent": 0,
+        "numberOfMissing": 0,
+        "accepted_units_labels": [
+          "Numeric",
+          "~"
+        ]
+      },
+      "by_epoch": {
+        "782924400": {
+          "time": {
+            "dataDate": 19941023,
+            "dataTime": 1500,
+            "validityDate": 19941023,
+            "validityTime": 1500
+          },
+          "grid_section_sha256": "63ab7862d1cc36e54293c0c0198e3e4169c300b41831bb003a45f961680f58d2",
+          "pv_f64_le_sha256": "0d51f96436ff9872d6e9ea168543e9da1e569bacf0b41c2a2823d33851b3d3a8",
+          "pressure_message_sha256": "d30886d3bff7d32ef72a05f1e550482e1bd7016126e1e4d1363c978adb550283",
+          "lnsp_f64_le_sha256": "f7ac409c3c5930baaf667f5a8a6c158a4cf315a623dd467a9943c90ef48d5514",
+          "pressure_f32_le_sha256": "2eb9f4ab266ac7344e40f7f81c98b76919f84481572fda23b736428203025470",
+          "pressure_pa_min": 74612.28125,
+          "pressure_pa_max": 101210.875
+        },
+        "782935200": {
+          "time": {
+            "dataDate": 19941023,
+            "dataTime": 1800,
+            "validityDate": 19941023,
+            "validityTime": 1800
+          },
+          "grid_section_sha256": "63ab7862d1cc36e54293c0c0198e3e4169c300b41831bb003a45f961680f58d2",
+          "pv_f64_le_sha256": "0d51f96436ff9872d6e9ea168543e9da1e569bacf0b41c2a2823d33851b3d3a8",
+          "pressure_message_sha256": "9380d1c3092ec5bd5311aeeb12f224589dfc4d9a90e4441891ba43b43bffc40a",
+          "lnsp_f64_le_sha256": "5728f27dfbdb97c88329ff5e5e2e39b32c17f65f5a1a7bbaaa65d8aa5bb58a9b",
+          "pressure_f32_le_sha256": "83cd3807cdcb3e31f258e050c0073c53ac4a872c356cbdbfeda347e866c98d9b",
+          "pressure_pa_min": 74673.28125,
+          "pressure_pa_max": 101400.328125
+        },
+        "782946000": {
+          "time": {
+            "dataDate": 19941023,
+            "dataTime": 2100,
+            "validityDate": 19941023,
+            "validityTime": 2100
+          },
+          "grid_section_sha256": "63ab7862d1cc36e54293c0c0198e3e4169c300b41831bb003a45f961680f58d2",
+          "pv_f64_le_sha256": "0d51f96436ff9872d6e9ea168543e9da1e569bacf0b41c2a2823d33851b3d3a8",
+          "pressure_message_sha256": "b42a5b91338ab30f8b7c81fc80b826dddcebf5c13c91bf7da983ff35439c181b",
+          "lnsp_f64_le_sha256": "98c49f05e9b57f54eae8448f2559bd26e7c748704430f27230f2d4ef5bc54db9",
+          "pressure_f32_le_sha256": "fecba9dce1d31fc2a3420a2add2c0d21bc833bc7650c19398058e01e0cbdd1a7",
+          "pressure_pa_min": 74714.671875,
+          "pressure_pa_max": 101485.171875
+        }
+      }
+    },
+    {
+      "model_sha256": "893c39cbf0b70129895588aa5c8b43dc819abb129973604147e621c05d5a472b",
+      "pressure_sha256": "78973555cb774d831925f70252de582d602cce1e12fa4e2a04205d176dfaee4a",
+      "pressure_request_sha256": "762777184ce55ca1cac68b0453dffb252d308987d097d2c5ff564cd7e61c12d2",
+      "parameter": {
+        "paramId": 152,
+        "parameterCategory": 3,
+        "parameterNumber": 25,
+        "shortName": "lnsp",
+        "typeOfLevel": "hybrid",
+        "level": 1,
+        "NV": 276,
+        "packingType": "grid_simple",
+        "bitsPerValue": 16,
+        "bitmapPresent": 0,
+        "numberOfMissing": 0,
+        "accepted_units_labels": [
+          "Numeric",
+          "~"
+        ]
+      },
+      "by_epoch": {
+        "782956800": {
+          "time": {
+            "dataDate": 19941024,
+            "dataTime": 0,
+            "validityDate": 19941024,
+            "validityTime": 0
+          },
+          "grid_section_sha256": "63ab7862d1cc36e54293c0c0198e3e4169c300b41831bb003a45f961680f58d2",
+          "pv_f64_le_sha256": "0d51f96436ff9872d6e9ea168543e9da1e569bacf0b41c2a2823d33851b3d3a8",
+          "pressure_message_sha256": "85b227324c17b738df7f38095c24601aec0e420ebb6c6df67ae5e379f360f598",
+          "lnsp_f64_le_sha256": "afee93d76c772def6734c4d51ecae08f29e5fb1bd3846abba8293eb0b09cec2a",
+          "pressure_f32_le_sha256": "ee12c9d1315ee909ebb36821ccb062cba19628533e57154370ec79bfcb24ccd0",
+          "pressure_pa_min": 74708.1171875,
+          "pressure_pa_max": 101580.0703125
+        },
+        "782967600": {
+          "time": {
+            "dataDate": 19941024,
+            "dataTime": 300,
+            "validityDate": 19941024,
+            "validityTime": 300
+          },
+          "grid_section_sha256": "63ab7862d1cc36e54293c0c0198e3e4169c300b41831bb003a45f961680f58d2",
+          "pv_f64_le_sha256": "0d51f96436ff9872d6e9ea168543e9da1e569bacf0b41c2a2823d33851b3d3a8",
+          "pressure_message_sha256": "1ce2f4e1003b1b615d347cd5fef99273a4239526532fdb9b08750de4ac722b51",
+          "lnsp_f64_le_sha256": "8fc213686aa7e2acbab3ad5993b43e04b3c2a1814544621a6b642f3f05b782be",
+          "pressure_f32_le_sha256": "44eb0d0027e8614a7b3f77ba6a772685e50d2f2f36966b3bd4016d8fd05688d4",
+          "pressure_pa_min": 74680.6875,
+          "pressure_pa_max": 101524.1875
+        },
+        "782978400": {
+          "time": {
+            "dataDate": 19941024,
+            "dataTime": 600,
+            "validityDate": 19941024,
+            "validityTime": 600
+          },
+          "grid_section_sha256": "63ab7862d1cc36e54293c0c0198e3e4169c300b41831bb003a45f961680f58d2",
+          "pv_f64_le_sha256": "0d51f96436ff9872d6e9ea168543e9da1e569bacf0b41c2a2823d33851b3d3a8",
+          "pressure_message_sha256": "be127b69075ffd6562a41c12c2811ef09d7083df7fbb1fbe492bc147474e6eb9",
+          "lnsp_f64_le_sha256": "9683d2be9a3915fabacb8479821fd2e771b1389d582906d7d636d4f5b482602d",
+          "pressure_f32_le_sha256": "a8d89ad036e2eb487d98aced188b1101ee35a1f34071311e81839e39f9b74b2f",
+          "pressure_pa_min": 74746.03125,
+          "pressure_pa_max": 101541.7109375
+        }
+      }
+    }
+  ]
+}

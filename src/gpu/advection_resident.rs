@@ -104,6 +104,7 @@ impl ResidentAdvectionStep {
         fields: &[CanonicalGpuField<'_>; 3],
         grid: &HorizontalGrid,
         signed_dt: f32,
+        forward_exits: bool,
         scale: VelocityToGridScale,
     ) -> Result<Self, MeteorologyCompositionError> {
         let stop_route = settling.stop_route(ctx, signed_dt)?;
@@ -163,8 +164,8 @@ impl ResidentAdvectionStep {
             boundary.levels,
             boundary.top_margin_m.to_bits(),
             u32::from(stop_route),
-            0,
-            0,
+            u32::from(forward_exits),
+            u32::from(grid.is_periodic_x()),
         ];
         let result = Self {
             predictor_heights: allocation(u64::from(capacity), "Petterssen raw predictor height")?,
@@ -214,6 +215,7 @@ impl ResidentAdvectionStep {
         grid: &HorizontalGrid,
         times: [MeteorologyTimeSelection; 2],
         signed_dt: f32,
+        forward_exits: bool,
         scale: VelocityToGridScale,
         kernels: &ResidentAdvectionKernels,
         sampling: &MeteorologyCompositionKernels<'_>,
@@ -221,7 +223,15 @@ impl ResidentAdvectionStep {
         encoder: &mut wgpu::CommandEncoder,
     ) -> Result<Self, MeteorologyCompositionError> {
         let mut result = Self::prepare(
-            ctx, original, staged, settling, fields, grid, signed_dt, scale,
+            ctx,
+            original,
+            staged,
+            settling,
+            fields,
+            grid,
+            signed_dt,
+            forward_exits,
+            scale,
         )?;
         #[cfg(test)]
         let query_fault = TEST_QUERY_FAULT.with(std::cell::Cell::take);

@@ -672,6 +672,7 @@ impl BackwardTimeLoopDriver {
                         times.expect("canonical times resolved").predicted,
                     ],
                     TimeDirection::Backward.advection_dt_seconds(dt_seconds),
+                    false,
                     self.config.velocity_to_grid_scale,
                     &self.resident_advection_kernels,
                     sampling_kernels

@@ -6,8 +6,7 @@ FLEXPART 11.1, revision `c70586c2b7f5258850705325881c61f557ea9bd8`. The
 [reference crosswalk](../fixtures/mass-ledger/reference-v1.json) records immutable
 Git blob identities and line anchors. The [run schema](../schemas/mass-ledger-v1.schema.json)
 and [Rust audit](../src/validation/mass_ledger.rs) implement the stable-species
-evidence contract. The current production driver has the integration gaps listed
-below.
+evidence contract. The production driver admits the stable release and horizontal-exit subset described below.
 
 ## Reservoirs and transfers
 
@@ -115,21 +114,51 @@ must never increase the physical ledger or debit airborne again.
 | #39 | Implement and verify the coupled airborne/dry split and deposited-stock lifetime under the pinned output clock. Preserve separate physical and projected ledgers. Daughter ingrowth, chemical loss, non-kg forward unit routes and backward receptor attribution are outside v1. |
 | #41 | Read the validated air stock at the scheduled sample boundary and consume the deposition events plus explicit output clock and coverage. Reconcile output against the corresponding ledger window and domain coverage. Keep top-level and nested gridding projections from double counting the same transfer. |
 
-The [forward coordinator](../src/simulation/timeloop/forward/timestep.rs)
-currently injects before the GPU block and advances through its inclusive last
-call. The [operator block](../src/simulation/timeloop/forward/operators.rs)
-applies post-transport dry, wet and then airborne-only decay. Its probability
-buffers carry fractions. They cannot prove a mass credit.
-[Output](../src/simulation/timeloop/forward/output.rs) is an explicit snapshot of
-current particles. The resident transport guard supports the separately owned
-backward top stop, while forward horizontal coordinates are clamped
-([transport handoff](research/settling-stop-203.md#unsupported-envelope)).
-A scientifically valid production ledger therefore needs a forward transport
-exit event, prepare/commit coupling with the ledger, reordered deposition
-handoffs, and an explicit sampling boundary. Forward horizontal-stop adoption
-has no owner in the current transport handoff. Existing flows cannot yield a
-passing v1 production ledger by reconstructing losses from probabilities or
-grids. The resident ledger and production acceptance gate remain open.
+### Stable production integration
+
+The [forward coordinator](../src/simulation/timeloop/forward/timestep.rs) stages
+release payloads privately, records post-release sample mass and advances the
+outgoing interval only before the terminal boundary. The regional Petterssen
+predictor and corrector produce an explicit horizontal stop before downstream
+physics. The pin terminates a predictor exit before the second wind lookup.
+The east edge is exclusive and the north edge is inclusive
+(`advance_mod.f90:857–867`). The exit retains its remaining mass until the
+device audit assigns it once, before optional compaction. Canonical periodic
+longitude wraps using the canonical grid period. A polar crossing on that
+route fails closed pending a transport proof for the reference polar action.
+
+The [device ledger](../src/simulation/timeloop/forward/ledger.rs) validates the
+release payload, stop classification and independent live-stock observations
+per particle and species. It then checks phase and cumulative closure using a
+fixed 64-lane reduction tree and compensated f32 accumulators. The first
+failure is sticky across queued timesteps. The same decision gates particle
+publication and the cumulative reservoir update. Compaction only receives
+private state. Rejected steps leave the last accepted particle and reservoir
+data intact and make later scientific output fail. Finalization and the
+explicit `download_mass_ledger_step` and `download_mass_ledger_balance` APIs
+observe the device verdict. Configured validation snapshots or the existing
+optional compaction count are host checkpoints. The ordinary resident path
+needs no ledger readback between timesteps and reserves new slots monotonically.
+
+### Remaining production handoffs
+
+- Wet loss needs #34's canonical pre-release producer and mass credit.
+- Dry loss needs #37's transport-substep probability and survivor mass credit.
+- Radioactive species need #39's coupled dry/primary split and deposited-stock
+  lifetime. The stable v1 decay reservoir stays zero.
+- Model retirement still needs production age and minimum-mass event ownership,
+  including the combined reason and attribution of positive underflow residuals.
+- The sample mass is available through the ledger before the outgoing interval.
+  #41 owns consuming the corresponding particle and deposition state at that clock.
+- A standard production run artifact collecting every v1 observation and the
+  complete loss-enabled run matrix remain open. The explicit step API supplies
+  v1 observations and the device test serializes complete stable replay records.
+
+The canonical driver rejects requests for unavailable loss operators before
+release. Its legacy diagnostic route continues to run the existing
+caller-forced operators for their own diagnostics. The wet, dry and mixed
+analytical fixtures retain the original proof for their accounting semantics.
+Their production replay requires the above handoffs.
 
 ## Reproduce
 
@@ -141,3 +170,11 @@ source check establishes source identity, while the Rust tests establish the
 analytical accounting behavior. Real-device production acceptance separately
 requires operator-produced credits, per-species/total closure across timesteps,
 and adapter and input evidence from the actual driver.
+
+The focused device check is
+`cargo test --lib test_forward_mass_ledger_production -- --nocapture --test-threads=1`.
+It requires a WGSL adapter and writes
+`target/ci-gate/forward-mass-ledger/report.json`. It replays the injection and
+horizontal-exit fixtures through the production driver, exercises multiple
+resident two-species intervals and checks failed publication on corrupted
+device transitions.

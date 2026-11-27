@@ -113,7 +113,7 @@ pub struct MassInventory {
 }
 
 impl MassInventory {
-    fn sum(mut self, other: Self) -> Self {
+    pub(crate) fn sum(mut self, other: Self) -> Self {
         self.injected_kg += other.injected_kg;
         self.airborne_kg += other.airborne_kg;
         self.wet_kg += other.wet_kg;

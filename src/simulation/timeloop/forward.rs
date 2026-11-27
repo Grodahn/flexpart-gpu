@@ -2,7 +2,9 @@
 
 use crate::config::ReleaseConfig;
 use crate::coords::GridDomain;
-use crate::gpu::advection_resident::{ResidentAdvectionKernels, ResidentAdvectionStep};
+use crate::gpu::advection_resident::ResidentAdvectionKernels;
+#[cfg(test)]
+use crate::gpu::advection_resident::ResidentAdvectionStep;
 use crate::gpu::{
     AdvectionDispatchKernel, AdvectionDualWindDispatchKernel, CompactionBuffers,
     CompactionPipelines, DecayDispatchKernel, DryDepositionDispatchKernel, DryDepositionIoBuffers,
@@ -23,6 +25,9 @@ use crate::simulation::timeloop::options::{is_compaction_enabled, is_validation_
 use crate::simulation::timeloop::reports::ForwardStepReport;
 
 mod forcing;
+mod ledger;
+#[cfg(test)]
+pub(crate) use ledger::{LedgerFault, TEST_LEDGER_FAULT};
 mod meteorology;
 mod operators;
 mod output;
@@ -47,11 +52,16 @@ pub struct ForwardTimeLoopDriver {
     gpu_context: GpuContext,
     particle_buffers: ParticleBuffers,
     staged_particles: ParticleBuffers,
+    released_particles: ParticleBuffers,
+    mass_ledger: ledger::ForwardMassLedger,
+    ledger_duration_seconds: i64,
+    latest_submitted_ledger_step: Option<u32>,
+    production_ledger_rejected: bool,
+    next_production_slot: usize,
     resident_advection_kernels: ResidentAdvectionKernels,
     canonical_run_target: super::meteorology::CanonicalRunTarget,
     #[cfg(test)]
     latest_advection: Option<ResidentAdvectionStep>,
-    pending_advection: Option<ResidentAdvectionStep>,
     /// Single-wind buffers (legacy path, kept for backward compatibility).
     wind_buffers: Option<WindBuffers>,
     advection_dispatch_kernel: Option<AdvectionDispatchKernel>,
@@ -164,6 +174,8 @@ impl ForwardTimeLoopDriver {
             .transpose()?;
         let particle_buffers = ParticleBuffers::from_store(&gpu_context, &particle_store);
         let staged_particles = ParticleBuffers::from_store(&gpu_context, &particle_store);
+        let released_particles = ParticleBuffers::from_store(&gpu_context, &particle_store);
+        let mass_ledger = ledger::ForwardMassLedger::new(&gpu_context)?;
         let resident_advection_kernels = ResidentAdvectionKernels::new(&gpu_context)?;
 
         let validation_mode = is_validation_mode();
@@ -237,11 +249,16 @@ impl ForwardTimeLoopDriver {
             gpu_context,
             particle_buffers,
             staged_particles,
+            released_particles,
+            mass_ledger,
+            ledger_duration_seconds: end_time_seconds - start_time_seconds,
+            latest_submitted_ledger_step: None,
+            production_ledger_rejected: false,
+            next_production_slot: 0,
             resident_advection_kernels,
             canonical_run_target: super::meteorology::CanonicalRunTarget::new(),
             #[cfg(test)]
             latest_advection: None,
-            pending_advection: None,
             wind_buffers: None,
             advection_dispatch_kernel: None,
             dual_wind_buffers: None,
@@ -296,15 +313,23 @@ impl ForwardTimeLoopDriver {
     }
 
     #[cfg(test)]
-    pub(crate) fn test_prime_releases(&mut self) {
-        self.release_manager
-            .inject_and_upload_for_time(
+    pub(crate) fn test_prepared_releases(&self) -> Vec<crate::particles::Particle> {
+        let (_, batch) = self
+            .release_manager
+            .prepare_batch(
                 &self.config.start_timestamp,
-                &mut self.particle_store,
-                &self.particle_buffers,
-                &self.gpu_context,
+                self.particle_buffers.capacity(),
             )
-            .expect("test initial source state");
+            .expect("test source preparation")
+            .expect("test source is due");
+        let mut particles = self.particle_store.as_slice().to_vec();
+        particles[..batch.capacity()].copy_from_slice(batch.as_slice());
+        particles
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_reset_release_slot(&mut self) {
+        self.next_production_slot = 0;
     }
 
     #[cfg(test)]
@@ -467,10 +492,10 @@ impl ForwardTimeLoopDriver {
             self.gpu_context.device.poll(wgpu::Maintain::Wait);
             self.gpu_submission_pending = false;
         }
-        if let Some(step) = &self.pending_advection {
-            step.require_success(&self.gpu_context).await?;
+        if let Err(error) = self.require_forward_ledger_success().await {
+            self.production_ledger_rejected = true;
+            return Err(error);
         }
-        self.pending_advection = None;
         Ok(())
     }
 }

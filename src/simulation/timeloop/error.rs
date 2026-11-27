@@ -40,6 +40,18 @@ pub enum TimeLoopError {
     InvalidLangevinMinHeight { value: f32 },
     #[error("forward time-loop has reached end time; no remaining steps")]
     SimulationComplete,
+    /// The stable ledger cannot represent a configured boundary or particle range.
+    #[error("forward mass ledger index or clock out of range")]
+    MassLedgerRange,
+    /// Required production accounting inputs are unavailable.
+    #[error("forward mass ledger unsupported: {0}")]
+    MassLedgerUnsupported(&'static str),
+    /// The first failing device boundary and its particle/species lane.
+    #[error("forward mass ledger rejected step {step}, code {code}, lane {lane}")]
+    MassLedgerRejected { code: u32, step: u32, lane: u32 },
+    /// No committed production observation exists.
+    #[error("no committed forward mass ledger observation")]
+    MassLedgerUnavailable,
     #[error("forcing length mismatch for `{field}`: expected {expected}, got {actual}")]
     ForcingLengthMismatch {
         field: &'static str,

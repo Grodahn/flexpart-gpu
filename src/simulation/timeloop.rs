@@ -27,6 +27,8 @@ mod config;
 mod error;
 mod forcing;
 mod forward;
+#[cfg(test)]
+pub(crate) use forward::{LedgerFault, TEST_LEDGER_FAULT};
 mod meteorology;
 mod options;
 mod reports;

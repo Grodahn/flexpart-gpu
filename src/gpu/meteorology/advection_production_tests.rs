@@ -336,10 +336,11 @@ fn test_production_forward_backward_resident_petterssen_atomicity() {
                                 failed,
                             )
                         } else {
+                            let forcing = ForwardStepForcing::default();
                             let config = ForwardTimeLoopConfig {
                                 transport_settling: Some(gas_settling(1)),
                                 start_timestamp: "20240101000000".into(),
-                                end_timestamp: "20240101000001".into(),
+                                end_timestamp: "20240101000002".into(),
                                 timestep_seconds: 1,
                                 ..ForwardTimeLoopConfig::default()
                             };
@@ -403,9 +404,9 @@ fn test_production_forward_backward_resident_petterssen_atomicity() {
                                 .is_err(),
                                 "canonical fields cannot enter diagnostics"
                             );
+                            let initial = pollster::block_on(driver.test_raw_particles());
                             let failed =
                                 pollster::block_on(driver.run_timestep(&met, &forcing)).is_err();
-                            let initial = driver.particle_store().as_slice().to_vec();
                             let (particles, status, metadata, values, queries) =
                                 pollster::block_on(driver.test_advection_state());
                             if !failed {
@@ -703,8 +704,8 @@ fn test_forward_interior_time_deferred_failure_and_top_boundary() {
             time_t1_seconds: START_SECONDS + 4,
         };
         let forcing = ForwardStepForcing::default();
+        let initial = pollster::block_on(driver.test_raw_particles());
         let result = pollster::block_on(driver.run_timestep(&met, &forcing));
-        let initial = driver.particle_store().as_slice().to_vec();
         let (particles, status, metadata, values, queries) =
             pollster::block_on(driver.test_advection_state());
         if variant == "deferred-fatal" {
@@ -737,8 +738,8 @@ fn test_forward_interior_time_deferred_failure_and_top_boundary() {
                     .iter()
                     .filter(|p| p.is_active())
                     .count(),
-                1,
-                "next release must not run after fatal status"
+                0,
+                "no release may be published after fatal status"
             );
             let (after, _, _, _, _) = pollster::block_on(driver.test_advection_state());
             assert_eq!(
@@ -891,6 +892,13 @@ fn test_shared_vector_real_drivers_oracle_replay_and_reuse() {
                         start_timestamp: start.clone(),
                         end_timestamp: end.clone(),
                         timestep_seconds: 1,
+                        // Keep the regional queries inside the sampled cell for
+                        // the vertical oracle replay and its exact f32 encoding.
+                        velocity_to_grid_scale: crate::physics::VelocityToGridScale {
+                            x_grid_per_meter: 0.0001,
+                            y_grid_per_meter: 0.0001,
+                            ..crate::physics::VelocityToGridScale::IDENTITY
+                        },
                         ..Default::default()
                     },
                     &releases,
@@ -1470,3 +1478,308 @@ fn shared_advection_root() -> String {
 
 #[path = "transport_top_tests.rs"]
 mod transport_top_tests;
+
+#[test]
+fn test_forward_mass_ledger_production() {
+    use crate::simulation::timeloop::{LedgerFault, TEST_LEDGER_FAULT};
+    use crate::validation::mass_ledger::{MassLedger, MassLedgerSchema, SpeciesRequest};
+    const STAMPS: [&str; 4] = [
+        "20240101000000",
+        "20240101000100",
+        "20240101000200",
+        "20240101000300",
+    ];
+    let injection: MassLedger = serde_json::from_str(include_str!(
+        "../../../fixtures/mass-ledger/injection-v1.json"
+    ))
+    .unwrap();
+    let exit: MassLedger =
+        serde_json::from_str(include_str!("../../../fixtures/mass-ledger/exit-v1.json")).unwrap();
+    let replay = [
+        ("injection", &injection),
+        ("exit", &exit),
+        ("corrector_exit", &exit),
+    ];
+    let mut observations = Vec::new();
+    for (variant, reference) in replay
+        .into_iter()
+        .map(|(name, record)| (name, Some(record)))
+        .chain(
+            [
+                "combined",
+                "missing_exit",
+                "negative",
+                "double_debit",
+                "duplicate",
+            ]
+            .map(|name| (name, None)),
+        )
+    {
+        let make_release = |stamp: usize, lon, mass: [f64; 2], species| ReleaseConfig {
+            name: format!("{stamp}-{lon}"),
+            start_time: STAMPS[stamp].into(),
+            end_time: STAMPS[stamp].into(),
+            lon,
+            lat: 50.25,
+            z_min: 100.0,
+            z_max: 100.0,
+            mass_kg: mass[..species].iter().sum(),
+            particle_count: 1,
+            species_masses_kg: Some(mass[..species].to_vec()),
+            raw: BTreeMap::new(),
+        };
+        let species = if variant == "combined" { 2 } else { 1 };
+        let last = if variant == "combined" { 3 } else { 1 };
+        let releases = match variant {
+            "injection" | "duplicate" => vec![
+                make_release(0, 6.25, [12.0, 0.0], species),
+                make_release(1, 6.25, [4.0, 0.0], species),
+            ],
+            "combined" => vec![
+                make_release(0, 6.25, [12.1, 8.2], species),
+                make_release(0, 7.70, [3.3, 0.0], species),
+                make_release(1, 6.25, [4.4, 2.1], species),
+                make_release(2, 7.70, [0.0, 0.7], species),
+            ],
+            "corrector_exit" => vec![
+                make_release(0, 6.25, [9.0, 0.0], species),
+                make_release(0, 7.73, [3.0, 0.0], species),
+            ],
+            _ => vec![
+                make_release(0, 6.25, [9.0, 0.0], species),
+                make_release(0, 7.70, [3.0, 0.0], species),
+            ],
+        };
+        let mut s0 = analytic_snapshot(START_SECONDS, false);
+        if variant == "corrector_exit" {
+            for field in s0
+                .fields
+                .iter_mut()
+                .filter(|f| matches!(f.id, FieldId::WindU | FieldId::WindU10m))
+            {
+                field.values.fill(0.0);
+            }
+        }
+        let s1 = analytic_snapshot(START_SECONDS + 60 * last as i64, false);
+        let inputs = json!({"candidate_implementation": "forward-mass-ledger-v1",
+            "source_snapshot_sha256": [snapshot_hash(&s0).unwrap(), snapshot_hash(&s1).unwrap()],
+            "releases": releases, "timestep_seconds": 60, "x_grid_per_meter": 0.01,
+            "y_grid_per_meter": 0.0, "z_grid_per_meter": 1.0, "end_seconds": last * 60});
+        let input_sha256 = format!("{:x}", Sha256::digest(serde_json::to_vec(&inputs).unwrap()));
+        let r0 = runtime(&s0, "#38 deterministic ledger geometry");
+        let r1 = runtime(&s1, "#38 deterministic ledger geometry");
+        let grid = GridDomain {
+            xlon0: 6.0,
+            ylat0: 50.0,
+            dx: 0.25,
+            dy: 0.25,
+            nx: 8,
+            ny: 4,
+        };
+        let config = ForwardTimeLoopConfig {
+            transport_settling: Some(gas_settling(species)),
+            start_timestamp: STAMPS[0].into(),
+            end_timestamp: STAMPS[last].into(),
+            timestep_seconds: 60,
+            velocity_to_grid_scale: crate::physics::VelocityToGridScale {
+                x_grid_per_meter: 0.01,
+                y_grid_per_meter: 0.0,
+                z_grid_per_meter: 1.0,
+                ..crate::physics::VelocityToGridScale::IDENTITY
+            },
+            sync_particle_store_each_step: false,
+            collect_deposition_probabilities_each_step: false,
+            ..Default::default()
+        };
+        let mut driver =
+            pollster::block_on(ForwardTimeLoopDriver::new(config, &releases, grid, 130))
+                .expect("required production WGSL adapter");
+        let mut slot = CanonicalMeteorologySlot::default();
+        let prepared = driver
+            .prepare_canonical_meteorology(
+                bracket(driver.meteorology_context(), [&s0, &s1], [&r0, &r1]),
+                &mut slot,
+            )
+            .unwrap();
+        let adapter = GpuAdapterEvidence::from_context(prepared.context());
+        let owners = Arc::clone(prepared.resources());
+        drop(prepared);
+        let wind = uniform_wind_field(
+            &WindFieldGrid::new(
+                8,
+                4,
+                3,
+                3,
+                3,
+                0.25,
+                0.25,
+                6.0,
+                50.0,
+                ndarray::Array1::from_vec(vec![0.0, 1.0, 2.0]),
+            ),
+            0.0,
+            0.0,
+            0.0,
+        );
+        let mut surface = SurfaceFields::zeros(8, 4);
+        surface.surface_pressure_pa.fill(101_325.0);
+        surface.temperature_2m_k.fill(290.0);
+        surface.dewpoint_2m_k.fill(285.0);
+        surface.mixing_height_m.fill(1000.0);
+        let met = MetTimeBracket {
+            canonical: Some(&owners),
+            wind_t0: &wind,
+            wind_t1: &wind,
+            surface_t0: &surface,
+            surface_t1: &surface,
+            time_t0_seconds: START_SECONDS,
+            time_t1_seconds: START_SECONDS + 60 * last as i64,
+        };
+        let forcing = ForwardStepForcing::default();
+        if variant == "injection" {
+            let blocked = ForwardStepForcing {
+                decay_constant_s_inv: vec![0.1],
+                ..ForwardStepForcing::default()
+            };
+            let error = pollster::block_on(driver.run_timestep(&met, &blocked)).unwrap_err();
+            assert!(error.to_string().contains("#39"));
+            assert_eq!(driver.current_time_seconds(), START_SECONDS);
+            assert!(pollster::block_on(driver.download_mass_ledger_step()).is_err());
+        }
+        let mut steps = Vec::new();
+        for index in 0..=last {
+            let fault = match (variant, index) {
+                ("missing_exit", 0) => Some(LedgerFault::ClearStops),
+                ("negative", 0) => Some(LedgerFault::NegativeMass),
+                ("double_debit", 0) => Some(LedgerFault::CreditLiveExit),
+                _ => None,
+            };
+            let duplicate = variant == "duplicate" && index == 1;
+            if fault.is_some() || duplicate {
+                let before = pollster::block_on(driver.test_raw_particles());
+                if duplicate {
+                    driver.test_reset_release_slot();
+                } else {
+                    TEST_LEDGER_FAULT.with(|injection| injection.set(fault));
+                }
+                let queued = pollster::block_on(driver.run_timestep(&met, &forcing));
+                let status = queued.map_or_else(
+                    |error| error,
+                    |_| pollster::block_on(driver.finalize()).unwrap_err(),
+                );
+                assert!(
+                    matches!(
+                        status,
+                        crate::simulation::TimeLoopError::MassLedgerRejected { code: 2, .. }
+                    ),
+                    "{variant}: {status}"
+                );
+                assert!(pollster::block_on(driver.download_mass_ledger_step()).is_err());
+                assert!(pollster::block_on(driver.download_mass_ledger_balance()).is_err());
+                let after = pollster::block_on(driver.test_raw_particles());
+                assert_eq!(
+                    bytemuck::cast_slice::<_, u8>(&before),
+                    bytemuck::cast_slice::<_, u8>(&after)
+                );
+                observations
+                    .push(json!({"case":variant, "inputs":inputs, "input_sha256":input_sha256, "adapter":adapter, "verdict":status.to_string()}));
+                break;
+            }
+            pollster::block_on(driver.run_timestep(&met, &forcing)).unwrap();
+            if reference.is_some() {
+                steps.push(pollster::block_on(driver.download_mass_ledger_step()).unwrap());
+            }
+        }
+        if let Some(reference) = reference {
+            assert_eq!(
+                serde_json::to_value(&steps).unwrap(),
+                serde_json::to_value(&reference.steps).unwrap()
+            );
+            let actual = MassLedger {
+                schema: MassLedgerSchema::ForwardStableV1,
+                species: reference
+                    .species
+                    .iter()
+                    .map(|s| SpeciesRequest {
+                        id: s.id.clone(),
+                        requested_kg: s.requested_kg,
+                    })
+                    .collect(),
+                sync_interval_seconds: 60,
+                end_seconds: 60,
+                steps,
+            };
+            let balance = pollster::block_on(driver.download_mass_ledger_balance()).unwrap();
+            assert_eq!(&balance, actual.audit().unwrap().last().unwrap());
+            observations.push(
+                json!({"case":variant, "inputs":inputs, "input_sha256":input_sha256, "adapter":adapter, "record":actual, "balance":balance}),
+            );
+        }
+        if variant == "combined" {
+            pollster::block_on(driver.finalize()).unwrap();
+            let balance = pollster::block_on(driver.download_mass_ledger_balance()).unwrap();
+            assert_eq!(balance.species.len(), 2);
+            let mut residuals = Vec::new();
+            for (inventory, expected) in balance
+                .species
+                .iter()
+                .zip([(19.8, 16.5, 3.3), (11.0, 10.3, 0.7)])
+                .chain(std::iter::once((&balance.total, (30.8, 26.8, 4.0))))
+            {
+                for (actual, expected) in [
+                    (inventory.injected_kg, expected.0),
+                    (inventory.airborne_kg, expected.1),
+                    (inventory.horizontal_exit_kg, expected.2),
+                ] {
+                    assert!(
+                        (actual - expected).abs() / expected <= 1e-4,
+                        "{actual} versus {expected}"
+                    );
+                }
+                let error =
+                    (inventory.injected_kg - inventory.airborne_kg - inventory.horizontal_exit_kg)
+                        .abs()
+                        / inventory.injected_kg;
+                assert!(error <= 1e-4);
+                residuals.push(error);
+            }
+            eprintln!("Forward ledger relative errors by species and total: {residuals:?}");
+            observations.push(json!({"case":variant, "inputs":inputs, "input_sha256":input_sha256, "adapter":adapter, "balance":balance, "relative_errors":residuals}));
+        }
+    }
+    let root = std::path::Path::new("target/ci-gate/forward-mass-ledger");
+    std::fs::create_dir_all(root).unwrap();
+    let shaders: BTreeMap<_, _> = [
+        (
+            "advection_predictor_query",
+            include_bytes!("../../shaders/advection_predictor_query.wgsl").as_slice(),
+        ),
+        (
+            "advection_corrector",
+            include_bytes!("../../shaders/advection_corrector.wgsl").as_slice(),
+        ),
+        (
+            "advection_step_guard",
+            include_bytes!("../../shaders/advection_step_guard.wgsl").as_slice(),
+        ),
+        (
+            "forward_mass_ledger",
+            include_bytes!("../../shaders/forward_mass_ledger.wgsl").as_slice(),
+        ),
+        (
+            "forward_mass_commit",
+            include_bytes!("../../shaders/forward_mass_commit.wgsl").as_slice(),
+        ),
+    ]
+    .into_iter()
+    .map(|(name, bytes)| (name, format!("{:x}", Sha256::digest(bytes))))
+    .collect();
+    let report = json!({"schema": "flexpart-gpu.forward-mass-ledger-device-test.v1",
+        "reference_revision": "c70586c2b7f5258850705325881c61f557ea9bd8",
+        "relative_tolerance": 1e-4, "shader_sha256": shaders, "cases": observations});
+    std::fs::write(
+        root.join("report.json"),
+        serde_json::to_vec_pretty(&report).unwrap(),
+    )
+    .unwrap();
+}

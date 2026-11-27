@@ -55,7 +55,13 @@ impl ForwardTimeLoopDriver {
             &self.gpu_context,
             bracket,
             self.current_time_seconds,
-            self.config.timestep_seconds,
+            if self.is_terminal_ledger_step(
+                u32::try_from(self.step_index).map_err(|_| TimeLoopError::MassLedgerRange)?,
+            )? {
+                0
+            } else {
+                self.config.timestep_seconds
+            },
             &self.canonical_run_target,
         )?)
     }

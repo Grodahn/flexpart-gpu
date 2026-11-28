@@ -249,6 +249,13 @@ def main():
     run_provenance = json.loads(args.run_provenance.read_text(encoding="utf-8"))
     if run_provenance.get("schema") != "flexpart-gpu.etadot-oracle-run-provenance.v1":
         raise ValueError("run provenance has the wrong schema")
+    decoded_hashes = {
+        "oracle.json": sha256(args.oracle),
+        "snapshot.json": source_snapshot_sha,
+        "motion.json": source_motion_sha,
+    }
+    if run_provenance.get("decoded_sha256") != decoded_hashes:
+        raise ValueError("decoded oracle artifacts differ from the recorded extraction SHA-256")
     image_id = run_provenance.get("docker_image", {}).get("id")
     compiler_version = run_provenance.get("compiler", {}).get("version")
     executable_hash = run_provenance.get("oracle_executable", {}).get("sha256")
@@ -499,7 +506,7 @@ def main():
         "inputs": {
             "snapshot": {"path": str(args.source_snapshot), "sha256": source_snapshot_sha},
             "motion": {"path": str(args.source_motion), "sha256": source_motion_sha},
-            "decoded_oracle": {"path": str(args.oracle), "sha256": sha256(args.oracle)},
+            "decoded_oracle": {"path": str(args.oracle), "sha256": decoded_hashes["oracle.json"]},
             "calc_etadot_f90": {
                 "path": str(calc_etadot),
                 "git_blob": source_blob,

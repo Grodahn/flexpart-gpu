@@ -203,6 +203,10 @@ payload = {
     "oracle_outputs": {
         "fort.15": {"path": str(run / "fort.15"), "sha256": digest(run / "fort.15")}
     },
+    "decoded_sha256": {
+        name: digest(out / "oracle-json" / name)
+        for name in ("oracle.json", "snapshot.json", "motion.json")
+    },
 }
 (out / "run-provenance.json").write_text(
     json.dumps(payload, indent=2) + "\n", encoding="utf-8"
@@ -352,6 +356,10 @@ payload = {
     },
     "oracle_outputs": {
         "fort.15": {"path": str(run / "fort.15"), "sha256": digest(run / "fort.15")}
+    },
+    "decoded_sha256": {
+        name: digest(real / "oracle-json" / name)
+        for name in ("oracle.json", "snapshot.json", "motion.json")
     },
 }
 (real / "run-provenance.json").write_text(

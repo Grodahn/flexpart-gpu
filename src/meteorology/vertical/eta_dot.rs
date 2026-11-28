@@ -194,6 +194,7 @@ pub fn eta_dot_to_pressure_velocity(
                 actual: 0,
             })?;
     let surface = interface_index_from_top(vertical.ordering, nz, nz + 1);
+    let top = interface_index_from_top(vertical.ordering, nz, 1);
     if a[surface] != 0.0 || b[surface] != 1.0 {
         return Err(VerticalTransformError::InvalidNativeVerticalMotion {
             reason: "raw eta-dot requires the physical surface interface A=0 and B=1",
@@ -211,6 +212,9 @@ pub fn eta_dot_to_pressure_velocity(
             // every model level accumulates visibly over a complete 137-level
             // ERA5 column.
             let ps = f64::from(surface_pressure[horizontal_index]);
+            if f64::from(a[top]) + f64::from(b[top]) * ps < 0.0 {
+                return Err(VerticalTransformError::InvalidPressureColumn { x, y, index: top });
+            }
             let p00 = f64::from(FLEX_EXTRACT_CALC_ETADOT_REFERENCE_PRESSURE_PA);
             let mut previous_output_pa_s = 0.0_f64;
 

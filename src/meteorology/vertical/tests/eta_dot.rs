@@ -226,6 +226,28 @@ fn eta_dot_rejects_invalid_layer_thickness_and_surface_anchor() {
 }
 
 #[test]
+fn eta_dot_rejects_negative_local_top_pressure() {
+    let mut snapshot = eta_dot_snapshot(VerticalOrdering::Increasing);
+    let vertical = &mut snapshot.vertical_coordinate;
+    // At the declared 100 kPa reference the top is 1 kPa. Raising local
+    // pressure to 120 kPa makes the top negative without inverting any layer.
+    vertical.hybrid_a_interface_pa.as_mut().expect("A")[0] = 11_000.0;
+    vertical.hybrid_b_interface.as_mut().expect("B")[0] = -0.1;
+    vertical.interface_values.as_mut().expect("interfaces")[0] = 1_000.0;
+    vertical.level_values[0] = 31_500.0;
+    snapshot.fields[0].values[0] = 120_000.0;
+    let motion = eta_dot_motion(vec![1.0e-5, -2.0e-5, 3.0e-5]);
+    assert!(matches!(
+        eta_dot_to_pressure_velocity(&snapshot, &motion),
+        Err(VerticalTransformError::InvalidPressureColumn {
+            x: 0,
+            y: 0,
+            index: 0
+        })
+    ));
+}
+
+#[test]
 fn eta_dot_rejects_non_finite_inputs_and_bad_coefficients_fail_closed() {
     let mut snapshot = eta_dot_snapshot(VerticalOrdering::Increasing);
     snapshot.vertical_coordinate.hybrid_a_interface_pa = Some(vec![1_000.0, 2_000.0, 3_000.0]);

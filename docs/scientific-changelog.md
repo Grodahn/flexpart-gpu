@@ -14,6 +14,22 @@ shaders, physics kernels, or advection logic must add an entry here.
 
 ---
 
+### 2026-11-28 - Account for stable forward release and horizontal exits (#38)
+
+**Impact** - physics and numerics. Regional forward trajectories now terminate
+at the horizontal boundaries defined in pinned `advance_mod.f90:857-867`.
+The terminal boundary observes release and sample stock without an outgoing
+interval. Periodic longitude uses the canonical sample-grid period. Polar
+crossing awaits a separate transport proof.
+
+**Files** - `src/shaders/advection_predictor_query.wgsl`,
+`src/shaders/advection_corrector.wgsl`, `src/shaders/forward_mass_ledger.wgsl`,
+`src/shaders/forward_mass_commit.wgsl` and the forward coordinator.
+
+**Validation** - The [stable ledger device test](mass-ledger.md#reproduce)
+uses the production forward driver for fixture replay, multi-interval closure
+and rejected transition checks. The loss-enabled handoffs remain open.
+
 ### 2026-11-03 - Decide admission of ICON-EU GRIB2 precipitation run accumulations (#232)
 **Impact**: none (decision only; no production Rust/WGSL, tolerance or #75/#90 behaviour change).
 **Files**: `docs/research/icon-eu-precipitation-232.md`,

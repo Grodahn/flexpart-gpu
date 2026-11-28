@@ -58,6 +58,7 @@ pub enum ReleaseError {
 /// Each [`ReleaseConfig`] is tracked independently with a cumulative emitted
 /// count. Calls to [`inject_for_time`](Self::inject_for_time) are deterministic:
 /// the same sequence of timestamps always yields the same particle positions.
+#[derive(Clone)]
 pub struct ReleaseManager {
     grid: GridDomain,
     states: Vec<ReleaseState>,
@@ -154,6 +155,33 @@ impl ReleaseManager {
         })
     }
 
+    /// Prepare a forward source batch without publishing slots or advancing the schedule.
+    pub(crate) fn prepare_batch(
+        &self,
+        timestamp: &str,
+        available: usize,
+    ) -> Result<Option<(Self, ParticleStore)>, ReleaseError> {
+        let now_seconds = parse_timestamp_seconds(timestamp)?;
+        let count = self.states.iter().try_fold(0_usize, |count, state| {
+            let due = state.target_emitted_count(now_seconds) - state.released_count;
+            usize::try_from(due)
+                .ok()
+                .and_then(|due| count.checked_add(due))
+        });
+        let count = count
+            .filter(|count| *count <= available)
+            .ok_or(ParticleError::StoreFull {
+                capacity: available,
+            })?;
+        if count == 0 {
+            return Ok(None);
+        }
+        let mut schedule = self.clone();
+        let mut batch = ParticleStore::with_capacity(count);
+        schedule.inject_for_time(timestamp, &mut batch)?;
+        Ok(Some((schedule, batch)))
+    }
+
     /// Emit particles and upload only newly touched slots to the GPU particle buffer.
     pub fn inject_and_upload_for_time(
         &mut self,
@@ -170,6 +198,7 @@ impl ReleaseManager {
     }
 }
 
+#[derive(Clone)]
 struct ReleaseState {
     config: ReleaseConfig,
     bounds: ReleaseBounds,
@@ -220,6 +249,7 @@ impl ReleaseState {
     }
 }
 
+#[derive(Clone)]
 struct ReleaseBounds {
     lon_min: f64,
     lon_max: f64,

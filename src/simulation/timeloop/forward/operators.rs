@@ -1,6 +1,7 @@
 //! Ordered forward GPU operators and the unchanged single-submit boundary.
 
 use super::forcing::PreparedForcing;
+use super::ledger::ForwardMassLedger;
 use super::meteorology::PreparedMeteorology;
 use super::ForwardTimeLoopDriver;
 use crate::gpu::advection_resident::ResidentAdvectionStep;
@@ -12,6 +13,7 @@ use crate::gpu::{
     encode_wet_deposition_probability_gpu_with_kernel, DecayStepParams, DryDepositionStepParams,
     WetDepositionStepParams,
 };
+use crate::particles::Particle;
 use crate::physics::{LangevinStep, PhiloxCounter};
 use crate::simulation::timeloop::error::TimeLoopError;
 use crate::simulation::timeloop::forcing::ForwardStepForcing;
@@ -26,6 +28,7 @@ impl ForwardTimeLoopDriver {
     /// Prepared inputs refer to the current PBL write slot. This boundary does
     /// not poll or read back; the coordinator commits pending state and counters
     /// only after successful submission.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn submit_operators(
         &self,
         met: &PreparedMeteorology,
@@ -34,6 +37,7 @@ impl ForwardTimeLoopDriver {
         prepared: &PreparedForcing,
         forcing: &ForwardStepForcing,
         profiling: bool,
+        release: &[Particle],
     ) -> Result<(PhiloxCounter, Duration, Option<ResidentAdvectionStep>), TimeLoopError> {
         let PreparedMeteorology { use_gpu_pbl, .. } = *met;
         let PreparedForcing {
@@ -57,7 +61,14 @@ impl ForwardTimeLoopDriver {
             decay_constants_s_inv: forcing.decay_lanes(),
         };
         let t = profiling.then(Instant::now);
-        let (next_philox_counter, advection) = {
+        let mut encoder =
+            self.gpu_context
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("forward_timeloop_step_encoder"),
+                });
+
+        let (next_philox_counter, advection) = 'operators: {
             let sampling_kernels = canonical
                 .map(|_| {
                     crate::gpu::meteorology::MeteorologyCompositionKernels::new(&self.gpu_context)
@@ -68,14 +79,42 @@ impl ForwardTimeLoopDriver {
                     crate::gpu::meteorology::resident::ResidentQueryKernels::new(&self.gpu_context)
                 })
                 .transpose()?;
-            let mut encoder =
-                self.gpu_context
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("forward_timeloop_step_encoder"),
-                    });
-
             // ── PBL diagnostics (both paths) ────────────────────────
+            let release_slots =
+                self.next_production_slot..self.next_production_slot + release.len();
+            let payload = canonical.and_then(|_| {
+                ForwardMassLedger::encode_release(
+                    &self.gpu_context,
+                    &self.particle_buffers,
+                    &self.released_particles,
+                    release_slots.start,
+                    release,
+                    &mut encoder,
+                )
+            });
+            if canonical.is_some() && times.is_none() {
+                let params = self.mass_ledger.encode_audit(
+                    &self.gpu_context,
+                    &self.particle_buffers,
+                    &self.released_particles,
+                    &self.released_particles,
+                    payload.as_ref(),
+                    None,
+                    release_slots,
+                    self.ledger_species_count(),
+                    self.step_index,
+                    &mut encoder,
+                )?;
+                self.mass_ledger.encode_publish(
+                    &self.gpu_context,
+                    &self.released_particles,
+                    &self.particle_buffers,
+                    &params,
+                    &mut encoder,
+                )?;
+                break 'operators (self.philox_counter, None);
+            }
+
             if use_gpu_pbl {
                 encode_pbl_diagnostics_gpu_with_kernel(
                     &self.gpu_context,
@@ -91,7 +130,7 @@ impl ForwardTimeLoopDriver {
             let advection = if let Some(canonical) = canonical {
                 let step = ResidentAdvectionStep::encode(
                     &self.gpu_context,
-                    &self.particle_buffers,
+                    &self.released_particles,
                     &self.staged_particles,
                     self.transport_settling
                         .as_ref()
@@ -103,6 +142,7 @@ impl ForwardTimeLoopDriver {
                         times.expect("canonical times resolved").predicted,
                     ],
                     step_dt_seconds,
+                    true,
                     self.config.velocity_to_grid_scale,
                     &self.resident_advection_kernels,
                     sampling_kernels
@@ -218,6 +258,23 @@ impl ForwardTimeLoopDriver {
                 )?;
             }
 
+            let ledger_params = if let Some(step) = &advection {
+                Some(self.mass_ledger.encode_audit(
+                    &self.gpu_context,
+                    &self.particle_buffers,
+                    &self.released_particles,
+                    &self.staged_particles,
+                    payload.as_ref(),
+                    Some(step),
+                    release_slots,
+                    self.ledger_species_count(),
+                    self.step_index,
+                    &mut encoder,
+                )?)
+            } else {
+                None
+            };
+
             // O-07: Encode compaction + gather/reorder after all physics
             // passes. Compaction reads particle flags set by deposition and
             // reorders the buffer so active particles are contiguous.
@@ -235,18 +292,18 @@ impl ForwardTimeLoopDriver {
                 )?;
             }
 
-            if let Some(step) = &advection {
-                step.encode_commit(
+            if let Some(params) = ledger_params {
+                self.mass_ledger.encode_publish(
                     &self.gpu_context,
                     &self.staged_particles,
                     &self.particle_buffers,
-                    &self.resident_advection_kernels,
+                    &params,
                     &mut encoder,
-                );
+                )?;
             }
-            self.gpu_context.queue.submit(Some(encoder.finish()));
             (next_philox_counter, advection)
         };
+        self.gpu_context.queue.submit(Some(encoder.finish()));
         let gpu_encode_dur = t.map_or(Duration::ZERO, |t| t.elapsed());
 
         Ok((next_philox_counter, gpu_encode_dur, advection))

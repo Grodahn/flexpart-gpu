@@ -3,6 +3,7 @@
 use super::forcing::PreparedForcing;
 use super::meteorology::PreparedMeteorology;
 use super::ForwardTimeLoopDriver;
+use crate::release::ReleaseStepReport;
 use crate::simulation::timeloop::error::TimeLoopError;
 use crate::simulation::timeloop::forcing::ForwardStepForcing;
 use crate::simulation::timeloop::meteorology::MetTimeBracket;
@@ -30,9 +31,9 @@ impl ForwardTimeLoopDriver {
     /// PBL buffers use a ping-pong double buffer so that CPU uploads for
     /// step N+1 never race with GPU reads from step N.
     ///
-    /// Preparation errors preserve already-applied release/preparation state;
-    /// they do not roll back a release. The clock and step index advance only
-    /// after a successful report, as in the original driver.
+    /// Production releases are private until the device accepts the complete
+    /// boundary. Reports without observation can describe queued work.
+    /// Finalization and output require the sticky device verdict.
     pub async fn run_timestep(
         &mut self,
         met: &MetTimeBracket<'_>,
@@ -57,6 +58,21 @@ impl ForwardTimeLoopDriver {
         forcing: &ForwardStepForcing,
         legacy_diagnostic: bool,
     ) -> Result<ForwardStepReport, TimeLoopError> {
+        if self.production_ledger_rejected {
+            return self
+                .require_forward_ledger_success()
+                .await
+                .and(Err(TimeLoopError::MassLedgerUnavailable));
+        }
+        if (legacy_diagnostic && self.latest_submitted_ledger_step.is_some())
+            || (!legacy_diagnostic
+                && self.step_index != 0
+                && self.latest_submitted_ledger_step.is_none())
+        {
+            return Err(TimeLoopError::MassLedgerUnsupported(
+                "cannot switch between diagnostic and production runs",
+            ));
+        }
         if !self.has_remaining_steps() {
             return Err(TimeLoopError::SimulationComplete);
         }
@@ -110,20 +126,73 @@ impl ForwardTimeLoopDriver {
                 );
             }
         }
+        let step_number =
+            u32::try_from(self.step_index).map_err(|_| TimeLoopError::MassLedgerRange)?;
+        let terminal = !legacy_diagnostic && self.is_terminal_ledger_step(step_number)?;
+        if !legacy_diagnostic {
+            if self.ledger_duration_seconds % self.config.timestep_seconds != 0 {
+                return Err(TimeLoopError::MassLedgerUnsupported(
+                    "terminal time must align with the v1 synchronization interval",
+                ));
+            }
+            let species = &self
+                .config
+                .transport_settling
+                .as_ref()
+                .expect("canonical species ownership checked")
+                .species;
+            if !forcing
+                .wet_scavenging_coefficient_s_inv
+                .iter()
+                .all(super::super::forcing::ParticleForcingField::is_zero)
+                || !forcing.wet_precipitating_fraction.is_zero()
+                || species
+                    .iter()
+                    .any(|s| s.below_cloud_wet_active() || s.in_cloud_wet_active())
+            {
+                return Err(TimeLoopError::MassLedgerUnsupported(
+                    "#34 pre-release canonical wet-deposition mass credits are unavailable",
+                ));
+            }
+            if !forcing.skip_dry_deposition()
+                || species
+                    .iter()
+                    .any(crate::config::SpeciesConfig::dry_deposition_active)
+            {
+                return Err(TimeLoopError::MassLedgerUnsupported(
+                    "#37 transport-substep dry-deposition mass credits are unavailable",
+                ));
+            }
+            if forcing
+                .decay_constant_s_inv
+                .iter()
+                .any(|lambda| *lambda != 0.0)
+                || species
+                    .iter()
+                    .any(crate::config::SpeciesConfig::decay_active)
+            {
+                return Err(TimeLoopError::MassLedgerUnsupported(
+                    "#39 coupled dry/decay and deposited-stock decay are unavailable",
+                ));
+            }
+            if self.config.spatial_sort.is_some() {
+                return Err(TimeLoopError::MassLedgerUnsupported(
+                    "host spatial sorting cannot mutate a production ledger transaction",
+                ));
+            }
+        }
         let times = met
             .canonical
+            .filter(|_| !terminal)
             .map(|canonical| {
                 canonical
                     .bracket()
                     .resolve_step_times(self.current_time_seconds, self.config.timestep_seconds)
             })
             .transpose()?;
-        // A deferred fatal transaction must be rejected before another release or sort mutates particles.
-        if let Some(step) = &self.pending_advection {
-            step.require_success(&self.gpu_context).await?;
+        if legacy_diagnostic {
+            self.apply_spatial_sort_if_enabled()?;
         }
-        self.pending_advection = None;
-        self.apply_spatial_sort_if_enabled()?;
 
         let profiling = is_profiling_enabled();
         let total_start = profiling.then(Instant::now);
@@ -131,18 +200,38 @@ impl ForwardTimeLoopDriver {
         // ── Phase 1: CPU prep (overlaps with previous GPU submission) ──
 
         let timestamp = format_timestamp_seconds(self.current_time_seconds)?;
-        let release_report = self.release_manager.inject_and_upload_for_time(
-            &timestamp,
-            &mut self.particle_store,
-            &self.particle_buffers,
-            &self.gpu_context,
-        )?;
+        let batch = if legacy_diagnostic {
+            None
+        } else {
+            self.release_manager.prepare_batch(
+                &timestamp,
+                self.particle_buffers.capacity() - self.next_production_slot,
+            )?
+        };
+        let release = batch
+            .as_ref()
+            .map_or(&[][..], |(_, batch)| batch.as_slice());
+        let release_report = if legacy_diagnostic {
+            self.release_manager.inject_and_upload_for_time(
+                &timestamp,
+                &mut self.particle_store,
+                &self.particle_buffers,
+                &self.gpu_context,
+            )?
+        } else {
+            ReleaseStepReport {
+                released_count: release.len(),
+                released_slots: (self.next_production_slot
+                    ..self.next_production_slot + release.len())
+                    .collect(),
+            }
+        };
 
         // O-07: After release, widen the dispatch window to cover both the
         // compacted active prefix from the previous step and newly released
         // particles (which the release manager placed at the first free
         // slots immediately after the active prefix).
-        if self.use_compaction {
+        if self.use_compaction && legacy_diagnostic {
             self.particle_buffers
                 .set_dispatch_count(self.particle_store.active_count());
         }
@@ -181,13 +270,13 @@ impl ForwardTimeLoopDriver {
             Duration::ZERO
         };
 
-        if let Some(step) = &self.pending_advection {
-            step.require_success(&self.gpu_context).await?;
-        }
-        self.pending_advection = None;
-
-        self.staged_particles
-            .set_dispatch_count(self.particle_buffers.particle_count());
+        let dispatch = if self.use_compaction && !legacy_diagnostic {
+            self.next_production_slot + release.len()
+        } else {
+            self.particle_buffers.particle_count()
+        };
+        self.released_particles.set_dispatch_count(dispatch);
+        self.staged_particles.set_dispatch_count(dispatch);
 
         // ── Phase 3: Encode + submit (non-blocking) ───────────────────
 
@@ -198,13 +287,24 @@ impl ForwardTimeLoopDriver {
             &prepared_forcing,
             forcing,
             profiling,
+            release,
         )?;
 
         #[cfg(test)]
         {
-            self.latest_advection = advection.clone();
+            if advection.is_some() {
+                self.latest_advection = advection;
+            }
         }
-        self.pending_advection = advection;
+        #[cfg(not(test))]
+        drop(advection);
+        if !legacy_diagnostic {
+            self.latest_submitted_ledger_step = Some(step_number);
+            self.next_production_slot += release.len();
+            if let Some((schedule, _)) = batch {
+                self.release_manager = schedule;
+            }
+        }
         self.gpu_submission_pending = true;
         self.pbl_write_index = 1 - self.pbl_write_index;
 
@@ -227,10 +327,10 @@ impl ForwardTimeLoopDriver {
             || self.config.sync_particle_store_each_step
             || self.config.collect_deposition_probabilities_each_step
         {
-            if let Some(step) = &self.pending_advection {
-                step.require_success(&self.gpu_context).await?;
+            if let Err(error) = self.require_forward_ledger_success().await {
+                self.production_ledger_rejected = true;
+                return Err(error);
             }
-            self.pending_advection = None;
         }
         self.philox_counter = next_philox_counter;
         let dry_probability =
@@ -257,7 +357,7 @@ impl ForwardTimeLoopDriver {
             };
 
         let t_compact = profiling.then(Instant::now);
-        if self.use_compaction {
+        if self.use_compaction && !terminal {
             if self.gpu_submission_pending {
                 self.gpu_context.device.poll(wgpu::Maintain::Wait);
                 self.gpu_submission_pending = false;
@@ -270,6 +370,13 @@ impl ForwardTimeLoopDriver {
                 .await? as usize;
             self.particle_buffers.set_dispatch_count(active_count);
             self.particle_store.reset_after_compaction(active_count);
+            if !legacy_diagnostic {
+                self.next_production_slot = active_count;
+            }
+        }
+        if self.use_compaction && terminal {
+            self.particle_buffers.set_dispatch_count(dispatch);
+            self.particle_store.reset_after_compaction(dispatch);
         }
         if self.config.sync_particle_store_each_step {
             if self.gpu_submission_pending {

@@ -90,8 +90,11 @@ def device(path, software=False, hardware=False):
     variants = {'target-unexecuted','target-failed','target-top-nonfinite','target-margin-unrepresentable','uv-pending','uv-invalid-status','w-unexecuted','w-remapped-only','w-failed','w-invalid-status','nonfinite-vector'}
     require(len(negatives['rows']) == 22 and {(r['backward'],r['variant']) for r in negatives['rows']} == {(b,v) for b in (False,True) for v in variants}, 'complete negative driver coverage')
     for row in negatives['rows']:
-        require(all((row['initial_bytes'][i] & 1) == expected for i, expected in ((20,1),(116,1),(212,0))), 'negative active/inactive particle state')
         require(row['initial_bytes'] == row['final_bytes'] and len(row['final_bytes']) == 288, 'fatal scientific-state atomicity')
+        # Forward source slots are private until their ledger transaction succeeds.
+        # The backward diagnostic starts with two published receptor particles.
+        active = int(row['backward'])
+        require([row['initial_bytes'][i] & 1 for i in (20, 116, 212)] == [active, active, 0], 'negative active/inactive particle state')
         require(len(row['status']) == 25 and all(row['status'][i] == 0 for i in range(3,24,4)), 'negative inactive status/tail')
         require(any(row['status'][i] for i in range(0,24,4)) or row['status'][-1] != 0, 'negative route accepted')
         require(row['adapter']['adapter_class'] == ('software_wgsl' if software else 'hardware_gpu') if (software or hardware) else row['adapter']['adapter_class'] in ('hardware_gpu','software_wgsl'), 'negative adapter')

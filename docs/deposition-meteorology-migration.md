@@ -30,11 +30,12 @@ deposition meteorology path to retire. The CPU modules
 [`physics::wet_scavenging`](../src/physics/wet_scavenging.rs) are
 diagnostic only and are not reachable from either production driver.
 
-Both kernels already run inside the canonical #76/#171 production step. Since
-#173/#112, `run_timestep` rejects missing canonical meteorology before any
-release or upload. Deposition then mutates only the staged particle copy, which
-`ResidentAdvectionStep::encode_commit` publishes only when the shared resident
-status is valid. Probabilities are reported only after `require_success`.
+The backward driver runs both kernels inside the canonical #76/#171
+production step. The resident advection transaction publishes particle
+changes when its shared status is valid. The forward #38 ledger rejects
+active wet or dry forcing before release until #34 and #37 supply mass
+credits at their required operator boundaries. The explicit forward
+diagnostic route still exercises the existing coefficient consumers.
 
 Deriving `vdep`, `wetscav` or `grfraction` from canonical meteorology would
 mean implementing `getvdep`/`get_wetscav` on the GPU. That is new deposition
@@ -96,31 +97,23 @@ deposition consumer uses it yet (#33/#34).
 
 `cargo test --lib deposition_production_tests -- --nocapture --test-threads=1`
 runs the [production regression](../src/gpu/meteorology/deposition_production_tests.rs)
-through the real forward and backward drivers with #76/#171 canonical
-meteorology. Setup: capacity 130, active prefix 67, particles at 5 m AGL,
-per-slot `vdep`, uniform `wetscav=0.1 s-1`, `grfraction=0.5`. It checks:
-
-- missing canonical meteorology and short (capacity-mismatched) coefficients
-  are rejected;
-- valid steps update mass and probability with the unchanged kernel formulas
-  (existing kernel-module bound, relative `1e-6`) and leave the inactive tail
-  byte-identical;
-- an independently failing canonical query (`TEST_QUERY_FAULT`) with valid peer
-  lanes publishes no deposited mass (all particle bytes preserved) and no
-  probabilities.
+on the real canonical drivers. The backward case uses a capacity of 130,
+an active prefix of 67 particles at 5 m AGL, per-slot `vdep`, uniform
+`wetscav=0.1 s-1` and `grfraction=0.5`. It checks the capacity validation,
+the existing kernel formulas at relative tolerance `1e-6`, inactive-tail
+preservation and atomic rejection on an independent query failure. The
+forward case checks both missing mass-credit handoffs, unchanged particle
+bytes and a successful stable retry. Both drivers reject missing canonical
+meteorology.
 
 Run it once per adapter (set `FLEXPART_GPU_SOFTWARE=1` for software WGSL).
 Required software CI (`gpu-transport-physics`, step *Prove canonical deposition
 consumer boundary (#114)*) runs the inventory lock and this regression with
 `FLEXPART_GPU_VALIDATION`/`FLEXPART_GPU_COMPACTION` set to `0/0`, `1/0` and `0/1`.
-Each rejection is checked by error kind: the missing-owner error, the
-dry-coefficient length error and a canonical meteorology step error.
 Each run writes `target/ci-gate/deposition-meteorology/report-<adapter_class>.json`
-with the revision, adapter, shader SHA-256, source snapshot hashes and sampled lanes.
-
-This is production-path integration evidence for the unchanged deposition
-boundary. It is not wet- or dry-deposition parity, and not evidence that any
-meteorological field was migrated.
+with the revision, adapter, shader SHA-256, source snapshot hashes and sampled
+backward lanes. The evidence covers coefficient consumption and admission.
+Deposition parity and meteorology migration have their own proof obligations.
 
 ## Status
 

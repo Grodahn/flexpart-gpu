@@ -1,11 +1,7 @@
 //! Required-adapter #114 deposition production regression on the canonical #76/#171 step.
 //!
-//! The existing dry/wet deposition kernels sample no meteorology: they consume
-//! externally supplied process coefficients (`vdep`, `wetscav`, `grfraction`) on
-//! the canonical production particle transaction. This test locks that boundary:
-//! deposition runs only inside an accepted canonical step, mass/probability
-//! semantics are unchanged, the inactive tail is untouched, and an independent
-//! canonical meteorology failure publishes neither deposited mass nor probabilities.
+//! Backward exercises the coefficient consumers and canonical failure atomicity.
+//! Forward rejects active coefficients until #34 and #37 provide ledger credits.
 #![allow(
     clippy::too_many_lines,
     clippy::cast_precision_loss,
@@ -72,13 +68,19 @@ fn expected_probabilities(slot: usize, height_m: f32, dt_s: f32) -> (f32, f32) {
 }
 
 fn shader_hashes() -> BTreeMap<&'static str, String> {
-    ["dry_deposition", "wet_deposition", "advection_step_commit"]
-        .into_iter()
-        .map(|name| {
-            let bytes = std::fs::read(format!("src/shaders/{name}.wgsl")).unwrap();
-            (name, format!("{:x}", Sha256::digest(bytes)))
-        })
-        .collect()
+    [
+        "dry_deposition",
+        "wet_deposition",
+        "advection_step_commit",
+        "forward_mass_ledger",
+        "forward_mass_commit",
+    ]
+    .into_iter()
+    .map(|name| {
+        let bytes = std::fs::read(format!("src/shaders/{name}.wgsl")).unwrap();
+        (name, format!("{:x}", Sha256::digest(bytes)))
+    })
+    .collect()
 }
 
 /// #173 rejects the step before release when no canonical owner is supplied.
@@ -113,8 +115,6 @@ fn step_failed<T>(result: &Result<T, TimeLoopError>) -> bool {
 struct Outcome {
     initial: Vec<Particle>,
     particles: Vec<Particle>,
-    dry: Vec<[f32; MAX_SPECIES]>,
-    wet: Vec<[f32; MAX_SPECIES]>,
     adapter: GpuAdapterEvidence,
     failed: bool,
     rejected_missing_canonical: bool,
@@ -165,6 +165,9 @@ fn test_production_deposition_consumes_coefficients_on_canonical_transaction() {
     let mut adapter_class = None;
     for backward in [false, true] {
         for failure in [None, Some((0, 0))] {
+            if !backward && failure.is_some() {
+                continue;
+            }
             let mut slot = CanonicalMeteorologySlot::default();
             let outcome = if backward {
                 let config = BackwardTimeLoopConfig {
@@ -223,8 +226,6 @@ fn test_production_deposition_consumes_coefficients_on_canonical_transaction() {
                 Outcome {
                     initial,
                     particles,
-                    dry: Vec::new(),
-                    wet: Vec::new(),
                     adapter,
                     failed,
                     rejected_missing_canonical,
@@ -285,34 +286,51 @@ fn test_production_deposition_consumes_coefficients_on_canonical_transaction() {
                         .err()
                         .is_some_and(|e| is_missing_canonical(&e));
                 met.canonical = canonical;
-                let rejected_short_forcing =
-                    pollster::block_on(driver.run_timestep(&met, &short_forcing))
-                        .err()
-                        .is_some_and(|e| is_short_forcing(&e));
+                assert!(rejected_missing_canonical);
                 let initial = pollster::block_on(driver.test_raw_particles());
-                crate::gpu::advection_resident::TEST_QUERY_FAULT.with(|f| f.set(failure));
-                let result = pollster::block_on(driver.run_timestep(&met, &forcing));
-                let failed = step_failed(&result);
-                let particles = pollster::block_on(driver.test_raw_particles());
-                let (dry, wet) = result.map_or_else(
-                    |_| (Vec::new(), Vec::new()),
-                    |report| {
-                        (
-                            report.dry_deposition_probability,
-                            report.wet_deposition_probability,
-                        )
-                    },
-                );
-                Outcome {
-                    initial,
-                    particles,
-                    dry,
-                    wet,
-                    adapter,
-                    failed,
-                    rejected_missing_canonical,
-                    rejected_short_forcing,
+                let wet_only = ForwardStepForcing {
+                    dry_deposition_velocity_m_s: vec![ParticleForcingField::Uniform(0.0)],
+                    ..forcing.clone()
+                };
+                let dry_only = ForwardStepForcing {
+                    wet_scavenging_coefficient_s_inv: vec![ParticleForcingField::Uniform(0.0)],
+                    wet_precipitating_fraction: ParticleForcingField::Uniform(0.0),
+                    ..forcing.clone()
+                };
+                let mut rejected = Vec::new();
+                for (unsupported, issue) in [(&wet_only, "#34"), (&dry_only, "#37")] {
+                    let result = pollster::block_on(driver.run_timestep(&met, unsupported));
+                    let Err(TimeLoopError::MassLedgerUnsupported(reason)) = result else {
+                        panic!("expected a forward ledger rejection for {issue}: {result:?}");
+                    };
+                    assert!(reason.starts_with(issue));
+                    assert_eq!(driver.current_time_seconds(), START_SECONDS);
+                    assert!(matches!(
+                        pollster::block_on(driver.download_mass_ledger_step()),
+                        Err(TimeLoopError::MassLedgerUnavailable)
+                    ));
+                    let particles = pollster::block_on(driver.test_raw_particles());
+                    assert_eq!(
+                        bytemuck::cast_slice::<_, u8>(&initial),
+                        bytemuck::cast_slice::<_, u8>(&particles),
+                    );
+                    rejected.push(reason);
                 }
+                let stable =
+                    pollster::block_on(driver.run_timestep(&met, &ForwardStepForcing::default()))
+                        .unwrap();
+                assert_eq!(stable.released_count, ACTIVE);
+                assert!(
+                    stable.dry_deposition_probability.is_empty()
+                        && stable.wet_deposition_probability.is_empty()
+                );
+                let ledger = pollster::block_on(driver.download_mass_ledger_balance()).unwrap();
+                assert_eq!(ledger.total.injected_kg, ACTIVE as f64);
+                rows.push(json!({"backward":false, "capacity":CAPACITY, "active_count":ACTIVE,
+                    "unsupported_forward_credits":rejected, "atomic_preservation":true,
+                    "missing_canonical_rejected":true, "stable_retry_injected_kg":ledger.total.injected_kg,
+                    "adapter":adapter, "source_snapshot_sha256":[snapshot_hash(&s0).unwrap(),snapshot_hash(&s1).unwrap()]}));
+                continue;
             };
             assert!(
                 outcome.rejected_missing_canonical,
@@ -353,34 +371,12 @@ fn test_production_deposition_consumes_coefficients_on_canonical_transaction() {
                         max_relative = KERNEL_RELATIVE
                     );
                     assert_eq!(&after.mass[1..], &before.mass[1..]);
-                    if !backward {
-                        assert_relative_eq!(
-                            outcome.dry[slot][0],
-                            dry,
-                            max_relative = KERNEL_RELATIVE
-                        );
-                        assert_relative_eq!(
-                            outcome.wet[slot][0],
-                            wet,
-                            max_relative = KERNEL_RELATIVE
-                        );
-                        assert_eq!(&outcome.dry[slot][1..], &[0.0; MAX_SPECIES - 1]);
-                        assert_eq!(&outcome.wet[slot][1..], &[0.0; MAX_SPECIES - 1]);
-                    }
                     if slot < 3 {
                         sampled.push(json!({"slot":slot,"height_agl_m":after.pos_z,
                             "dry_velocity_m_s":dry_velocity_m_s(slot),"wet_scavenging_s_inv":WET_LAMBDA_S_INV,
                             "wet_precipitating_fraction":WET_FRACTION,"expected_dry_probability":dry,
                             "expected_wet_probability":wet,"mass_before_kg":before.mass[0],"mass_after_kg":after.mass[0]}));
                     }
-                }
-                if !backward {
-                    assert!(outcome.dry[ACTIVE..]
-                        .iter()
-                        .all(|p| *p == [0.0; MAX_SPECIES]));
-                    assert!(outcome.wet[ACTIVE..]
-                        .iter()
-                        .all(|p| *p == [0.0; MAX_SPECIES]));
                 }
             }
             adapter_class.get_or_insert_with(|| {
@@ -407,12 +403,12 @@ fn test_production_deposition_consumes_coefficients_on_canonical_transaction() {
     std::fs::write(
         root.join(format!("report-{class}.json")),
         serde_json::to_vec_pretty(&json!({
-            "schema":"flexpart-gpu.deposition-meteorology-production.v1",
+            "schema":"flexpart-gpu.deposition-meteorology-production.v2",
             "validation_configuration":std::env::var("FLEXPART_GPU_VALIDATION").unwrap_or_else(|_| "0".into()),
             "compaction_configuration":std::env::var("FLEXPART_GPU_COMPACTION").unwrap_or_else(|_| "0".into()),
             "issue":114,
             "candidate_revision":String::from_utf8(revision.stdout).unwrap().trim(),
-            "validation_level":"production-path integration (forward and backward canonical drivers)",
+            "validation_level":"production-path integration (backward canonical coefficients and forward ledger admission)",
             "flexpart_anchors":["advance_mod.f90 via drydepo_mod.f90:827-865 drydepo_probability",
                 "wetdepo_mod.f90:17-202 wetdepo mass-loss form"],
             "migration_verdict":"NO_DEPOSITION_METEOROLOGY_CONSUMER_TO_MIGRATE",

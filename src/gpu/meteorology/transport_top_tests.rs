@@ -366,8 +366,7 @@ fn test_transport_top_pinned_production_driver_matrix() {
             continue;
         }
         let initial_particles = if let Some(d) = &mut forward {
-            d.test_prime_releases();
-            pollster::block_on(d.test_raw_particles())
+            d.test_prepared_releases()
         } else {
             let d = backward.as_mut().unwrap();
             d.test_prime_releases();

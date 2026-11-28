@@ -218,6 +218,7 @@ Start at the [stable facade](../../src/meteorology/vertical.rs) and select its
 
 ## Decay-mass-ledger
 
+- Resident production ledger: `cargo test --lib test_forward_mass_ledger_production -- --nocapture --test-threads=1`. Requires WGSL execution. The test replays injection and horizontal exit and records two-species closure and transition faults in `target/ci-gate/forward-mass-ledger/report.json`.
 - Stable ledger record audit: `cargo test --test mass_ledger`. Check the pinned source anchors with `python scripts/check_mass_ledger_reference.py --repository <FLEXPART repository>`. [Scope and remaining production handoffs](../mass-ledger.md).
 - Fast conservation diagnostic: `cargo test --lib physics::species::tests::decay_mass_step_conserves_mass -- --exact`.
 - Device diagnostic: `cargo test --lib gpu::decay::tests`; integration: `cargo test --test integration mass_conservation` and `cargo test --test integration scientific_invariants`.

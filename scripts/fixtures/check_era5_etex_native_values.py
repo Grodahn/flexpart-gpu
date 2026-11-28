@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "fixtures/etex/native-mini"
 EVIDENCE = ROOT / "fixtures/meteorology/era5-etex-native-v1.value-digests.json"
 PAIR_EVIDENCE = ROOT / "fixtures/meteorology/era5-etex-native-lnsp-v1.value-digests.json"
+OMEGA_EVIDENCE = ROOT / "fixtures/meteorology/era5-etex-native-omega-v1.value-digests.json"
 MODEL_REQUESTS = ("request.json", "request-next-day.json")
 REPLAY_MANIFEST = RAW / "era5-etex-model-replay-v1.json"
 FIELDS = {130: "temperature", 131: "wind_u", 132: "wind_v", 133: "specific_humidity"}
@@ -112,6 +113,93 @@ def audit(manifest):
         "raw_sha256": metadata["sha256"],
         "pv_f32_le_sha256": pv_digest,
         "volumes_by_epoch": result,
+    }
+
+
+
+OMEGA_KEYS = {
+    "edition": 2, "discipline": 0, "parameterCategory": 2, "parameterNumber": 8,
+    "paramId": 135, "shortName": "w", "units": "Pa s**-1", "typeOfLevel": "hybrid",
+    "NV": 276, "gridType": "regular_ll", "Ni": 65, "Nj": 41, "scanningMode": 0,
+    "packingType": "grid_simple", "bitsPerValue": 16, "decimalScaleFactor": 0,
+    "bitmapPresent": 0, "numberOfMissing": 0, "numberOfValues": 2665,
+}
+
+
+def audit_omega(manifest, pressure_pair):
+    """Compare every omega message's identity with the verified ERA5 analysis pair."""
+    request_bytes = manifest.read_bytes()
+    metadata = json.loads(request_bytes)
+    by_epoch = pressure_pair["by_epoch"]
+    sequence = [(epoch, level) for epoch in sorted(by_epoch) for level in range(1, 138)]
+    values = defaultdict(list)
+    raw_frames = defaultdict(hashlib.sha256)
+    packing_scales = set()
+    count = 0
+    for frame in grib2_frames(verified_grib(metadata)):
+        message = eccodes.codes_new_from_message(frame)
+        try:
+            if eccodes.codes_get_long(message, "paramId") != 135:
+                continue
+            epoch, identity = join_identity(message, frame)
+            level = eccodes.codes_get_long(message, "level")
+            expected = by_epoch.get(epoch, {})
+            if (
+                message_keys(message, OMEGA_KEYS) != OMEGA_KEYS
+                or eccodes.codes_get_long(message, "typeOfFirstFixedSurface") != 105
+                or eccodes.codes_get_long(message, "typeOfSecondFixedSurface") != 255
+                or eccodes.codes_get_long(message, "scaleFactorOfFirstFixedSurface") != 0
+                or eccodes.codes_get_long(message, "scaledValueOfFirstFixedSurface") != level
+                or any(expected.get(key) != value for key, value in identity.items())
+                or count >= len(sequence)
+                or sequence[count] != (epoch, level)
+            ):
+                raise ValueError(f"unexpected omega record: {epoch}/{level}")
+            lat = eccodes.codes_get_array(message, "latitudes")
+            lon = (eccodes.codes_get_array(message, "longitudes") + 180) % 360 - 180
+            order = np.lexsort((lon, lat))
+            np.testing.assert_array_equal(lat[order], np.repeat(np.linspace(43, 53, 41), 65))
+            np.testing.assert_array_equal(lon[order], np.tile(np.linspace(-8, 8, 65), 41))
+            cells = eccodes.codes_get_values(message)[order]
+            if not (np.isfinite(cells) & (np.abs(cells) <= np.finfo(np.float32).max)).all():
+                raise ValueError(f"invalid omega values: {epoch}/{level}")
+            packing_scales.add(eccodes.codes_get_long(message, "binaryScaleFactor"))
+            values[epoch].append(cells)
+            raw_frames[epoch].update(frame)
+            count += 1
+        finally:
+            eccodes.codes_release(message)
+    if count != len(sequence):
+        raise ValueError(f"incomplete omega coverage: {metadata['file']}")
+
+    volumes = {}
+    for epoch, levels in sorted(values.items()):
+        raw = np.concatenate(levels).astype("<f8")
+        grid = raw.astype("<f4")
+        volumes[epoch] = {
+            **{key: by_epoch[epoch][key] for key in ("time", "grid_section_sha256", "pv_f64_le_sha256")},
+            "raw_omega_messages_sha256": raw_frames[epoch].hexdigest(),
+            "raw_ec_codes_f64_le_sha256": sha256(raw.tobytes()),
+            "volume_f32_le_sha256": sha256(grid.tobytes()),
+            "cell_count": int(grid.size),
+            "minimum_pa_s": float(grid.min()),
+            "maximum_pa_s": float(grid.max()),
+            "negative_count": int(np.count_nonzero(grid < 0)),
+            "zero_count": int(np.count_nonzero(grid == 0)),
+            "positive_count": int(np.count_nonzero(grid > 0)),
+            "samples_pa_s_at_lon_0_lat_48_by_level": {
+                level: float(grid[(level - 1) * 2665 + 20 * 65 + 32]) for level in (1, 69, 137)
+            },
+            "max_f64_to_f32_rounding_pa_s": float(np.abs(raw - grid).max()),
+        }
+    return {
+        "file": metadata["file"],
+        "raw_sha256": metadata["sha256"],
+        "request_record_sha256": sha256(request_bytes),
+        "matched_lnsp_raw_sha256": pressure_pair["pressure_sha256"],
+        "binary_scale_factors": sorted(packing_scales),
+        "omega_message_count": count,
+        "by_epoch": volumes,
     }
 
 
@@ -275,13 +363,24 @@ def main():
         "normalization": "Sort by ascending latitude and normalized longitude; exp(lnsp) in binary64, round to binary32 Pa",
         "sources": [audit_lnsp(RAW / name, replay["sources"][name]) for name in MODEL_REQUESTS],
     }
-    for path, evidence in ((EVIDENCE, result), (PAIR_EVIDENCE, pairs)):
+    omega = {
+        "profile": "era5-etex-native-omega-v1",
+        "decoder": "Python ecCodes values sorted by decoded cell coordinates and source level",
+        "encoding": "IEEE-754 little-endian; x fastest, latitude ascending, levels 1 through 137",
+        "parameter_keys": {**OMEGA_KEYS, "typeOfFirstFixedSurface": 105, "typeOfSecondFixedSurface": 255},
+        "product_keys": PRODUCT_KEYS,
+        "sources": [
+            audit_omega(RAW / name, pair)
+            for name, pair in zip(MODEL_REQUESTS, pairs["sources"], strict=True)
+        ],
+    }
+    for path, evidence in ((EVIDENCE, result), (PAIR_EVIDENCE, pairs), (OMEGA_EVIDENCE, omega)):
         rendered = json.dumps(evidence, indent=2) + "\n"
         if args.write:
             path.write_bytes(rendered.encode("ascii"))
         elif rendered != path.read_text(encoding="ascii"):
             raise SystemExit(f"real-byte ecCodes reference digests differ: {path.name}")
-    print(f"Verified 24 volumes and 6 pressure grids with Python ecCodes {eccodes.codes_get_api_version()}")
+    print(f"Verified 24 model volumes, 6 pressure grids and 6 omega volumes with Python ecCodes {eccodes.codes_get_api_version()}")
 
 
 if __name__ == "__main__":

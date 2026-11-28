@@ -1,0 +1,257 @@
+{
+  "profile": "era5-etex-native-omega-v1",
+  "decoder": "Python ecCodes values sorted by decoded cell coordinates and source level",
+  "encoding": "IEEE-754 little-endian; x fastest, latitude ascending, levels 1 through 137",
+  "parameter_keys": {
+    "edition": 2,
+    "discipline": 0,
+    "parameterCategory": 2,
+    "parameterNumber": 8,
+    "paramId": 135,
+    "shortName": "w",
+    "units": "Pa s**-1",
+    "typeOfLevel": "hybrid",
+    "NV": 276,
+    "gridType": "regular_ll",
+    "Ni": 65,
+    "Nj": 41,
+    "scanningMode": 0,
+    "packingType": "grid_simple",
+    "bitsPerValue": 16,
+    "decimalScaleFactor": 0,
+    "bitmapPresent": 0,
+    "numberOfMissing": 0,
+    "numberOfValues": 2665,
+    "typeOfFirstFixedSurface": 105,
+    "typeOfSecondFixedSurface": 255
+  },
+  "product_keys": {
+    "centre": "ecmf",
+    "subCentre": 0,
+    "marsClass": "ea",
+    "marsStream": "oper",
+    "marsType": "an",
+    "experimentVersionNumber": "0001",
+    "localDefinitionNumber": 1,
+    "generatingProcessIdentifier": 145,
+    "productionStatusOfProcessedData": 0,
+    "typeOfProcessedData": "an",
+    "significanceOfReferenceTime": 1,
+    "productDefinitionTemplateNumber": 0,
+    "startStep": 0,
+    "endStep": 0,
+    "stepType": "instant",
+    "second": 0
+  },
+  "sources": [
+    {
+      "file": "era5-19941023-151821-ml.grib",
+      "raw_sha256": "0e059410504dc3d1b2ba13628372a0be81054ff30a75017cf5b06cf9144b5023",
+      "request_record_sha256": "928824b4d881f8c21cfc1268912d2445451dfc48d42ec2f5f5fe8564f3ab20f4",
+      "matched_lnsp_raw_sha256": "5ed2501645d4bbc3adea25bb54d10462d87f6ada8fbc3a3c55e5dc2f9cb0d03d",
+      "binary_scale_factors": [
+        -32,
+        -31,
+        -30,
+        -29,
+        -28,
+        -27,
+        -26,
+        -25,
+        -24,
+        -23,
+        -22,
+        -21,
+        -20,
+        -19,
+        -18,
+        -17,
+        -16,
+        -15,
+        -14
+      ],
+      "omega_message_count": 411,
+      "by_epoch": {
+        "782924400": {
+          "time": {
+            "dataDate": 19941023,
+            "dataTime": 1500,
+            "validityDate": 19941023,
+            "validityTime": 1500
+          },
+          "grid_section_sha256": "63ab7862d1cc36e54293c0c0198e3e4169c300b41831bb003a45f961680f58d2",
+          "pv_f64_le_sha256": "0d51f96436ff9872d6e9ea168543e9da1e569bacf0b41c2a2823d33851b3d3a8",
+          "raw_omega_messages_sha256": "c8d13aeaf68bcea2be72613903e5744126d46e79c6ce9cc8f79c46a6d43e6c3c",
+          "raw_ec_codes_f64_le_sha256": "f334a0ad5b16300c1a092776111ca2ddf4c482a32ece3f09071888b852cea3fc",
+          "volume_f32_le_sha256": "9c4ee4b2765b776c5f3e3e0ce75834777f6efec07eeccfd6edd71d5a3689e6fb",
+          "cell_count": 365105,
+          "minimum_pa_s": -2.110884428024292,
+          "maximum_pa_s": 2.05965518951416,
+          "negative_count": 187843,
+          "zero_count": 0,
+          "positive_count": 177262,
+          "samples_pa_s_at_lon_0_lat_48_by_level": {
+            "1": -7.234099030029029e-06,
+            "69": 0.038641639053821564,
+            "137": -0.004917562007904053
+          },
+          "max_f64_to_f32_rounding_pa_s": 1.1920928955078125e-07
+        },
+        "782935200": {
+          "time": {
+            "dataDate": 19941023,
+            "dataTime": 1800,
+            "validityDate": 19941023,
+            "validityTime": 1800
+          },
+          "grid_section_sha256": "63ab7862d1cc36e54293c0c0198e3e4169c300b41831bb003a45f961680f58d2",
+          "pv_f64_le_sha256": "0d51f96436ff9872d6e9ea168543e9da1e569bacf0b41c2a2823d33851b3d3a8",
+          "raw_omega_messages_sha256": "c6922559bb7420b3a132a606d0d431ac55e8548ee30b25e36fc6c80ffb25268d",
+          "raw_ec_codes_f64_le_sha256": "f18ad80308612e9f326a80916f58b667e077ce052ccb6277c896a236eb5a468d",
+          "volume_f32_le_sha256": "bd6cb28b36eb3f1bbad9c18fbb5a99be907b143bd53a5d04573a1bd9d59fbfd6",
+          "cell_count": 365105,
+          "minimum_pa_s": -1.5633002519607544,
+          "maximum_pa_s": 2.6186349391937256,
+          "negative_count": 164808,
+          "zero_count": 0,
+          "positive_count": 200297,
+          "samples_pa_s_at_lon_0_lat_48_by_level": {
+            "1": 1.2140222679590806e-05,
+            "69": 0.00563482940196991,
+            "137": -0.03323239088058472
+          },
+          "max_f64_to_f32_rounding_pa_s": 1.1920928955078125e-07
+        },
+        "782946000": {
+          "time": {
+            "dataDate": 19941023,
+            "dataTime": 2100,
+            "validityDate": 19941023,
+            "validityTime": 2100
+          },
+          "grid_section_sha256": "63ab7862d1cc36e54293c0c0198e3e4169c300b41831bb003a45f961680f58d2",
+          "pv_f64_le_sha256": "0d51f96436ff9872d6e9ea168543e9da1e569bacf0b41c2a2823d33851b3d3a8",
+          "raw_omega_messages_sha256": "a41b5a1d5a8402f5f63664b03737c6b258ebfa0acb4d05695caaf35e0a232e76",
+          "raw_ec_codes_f64_le_sha256": "0f0202602c9fa687607e60ded33bfc47d1dc8a7aa53b60bf38f4fc8061ebc3fd",
+          "volume_f32_le_sha256": "a591ff2df143d38515239e6614590a5769ca9c2fcf278f52c3aad65153f4e401",
+          "cell_count": 365105,
+          "minimum_pa_s": -1.643197774887085,
+          "maximum_pa_s": 2.291581153869629,
+          "negative_count": 162283,
+          "zero_count": 0,
+          "positive_count": 202822,
+          "samples_pa_s_at_lon_0_lat_48_by_level": {
+            "1": 8.822938980301842e-06,
+            "69": -0.06489363312721252,
+            "137": -0.006953597068786621
+          },
+          "max_f64_to_f32_rounding_pa_s": 1.1920928955078125e-07
+        }
+      }
+    },
+    {
+      "file": "era5-19941024-000306-ml.grib",
+      "raw_sha256": "893c39cbf0b70129895588aa5c8b43dc819abb129973604147e621c05d5a472b",
+      "request_record_sha256": "984eec6a85f5b753479b70d05845ab7600ebbde0dcd4245035393f84d7164625",
+      "matched_lnsp_raw_sha256": "78973555cb774d831925f70252de582d602cce1e12fa4e2a04205d176dfaee4a",
+      "binary_scale_factors": [
+        -31,
+        -30,
+        -29,
+        -28,
+        -27,
+        -26,
+        -25,
+        -24,
+        -23,
+        -22,
+        -21,
+        -20,
+        -19,
+        -18,
+        -17,
+        -16,
+        -15,
+        -14
+      ],
+      "omega_message_count": 411,
+      "by_epoch": {
+        "782956800": {
+          "time": {
+            "dataDate": 19941024,
+            "dataTime": 0,
+            "validityDate": 19941024,
+            "validityTime": 0
+          },
+          "grid_section_sha256": "63ab7862d1cc36e54293c0c0198e3e4169c300b41831bb003a45f961680f58d2",
+          "pv_f64_le_sha256": "0d51f96436ff9872d6e9ea168543e9da1e569bacf0b41c2a2823d33851b3d3a8",
+          "raw_omega_messages_sha256": "2c7b2a672140bf190775cc4a276880fcd4710d9bd3397495e42e627732d04b22",
+          "raw_ec_codes_f64_le_sha256": "a766c82a4514496ca1508529a890c0e8dd3ef81081b380c47684274113c19c03",
+          "volume_f32_le_sha256": "bf26af7a91abf6a6e15bcf774c9f06b683d81fc7abd48c9ce061bc66a869bf86",
+          "cell_count": 365105,
+          "minimum_pa_s": -1.5352497100830078,
+          "maximum_pa_s": 2.112825393676758,
+          "negative_count": 188429,
+          "zero_count": 0,
+          "positive_count": 176676,
+          "samples_pa_s_at_lon_0_lat_48_by_level": {
+            "1": -4.99467205372639e-06,
+            "69": 0.007829040288925171,
+            "137": 0.007854312658309937
+          },
+          "max_f64_to_f32_rounding_pa_s": 1.1920928955078125e-07
+        },
+        "782967600": {
+          "time": {
+            "dataDate": 19941024,
+            "dataTime": 300,
+            "validityDate": 19941024,
+            "validityTime": 300
+          },
+          "grid_section_sha256": "63ab7862d1cc36e54293c0c0198e3e4169c300b41831bb003a45f961680f58d2",
+          "pv_f64_le_sha256": "0d51f96436ff9872d6e9ea168543e9da1e569bacf0b41c2a2823d33851b3d3a8",
+          "raw_omega_messages_sha256": "03d27cabad1cf12f7c2558b2c44a78634a4ae560a9298a83e257405784d414e4",
+          "raw_ec_codes_f64_le_sha256": "5f61f2ed9b2c120d52cde4c00c1de98d74800210218cd1a0f04aaf16b8f6798c",
+          "volume_f32_le_sha256": "05f41d717a81111258a7fdbff90d1488d0a5d401bae7a1f1cbaef2902691b4eb",
+          "cell_count": 365105,
+          "minimum_pa_s": -1.4931632280349731,
+          "maximum_pa_s": 2.70383620262146,
+          "negative_count": 185628,
+          "zero_count": 0,
+          "positive_count": 179477,
+          "samples_pa_s_at_lon_0_lat_48_by_level": {
+            "1": 1.4741656741534825e-05,
+            "69": 0.0011163055896759033,
+            "137": -0.013906270265579224
+          },
+          "max_f64_to_f32_rounding_pa_s": 1.1920928955078125e-07
+        },
+        "782978400": {
+          "time": {
+            "dataDate": 19941024,
+            "dataTime": 600,
+            "validityDate": 19941024,
+            "validityTime": 600
+          },
+          "grid_section_sha256": "63ab7862d1cc36e54293c0c0198e3e4169c300b41831bb003a45f961680f58d2",
+          "pv_f64_le_sha256": "0d51f96436ff9872d6e9ea168543e9da1e569bacf0b41c2a2823d33851b3d3a8",
+          "raw_omega_messages_sha256": "7422e22c76829ec2773c561e367c7d3f1663466007099970d01b4a74b7910d11",
+          "raw_ec_codes_f64_le_sha256": "57292ec3c7267d6e364fcfe3921bc645c905f15d0ceeecec20abf0db54a4f476",
+          "volume_f32_le_sha256": "ad128a4c938f38ad43e219bd5350883aff315cedaf658d0c7f202e48636803eb",
+          "cell_count": 365105,
+          "minimum_pa_s": -1.4865649938583374,
+          "maximum_pa_s": 2.4501914978027344,
+          "negative_count": 184826,
+          "zero_count": 0,
+          "positive_count": 180279,
+          "samples_pa_s_at_lon_0_lat_48_by_level": {
+            "1": -7.973820174811408e-06,
+            "69": 0.0043939948081970215,
+            "137": -0.026113957166671753
+          },
+          "max_f64_to_f32_rounding_pa_s": 1.1920928955078125e-07
+        }
+      }
+    }
+  ]
+}

@@ -4,8 +4,9 @@
 
 use flexpart_gpu::io::era5_etex::{
     decode_model_levels, load_snapshot, load_snapshot_with_surface, DecodeError,
-    ModelLevelsDiagnostic,
+    ModelLevelsDiagnostic, OmegaHandoff,
 };
+use flexpart_gpu::meteorology::vertical::{reconstruct_vertical_geometry, VerticalTransformError};
 use flexpart_gpu::meteorology::{
     Axis, Calendar, ContractError, FieldId, Requirements, Snapshot, TemporalKind, Unit,
 };
@@ -33,6 +34,26 @@ struct SourceEvidence {
     raw_sha256: String,
     pv_f32_le_sha256: String,
     volumes_by_epoch: BTreeMap<i64, BTreeMap<FieldId, String>>,
+}
+
+#[derive(Deserialize)]
+struct OmegaEvidence {
+    sources: Vec<OmegaSourceEvidence>,
+}
+
+#[derive(Deserialize)]
+struct OmegaSourceEvidence {
+    file: String,
+    raw_sha256: String,
+    request_record_sha256: String,
+    by_epoch: BTreeMap<i64, OmegaVolumeEvidence>,
+}
+
+#[derive(Deserialize)]
+struct OmegaVolumeEvidence {
+    pv_f64_le_sha256: String,
+    volume_f32_le_sha256: String,
+    cell_count: usize,
 }
 
 #[derive(Deserialize)]
@@ -101,7 +122,19 @@ fn test_era5_etex_verified_snapshots_match_all_direct_grib_fields() {
                     FieldId::VerticalVelocity
                 ))
             ));
+            assert!(matches!(
+                reconstruct_vertical_geometry(snapshot),
+                Err(VerticalTransformError::Contract(
+                    ContractError::MissingRequiredField(
+                        FieldId::Orography | FieldId::Temperature2m | FieldId::Dewpoint2m
+                    )
+                ))
+            ));
             assert_eq!(snapshot.fields.len(), 5);
+            assert_eq!(
+                result.provenance()["model_levels"]["omega"]["handoff"],
+                "REQUIRES_PREPROCESSING"
+            );
             let vertical = &snapshot.vertical_coordinate;
             let a = vertical.hybrid_a_interface_pa.as_ref().unwrap();
             let b = vertical.hybrid_b_interface.as_ref().unwrap();
@@ -177,6 +210,59 @@ fn test_era5_etex_surface_substitution_and_file_corruption_fail_closed() {
             load(&source),
             Err(DecodeError::SurfaceSourceIdentity)
         ));
+    }
+}
+
+#[test]
+fn test_era5_etex_omega_matches_every_direct_grib_value_and_blocks_handoff() {
+    let evidence: OmegaEvidence = serde_json::from_str(include_str!(
+        "../fixtures/meteorology/era5-etex-native-omega-v1.value-digests.json"
+    ))
+    .unwrap();
+    let decision_bytes =
+        include_bytes!("../fixtures/meteorology/era5-etex-native-omega-v1.decision.json");
+    let decision: serde_json::Value = serde_json::from_slice(decision_bytes).unwrap();
+    let decision_sha256 = format!("{:x}", Sha256::digest(decision_bytes));
+    assert_eq!(evidence.sources.len(), 2);
+    for (source, file) in evidence.sources.iter().zip([DAY_ONE, DAY_TWO]) {
+        assert_eq!(source.file, file);
+        assert_eq!(source.by_epoch.len(), 3);
+        for (&epoch, expected) in &source.by_epoch {
+            let model = Path::new(NATIVE).join(file);
+            let diagnostic = decode_model_levels(&model, epoch).unwrap();
+            let omega = diagnostic.omega_pa_s();
+            assert_eq!(omega.len(), 65 * 41 * 137);
+            assert_eq!(omega.len(), expected.cell_count);
+            assert_eq!(f32_digest(omega), expected.volume_f32_le_sha256, "{epoch}");
+            assert_eq!(
+                diagnostic.omega_handoff(),
+                OmegaHandoff::RequiresPreprocessing
+            );
+            let provenance = diagnostic.provenance();
+            assert_eq!(provenance["omega"]["handoff"], decision["status"]);
+            assert_eq!(provenance["omega"]["decision_sha256"], decision_sha256);
+            assert_eq!(
+                provenance["omega"]["volume_f32_le_sha256"],
+                expected.volume_f32_le_sha256
+            );
+            assert_eq!(provenance["omega"]["epoch"], epoch);
+            assert_eq!(
+                provenance["grib"]["pv_f64_le_sha256"],
+                expected.pv_f64_le_sha256
+            );
+            assert_eq!(
+                provenance["raw_source"]["verified_sha256"],
+                source.raw_sha256
+            );
+            assert_eq!(
+                provenance["raw_source"]["request_record_sha256"],
+                source.request_record_sha256
+            );
+            assert!(diagnostic
+                .fields()
+                .iter()
+                .all(|field| field.id != FieldId::VerticalVelocity));
+        }
     }
 }
 

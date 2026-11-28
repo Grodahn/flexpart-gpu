@@ -1,0 +1,132 @@
+{
+  "profile": "era5-etex-native-omega-v1",
+  "issue": 257,
+  "status": "REQUIRES_PREPROCESSING",
+  "native_source": {
+    "dataset": "reanalysis-era5-complete",
+    "grib_edition": 2,
+    "discipline_category_number": [
+      0,
+      2,
+      8
+    ],
+    "param_id": 135,
+    "units": "Pa/s",
+    "sign": "positive_pressure_increasing",
+    "vertical_staggering": "level_center",
+    "model_levels_top_to_surface": [
+      1,
+      137
+    ],
+    "hybrid_interface_count": 138,
+    "value_evidence": "era5-etex-native-omega-v1.value-digests.json"
+  },
+  "reference_crosswalk": {
+    "flexpart": {
+      "revision": "c70586c2b7f5258850705325881c61f557ea9bd8",
+      "reader": {
+        "path": "src/windfields_mod.f90",
+        "git_blob": "6998b2a79263dd2b6deedb92380985f842e76c67",
+        "grib1_dispatch_lines": [
+          2069,
+          2081
+        ],
+        "grib2_dispatch_lines": [
+          2096,
+          2127
+        ],
+        "grib2_w_category_number": [
+          [
+            2,
+            32
+          ],
+          [
+            128,
+            77
+          ]
+        ],
+        "w_slot_assignment_lines": [
+          2230,
+          2285
+        ],
+        "full_column_top_boundary_lines": [
+          2470,
+          2473
+        ],
+        "sha256": "440ec62b9a7b8f4534e913b2af2a41aabdf44072b3fe77edbc213866e698e7d1"
+      },
+      "transform": {
+        "path": "src/verttransform_mod.f90",
+        "git_blob": "9952cf746bd9546eb8f0fc6d43875456069e4f02",
+        "surface_and_interface_geometry_lines": [
+          1997,
+          2042
+        ],
+        "geometric_velocity_endpoint_lines": [
+          544,
+          545
+        ],
+        "interior_w_interpolation_lines": [
+          613,
+          621
+        ],
+        "sha256": "7d7ba231f960779dc63f19073103c489441da116cec12c6b8875dc06a5b7422c"
+      }
+    },
+    "flex_extract": {
+      "revision": "e0005c99ac81d12faa45a8ff799debbd592b0dc0",
+      "preprocessor": {
+        "path": "Source/Fortran/calc_etadot.f90",
+        "git_blob": "741eba91eab049df23a560219d0f2656a6cc9881",
+        "raw_omega_input": "fort.19",
+        "raw_omega_input_lines": [
+          512,
+          517
+        ],
+        "eta_transform_lines": [
+          537,
+          575
+        ],
+        "prepared_eta_output": "fort.15",
+        "prepared_eta_output_lines": [
+          661,
+          682
+        ],
+        "raw_omega_diagnostic_output": "fort.25",
+        "raw_omega_diagnostic_output_lines": [
+          693,
+          705
+        ],
+        "sha256": "160f267f8741f23d13fdba2f7a88f110bb131aa84ad7894fa43605258e55b0d9"
+      },
+      "assembly": {
+        "path": "Source/Python/Classes/EcFlexpart.py",
+        "git_blob": "65ba97f7e4212e4187accda307d79436bee23231",
+        "output_assembly_lines": [
+          1757,
+          1771
+        ],
+        "sha256": "59c7818be2088a623ed86bb0a63749f5971b82a567cd3613bb6708e9af5b2021"
+      }
+    }
+  },
+  "blockers": [
+    "FLEXPART GRIB2 W dispatch does not admit these ERA5 0/2/8 records.",
+    "The pristine preparation path writes raw pressure-coordinate omega separately from prepared hybrid-coordinate W. Neither the parameter number nor the shared dimensions of Pa/s establish equivalence.",
+    "Full-level samples cannot be relabeled as the required interface values. A verified preparation path must establish hybrid-coordinate semantics, interface placement, and top and surface conditions."
+  ],
+  "provider_output": "diagnostic_only",
+  "issue_30_native_motion_published": false,
+  "canonical_geometric_w_published": false,
+  "advection_requirements_met": false,
+  "downstream": {
+    "interface_w": "independently validated, source-matched FLEXPART-ready W in Pa/s",
+    "additional_geometry_fields": [
+      "temperature2m",
+      "dewpoint2m",
+      "orography"
+    ],
+    "obtained_surface_pressure": "original ERA5 Complete lnsp from the existing #253 profile",
+    "production_integration_owner": "#32-D"
+  }
+}

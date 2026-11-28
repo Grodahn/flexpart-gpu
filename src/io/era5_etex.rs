@@ -59,7 +59,8 @@ use crate::meteorology::Snapshot;
 mod native;
 #[cfg(feature = "eccodes")]
 pub use native::{
-    decode_model_levels, load_snapshot_with_surface, ModelLevelsDiagnostic, VerifiedSnapshot,
+    decode_model_levels, load_snapshot_with_surface, ModelLevelsDiagnostic, OmegaHandoff,
+    VerifiedSnapshot,
 };
 
 /// Request a hybrid Snapshot without supplying surface pressure.

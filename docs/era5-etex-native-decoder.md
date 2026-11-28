@@ -4,8 +4,8 @@
 `era5-etex-native-model-levels-v1`. The ecCodes-backed API reads the two
 [ERA5 Complete native fixtures](../fixtures/etex/native-mini/README.md). Each
 file contains 2,055 GRIB2 messages for three analysis times, five parameters
-and 137 model levels. A model-only decode returns four full-grid fields as an
-explicit `model_levels_only_diagnostic`. A snapshot request without the
+and 137 model levels. A model-only decode returns four full-grid fields and
+a separate raw omega diagnostic in the `model_levels_only_diagnostic` envelope. A snapshot request without the
 pressure file returns `SurfacePressureUnavailable`. [#253](https://github.com/Grodahn/flexpart-gpu/issues/253)
 adds profile `era5-etex-native-lnsp-pair-v1` for publication with the two
 verified ERA5 Complete log surface pressure files.
@@ -32,7 +32,7 @@ All messages identify ECMWF `ecmf/0`, MARS `ea/oper/an` experiment `0001`,
 local definition 1, generating process 145, product template 0 and an
 instantaneous analysis at zero lead. The reference and valid dates and times
 must agree. Parameters use discipline 0, WMO table 5 and local table 0.
-Hybrid fixed surface type 105 selects levels 1–137. Every message carries the
+Hybrid fixed surface type 105 selects levels 1â€“137. Every message carries the
 same 276 PV coefficients and is packed with template 5.0 (`grid_simple`,
 16 bits, no bitmap). The decoder validates the complete floating-point PV
 vector against its little-endian binary64 digest and compares it on every
@@ -45,12 +45,12 @@ the diagnostic provenance.
 | 131 | 2/2 | `m s**-1` | `wind_u` (positive eastward) |
 | 132 | 2/3 | `m s**-1` | `wind_v` (positive northward) |
 | 133 | 1/0 | `kg kg**-1` | `specific_humidity` |
-| 135 | 2/8 | `Pa s**-1` | Checked for source coverage and omitted |
+| 135 | 2/8 | `Pa s**-1` | Raw full-level omega diagnostic (positive toward increasing pressure) |
 
-The 65 × 41 regular latitude-longitude grid runs eastward from 352° to 8°
-and southward from 53° to 43° at 0.25° spacing. Scan mode 0 stores X
+The 65 Ã— 41 regular latitude-longitude grid runs eastward from 352Â° to 8Â°
+and southward from 53Â° to 43Â° at 0.25Â° spacing. Scan mode 0 stores X
 contiguously and separates latitude rows. The decoder writes a western origin
-of −8°, reverses the latitude rows and stores model levels in order 1–137.
+of âˆ’8Â°, reverses the latitude rows and stores model levels in order 1â€“137.
 Values are narrowed from ecCodes binary64 to canonical binary32. This changes
 precision only. Cell values retain their physical units and signs. Missing
 cells, nonfinite values and invalid thermodynamic domains fail closed.
@@ -61,7 +61,7 @@ coefficients at canonical precision. As required by the
 [canonical schema](meteorology-contract.md), serialized reference pressures
 use the fixture's explicit 101325 Pa reference. Full-level reference
 pressures average adjacent interface pressures following
-`windfields_mod.f90:845–846` in the pinned FLEXPART reference. These arrays
+`windfields_mod.f90:845â€“846` in the pinned FLEXPART reference. These arrays
 describe the coordinate and supply no local atmospheric pressure or height.
 
 ## Surface pressure and handoff
@@ -96,7 +96,7 @@ The pressure messages identify discipline 0, category 3, number 25, parameter
 152. ecCodes 2.48.0 labels its units `Numeric`, and 2.28.0 uses `~` for the
 same coded parameter. The archived value is the natural
 logarithm of pressure in Pa. The decoder exponentiates in binary64, checks
-the inclusive 50,000–110,000 Pa sanity envelope for this regional fixture,
+the inclusive 50,000â€“110,000 Pa sanity envelope for this regional fixture,
 then narrows to binary32. The surface field is cell-centred X,Y with the same
 longitude normalization, row reversal and X-fastest ordering as the four
 model-level volumes. Exactly five fields satisfy
@@ -112,11 +112,63 @@ cycle or packing record tying its pressure to these model-level analyses.
 It remains a rejected cross-source control. The snapshot API requires the
 exact pressure GRIB bytes and returns a typed source-identity error for ARCO.
 
-The handoff for the remaining #32-C preprocessing is the validated native
-snapshot plus its source-pair provenance. Validated vertical W and any required
-surface or static fields remain prerequisites for #32-D, which owns the
-production-path proof through #30 geometry, #31 interpolation and #76
-composition. This profile covers the six ETEX analyses and five named fields.
+## Native omega decision (#257)
+
+ERA5 Complete parameter 135 in these archives is the material pressure
+tendency `Dp/Dt` in Pa/s. Positive values indicate increasing parcel
+pressure. The sign comes from the ECMWF definition of this pressure
+tendency, with no separate sign key in these records. GRIB2 identifies it as discipline/category/number `0/2/8`. The
+`hybrid` records carry samples on model levels 1–137, from top to bottom.
+Their 138 A/B pairs describe the bounding interfaces. The record count
+and the full-level label do not supply values on those interfaces.
+See [ERA5 Table 12](https://confluence.ecmwf.int/pages/viewpage.action?pageId=611555221)
+and [ECMWF IFS dynamics, §§2.1–2.2](https://www.ecmwf.int/sites/default/files/elibrary/2015/74327-ifs-documentation-cy41r1-part-iii-dynamics-and-numerical-procedures_1.pdf).
+
+The pinned FLEXPART 11.1 reader recognizes W in GRIB2 through category/number
+`2/32` or `128/77`. The GRIB1 parameter-77 alias to internal code 135
+does not apply to these GRIB2 records. The reader places accepted W in
+`wwh(nlev_ec-k+1)` without a sign flip. Other 3-D fields use
+`nlev_ec-k+2`. W slot 1 is the surface, and the full-column reader sets
+the additional top slot `nlev_ec+1` to zero. The transform samples the W
+slots at interface heights, including the zero-height surface, and
+multiplies by `pinmconv = dz/dp` before height interpolation. The negative
+gradient gives the geometric result its positive-upward convention.
+See pinned
+[`windfields_mod.f90`](https://gitlab.phaidra.org/flexpart/flexpart/-/blob/c70586c2b7f5258850705325881c61f557ea9bd8/src/windfields_mod.f90#L2096)
+and
+[`verttransform_mod.f90`](https://gitlab.phaidra.org/flexpart/flexpart/-/blob/c70586c2b7f5258850705325881c61f557ea9bd8/src/verttransform_mod.f90#L1977).
+
+Pristine `flex_extract` 7.1.2 reads raw parameter 135 from `fort.19`
+under `MOMEGA` and copies its values to diagnostic `fort.25`. The
+regular-grid preprocessing profile pinned by #70 instead reads raw
+eta-dot (77) from `fort.21`. With `MDPDETA=1` it applies the hybrid
+pressure scaling and top-to-bottom recurrence at lines 545–557, then
+writes the prepared `ETA` values into `fort.15`. The production
+assembly consumes `fort.15` and writes the raw omega diagnostics
+separately. The chain rule distinguishes the quantities:
+`Dp/Dt = (dp/deta) Deta/Dt + (partial_t + u·grad_eta) p`, where the
+second term includes local and horizontal changes in hybrid pressure
+at fixed eta. The archive therefore supplies neither the verified
+hybrid-coordinate tendency scaled to Pa/s nor the interface placement
+required by the pinned reader. Relabeling or interpolating the 135
+records alone does not establish the handoff. See pinned
+[`calc_etadot.f90`](https://gitlab.phaidra.org/flexpart/flex_extract/-/blob/e0005c99ac81d12faa45a8ff799debbd592b0dc0/Source/Fortran/calc_etadot.f90#L508)
+and
+[`EcFlexpart.py`](https://gitlab.phaidra.org/flexpart/flex_extract/-/blob/e0005c99ac81d12faa45a8ff799debbd592b0dc0/Source/Python/Classes/EcFlexpart.py#L1757).
+
+The typed result is `OmegaHandoff::RequiresPreprocessing`. Inspect
+`ModelLevelsDiagnostic::omega_pa_s()` or the CLI's `omega_pa_s`
+array for the independently checked 65 × 41 × 137 volume. The API
+does not construct a #30 `NativeVerticalMotion` or expose a canonical
+geometric W field. Each result retains the analysis time, raw source and
+request SHA-256, PV identity, binary32 value digest and hash of the
+[decision record](../fixtures/meteorology/era5-etex-native-omega-v1.decision.json).
+The decision pins the source commits, Git blobs, SHA-256 of the canonical
+source bytes and line ranges. The
+#253 snapshot payload still contains the same five canonical fields.
+It fails full advection requirements. #32-D needs independently proven
+interface W, T2m, Td2m and orography, plus temporal and paired production
+evidence. The #70 eta-dot production lock still applies.
 
 ## Run and reproduce
 
@@ -158,12 +210,20 @@ and [six pressure-grid digests](../fixtures/meteorology/era5-etex-native-lnsp-v1
 independently of the Rust normalization. The pressure audit applies Python
 `math.exp` before binary32 rounding and records each raw GRIB message's SHA-256,
 analysis metadata, grid and PV hashes, and pressure extrema. The six grids
-span 74,612.28125–101,580.0703125 Pa. Rust verifies every cell across all six
+span 74,612.28125â€“101,580.0703125 Pa. Rust verifies every cell across all six
 times and all levels by binary32 digest and checks the
 [canonical payload SHA-256](../fixtures/meteorology/era5-etex-native-lnsp-v1.snapshot-digests.json)
 for each time. At the first time it also compares
-the four fields to the checked-in [2 × 2 canonical reference](../fixtures/meteorology/era5-etex-native-v1.json)
+the four fields to the checked-in [2 Ã— 2 canonical reference](../fixtures/meteorology/era5-etex-native-v1.json)
 at all levels and checks both complete PV arrays and reference pressure arrays.
+The [omega evidence](../fixtures/meteorology/era5-etex-native-omega-v1.value-digests.json)
+binds all 822 raw omega messages to the verified #253 grid, PV and
+analysis identities and records binary64 and binary32 digests, samples,
+extrema and sign counts. The six omega volumes contain 2,190,630 samples.
+Rust and the separately executed Python ecCodes audit agree bit-for-bit
+at binary32 precision. The maximum ecCodes binary64 to binary32 rounding
+difference is 1.1920928955078125e-7 Pa/s. Binary32 values range from
+−2.110884428 to +2.703836203 Pa/s, with no missing or nonfinite cells.
 The direct ecCodes payload and PV digests require exact equality. The frozen
 #29 JSON differs from the direct binary32 decode by at most one ULP in the
 four field slices and reference pressure arrays. Sixteen of its A coefficients

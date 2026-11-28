@@ -25,16 +25,37 @@ pub(super) fn section_offset(bytes: &[u8], section: u8) -> usize {
     offset
 }
 
+fn first_omega_offset(bytes: &[u8]) -> usize {
+    bytes
+        .chunks_exact(MESSAGE_BYTES)
+        .position(|frame| {
+            let product = section_offset(frame, 4);
+            frame[product + 9..product + 11] == [2, 8]
+        })
+        .expect("pinned parameter-135 message")
+        * MESSAGE_BYTES
+}
+
 #[test]
 fn test_era5_etex_mutated_grib_keys_rejected() {
-    let original = std::fs::read(SAMPLE).unwrap()[..MESSAGE_BYTES].to_vec();
-    check_message(original.clone()).unwrap();
+    let bytes = std::fs::read(SAMPLE).unwrap();
+    let omega = first_omega_offset(&bytes);
+    for offset in [0, omega] {
+        check_mutated_grib_keys(&bytes[offset..offset + MESSAGE_BYTES]);
+    }
+}
+
+fn check_mutated_grib_keys(original: &[u8]) {
+    check_message(original.to_vec()).unwrap();
     for (section, byte, value, key) in [
         (1, 14, 13, "dataDate"),
         (1, 16, 14, "dataTime"),
         (3, 71, 64, "scanningMode"),
         (3, 69, 0, "jDirectionIncrement"),
         (4, 10, 255, "paramId"),
+        (4, 9, 255, "paramId"),
+        (4, 10, 9, "paramId"), // Geometric vertical velocity in m/s.
+        (4, 22, 119, "typeOfFirstFixedSurface"),
         (4, 27, 138, "level"),
         (4, 6, 21, "NV"),
         (4, 37, 1, "pv SHA-256"),
@@ -42,7 +63,7 @@ fn test_era5_etex_mutated_grib_keys_rejected() {
         (5, 19, 15, "bitsPerValue"),
         (6, 5, 0, "bitmapPresent"),
     ] {
-        let mut changed = original.clone();
+        let mut changed = original.to_vec();
         let offset = section_offset(&changed, section);
         changed[offset + byte] = value;
         let error = check_message(changed).unwrap_err();
@@ -72,7 +93,9 @@ fn test_era5_etex_missing_duplicate_and_corrupt_frames_rejected() {
     bytes[last] = b'X';
     assert!(matches!(decode(bytes.clone()), Err(DecodeError::Frame(_))));
 
-    bytes.truncate(bytes.len() - MESSAGE_BYTES);
+    bytes[last] = b'7';
+    let omega = first_omega_offset(&bytes);
+    bytes.drain(omega..omega + MESSAGE_BYTES);
     assert!(matches!(decode(bytes.clone()), Err(DecodeError::Coverage)));
     bytes.copy_within(..MESSAGE_BYTES, MESSAGE_BYTES);
     assert!(matches!(decode(bytes), Err(DecodeError::Record { .. })));
@@ -95,5 +118,32 @@ fn test_era5_etex_mismatched_source_units_rejected() {
     assert!(matches!(
         validate_parameter(&message, 1, &incompatible_units),
         Err(DecodeError::Key { key: "units", .. })
+    ));
+}
+
+#[test]
+fn test_era5_etex_omega_rejects_nonfinite_values_and_reordered_source() {
+    let mut bytes = std::fs::read(SAMPLE).unwrap();
+    let omega = first_omega_offset(&bytes);
+    let mut frame = bytes[omega..omega + MESSAGE_BYTES].to_vec();
+    let packing = section_offset(&frame, 5);
+    // Simple packing applies 2^E to the coded values. E=1024 overflows binary64.
+    frame[packing + 15..packing + 17].copy_from_slice(&1024_u16.to_be_bytes());
+    assert!(matches!(
+        check_message(frame),
+        Err(DecodeError::Key {
+            key: "valid values",
+            ..
+        })
+    ));
+
+    // Reverse the first two full-level records without changing their bytes.
+    let (first, second) = bytes[omega..omega + 2 * MESSAGE_BYTES].split_at_mut(MESSAGE_BYTES);
+    first.swap_with_slice(second);
+    let scratch = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(scratch.path(), &bytes).unwrap();
+    assert!(matches!(
+        decode_model_levels(scratch.path(), FIRST_TIMES[0].1),
+        Err(DecodeError::SourceIdentity)
     ));
 }

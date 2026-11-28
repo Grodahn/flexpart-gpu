@@ -103,6 +103,10 @@ struct Parameter {
     canonical: Option<FieldId>,
 }
 
+const OMEGA_PARAM_ID: i64 = 135;
+const OMEGA_DECISION: &[u8] =
+    include_bytes!("../../../fixtures/meteorology/era5-etex-native-omega-v1.decision.json");
+
 const PARAMETERS: [Parameter; 5] = [
     Parameter {
         param_id: 131,
@@ -133,7 +137,7 @@ const PARAMETERS: [Parameter; 5] = [
         canonical: Some(FieldId::SpecificHumidity),
     },
     Parameter {
-        param_id: 135,
+        param_id: OMEGA_PARAM_ID,
         category: 2,
         number: 8,
         units: "Pa s**-1",
@@ -152,12 +156,22 @@ struct SourceRequest {
     sha256: String,
 }
 
-/// Four validated native fields for diagnostics when surface pressure is unavailable.
+/// Admission of raw ERA5 omega at the FLEXPART-compatible native W boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum OmegaHandoff {
+    /// Full-level pressure velocity requires a proven preprocessing path to interface W.
+    RequiresPreprocessing,
+}
+
+/// Four validated native fields and a separate raw omega diagnostic.
 /// Its serialization deliberately lacks the top-level canonical Snapshot structure.
 #[derive(Debug, Serialize)]
 pub struct ModelLevelsDiagnostic {
     kind: &'static str,
     model_levels: Snapshot,
+    omega_pa_s: Vec<f32>,
+    omega_handoff: OmegaHandoff,
     provenance: Value,
 }
 
@@ -166,6 +180,26 @@ impl ModelLevelsDiagnostic {
     #[must_use]
     pub fn fields(&self) -> &[Field] {
         &self.model_levels.fields
+    }
+
+    /// Raw full-level pressure velocity in Pa/s, positive toward increasing pressure.
+    ///
+    /// Uses the same X-fastest grid and level ordering as the model-level fields.
+    #[must_use]
+    pub fn omega_pa_s(&self) -> &[f32] {
+        &self.omega_pa_s
+    }
+
+    /// Admission decision for the FLEXPART-compatible native W boundary.
+    #[must_use]
+    pub const fn omega_handoff(&self) -> OmegaHandoff {
+        self.omega_handoff
+    }
+
+    /// Raw source, decoding, and diagnostic volume identities.
+    #[must_use]
+    pub const fn provenance(&self) -> &Value {
+        &self.provenance
     }
 
     /// Native vertical coefficients and schema-v1 reference pressures.
@@ -265,7 +299,12 @@ fn decode_model_analysis(
     if bytes.len() != SOURCE_BYTES || bytes.len() != request.bytes || digest != request.sha256 {
         return Err(DecodeError::SourceIdentity);
     }
-    let model_levels = decode_verified(bytes, date, &times, hhmm, epoch)?;
+    let (model_levels, omega_pa_s) = decode_verified(bytes, date, &times, hhmm, epoch)?;
+    let omega_handoff = OmegaHandoff::RequiresPreprocessing;
+    let mut omega_hash = Sha256::new();
+    for value in &omega_pa_s {
+        omega_hash.update(value.to_le_bytes());
+    }
     let payload = serde_json::to_vec(&model_levels)?;
     // SAFETY: This ecCodes function takes no arguments and returns the linked library version by value.
     let eccodes_api_version = unsafe { eccodes_sys::codes_get_api_version() };
@@ -304,9 +343,20 @@ fn decode_model_analysis(
             "352-degree west edge mapped to -8; rows reversed from north-first to south-first",
             "X-fastest, model level 1 first; earth-relative U/V preserved without sign or unit conversion",
             "ecCodes f64 values and PV narrowed to canonical IEEE-754 f32; no filling, clipping or interpolation",
-            "A+B*101325 and adjacent-interface means are schema reference metadata only",
-            "pressure velocity (135) checked as a source record and omitted from output"
+            "A+B*101325 and adjacent-interface means are schema reference metadata only"
         ],
+        "omega": {
+            "parameter_id": OMEGA_PARAM_ID,
+            "shape": [NX, NY, LEVELS],
+            "unit": "pascal_per_second",
+            "sign": "positive_pressure_increasing",
+            "vertical_reference": VerticalReference::ModelNative,
+            "vertical_staggering": VerticalStaggering::LevelCenter,
+            "epoch": epoch,
+            "handoff": omega_handoff,
+            "decision_sha256": sha256(OMEGA_DECISION),
+            "volume_f32_le_sha256": format!("{:x}", omega_hash.finalize())
+        },
         "payload": {
             "encoding": "serde_json::to_vec(model_levels), compact UTF-8 without newline",
             "bytes": payload.len(),
@@ -316,6 +366,8 @@ fn decode_model_analysis(
     Ok(ModelLevelsDiagnostic {
         kind: "model_levels_only_diagnostic",
         model_levels,
+        omega_pa_s,
+        omega_handoff,
         provenance,
     })
 }
@@ -498,7 +550,7 @@ fn decode_verified(
     times: &[i64; 3],
     hhmm: i64,
     epoch: i64,
-) -> Result<Snapshot, DecodeError> {
+) -> Result<(Snapshot, Vec<f32>), DecodeError> {
     validate_frames(&bytes)?;
     let mut file = CodesFile::new_from_memory(bytes, ProductKind::GRIB)?;
     let mut messages = file.ref_message_iter();
@@ -508,7 +560,7 @@ fn decode_verified(
     while let Some(message) = messages.next()? {
         let (time, parameter, level, values) =
             read_record(&message, seen.len() + 1, date, times, &mut seen, &mut pv)?;
-        if time == hhmm && parameter.canonical.is_some() {
+        if time == hhmm {
             selected.insert((parameter.param_id, level), values);
         }
     }
@@ -525,10 +577,8 @@ fn decode_verified(
         accumulation: None,
     };
     let mut fields = Vec::new();
+    let mut omega_pa_s = Vec::new();
     for parameter in PARAMETERS {
-        let Some(id) = parameter.canonical else {
-            continue;
-        };
         let mut values = Vec::with_capacity(NX * NY * LEVELS);
         for level in 1..=LEVELS {
             let source = selected
@@ -538,6 +588,10 @@ fn decode_verified(
                 values.extend(row.iter().map(|&value| narrow(value)));
             }
         }
+        let Some(id) = parameter.canonical else {
+            omega_pa_s = values;
+            continue;
+        };
         let spec = FIELD_SPECS
             .iter()
             .find(|spec| spec.id == id)
@@ -573,7 +627,9 @@ fn decode_verified(
     // The shared validator checks all present fields and coordinates before
     // reporting the missing hybrid dependency. Never expose this as a Snapshot.
     match snapshot.validate(&Requirements::real_data_native_levels()) {
-        Err(ContractError::MissingRequiredField(FieldId::SurfacePressure)) => Ok(snapshot),
+        Err(ContractError::MissingRequiredField(FieldId::SurfacePressure)) => {
+            Ok((snapshot, omega_pa_s))
+        }
         Err(error) => Err(error.into()),
         Ok(()) => Err(DecodeError::SurfacePressureUnavailable),
     }

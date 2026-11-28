@@ -21,7 +21,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends libeccodes-dev libclang-dev pkg-config python3-eccodes python3-numpy
           rustc -vV
           pkg-config --modversion eccodes
-      - name: Recompute model and surface-pressure digests from checked-in GRIB
+      - name: Recompute model, omega and surface-pressure digests from checked-in GRIB
         run: |
           /usr/bin/python3 -I -m unittest discover -s scripts/etex -p test_retrieve_etex_lnsp.py
           /usr/bin/python3 -I -m unittest discover -s scripts/fixtures -p test_era5_etex_native_values.py

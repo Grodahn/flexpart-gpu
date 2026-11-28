@@ -141,8 +141,10 @@ fn main(@builtin(local_invocation_index) lane: u32) {
             || ledger.age_exit[species] != 0.0 || ledger.min_mass_exit[species] != 0.0
             || ledger.age_and_mass_exit[species] != 0.0
             || !closes(ledger.airborne[species], step.before[species], ledger.airborne[species])
-            || !closes(step.before[species] + step.release[species], step.sample[species], step.release[species])
-            || !closes(step.sample[species], step.airborne[species] + step.exit[species], step.exit[species])
+            || !closes(step.release[species], step.sample[species] - step.before[species], step.release[species])
+            || step.exit[species] > step.sample[species]
+            || (step.exit[species] == step.sample[species] && step.airborne[species] != 0.0)
+            || !closes(step.exit[species], step.sample[species] - step.airborne[species], step.exit[species])
             || !closes(injected[species], accounted[species], injected[species])) {
             reject(3u, species); return;
         }

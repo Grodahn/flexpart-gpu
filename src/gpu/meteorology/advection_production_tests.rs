@@ -1511,6 +1511,7 @@ fn test_forward_mass_ledger_production() {
                 "negative",
                 "double_debit",
                 "duplicate",
+                "unresolved_transfer",
             ]
             .map(|name| (name, None)),
         )
@@ -1534,6 +1535,10 @@ fn test_forward_mass_ledger_production() {
             "injection" | "duplicate" => vec![
                 make_release(0, 6.25, [12.0, 0.0], species),
                 make_release(1, 6.25, [4.0, 0.0], species),
+            ],
+            "unresolved_transfer" => vec![
+                make_release(0, 6.25, [100_000_000.0, 0.0], species),
+                make_release(1, 6.25, [1.0, 0.0], species),
             ],
             "combined" => vec![
                 make_release(0, 6.25, [12.1, 8.2], species),
@@ -1655,7 +1660,8 @@ fn test_forward_mass_ledger_production() {
                 _ => None,
             };
             let duplicate = variant == "duplicate" && index == 1;
-            if fault.is_some() || duplicate {
+            let unresolved = variant == "unresolved_transfer" && index == 1;
+            if fault.is_some() || duplicate || unresolved {
                 let before = pollster::block_on(driver.test_raw_particles());
                 if duplicate {
                     driver.test_reset_release_slot();
@@ -1667,11 +1673,10 @@ fn test_forward_mass_ledger_production() {
                     |error| error,
                     |_| pollster::block_on(driver.finalize()).unwrap_err(),
                 );
+                let expected_code = if unresolved { 3 } else { 2 };
                 assert!(
-                    matches!(
-                        status,
-                        crate::simulation::TimeLoopError::MassLedgerRejected { code: 2, .. }
-                    ),
+                    matches!(status, crate::simulation::TimeLoopError::MassLedgerRejected { code, .. }
+                    if code == expected_code),
                     "{variant}: {status}"
                 );
                 assert!(pollster::block_on(driver.download_mass_ledger_step()).is_err());

@@ -6,6 +6,7 @@
   LAT = 3.5,
   Z1 = 1.0,
   Z2 = 1.0,
+  VERTICAL_REF = 'agl',
   MASS = 10.0,
   PARTICLES = 120
 /

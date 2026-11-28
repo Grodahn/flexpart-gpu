@@ -15,7 +15,6 @@
 
 use std::collections::BTreeMap;
 
-use flexpart_gpu::config::ReleaseConfig;
 use flexpart_gpu::coords::GridDomain;
 use flexpart_gpu::gpu::{
     advect_particles_gpu, compute_hanna_params_gpu, GpuContext, GpuError, ParticleBuffers,
@@ -28,6 +27,7 @@ use flexpart_gpu::particles::{Particle, ParticleInit, MAX_SPECIES};
 use flexpart_gpu::physics::{
     advect_particles_cpu, compute_hanna_params_from_pbl, VelocityToGridScale,
 };
+use flexpart_gpu::release::LegacyReleaseConfig;
 use flexpart_gpu::simulation::{
     ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket, TimeLoopError,
 };
@@ -426,7 +426,7 @@ fn cpu_gpu_full_pipeline_timeloop() {
     };
 
     let particle_count = 100;
-    let releases = vec![ReleaseConfig {
+    let releases = vec![LegacyReleaseConfig {
         name: "comparison_source".to_string(),
         start_time: "20240101000000".to_string(),
         end_time: "20240101000000".to_string(),
@@ -450,7 +450,7 @@ fn cpu_gpu_full_pipeline_timeloop() {
 
     let capacity = particle_count + 128;
 
-    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new(
+    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
         config.clone(),
         &releases,
         release_grid,
@@ -550,7 +550,7 @@ fn gpu_pipeline_is_deterministic_across_runs() {
             ..ForwardTimeLoopConfig::default()
         };
 
-        let releases = vec![ReleaseConfig {
+        let releases = vec![LegacyReleaseConfig {
             name: "determinism_test".to_string(),
             start_time: "20240101000000".to_string(),
             end_time: "20240101000000".to_string(),
@@ -572,7 +572,7 @@ fn gpu_pipeline_is_deterministic_across_runs() {
             ny: NY,
         };
 
-        let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new(
+        let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
             config,
             &releases,
             release_grid,

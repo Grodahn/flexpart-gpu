@@ -124,7 +124,8 @@ impl SpeciesConfig {
         Ok(species)
     }
 
-    fn from_file(path: &Path) -> Result<Self, ConfigError> {
+    /// Load a single species with the same normalization used by the run species table.
+    pub fn from_file(path: &Path) -> Result<Self, ConfigError> {
         let file_text = read_text_file(path)?;
         let context = format!("SPECIES ({})", path.display());
         // Oracle files use `&SPECIES_PARAMS ... /` (see `readspecies` in

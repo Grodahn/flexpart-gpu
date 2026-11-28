@@ -440,7 +440,7 @@ fn test_canonical_forward_backward_preparation_reuse_transition_and_resident_exe
         nx: 2,
         ny: 2,
     };
-    let mut forward = pollster::block_on(ForwardTimeLoopDriver::new(
+    let mut forward = pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
         ForwardTimeLoopConfig {
             start_timestamp: "20240101000002".into(),
             end_timestamp: "20240101000003".into(),

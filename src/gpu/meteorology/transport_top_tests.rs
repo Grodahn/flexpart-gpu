@@ -196,7 +196,7 @@ fn test_transport_top_pinned_production_driver_matrix() {
         let runtimes = snapshots
             .each_ref()
             .map(|s| runtime(s, "#198 explicit normalized zero-omega preparation"));
-        let releases = [ReleaseConfig {
+        let releases = [LegacyReleaseConfig {
             name: "transport-top".into(),
             start_time: start.clone(),
             end_time: start.clone(),
@@ -216,7 +216,7 @@ fn test_transport_top_pinned_production_driver_matrix() {
             ..crate::physics::VelocityToGridScale::IDENTITY
         };
         let mut forward = (direction == 1).then(|| {
-            pollster::block_on(ForwardTimeLoopDriver::new(
+            pollster::block_on(ForwardTimeLoopDriver::new_legacy_test_sources(
                 ForwardTimeLoopConfig {
                     transport_settling: Some(gas_settling(if flagged { 1 } else { 2 })),
                     start_timestamp: start.clone(),

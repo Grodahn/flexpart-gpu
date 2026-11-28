@@ -13,10 +13,10 @@ use super::advection_production_tests::{
 };
 use super::snapshot_hash;
 use crate::{
-    config::ReleaseConfig,
     coords::GridDomain,
     gpu::GpuAdapterEvidence,
     particles::{Particle, MAX_SPECIES},
+    release::LegacyReleaseConfig,
     simulation::{
         BackwardReceptorConfig, BackwardTimeLoopConfig, BackwardTimeLoopDriver,
         CanonicalMeteorologySlot, ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver,
@@ -241,7 +241,7 @@ fn test_production_deposition_consumes_coefficients_on_canonical_transaction() {
                     dry_reference_height_m: HREF_M,
                     ..ForwardTimeLoopConfig::default()
                 };
-                let releases = vec![ReleaseConfig {
+                let releases = vec![LegacyReleaseConfig {
                     name: "probe".into(),
                     start_time: "20240101000000".into(),
                     end_time: "20240101000000".into(),
@@ -254,13 +254,14 @@ fn test_production_deposition_consumes_coefficients_on_canonical_transaction() {
                     species_masses_kg: None,
                     raw: BTreeMap::new(),
                 }];
-                let mut driver = pollster::block_on(ForwardTimeLoopDriver::new(
-                    config,
-                    &releases,
-                    grid.clone(),
-                    CAPACITY,
-                ))
-                .expect("required forward WGSL adapter");
+                let mut driver =
+                    pollster::block_on(ForwardTimeLoopDriver::new_legacy_test_sources(
+                        config,
+                        &releases,
+                        grid.clone(),
+                        CAPACITY,
+                    ))
+                    .expect("required forward WGSL adapter");
                 driver.test_set_active_prefix(ACTIVE);
                 let prepared = driver
                     .prepare_canonical_meteorology(

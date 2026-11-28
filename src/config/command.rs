@@ -5,7 +5,7 @@ use std::path::Path;
 
 use super::error::ConfigError;
 use super::parsing::{
-    extract_namelist_sections, extract_timestamp, parse_assignments, parse_optional_u64,
+    extract_namelist_sections, extract_timestamp, parse_command_assignments, parse_optional_u64,
     read_text_file, ConfigMap,
 };
 
@@ -38,7 +38,7 @@ impl CommandConfig {
             context: context.clone(),
             message: "expected `&COMMAND ... /` section".to_string(),
         })?;
-        let raw = parse_assignments(section).map_err(|message| ConfigError::Parse {
+        let raw = parse_command_assignments(section).map_err(|message| ConfigError::Parse {
             context: context.clone(),
             message,
         })?;
@@ -75,6 +75,29 @@ impl CommandConfig {
         };
         config.validate()?;
         Ok(config)
+    }
+
+    pub(super) fn validate_forward_release_mass_mode(
+        &self,
+        native: bool,
+    ) -> Result<(), ConfigError> {
+        if native && !self.raw.contains_key("ldirect") {
+            return Err(ConfigError::Validation {
+                message: "native RELEASES require COMMAND LDIRECT=1".to_owned(),
+            });
+        }
+        for key in ["ldirect", "ind_source"] {
+            if let Some(value) = self.raw.get(key) {
+                if value.parse::<i32>() != Ok(1) {
+                    return Err(ConfigError::Validation {
+                        message: format!(
+                            "forward mass releases require COMMAND {key}=1, got `{value}`"
+                        ),
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Reject reversed chronology and zero output/synchronization intervals.

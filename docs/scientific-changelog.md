@@ -3,6 +3,16 @@
 Track physics-affecting changes to flexpart-gpu. Every PR that modifies
 shaders, physics kernels, or advection logic must add an entry here.
 
+## ReleaseSpec v1 (#26)
+
+Forward release inputs preserve UTC endpoints, explicit geographic and height
+semantics, and identified kg inventories before particle initialization.
+Compared with the pinned FLEXPART namelist reader, the canonical adapter
+requires explicit height reference, positive particle count, unambiguous mass
+and species fields, and preserves the declared interval without FLEXPART's
+run-window clipping or short-window collapse. See the
+[RELEASES crosswalk](release-spec.md#pinned-flexpart-111-crosswalk).
+
 ## Format
 
 ```

@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 
-use flexpart_gpu::config::ReleaseConfig;
 use flexpart_gpu::coords::GridDomain;
 use flexpart_gpu::gpu::GpuError;
 use flexpart_gpu::io::TimeBoundsBehavior;
 use flexpart_gpu::particles::ParticleStore;
 use flexpart_gpu::physics::VelocityToGridScale;
+use flexpart_gpu::release::LegacyReleaseConfig;
 use flexpart_gpu::simulation::{
     BackwardReceptorConfig, BackwardSourceCollection, BackwardSourceRegionConfig,
     BackwardTimeLoopConfig, BackwardTimeLoopDriver, ForwardStepForcing, ForwardTimeLoopConfig,
@@ -192,8 +192,8 @@ impl SourceReceptorConsistencyHarness {
         }
     }
 
-    fn forward_releases() -> Vec<ReleaseConfig> {
-        vec![ReleaseConfig {
+    fn forward_releases() -> Vec<LegacyReleaseConfig> {
+        vec![LegacyReleaseConfig {
             name: "source_release".to_string(),
             start_time: "20240101000000".to_string(),
             end_time: "20240101000000".to_string(),
@@ -275,7 +275,7 @@ impl SourceReceptorConsistencyHarness {
         let met = self.shared_met(&wind_t0, &wind_t1, &surface_t0, &surface_t1);
         let forcing = ForwardStepForcing::default();
 
-        let mut forward_driver = pollster::block_on(ForwardTimeLoopDriver::new(
+        let mut forward_driver = pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
             Self::forward_config(),
             &Self::forward_releases(),
             self.release_grid.clone(),

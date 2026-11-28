@@ -24,6 +24,7 @@ mod test_support;
 pub use command::CommandConfig;
 pub use error::ConfigError;
 pub use output::OutputGridConfig;
+pub(crate) use release::resolve_flexpart_species;
 pub use release::ReleaseConfig;
 pub use simulation::SimulationConfig;
 pub use species::{SpeciesConfig, SpeciesKind};

@@ -15,11 +15,11 @@
 
 use std::collections::BTreeMap;
 
-use flexpart_gpu::config::ReleaseConfig;
 use flexpart_gpu::coords::GridDomain;
 use flexpart_gpu::gpu::GpuError;
 use flexpart_gpu::io::TimeBoundsBehavior;
 use flexpart_gpu::physics::VelocityToGridScale;
+use flexpart_gpu::release::LegacyReleaseConfig;
 use flexpart_gpu::simulation::{
     ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket, TimeLoopError,
 };
@@ -129,7 +129,7 @@ fn physics_validation_advection_turbulence_pbl() {
         ny: NY,
     };
 
-    let releases = vec![ReleaseConfig {
+    let releases = vec![LegacyReleaseConfig {
         name: "validation".to_string(),
         start_time: "20240101000000".to_string(),
         end_time: "20240101000000".to_string(),
@@ -158,7 +158,7 @@ fn physics_validation_advection_turbulence_pbl() {
         ..ForwardTimeLoopConfig::default()
     };
 
-    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new(
+    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
         config,
         &releases,
         release_grid,

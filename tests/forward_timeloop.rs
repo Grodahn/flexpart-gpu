@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use flexpart_gpu::config::ReleaseConfig;
 use flexpart_gpu::coords::GridDomain;
 use flexpart_gpu::gpu::GpuError;
 use flexpart_gpu::io::TimeBoundsBehavior;
@@ -8,6 +7,7 @@ use flexpart_gpu::particles::{
     ParticleSpatialSortOptions, SpatialSortBounds, SpatialSortBoundsMode,
 };
 use flexpart_gpu::physics::VelocityToGridScale;
+use flexpart_gpu::release::LegacyReleaseConfig;
 use flexpart_gpu::simulation::{
     ForwardSpatialSortConfig, ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver,
     MetTimeBracket, TimeLoopError,
@@ -72,7 +72,7 @@ fn test_forward_timeloop_synthetic_uniform_wind_is_deterministic() {
         ..ForwardTimeLoopConfig::default()
     };
 
-    let releases = vec![ReleaseConfig {
+    let releases = vec![LegacyReleaseConfig {
         name: "synthetic_point".to_string(),
         start_time: "20240101000000".to_string(),
         end_time: "20240101000000".to_string(),
@@ -94,7 +94,7 @@ fn test_forward_timeloop_synthetic_uniform_wind_is_deterministic() {
         ny: 64,
     };
 
-    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new(
+    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
         config,
         &releases,
         release_grid,
@@ -214,7 +214,7 @@ fn test_forward_timeloop_optional_spatial_sort_reorders_particle_slots() {
     };
 
     let releases = vec![
-        ReleaseConfig {
+        LegacyReleaseConfig {
             name: "high_x".to_string(),
             start_time: "20240101000000".to_string(),
             end_time: "20240101000000".to_string(),
@@ -227,7 +227,7 @@ fn test_forward_timeloop_optional_spatial_sort_reorders_particle_slots() {
             species_masses_kg: None,
             raw: BTreeMap::new(),
         },
-        ReleaseConfig {
+        LegacyReleaseConfig {
             name: "low_x".to_string(),
             start_time: "20240101000000".to_string(),
             end_time: "20240101000000".to_string(),
@@ -250,7 +250,7 @@ fn test_forward_timeloop_optional_spatial_sort_reorders_particle_slots() {
         ny: 64,
     };
 
-    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new(
+    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
         config,
         &releases,
         release_grid,
@@ -404,7 +404,7 @@ fn check_transport_deposition_prefix(particle_count: usize, wet_coefficient_s_in
     let _ = env_logger::builder().is_test(true).try_init();
     use flexpart_gpu::simulation::ParticleForcingField;
 
-    let releases = vec![ReleaseConfig {
+    let releases = vec![LegacyReleaseConfig {
         name: "order_probe".to_string(),
         start_time: "20240101000000".to_string(),
         end_time: "20240101000000".to_string(),
@@ -433,8 +433,10 @@ fn check_transport_deposition_prefix(particle_count: usize, wet_coefficient_s_in
         ..ForwardTimeLoopConfig::default()
     };
     // Required regression: missing device execution must fail, never become a successful skip.
-    let mut driver = pollster::block_on(ForwardTimeLoopDriver::new(config, &releases, grid, 8))
-        .expect("order regression requires a WGSL adapter");
+    let mut driver = pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
+        config, &releases, grid, 8,
+    ))
+    .expect("order regression requires a WGSL adapter");
     let start = driver.current_time_seconds();
     let wind_grid = synthetic_wind_grid(64, 64, 64);
     let still = uniform_wind_field(&wind_grid, 0.0, 0.0, 0.0);
@@ -535,7 +537,7 @@ fn test_forward_timeloop_deferred_readback_preserves_gpu_output_and_cached_host_
         collect_deposition_probabilities_each_step: false,
         ..ForwardTimeLoopConfig::default()
     };
-    let releases = vec![ReleaseConfig {
+    let releases = vec![LegacyReleaseConfig {
         name: "deferred".to_string(),
         start_time: "20240101000000".to_string(),
         end_time: "20240101000000".to_string(),
@@ -556,8 +558,10 @@ fn test_forward_timeloop_deferred_readback_preserves_gpu_output_and_cached_host_
         nx: 64,
         ny: 64,
     };
-    let mut driver = pollster::block_on(ForwardTimeLoopDriver::new(config, &releases, grid, 8))
-        .expect("deferred output regression requires a WGSL adapter");
+    let mut driver = pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
+        config, &releases, grid, 8,
+    ))
+    .expect("deferred output regression requires a WGSL adapter");
     let start = driver.current_time_seconds();
     let wind = uniform_wind_field(&synthetic_wind_grid(64, 64, 16), 1.0, 0.0, 0.0);
     let surface = synthetic_surface_fields(64, 64);
@@ -616,7 +620,7 @@ fn test_forward_timeloop_preparation_errors_preserve_release_and_retry_state() {
         time_bounds_behavior: TimeBoundsBehavior::Strict,
         ..ForwardTimeLoopConfig::default()
     };
-    let releases = vec![ReleaseConfig {
+    let releases = vec![LegacyReleaseConfig {
         name: "error_retry".to_string(),
         start_time: config.start_timestamp.clone(),
         end_time: config.end_timestamp.clone(),
@@ -637,8 +641,10 @@ fn test_forward_timeloop_preparation_errors_preserve_release_and_retry_state() {
         nx: 64,
         ny: 64,
     };
-    let mut driver = pollster::block_on(ForwardTimeLoopDriver::new(config, &releases, grid, 8))
-        .expect("error/retry regression requires a WGSL adapter");
+    let mut driver = pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
+        config, &releases, grid, 8,
+    ))
+    .expect("error/retry regression requires a WGSL adapter");
     let start = driver.current_time_seconds();
     let wind = uniform_wind_field(&synthetic_wind_grid(64, 64, 16), 0.0, 0.0, 0.0);
     let surface = synthetic_surface_fields(64, 64);

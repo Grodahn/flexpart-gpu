@@ -9,7 +9,6 @@
 use super::*;
 use crate::gpu::{shared_height::*, shared_height_w::*};
 use crate::{
-    config::ReleaseConfig,
     coords::GridDomain,
     gpu::GpuAdapterEvidence,
     meteorology::{
@@ -20,6 +19,7 @@ use crate::{
         },
         TemporalKind,
     },
+    release::LegacyReleaseConfig,
     simulation::{
         BackwardReceptorConfig, BackwardTimeLoopConfig, BackwardTimeLoopDriver,
         CanonicalMeteorologyBracket, CanonicalMeteorologySlot, ForwardStepForcing,
@@ -344,7 +344,7 @@ fn test_production_forward_backward_resident_petterssen_atomicity() {
                                 timestep_seconds: 1,
                                 ..ForwardTimeLoopConfig::default()
                             };
-                            let mut releases = vec![ReleaseConfig {
+                            let mut releases = vec![LegacyReleaseConfig {
                                 name: "probe".into(),
                                 start_time: "20240101000000".into(),
                                 end_time: "20240101000000".into(),
@@ -366,10 +366,11 @@ fn test_production_forward_backward_resident_petterssen_atomicity() {
                                 releases[0].mass_kg = 1.0 / count as f64;
                                 releases.push(unaffected);
                             }
-                            let mut driver = pollster::block_on(ForwardTimeLoopDriver::new(
-                                config, &releases, grid, 130,
-                            ))
-                            .expect("required forward WGSL adapter");
+                            let mut driver =
+                                pollster::block_on(ForwardTimeLoopDriver::new_legacy_test_sources(
+                                    config, &releases, grid, 130,
+                                ))
+                                .expect("required forward WGSL adapter");
                             driver.test_set_active_prefix(count);
                             let prepared = driver
                                 .prepare_canonical_meteorology(
@@ -628,7 +629,7 @@ fn test_forward_interior_time_deferred_failure_and_top_boundary() {
     surface.mixing_height_m.fill(1000.0);
     let releases: Vec<_> = ["20240101000001", "20240101000002"]
         .into_iter()
-        .map(|time| ReleaseConfig {
+        .map(|time| LegacyReleaseConfig {
             name: time.into(),
             start_time: time.into(),
             end_time: time.into(),
@@ -674,7 +675,7 @@ fn test_forward_interior_time_deferred_failure_and_top_boundary() {
             collect_deposition_probabilities_each_step: false,
             ..ForwardTimeLoopConfig::default()
         };
-        let mut driver = pollster::block_on(ForwardTimeLoopDriver::new(
+        let mut driver = pollster::block_on(ForwardTimeLoopDriver::new_legacy_test_sources(
             config,
             &releases,
             grid.clone(),
@@ -868,7 +869,7 @@ fn test_shared_vector_real_drivers_oracle_replay_and_reuse() {
         let heights = [2_684.168_945_312_5, 7_789.012_695_312_5];
         let releases: Vec<_> = heights
             .into_iter()
-            .map(|z| ReleaseConfig {
+            .map(|z| LegacyReleaseConfig {
                 name: format!("height-{z}"),
                 start_time: start.clone(),
                 end_time: start.clone(),
@@ -886,7 +887,7 @@ fn test_shared_vector_real_drivers_oracle_replay_and_reuse() {
             None
         } else {
             Some(
-                pollster::block_on(ForwardTimeLoopDriver::new(
+                pollster::block_on(ForwardTimeLoopDriver::new_legacy_test_sources(
                     ForwardTimeLoopConfig {
                         transport_settling: Some(gas_settling(1)),
                         start_timestamp: start.clone(),
@@ -1199,7 +1200,7 @@ fn test_shared_vector_driver_preparation_failures() {
                 "predictor-crossing" | "corrector-crossing" => top - 0.25,
                 _ => 100.0,
             };
-            let releases = [ReleaseConfig {
+            let releases = [LegacyReleaseConfig {
                 name: "fault".into(),
                 start_time: start.into(),
                 end_time: start.into(),
@@ -1216,7 +1217,7 @@ fn test_shared_vector_driver_preparation_failures() {
                 None
             } else {
                 Some(
-                    pollster::block_on(ForwardTimeLoopDriver::new(
+                    pollster::block_on(ForwardTimeLoopDriver::new_legacy_test_sources(
                         ForwardTimeLoopConfig {
                             transport_settling: Some(gas_settling(1)),
                             start_timestamp: start.into(),
@@ -1516,22 +1517,25 @@ fn test_forward_mass_ledger_production() {
             .map(|name| (name, None)),
         )
     {
-        let make_release = |stamp: usize, lon, mass: [f64; 2], species| ReleaseConfig {
-            name: format!("{stamp}-{lon}"),
-            start_time: STAMPS[stamp].into(),
-            end_time: STAMPS[stamp].into(),
-            lon,
-            lat: 50.25,
-            z_min: 100.0,
-            z_max: 100.0,
-            mass_kg: mass[..species].iter().sum(),
-            particle_count: 1,
-            species_masses_kg: Some(mass[..species].to_vec()),
-            raw: BTreeMap::new(),
-        };
         let species = if variant == "combined" { 2 } else { 1 };
+        let mut transport = gas_settling(species);
+        for carrier in &mut transport.species {
+            carrier.particle_density_kg_m3 = None;
+        }
+        let species_table = transport.species.clone();
+        let make_release = |stamp: usize, lon, mass: [f64; 2], species| {
+            let masses = mass[..species]
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(
+                "ID={stamp}-{lon},START={time},END={time},LON={lon},LAT=50.25,Z1=100,Z2=100,VERTICAL_REF=agl,PARTICLES=1,MASS_SPECIES='{masses}'",
+                time = STAMPS[stamp],
+            )
+        };
         let last = if variant == "combined" { 3 } else { 1 };
-        let releases = match variant {
+        let release_lines = match variant {
             "injection" | "duplicate" => vec![
                 make_release(0, 6.25, [12.0, 0.0], species),
                 make_release(1, 6.25, [4.0, 0.0], species),
@@ -1555,6 +1559,14 @@ fn test_forward_mass_ledger_production() {
                 make_release(0, 7.70, [3.0, 0.0], species),
             ],
         };
+        let declarations = crate::config::ReleaseConfig::parse_many(
+            &release_lines.join("\n"),
+            std::path::Path::new("forward-mass-ledger/RELEASES"),
+        )
+        .unwrap();
+        let releases =
+            crate::config::ReleaseConfig::normalize_forward_mass(&declarations, &species_table)
+                .unwrap();
         let mut s0 = analytic_snapshot(START_SECONDS, false);
         if variant == "corrector_exit" {
             for field in s0
@@ -1582,7 +1594,7 @@ fn test_forward_mass_ledger_production() {
             ny: 4,
         };
         let config = ForwardTimeLoopConfig {
-            transport_settling: Some(gas_settling(species)),
+            transport_settling: Some(transport),
             start_timestamp: STAMPS[0].into(),
             end_timestamp: STAMPS[last].into(),
             timestep_seconds: 60,
@@ -1596,9 +1608,14 @@ fn test_forward_mass_ledger_production() {
             collect_deposition_probabilities_each_step: false,
             ..Default::default()
         };
-        let mut driver =
-            pollster::block_on(ForwardTimeLoopDriver::new(config, &releases, grid, 130))
-                .expect("required production WGSL adapter");
+        let mut driver = pollster::block_on(ForwardTimeLoopDriver::new(
+            config,
+            &releases,
+            &species_table,
+            grid,
+            130,
+        ))
+        .expect("required production WGSL adapter");
         let mut slot = CanonicalMeteorologySlot::default();
         let prepared = driver
             .prepare_canonical_meteorology(

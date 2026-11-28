@@ -1,5 +1,8 @@
 //! Freeze public configuration behavior before the issue #129 structural split.
 
+#[path = "config_contract/release_spec.rs"]
+mod release_spec;
+
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -10,7 +13,7 @@ use flexpart_gpu::config::{
 use serde::{de::DeserializeOwned, Serialize};
 
 const COMMAND: &str = "&COMMAND IBDATE=20240101, IEDATE=20240102 /";
-const RELEASE: &str = "START=20240101, END=20240102, LON=7, LAT=46";
+const RELEASE: &str = "START=20240101, END=20240102, LON=7, LAT=46,Z1=0,Z2=0,VERTICAL_REF=agl,MASS_KG=1,PARTICLES=5,SPECIES=tracer";
 const GRID: &str = "LON_MIN=5,LON_MAX=15,LAT_MIN=40,LAT_MAX=50,NX=100,NY=50,NZ=1,DZ=100";
 
 fn record<T: Serialize + DeserializeOwned>(
@@ -39,12 +42,15 @@ fn record<T: Serialize + DeserializeOwned>(
 fn simulation() -> SimulationConfig {
     let directory = tempfile::tempdir().expect("species directory");
     std::fs::write(directory.path().join("tracer.spec"), "NAME=tracer").expect("species");
+    let species = SpeciesConfig::load_dir(directory.path()).expect("species");
+    let releases = ReleaseConfig::parse_many(RELEASE, Path::new("RELEASES")).expect("release");
     SimulationConfig {
         version: None,
         command: CommandConfig::parse(COMMAND, Path::new("COMMAND")).expect("command"),
-        releases: ReleaseConfig::parse_many(RELEASE, Path::new("RELEASES")).expect("release"),
+        releases: ReleaseConfig::normalize_forward_mass(&releases, &species)
+            .expect("normalized release"),
         outgrid: OutputGridConfig::parse(GRID, Path::new("OUTGRID")).expect("grid"),
-        species: SpeciesConfig::load_dir(directory.path()).expect("species"),
+        species,
     }
 }
 
@@ -92,29 +98,6 @@ fn test_config_public_facade_matches_pre_decomposition_behavior() {
                 Path::new("COMMAND"),
             ),
         );
-    }
-    for (label, input) in [
-        ("defaults", RELEASE.to_string()),
-        ("height_default", format!("{RELEASE},Z1=20")),
-        ("aliases", "RELEASE_NAME=stack,START_TIME=20240101,END_TIME=20240102,LONGITUDE=7,LATITUDE=46,Z_BOTTOM=10,Z_TOP=20,XMASS=2,NPART=5,SPECIES_MASS='1, 2'".into()),
-        ("explicit", format!("{RELEASE},NAME=stack,Z_MIN=10,Z_MAX=20,MASS_KG=2,PARTICLE_COUNT=5,MASS_SPECIES='1 2'")),
-        ("precedence", format!("{RELEASE},NAME=first,ID=second,Z_MIN=10,Z1=99,MASS_KG=2,MASS=0,PARTICLE_COUNT=5,NPART=0")),
-        ("blocks", format!("&RELEASE {RELEASE} /\n&RELEASE {RELEASE} /")),
-        ("lines", format!("{RELEASE}\n# comment\n{RELEASE}")),
-        ("empty", "".into()),
-        ("reversed", "START=20240102,END=20240101,LON=7,LAT=46".into()),
-        ("bad_lon", "START=20240101,END=20240102,LON=181,LAT=46".into()),
-        ("bad_lat", "START=20240101,END=20240102,LON=7,LAT=91".into()),
-        ("bad_height", format!("{RELEASE},Z1=10,Z2=0")),
-        ("zero_mass", format!("{RELEASE},MASS=0")),
-        ("zero_particles", format!("{RELEASE},PARTICLES=0")),
-        ("too_many_masses", format!("{RELEASE},MASS_SPECIES='1,2,3,4,5'")),
-        ("negative_masses", format!("{RELEASE},MASS_SPECIES='1,-1'")),
-        ("nan_masses", format!("{RELEASE},MASS_SPECIES='NaN'")),
-        ("zero_masses", format!("{RELEASE},MASS_SPECIES='0,0'")),
-        ("invalid_masses", format!("{RELEASE},MASS_SPECIES='abc'")),
-    ] {
-        record(&mut records, &format!("release/{label}"), ReleaseConfig::parse_many(&input, Path::new("RELEASES")));
     }
     for (label, input) in [
         ("defaults", GRID.to_string()),
@@ -190,34 +173,27 @@ fn test_config_public_facade_matches_pre_decomposition_behavior() {
         }
     }
     let original = simulation();
-    record(&mut records, "simulation/legacy", Ok(original.clone()));
-    for (label, mutate) in [
-        (
-            "versioned",
-            (|c: &mut SimulationConfig| c.version = Some(1)) as fn(&mut SimulationConfig),
-        ),
-        ("future", |c| c.version = Some(2)),
-        ("empty_releases", |c| c.releases.clear()),
-        ("too_many_species", |c| {
-            c.species = vec![c.species[0].clone(); 5]
-        }),
-        ("mass_cardinality", |c| {
-            c.releases[0].species_masses_kg = Some(vec![1.0, 2.0])
-        }),
-        ("validation_order", |c| {
-            c.version = Some(2);
-            c.command.start_time = "9999".into();
-            c.releases.clear();
-        }),
-    ] {
-        let mut config = original.clone();
-        mutate(&mut config);
-        record(
-            &mut records,
-            &format!("simulation/{label}"),
-            config.validate().map(|()| config),
-        );
-    }
+    original.validate().expect("valid aggregate");
+    let mut invalid = original.clone();
+    invalid.version = Some(2);
+    invalid.releases.clear();
+    assert!(invalid
+        .validate()
+        .unwrap_err()
+        .to_string()
+        .contains("unsupported version"));
+    invalid.version = Some(1);
+    assert!(invalid
+        .validate()
+        .unwrap_err()
+        .to_string()
+        .contains("at least one release"));
+    invalid.releases.clone_from(&original.releases);
+    invalid.species = vec![invalid.species[0].clone(); 5];
+    assert!(invalid.validate().is_err());
+    invalid.species = original.species.clone();
+    invalid.species[0].name = "different".into();
+    assert!(invalid.validate().is_err());
     let mut legacy = serde_json::to_value(&original).expect("legacy document");
     legacy
         .as_object_mut()
@@ -230,11 +206,13 @@ fn test_config_public_facade_matches_pre_decomposition_behavior() {
     let decoded: SimulationConfig =
         serde_json::from_value(legacy).expect("omitted legacy versions");
     assert_eq!(decoded, original);
-    let snapshot = serde_json::to_string_pretty(&records).expect("transcript") + "\n";
-    assert_eq!(
-        snapshot,
-        include_str!("fixtures/config-behavior-v1.json").replace("\r\n", "\n")
-    );
+    let mut expected: BTreeMap<String, String> =
+        serde_json::from_str(include_str!("fixtures/config-behavior-v1.json")).expect("transcript");
+    expected.retain(|key, _| !key.starts_with("release/") && !key.starts_with("simulation/"));
+    assert_eq!(records.len(), expected.len());
+    for (label, value) in records {
+        assert_eq!(Some(&value), expected.get(&label), "{label}");
+    }
 }
 
 #[test]
@@ -242,7 +220,10 @@ fn test_config_file_loading_preserves_order_defaults_and_missing_paths() {
     let base = tempfile::tempdir().expect("configuration directory");
     let files = [
         ("COMMAND", COMMAND),
-        ("RELEASES", RELEASE),
+        (
+            "RELEASES",
+            &RELEASE.replace("SPECIES=tracer", "SPECIES=second"),
+        ),
         ("OUTGRID", GRID),
     ];
     for (name, content) in files {
@@ -273,7 +254,8 @@ fn test_config_file_loading_preserves_order_defaults_and_missing_paths() {
             .collect::<Vec<_>>(),
         ["first", "second"]
     );
-    assert_eq!(config.releases[0], simulation().releases[0]);
+    assert_eq!(config.releases[0].inventories[0].species_id, "second");
+    assert_eq!(config.releases[0].inventories[0].mass_slot, 1);
     assert_eq!(config.command, simulation().command);
     assert_eq!(config.outgrid, simulation().outgrid);
     assert!(

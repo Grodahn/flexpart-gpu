@@ -4,13 +4,13 @@ use std::path::{Path, PathBuf};
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-use flexpart_gpu::config::ReleaseConfig;
 use flexpart_gpu::coords::GridDomain;
 use flexpart_gpu::gpu::{
     ConcentrationGridShape, ConcentrationGriddingParams, GpuError, MAX_OUTPUT_LEVELS,
 };
 use flexpart_gpu::io::TimeBoundsBehavior;
 use flexpart_gpu::physics::VelocityToGridScale;
+use flexpart_gpu::release::LegacyReleaseConfig;
 use flexpart_gpu::simulation::{
     ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket,
     ParticleForcingField, TimeLoopError,
@@ -339,7 +339,7 @@ fn main() {
         ny,
     };
 
-    let releases = vec![ReleaseConfig {
+    let releases = vec![LegacyReleaseConfig {
         name: "ETEX-1".to_string(),
         start_time: manifest.release.start.clone(),
         end_time: manifest.release.end.clone(),
@@ -365,7 +365,7 @@ fn main() {
     };
 
     eprintln!("initializing GPU driver...");
-    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new(
+    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
         config,
         &releases,
         release_grid,

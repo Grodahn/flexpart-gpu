@@ -1,6 +1,5 @@
 //! Backward receptor lifecycle, device steps and source attribution.
 
-use crate::config::ReleaseConfig;
 use crate::coords::GridDomain;
 use crate::gpu::advection_resident::{ResidentAdvectionKernels, ResidentAdvectionStep};
 use crate::gpu::{
@@ -19,6 +18,7 @@ use crate::io::{
 };
 use crate::particles::{ParticleStore, MAX_SPECIES};
 use crate::physics::{LangevinStep, PhiloxCounter};
+use crate::release::LegacyReleaseConfig;
 use crate::release::ReleaseManager;
 use crate::simulation::timeloop::config::{
     validate_backward_config, BackwardReceptorConfig, BackwardSourceCollection,
@@ -315,7 +315,7 @@ impl BackwardTimeLoopDriver {
         let (start_time_seconds, end_time_seconds) = validate_backward_config(&config)?;
         let initial_philox_counter = config.initial_philox_counter;
         let met_grid_shape = (release_grid.nx, release_grid.ny);
-        let release_manager = ReleaseManager::new(
+        let release_manager = ReleaseManager::new_legacy(
             &build_receptor_release_configs(&config.receptors, &config.start_timestamp),
             release_grid.clone(),
         )?;
@@ -921,10 +921,10 @@ pub(super) fn collect_source_collections(
 fn build_receptor_release_configs(
     receptors: &[BackwardReceptorConfig],
     release_timestamp: &str,
-) -> Vec<ReleaseConfig> {
+) -> Vec<LegacyReleaseConfig> {
     receptors
         .iter()
-        .map(|receptor| ReleaseConfig {
+        .map(|receptor| LegacyReleaseConfig {
             name: receptor.name.clone(),
             start_time: release_timestamp.to_string(),
             end_time: release_timestamp.to_string(),

@@ -91,10 +91,11 @@ path moves. Markdown links are the machine-readable path surface, audited by
 ## Configuration
 
 - Stable caller facade: [configuration exports](../../src/config/mod.rs).
-- Domain owners (types, file aliases/defaults, validation and colocated tests): [COMMAND run timing](../../src/config/command.rs), [RELEASES geometry/inventory](../../src/config/release.rs), [OUTGRID bounds/spacing](../../src/config/output.rs), [SPECIES units/sentinels/process activation](../../src/config/species.rs), [aggregate loading/validation order](../../src/config/simulation.rs).
+- Domain owners (types, file adapters and validation): [COMMAND run timing](../../src/config/command.rs), [RELEASES geometry/inventory](../../src/config/release.rs), [OUTGRID bounds/spacing](../../src/config/output.rs), [SPECIES units/sentinels/process activation](../../src/config/species.rs), [aggregate loading/validation order](../../src/config/simulation.rs).
 - Shared handoffs: [file grammar, scalar/timestamp parsing and version policy](../../src/config/parsing.rs), [typed errors](../../src/config/error.rs); [temporary test files](../../src/config/test_support.rs) are test-only.
 - Authority: [pre-move field/default/alias inventory and context comparison](config-decomposition.md), [species compatibility](../species-config.md). #129 preserves the existing schema and behavior; it adds no settings or scientific semantics.
-- Tests: [public facade, frozen serialization/default/parser behavior](../../tests/config_contract.rs), [pre-move transcript](../../tests/fixtures/config-behavior-v1.json); [verification](test-map.md#configuration).
+- Release input: [ReleaseSpec v1](../../src/release/spec.rs), [FLEXPART crosswalk and compatibility](../release-spec.md), and [#51 adapter](../../src/validation/release_adapter.rs).
+- Tests: [ReleaseSpec and production input boundary](../../tests/config_contract/release_spec.rs), [public facade and aggregate loading](../../tests/config_contract.rs), [pre-move transcript](../../tests/fixtures/config-behavior-v1.json); [verification](test-map.md#configuration).
 - Dependencies: file inputs -> config -> [release scheduling](../../src/release/mod.rs), [species mapping](../../src/physics/species.rs), [validation loading](../../src/validation/mod.rs). GPU/runtime and meteorology provider configuration belong to their existing owners; unknown COMMAND keys remain raw assignments.
 
 ## Simulation

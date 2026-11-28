@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::f32::consts::PI;
 use std::path::PathBuf;
 
-use flexpart_gpu::config::ReleaseConfig;
 use flexpart_gpu::coords::GridDomain;
 use flexpart_gpu::gpu::{
     ConcentrationGridShape, ConcentrationGriddingParams, GpuError, MAX_OUTPUT_LEVELS,
@@ -10,6 +9,7 @@ use flexpart_gpu::gpu::{
 use flexpart_gpu::io::TimeBoundsBehavior;
 use flexpart_gpu::particles::Particle;
 use flexpart_gpu::physics::VelocityToGridScale;
+use flexpart_gpu::release::LegacyReleaseConfig;
 use flexpart_gpu::simulation::{
     ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket,
     ParticleForcingField, TimeLoopError,
@@ -158,7 +158,7 @@ fn main() {
         ny: OUT_NY,
     };
 
-    let releases = vec![ReleaseConfig {
+    let releases = vec![LegacyReleaseConfig {
         name: "comparison".to_string(),
         start_time: START_TS.to_string(),
         end_time: START_TS.to_string(),
@@ -184,7 +184,7 @@ fn main() {
     };
 
     eprintln!("initializing GPU driver...");
-    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new(
+    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
         config,
         &releases,
         release_grid,

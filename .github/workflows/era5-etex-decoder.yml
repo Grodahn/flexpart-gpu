@@ -23,6 +23,7 @@ jobs:
           pkg-config --modversion eccodes
       - name: Recompute model and surface-pressure digests from checked-in GRIB
         run: |
+          /usr/bin/python3 -I -m unittest discover -s scripts/etex -p test_retrieve_etex_lnsp.py
           /usr/bin/python3 -I -m unittest discover -s scripts/fixtures -p test_era5_etex_native_values.py
           /usr/bin/python3 -I scripts/fixtures/check_era5_etex_native_values.py
       - name: Test verified snapshots and fail-closed controls

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Retrieve ERA5 Complete ETEX log surface pressure on the #237 analysis grid."""
+"""Replay the pinned ERA5 Complete ETEX pressure or model-level retrieval."""
 
 import argparse
 from datetime import datetime, timezone
@@ -11,6 +11,7 @@ from pathlib import Path
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2] / "fixtures/etex/native-mini"
 MODEL_REQUESTS = {"23": "request.json", "24": "request-next-day.json"}
+CDS_API_URL = "https://cds.climate.copernicus.eu/api"
 
 
 def main():
@@ -27,42 +28,44 @@ def main():
 
     model_request_bytes = (SOURCE_ROOT / MODEL_REQUESTS[args.day]).read_bytes()
     model = json.loads(model_request_bytes)
-    request = model["request"]
-    filename = model["file"]
+    pinned = model
     if not args.replay_model:
-        request = {**request, "levelist": "1", "param": "152"}
-        filename = filename.replace("-ml.grib", "-lnsp.grib")
-    output = args.output_dir / filename
+        manifest = model["file"].replace("-ml.grib", "-lnsp.request.json")
+        pinned = json.loads((SOURCE_ROOT / manifest).read_bytes())
+    output = args.output_dir / pinned["file"]
     record = output.with_suffix(".request.json")
     pending = output.with_suffix(".grib.part")
     if any(path.exists() for path in (output, record, pending)):
         parser.error("retrieve into a fresh destination")
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    pending.touch(exist_ok=False)
 
-    key = os.environ.get("CDS_API")
     try:
-        options = {"quiet": True, "progress": False, "retry_max": 2, "timeout": 60}
-        if key:
-            options.update(url="https://cds.climate.copernicus.eu/api", key=key)
-        client = cdsapi.Client(**options)
-        client.retrieve(model["dataset"], request, str(pending))
+        client = cdsapi.Client(
+            url=CDS_API_URL, key=os.environ.get("CDS_API") or None, verify=True,
+            quiet=True, progress=False, retry_max=2, timeout=60,
+        )
+        client.retrieve(pinned["dataset"], pinned["request"], str(pending))
     except Exception as error:
         # Exception strings from clients and transports can include credentials.
         status = getattr(getattr(error, "response", None), "status_code", None)
         parser.exit(1, f"CDS retrieval failed ({type(error).__name__}, HTTP {status})\n")
 
-    raw = pending.read_bytes()
-    if not raw.startswith(b"GRIB"):
-        parser.exit(1, "CDS response does not start with a GRIB message\n")
+    with pending.open("rb") as response:
+        raw = response.read(pinned["bytes"] + 1)
+    digest = hashlib.sha256(raw).hexdigest()
+    if len(raw) != pinned["bytes"] or digest != pinned["sha256"]:
+        parser.exit(1, f"CDS response does not match the pinned size and SHA-256 for {output.name}\n")
     pending.rename(output)
     record.write_bytes((json.dumps({
-        "source": model["source"],
-        "dataset": model["dataset"],
+        "source": pinned["source"],
+        "dataset": pinned["dataset"],
+        "api_url": CDS_API_URL,
         "retrieved_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "request": request,
+        "request": pinned["request"],
         "file": output.name,
         "bytes": len(raw),
-        "sha256": hashlib.sha256(raw).hexdigest(),
+        "sha256": digest,
         "model_request_sha256": hashlib.sha256(model_request_bytes).hexdigest(),
         "model_sha256": model["sha256"],
     }, indent=2) + "\n").encode("utf-8"))

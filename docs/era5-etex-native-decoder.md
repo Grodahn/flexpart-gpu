@@ -145,6 +145,7 @@ and Cargo dependency-lock SHA-256, and the SHA-256 of the compact Serde JSON
 bytes of the payload.
 
 ```sh
+python3 -I -m unittest discover -s scripts/etex -p test_retrieve_etex_lnsp.py
 python3 -I -m unittest discover -s scripts/fixtures -p test_era5_etex_native_values.py
 python3 -I scripts/fixtures/check_era5_etex_native_values.py
 cargo test --locked --features eccodes --lib io::era5_etex
@@ -183,8 +184,9 @@ python scripts/etex/retrieve_etex_lnsp.py 23 target/etex-replay --replay-model
 python scripts/etex/retrieve_etex_lnsp.py 24 target/etex-replay --replay-model
 ```
 
-The recipe records requests and original output hashes. A fresh retrieval
-must match the committed bytes before using this versioned decoder profile.
-Retrieval failures report the client error class and any HTTP status. Offline
-verification requires no CDS credentials. See the
+The recipe uses the official CDS API with TLS verification. It publishes the
+response and receipt only after the download matches the checked-in byte
+count and SHA-256. A mismatched response stays in the `.part` file. Retrieval
+failures report the client error class and any HTTP status. Offline verification
+requires no CDS credentials. See the
 [fixture README](../fixtures/etex/native-mini/README.md) for the Copernicus notice.

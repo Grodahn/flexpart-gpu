@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 use std::time::Instant;
 
-use flexpart_gpu::config::ReleaseConfig;
 use flexpart_gpu::coords::GridDomain;
 use flexpart_gpu::gpu::GpuError;
 use flexpart_gpu::io::TimeBoundsBehavior;
 use flexpart_gpu::physics::VelocityToGridScale;
+use flexpart_gpu::release::LegacyReleaseConfig;
 use flexpart_gpu::simulation::{
     ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket,
     ParticleForcingField, TimeLoopError,
@@ -71,7 +71,7 @@ fn main() {
     raw.insert("lat_min".to_string(), "5.0".to_string());
     raw.insert("lat_max".to_string(), "25.0".to_string());
 
-    let releases = vec![ReleaseConfig {
+    let releases = vec![LegacyReleaseConfig {
         name: "bench".to_string(),
         start_time: "20240101000000".to_string(),
         end_time: "20240101000000".to_string(),
@@ -107,7 +107,7 @@ fn main() {
     };
 
     let init_start = Instant::now();
-    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new(
+    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
         config,
         &releases,
         release_grid,

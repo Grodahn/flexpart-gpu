@@ -15,7 +15,6 @@
 
 use std::collections::BTreeMap;
 
-use flexpart_gpu::config::ReleaseConfig;
 use flexpart_gpu::config::SpeciesConfig;
 use flexpart_gpu::constants::HREF;
 use flexpart_gpu::coords::GridDomain;
@@ -31,6 +30,7 @@ use flexpart_gpu::physics::{
     dry_deposition_probability_step, species_decay_constants, VelocityToGridScale,
     WetScavengingStep,
 };
+use flexpart_gpu::release::LegacyReleaseConfig;
 use flexpart_gpu::simulation::{
     ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket,
     ParticleForcingField, TimeLoopError,
@@ -354,7 +354,7 @@ fn timeloop_applies_per_species_wet_and_decay_with_explicit_pbl() {
         ny: TL_NY,
     };
     // Two-species release: 60% species 0, 40% species 1.
-    let releases = vec![ReleaseConfig {
+    let releases = vec![LegacyReleaseConfig {
         name: "two-species".to_string(),
         start_time: "20240101000000".to_string(),
         end_time: "20240101000000".to_string(),
@@ -375,7 +375,7 @@ fn timeloop_applies_per_species_wet_and_decay_with_explicit_pbl() {
         velocity_to_grid_scale: VelocityToGridScale::IDENTITY,
         ..ForwardTimeLoopConfig::default()
     };
-    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new(
+    let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
         config,
         &releases,
         release_grid,

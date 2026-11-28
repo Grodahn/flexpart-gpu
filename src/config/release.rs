@@ -1,311 +1,603 @@
-//! RELEASES source geometry, scalar/per-species inventory and validation.
+//! Existing RELEASES input adapter and species binding.
 
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::particles::MAX_SPECIES;
+use sha2::{Digest, Sha256};
 
-use super::error::ConfigError;
 use super::parsing::{
-    extract_namelist_sections, extract_timestamp, get_first, parse_assignments, parse_optional_f64,
-    parse_optional_string, parse_optional_u64, parse_required_f64, read_text_file, strip_comments,
-    ConfigMap,
+    parse_release_assignments, read_text_file, release_namelist_sections, strip_comments, ConfigMap,
+};
+use super::{ConfigError, SpeciesConfig};
+use crate::release::{
+    invalid_release, validate_release_bindings, validate_release_species, ReleaseConversion,
+    ReleaseGeometry, ReleaseHeight, ReleaseHeightRef, ReleaseHorizontalRef, ReleaseInventory,
+    ReleaseProfile, ReleaseQuantity, ReleaseSource, ReleaseSpec, ReleaseSpecFields, ReleaseTime,
+    GRAMS_PER_KILOGRAM,
 };
 
-/// Release chronology, geographic position, heights and injected mass in kilograms.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
+enum SpeciesSelection {
+    Names(Vec<String>),
+    FlexpartNumbers(Vec<u16>),
+    RunOrder,
+    SoleConfiguredSpecies,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InputMassUnit {
+    Kilograms,
+    Grams,
+}
+
+/// A typed RELEASES declaration awaiting binding to the validated run species table.
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReleaseConfig {
-    pub name: String,
-    pub start_time: String,
-    pub end_time: String,
-    pub lon: f64,
-    pub lat: f64,
-    pub z_min: f64,
-    pub z_max: f64,
-    pub mass_kg: f64,
-    pub particle_count: u64,
-    /// Per-species release masses [kg], slot `s` ↔ simulation species `s`.
-    ///
-    /// Mirrors FLEXPART's `xmass(numpoint, nspec)` release matrix
-    /// (`readoptions_mod.f90:2446-2448`); positional mapping replaces the
-    /// Fortran `SPECNUM_REL` number mapping for now (see follow-up note in
-    /// [`crate::release`]). `None` keeps the legacy single-species behavior
-    /// (all mass into slot 0). When present, slot masses replace `mass_kg`
-    /// for particle injection.
-    pub species_masses_kg: Option<Vec<f64>>,
-    pub raw: ConfigMap,
+    id: String,
+    profile: ReleaseProfile,
+    geometry: ReleaseGeometry,
+    height: ReleaseHeight,
+    mass_values: Vec<f64>,
+    mass_unit: InputMassUnit,
+    species: SpeciesSelection,
+    particle_count: u64,
+    sampling_seed: Option<u64>,
+    source: ReleaseSource,
 }
 
 impl ReleaseConfig {
-    /// Read all release records from a required RELEASES file.
+    /// Read all declarations from the existing RELEASES file path.
+    ///
+    /// # Errors
+    /// Returns a configuration error if the file cannot be read or parsed.
     pub fn load_many_from_file(path: &Path) -> Result<Vec<Self>, ConfigError> {
-        let content = read_text_file(path)?;
-        Self::parse_many(&content, path)
+        Self::parse_many(&read_text_file(path)?, path)
     }
 
-    /// Parse release records while retaining their source order and raw assignments.
+    /// Parse native FLEXPART 11.1 or project RELEASES without retaining untyped assignments.
+    ///
+    /// # Errors
+    /// Returns a configuration error if the syntax, source identity or mandatory fields are invalid.
     pub fn parse_many(input: &str, source: &Path) -> Result<Vec<Self>, ConfigError> {
-        let context = format!("RELEASES ({})", source.display());
-        let mut release_maps = Vec::new();
-        let sections =
-            extract_namelist_sections(input, "RELEASE").map_err(|message| ConfigError::Parse {
-                context: context.clone(),
-                message,
-            })?;
-
-        if !sections.is_empty() {
-            for section in sections {
-                let parsed = parse_assignments(&section).map_err(|message| ConfigError::Parse {
-                    context: context.clone(),
-                    message,
-                })?;
-                release_maps.push(parsed);
-            }
-        } else {
-            for (line_idx, line) in strip_comments(input).lines().enumerate() {
-                if line.trim().is_empty() {
-                    continue;
-                }
-                let parsed = parse_assignments(line).map_err(|message| ConfigError::Parse {
-                    context: format!("{context}, line {}", line_idx + 1),
-                    message,
-                })?;
-                release_maps.push(parsed);
-            }
-        }
-
-        if release_maps.is_empty() {
-            return Err(ConfigError::Parse {
-                context,
-                message: "no release entries found".to_string(),
-            });
-        }
-
-        let mut releases = Vec::with_capacity(release_maps.len());
-        for (idx, raw) in release_maps.into_iter().enumerate() {
-            releases.push(Self::from_map(
-                raw,
-                &format!("RELEASES entry #{}", idx + 1),
-                idx + 1,
-            )?);
-        }
-        Ok(releases)
-    }
-
-    fn from_map(raw: ConfigMap, context: &str, ordinal: usize) -> Result<Self, ConfigError> {
-        let name = parse_optional_string(&raw, &["name", "release_name", "id"])
-            .unwrap_or_else(|| format!("release_{ordinal}"));
-        let start_time = extract_timestamp(&raw, context, &["start_time", "start"], None)?;
-        let end_time = extract_timestamp(&raw, context, &["end_time", "end"], None)?;
-        let lon = parse_required_f64(&raw, context, &["lon", "longitude"])?;
-        let lat = parse_required_f64(&raw, context, &["lat", "latitude"])?;
-        let z_min = parse_optional_f64(&raw, context, &["z_min", "z1", "z_bottom"])?.unwrap_or(0.0);
-        let z_max = parse_optional_f64(&raw, context, &["z_max", "z2", "z_top"])?.unwrap_or(z_min);
-        let mass_kg =
-            parse_optional_f64(&raw, context, &["mass_kg", "mass", "xmass"])?.unwrap_or(1.0);
-        let particle_count =
-            parse_optional_u64(&raw, context, &["particle_count", "particles", "npart"])?
-                .unwrap_or(1);
-        let species_masses_kg = parse_species_masses_kg(&raw, context)?;
-
-        let release = Self {
-            name,
-            start_time,
-            end_time,
-            lon,
-            lat,
-            z_min,
-            z_max,
-            mass_kg,
-            particle_count,
-            species_masses_kg,
-            raw,
+        let path = source
+            .to_str()
+            .filter(|path| !path.trim().is_empty())
+            .ok_or_else(|| invalid_release("RELEASES requires a non-empty UTF-8 source path"))?;
+        let sha256 = format!("{:x}", Sha256::digest(input.as_bytes()));
+        let cleaned = strip_comments(input);
+        let error = |message: String| ConfigError::Parse {
+            context: format!("RELEASES ({path})"),
+            message,
         };
-        release.validate()?;
-        Ok(release)
+        let mut sections = if cleaned.trim_start().starts_with('&') {
+            release_namelist_sections(&cleaned).map_err(error)?
+        } else {
+            cleaned
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .map(|line| ("release".to_owned(), line.to_owned()))
+                .collect()
+        };
+        let native = if sections
+            .first()
+            .is_some_and(|(name, _)| name == "releases_ctrl")
+        {
+            let (_, control) = sections.remove(0);
+            Some(parse_native_control(
+                parse_release_assignments(&control).map_err(error)?,
+            )?)
+        } else {
+            None
+        };
+        if sections.is_empty() {
+            return Err(error("no release entries found".to_string()));
+        }
+        sections
+            .into_iter()
+            .enumerate()
+            .map(|(index, (name, body))| {
+                if name != "release" {
+                    return Err(error(format!("unexpected namelist &{name}")));
+                }
+                let record = u32::try_from(index + 1)
+                    .map_err(|_| error("too many release records".to_owned()))?;
+                let fields = Fields(parse_release_assignments(&body).map_err(error)?);
+                let provenance = if native.is_some() {
+                    ReleaseSource::Flexpart11_1ReleasesV1 {
+                        path: path.to_owned(),
+                        sha256: sha256.clone(),
+                        record,
+                    }
+                } else {
+                    ReleaseSource::ProjectReleasesV1 {
+                        path: path.to_owned(),
+                        sha256: sha256.clone(),
+                        record,
+                    }
+                };
+                Self::from_fields(fields, native.as_deref(), record, provenance)
+                    .map_err(|cause| error(format!("record {record}: {cause}")))
+            })
+            .collect()
     }
 
-    /// Reject invalid release geometry, chronology or scalar/per-species inventory.
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.start_time > self.end_time {
-            return Err(ConfigError::Validation {
-                message: format!(
-                    "release `{}` start_time `{}` is after end_time `{}`",
-                    self.name, self.start_time, self.end_time
-                ),
-            });
+    /// Resolve all species against the run table and validate the complete ordered release set.
+    ///
+    /// For native namelists the caller must establish forward mass mode (`LDIRECT=1`, `IND_SOURCE=1`).
+    /// The aggregate configuration loader checks these COMMAND switches before calling this API.
+    ///
+    /// # Errors
+    /// Returns a configuration error if a release or its species binding is invalid.
+    pub fn normalize_forward_mass(
+        input: &[Self],
+        species: &[SpeciesConfig],
+    ) -> Result<Vec<ReleaseSpec>, ConfigError> {
+        validate_release_species(species)?;
+        let specs = input
+            .iter()
+            .map(|config| config.normalize(species))
+            .collect::<Result<Vec<_>, _>>()?;
+        validate_release_bindings(&specs, species)?;
+        Ok(specs)
+    }
+
+    pub(super) fn uses_native_release_mode(&self) -> bool {
+        matches!(self.source, ReleaseSource::Flexpart11_1ReleasesV1 { .. })
+    }
+
+    fn normalize(&self, species: &[SpeciesConfig]) -> Result<ReleaseSpec, ConfigError> {
+        let error = |message| invalid_release(format!("release `{}`: {message}", self.id));
+        let slots = self.resolve_slots(species)?;
+        if slots.len() != self.mass_values.len() {
+            return Err(error("species and mass counts differ".to_owned()));
         }
-        if !(-180.0..=180.0).contains(&self.lon) {
-            return Err(ConfigError::Validation {
-                message: format!(
-                    "release `{}` lon {} out of range [-180, 180]",
-                    self.name, self.lon
-                ),
-            });
-        }
-        if !(-90.0..=90.0).contains(&self.lat) {
-            return Err(ConfigError::Validation {
-                message: format!(
-                    "release `{}` lat {} out of range [-90, 90]",
-                    self.name, self.lat
-                ),
-            });
-        }
-        if self.z_max < self.z_min {
-            return Err(ConfigError::Validation {
-                message: format!(
-                    "release `{}` z_max {} must be >= z_min {}",
-                    self.name, self.z_max, self.z_min
-                ),
-            });
-        }
-        if self.mass_kg <= 0.0 {
-            return Err(ConfigError::Validation {
-                message: format!("release `{}` mass_kg must be > 0", self.name),
-            });
-        }
-        if self.particle_count == 0 {
-            return Err(ConfigError::Validation {
-                message: format!("release `{}` particle_count must be > 0", self.name),
-            });
-        }
-        if let Some(masses) = &self.species_masses_kg {
-            if masses.is_empty() || masses.len() > MAX_SPECIES {
-                return Err(ConfigError::Validation {
-                    message: format!(
-                        "release `{}` species_masses_kg needs 1..={MAX_SPECIES} entries, got {}",
-                        self.name,
-                        masses.len()
-                    ),
-                });
+
+        let inventories = slots
+            .into_iter()
+            .zip(&self.mass_values)
+            .map(|(slot, &amount)| {
+                let (kg, conversion) = if self.mass_unit == InputMassUnit::Grams {
+                    let kg = amount / GRAMS_PER_KILOGRAM;
+                    if amount != 0.0 && kg == 0.0 {
+                        return Err(error("release mass underflows kilograms".to_owned()));
+                    }
+                    (
+                        kg,
+                        Some(ReleaseConversion::DeclaredGramsToKgV1 { input_g: amount }),
+                    )
+                } else {
+                    (amount, None)
+                };
+                Ok(ReleaseInventory {
+                    species_id: species[slot].name.clone(),
+                    mass_slot: u8::try_from(slot)
+                        .map_err(|_| error("mass slot exceeds production range".to_owned()))?,
+                    quantity: ReleaseQuantity::Mass { kg },
+                    conversion,
+                })
+            })
+            .collect::<Result<Vec<_>, ConfigError>>()?;
+        ReleaseSpec::new(ReleaseSpecFields {
+            id: self.id.clone(),
+            profile: self.profile,
+            horizontal_ref: ReleaseHorizontalRef::GeographicWgs84Degrees,
+            geometry: self.geometry,
+            height: self.height,
+            inventories,
+            particle_count: self.particle_count,
+            sampling_seed: self.sampling_seed,
+            source: self.source.clone(),
+        })
+    }
+
+    fn resolve_slots(&self, species: &[SpeciesConfig]) -> Result<Vec<usize>, ConfigError> {
+        match &self.species {
+            SpeciesSelection::Names(names) => names
+                .iter()
+                .map(|name| {
+                    species
+                        .iter()
+                        .position(|item| item.name.eq_ignore_ascii_case(name))
+                        .ok_or_else(|| {
+                            invalid_release(format!(
+                                "release `{}`: unknown species `{name}`",
+                                self.id
+                            ))
+                        })
+                })
+                .collect(),
+            SpeciesSelection::FlexpartNumbers(numbers) => numbers
+                .iter()
+                .map(|number| resolve_flexpart_species(*number, species))
+                .collect(),
+            SpeciesSelection::RunOrder if self.mass_values.len() == species.len() => {
+                Ok((0..species.len()).collect())
             }
-            if masses.iter().any(|m| !m.is_finite() || *m < 0.0) {
-                return Err(ConfigError::Validation {
-                    message: format!(
-                        "release `{}` species_masses_kg must be finite and >= 0",
-                        self.name
-                    ),
-                });
+            SpeciesSelection::SoleConfiguredSpecies if species.len() == 1 => Ok(vec![0]),
+            _ => Err(invalid_release(format!(
+                "release `{}`: declare species or provide a complete run-ordered mass list",
+                self.id
+            ))),
+        }
+    }
+
+    fn from_fields(
+        mut fields: Fields,
+        native: Option<&[u16]>,
+        record: u32,
+        source: ReleaseSource,
+    ) -> Result<Self, ConfigError> {
+        let id = fields
+            .take(&["name", "release_name", "id", "comment"])?
+            .unwrap_or_else(|| format!("release_{record}"));
+        let (
+            profile,
+            geometry,
+            height,
+            mass_values,
+            mass_unit,
+            species,
+            particle_count,
+            sampling_seed,
+        ) = if let Some(numbers) = native {
+            let start = read_native_time(&mut fields, "idate1", "itime1")?;
+            let end = read_native_time(&mut fields, "idate2", "itime2")?;
+            let profile = profile(start, end, None)?;
+            let geometry = read_bounds(&mut fields, &["lon1"], &["lon2"], &["lat1"], &["lat2"])?;
+            let height = read_height(&mut fields, true)?;
+            let masses = parse_list(&fields.required(&["mass"])?, parse_float)?;
+            let count = fields.parse(&["parts"], parse_count)?;
+            (
+                profile,
+                geometry,
+                height,
+                masses,
+                InputMassUnit::Kilograms,
+                SpeciesSelection::FlexpartNumbers(numbers.to_vec()),
+                count,
+                None,
+            )
+        } else {
+            let profile = read_project_profile(&mut fields)?;
+            let geometry = read_project_geometry(&mut fields)?;
+            let height = read_height(&mut fields, false)?;
+            let (masses, mass_unit, species) = read_project_mass(&mut fields)?;
+            let count = fields.parse(&["particle_count", "particles", "npart"], parse_count)?;
+            let seed = fields
+                .take(&["sampling_seed"])?
+                .map(|value| parse_count(&value))
+                .transpose()?;
+            (
+                profile, geometry, height, masses, mass_unit, species, count, seed,
+            )
+        };
+        fields.finish()?;
+        Ok(Self {
+            id,
+            profile,
+            geometry,
+            height,
+            mass_values,
+            mass_unit,
+            species,
+            particle_count,
+            sampling_seed,
+            source,
+        })
+    }
+}
+
+/// Resolve a FLEXPART `SPECNUM_REL` identity against #10 source filenames, independently of slot order.
+pub(crate) fn resolve_flexpart_species(
+    number: u16,
+    species: &[SpeciesConfig],
+) -> Result<usize, ConfigError> {
+    let expected = format!("SPECIES_{number:03}");
+    let mut matches = species.iter().enumerate().filter(|(_, item)| {
+        item.source_file
+            .as_deref()
+            .and_then(|file| Path::new(file).file_name())
+            .and_then(std::ffi::OsStr::to_str)
+            .is_some_and(|name| name.eq_ignore_ascii_case(&expected))
+    });
+    let first = matches.next().map(|(index, _)| index);
+    if matches.next().is_some() || first.is_none() {
+        return Err(invalid_release(format!(
+            "expected one configured species source file named {expected}"
+        )));
+    }
+    first.ok_or_else(|| invalid_release(format!("unknown species {expected}")))
+}
+
+fn parse_native_control(map: ConfigMap) -> Result<Vec<u16>, ConfigError> {
+    let mut fields = Fields(map);
+    let count = fields.parse(&["nspec"], parse_count)?;
+    let numbers = parse_list(&fields.required(&["specnum_rel"])?, |text| {
+        text.parse::<u16>()
+            .ok()
+            .filter(|number| (1..=999).contains(number))
+            .ok_or_else(|| invalid_release(format!("invalid SPECNUM_REL: {text}")))
+    })?;
+    fields.finish()?;
+    if count != numbers.len() as u64
+        || numbers.len() > crate::particles::MAX_SPECIES
+        || numbers
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != numbers.len()
+    {
+        return Err(invalid_release(
+            "NSPEC/SPECNUM_REL must select one to four distinct species",
+        ));
+    }
+    Ok(numbers)
+}
+
+fn read_native_time(
+    fields: &mut Fields,
+    date: &str,
+    time: &str,
+) -> Result<ReleaseTime, ConfigError> {
+    let day = fields.required(&[date])?;
+    let clock = fields.required(&[time])?;
+    if day.len() != 8 || clock.len() > 6 || !clock.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(invalid_release(
+            "expected IDATE=YYYYMMDD and numeric ITIME=HHMMSS in UTC",
+        ));
+    }
+    ReleaseTime::parse_utc(&format!("{day}{clock:0>6}"))
+}
+
+fn project_time(value: &str) -> Result<ReleaseTime, ConfigError> {
+    let date =
+        if matches!(value.len(), 8 | 10 | 12) && value.bytes().all(|byte| byte.is_ascii_digit()) {
+            format!("{value:0<14}")
+        } else {
+            value.to_owned()
+        };
+    ReleaseTime::parse_utc(&date)
+}
+
+fn read_project_profile(fields: &mut Fields) -> Result<ReleaseProfile, ConfigError> {
+    let start = fields.parse(&["start_time", "start"], project_time)?;
+    let end = fields.parse(&["end_time", "end"], project_time)?;
+    let kind = fields.take(&["profile"])?;
+    profile(start, end, kind.as_deref())
+}
+
+fn profile(
+    start: ReleaseTime,
+    end: ReleaseTime,
+    kind: Option<&str>,
+) -> Result<ReleaseProfile, ConfigError> {
+    match (kind, start.cmp(&end)) {
+        (None | Some("instant"), std::cmp::Ordering::Equal) => {
+            Ok(ReleaseProfile::Instant { at: start })
+        }
+        (None | Some("uniform_window"), std::cmp::Ordering::Less) => {
+            Ok(ReleaseProfile::UniformWindow { start, end })
+        }
+        _ => Err(invalid_release(
+            "unsupported release profile or inconsistent time interval",
+        )),
+    }
+}
+
+fn read_project_geometry(fields: &mut Fields) -> Result<ReleaseGeometry, ConfigError> {
+    let lon = fields.take(&["lon", "longitude"])?;
+    let lat = fields.take(&["lat", "latitude"])?;
+    let has_bounds = fields.0.keys().any(|key| {
+        matches!(
+            key.as_str(),
+            "lon_min"
+                | "xpoint1"
+                | "xlon1"
+                | "lon_max"
+                | "xpoint2"
+                | "xlon2"
+                | "lat_min"
+                | "ypoint1"
+                | "ylat1"
+                | "lat_max"
+                | "ypoint2"
+                | "ylat2"
+        )
+    });
+    match (lon, lat, has_bounds) {
+        (Some(lon), Some(lat), false) => Ok(ReleaseGeometry::Point {
+            lon_deg: parse_float(&lon)?,
+            lat_deg: parse_float(&lat)?,
+        }),
+        (None, None, true) => read_bounds(
+            fields,
+            &["lon_min", "xpoint1", "xlon1"],
+            &["lon_max", "xpoint2", "xlon2"],
+            &["lat_min", "ypoint1", "ylat1"],
+            &["lat_max", "ypoint2", "ylat2"],
+        ),
+        _ => Err(invalid_release(
+            "declare either both point coordinates or all four area bounds",
+        )),
+    }
+}
+
+fn read_bounds(
+    fields: &mut Fields,
+    west: &[&str],
+    east: &[&str],
+    south: &[&str],
+    north: &[&str],
+) -> Result<ReleaseGeometry, ConfigError> {
+    Ok(ReleaseGeometry::from_bounds(
+        fields.parse(west, parse_float)?,
+        fields.parse(east, parse_float)?,
+        fields.parse(south, parse_float)?,
+        fields.parse(north, parse_float)?,
+    ))
+}
+
+fn read_height(fields: &mut Fields, native: bool) -> Result<ReleaseHeight, ConfigError> {
+    let reference = if native {
+        fields.required(&["zkind"])?
+    } else {
+        fields.required(&["vertical_ref", "height_ref", "zkind"])?
+    };
+    let datum = match reference.to_ascii_lowercase().as_str() {
+        "1" => ReleaseHeightRef::Agl,
+        "2" => ReleaseHeightRef::Asl,
+        "agl" if !native => ReleaseHeightRef::Agl,
+        "asl" if !native => ReleaseHeightRef::Asl,
+        _ => {
+            return Err(invalid_release(format!(
+                "unsupported vertical reference `{reference}`"
+            )))
+        }
+    };
+    let lower = fields.parse(
+        if native {
+            &["z1"]
+        } else {
+            &["z_min", "z1", "z_bottom"]
+        },
+        parse_float,
+    )?;
+    let upper = fields.parse(
+        if native {
+            &["z2"]
+        } else {
+            &["z_max", "z2", "z_top"]
+        },
+        parse_float,
+    )?;
+    Ok(ReleaseHeight::from_bounds(datum, lower, upper))
+}
+
+fn read_project_mass(
+    fields: &mut Fields,
+) -> Result<(Vec<f64>, InputMassUnit, SpeciesSelection), ConfigError> {
+    let explicit_kg = fields.0.contains_key("mass_kg");
+    let scalar = fields.take(&["mass_kg", "mass", "xmass"])?;
+    let vector = fields.take(&["mass_species", "species_mass", "species_masses"])?;
+    let declared_unit = fields.take(&["mass_unit", "mass_units"])?;
+    let unit = match declared_unit
+        .as_deref()
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        None | Some("kg") => InputMassUnit::Kilograms,
+        Some("g") if !explicit_kg => InputMassUnit::Grams,
+        _ => {
+            return Err(invalid_release(
+                "unknown or conflicting mass unit; MASS_KG always means kg",
+            ))
+        }
+    };
+    let species = fields
+        .take(&["species", "species_names"])?
+        .map(|value| parse_species_names(&value).map(SpeciesSelection::Names))
+        .transpose()?;
+    match (scalar, vector) {
+        (Some(value), None) => Ok((
+            vec![parse_float(&value)?],
+            unit,
+            species.unwrap_or(SpeciesSelection::SoleConfiguredSpecies),
+        )),
+        (None, Some(value)) => Ok((
+            parse_list(&value, parse_float)?,
+            unit,
+            species.unwrap_or(SpeciesSelection::RunOrder),
+        )),
+        _ => Err(invalid_release(
+            "declare exactly one mass inventory; activity input is unsupported by RELEASES",
+        )),
+    }
+}
+
+fn parse_species_names(value: &str) -> Result<Vec<String>, ConfigError> {
+    value
+        .split(',')
+        .map(|name| {
+            let name = name.trim();
+            if name.is_empty() {
+                return Err(invalid_release("empty release species name"));
             }
-            if masses.iter().sum::<f64>() <= 0.0 {
-                return Err(ConfigError::Validation {
-                    message: format!(
-                        "release `{}` species_masses_kg total must be > 0",
-                        self.name
-                    ),
-                });
-            }
+            Ok(name.to_owned())
+        })
+        .collect()
+}
+
+fn parse_list<T>(
+    value: &str,
+    parse: impl Fn(&str) -> Result<T, ConfigError>,
+) -> Result<Vec<T>, ConfigError> {
+    let segments = value.split(',');
+    if segments.clone().any(|segment| segment.trim().is_empty()) {
+        return Err(invalid_release("empty release list entry"));
+    }
+    segments
+        .flat_map(str::split_whitespace)
+        .map(parse)
+        .collect()
+}
+
+fn parse_float(value: &str) -> Result<f64, ConfigError> {
+    let text = value.replace(['d', 'D'], "e");
+    let number = text
+        .parse::<f64>()
+        .ok()
+        .filter(|number| number.is_finite())
+        .ok_or_else(|| invalid_release(format!("expected finite number: {value}")))?;
+    if number == 0.0
+        && text
+            .bytes()
+            .take_while(|byte| !matches!(byte, b'e' | b'E'))
+            .any(|byte| (b'1'..=b'9').contains(&byte))
+    {
+        return Err(invalid_release(format!("number underflows f64: {value}")));
+    }
+    Ok(number)
+}
+
+fn parse_count(value: &str) -> Result<u64, ConfigError> {
+    value
+        .parse::<u64>()
+        .map_err(|_| invalid_release(format!("expected unsigned integer: {value}")))
+}
+
+struct Fields(ConfigMap);
+
+impl Fields {
+    fn take(&mut self, aliases: &[&str]) -> Result<Option<String>, ConfigError> {
+        let mut values = aliases.iter().filter_map(|key| self.0.remove(*key));
+        let value = values.next();
+        if values.next().is_some() {
+            return Err(invalid_release(format!(
+                "conflicting aliases for {}",
+                aliases[0]
+            )));
+        }
+        Ok(value)
+    }
+
+    fn required(&mut self, aliases: &[&str]) -> Result<String, ConfigError> {
+        self.take(aliases)?
+            .ok_or_else(|| invalid_release(format!("missing {}", aliases[0])))
+    }
+
+    fn parse<T>(
+        &mut self,
+        aliases: &[&str],
+        parse: impl FnOnce(&str) -> Result<T, ConfigError>,
+    ) -> Result<T, ConfigError> {
+        parse(&self.required(aliases)?)
+    }
+
+    fn finish(self) -> Result<(), ConfigError> {
+        if let Some((key, _)) = self.0.first_key_value() {
+            return Err(invalid_release(format!(
+                "unsupported RELEASES field: {key}"
+            )));
         }
         Ok(())
-    }
-}
-
-/// Parse the optional per-species release mass list (`mass_species`).
-///
-/// Accepts comma- and/or whitespace-separated values, e.g.
-/// `mass_species="1.0, 0.5"` (quotes keep the tokenizer from splitting the
-/// list). Mirrors one row of FLEXPART's `xmass(numpoint, nspec)` matrix.
-fn parse_species_masses_kg(
-    raw: &ConfigMap,
-    context: &str,
-) -> Result<Option<Vec<f64>>, ConfigError> {
-    let Some(text) = get_first(raw, &["mass_species", "species_mass", "species_masses"]) else {
-        return Ok(None);
-    };
-    let mut masses = Vec::new();
-    for token in text.split([',', ' ', '\t']) {
-        let token = token.trim();
-        if token.is_empty() {
-            continue;
-        }
-        masses.push(
-            token
-                .parse::<f64>()
-                .map_err(|_| ConfigError::InvalidValue {
-                    context: context.to_string(),
-                    key: "mass_species".to_string(),
-                    value: text.to_string(),
-                    message: "expected comma-separated floating-point masses".to_string(),
-                })?,
-        );
-    }
-    if masses.is_empty() {
-        return Err(ConfigError::InvalidValue {
-            context: context.to_string(),
-            key: "mass_species".to_string(),
-            value: text.to_string(),
-            message: "expected at least one species mass".to_string(),
-        });
-    }
-    Ok(Some(masses))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_single_release_block() {
-        let input = r#"
-            &RELEASE
-              NAME='stack',
-              START='20240101120000',
-              END='20240101150000',
-              LON=7.25,
-              LAT=46.1,
-              Z1=10,
-              Z2=120,
-              MASS=2.5,
-              PARTICLES=1000
-            /
-        "#;
-        let releases =
-            ReleaseConfig::parse_many(input, Path::new("<inline>")).expect("parse release");
-        assert_eq!(releases.len(), 1);
-        let release = &releases[0];
-        assert_eq!(release.name, "stack");
-        assert_eq!(release.particle_count, 1000);
-        assert_eq!(release.lon, 7.25);
-        assert_eq!(release.species_masses_kg, None);
-    }
-
-    #[test]
-    fn parse_release_with_species_masses() {
-        let input = r#"
-            &RELEASE
-              NAME='multi',
-              START='20240101120000',
-              END='20240101150000',
-              LON=7.25,
-              LAT=46.1,
-              Z1=10,
-              Z2=120,
-              MASS_SPECIES="1.0, 0.5, 0.25",
-              PARTICLES=1000
-            /
-        "#;
-        let releases =
-            ReleaseConfig::parse_many(input, Path::new("<inline>")).expect("parse release");
-        assert_eq!(releases.len(), 1);
-        assert_eq!(releases[0].species_masses_kg, Some(vec![1.0, 0.5, 0.25]));
-    }
-
-    #[test]
-    fn release_with_too_many_species_masses_rejected() {
-        let input = r#"
-            &RELEASE
-              NAME='too-many',
-              START='20240101120000',
-              END='20240101150000',
-              LON=7.25,
-              LAT=46.1,
-              Z1=10,
-              Z2=120,
-              MASS_SPECIES="1,1,1,1,1",
-              PARTICLES=1000
-            /
-        "#;
-        let result = ReleaseConfig::parse_many(input, Path::new("<inline>"));
-        assert!(result.is_err(), "more than MAX_SPECIES masses must fail");
     }
 }

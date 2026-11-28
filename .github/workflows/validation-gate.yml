@@ -96,7 +96,7 @@ jobs:
 
       - name: Preserve configuration facade and parser behavior
         working-directory: flexpart-gpu
-        run: cargo test --test config_contract
+        run: cargo test --test config_contract --test release_spec
 
       - name: Run canonical meteorology contract tests
         run: |

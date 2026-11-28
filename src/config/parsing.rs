@@ -41,13 +41,26 @@ pub(super) fn extract_namelist_sections(
     input: &str,
     section_name: &str,
 ) -> Result<Vec<String>, String> {
+    namelist_sections(input, Some(section_name))
+        .map(|sections| sections.into_iter().map(|(_, body)| body).collect())
+}
+
+pub(super) fn release_namelist_sections(input: &str) -> Result<Vec<(String, String)>, String> {
+    namelist_sections(input, None)
+}
+
+fn namelist_sections(input: &str, target: Option<&str>) -> Result<Vec<(String, String)>, String> {
     let lower = input.to_ascii_lowercase();
-    let target = section_name.to_ascii_lowercase();
+    let requested_name = target;
+    let target = target.map(str::to_ascii_lowercase);
     let mut sections = Vec::new();
     let mut idx = 0;
 
     while let Some(found) = lower[idx..].find('&') {
         let start = idx + found;
+        if target.is_none() && !input[idx..start].trim().is_empty() {
+            return Err("unexpected content before RELEASES namelist".to_owned());
+        }
         let mut name_end = start + 1;
 
         while let Some(ch) = lower.as_bytes().get(name_end).map(|byte| char::from(*byte)) {
@@ -59,12 +72,15 @@ pub(super) fn extract_namelist_sections(
         }
 
         if name_end == start + 1 {
+            if target.is_none() {
+                return Err("missing RELEASES namelist name".to_owned());
+            }
             idx = start + 1;
             continue;
         }
 
         let name = &lower[(start + 1)..name_end];
-        if name != target {
+        if target.as_deref().is_some_and(|target| name != target) {
             idx = name_end;
             continue;
         }
@@ -80,7 +96,7 @@ pub(super) fn extract_namelist_sections(
             } else if ch == '"' && !in_single {
                 in_double = !in_double;
             } else if ch == '/' && !in_single && !in_double {
-                sections.push(input[name_end..end].to_string());
+                sections.push((name.to_owned(), input[name_end..end].to_owned()));
                 end += 1;
                 found_terminator = true;
                 break;
@@ -89,12 +105,14 @@ pub(super) fn extract_namelist_sections(
         }
 
         if !found_terminator {
-            return Err(format!(
-                "section `&{section_name}` is missing a terminating `/`"
-            ));
+            let name = requested_name.unwrap_or(name);
+            return Err(format!("section `&{name}` is missing a terminating `/`"));
         }
 
         idx = end;
+    }
+    if target.is_none() && !input[idx..].trim().is_empty() {
+        return Err("unexpected trailing content after RELEASES namelist".to_owned());
     }
     Ok(sections)
 }
@@ -121,6 +139,22 @@ pub(super) fn strip_comments(input: &str) -> String {
 }
 
 pub(super) fn parse_assignments(input: &str) -> Result<ConfigMap, String> {
+    parse_assignments_impl(input, false, &[])
+}
+
+pub(super) fn parse_release_assignments(input: &str) -> Result<ConfigMap, String> {
+    parse_assignments_impl(input, true, &[])
+}
+
+pub(super) fn parse_command_assignments(input: &str) -> Result<ConfigMap, String> {
+    parse_assignments_impl(input, false, &["ind_source", "ldirect"])
+}
+
+fn parse_assignments_impl(
+    input: &str,
+    strict_release: bool,
+    unique: &[&str],
+) -> Result<ConfigMap, String> {
     let cleaned = strip_comments(input);
     let mut map = BTreeMap::new();
     let mut chars = cleaned.chars().peekable();
@@ -182,12 +216,25 @@ pub(super) fn parse_assignments(input: &str) -> Result<ConfigMap, String> {
                 continue;
             }
             if !in_single && !in_double && (c == ',' || c == '\n' || c == '\r') {
-                break;
+                let list = strict_release && matches!(key.as_str(), "mass" | "specnum_rel");
+                if !list || !numeric_list_continues(chars.clone()) {
+                    break;
+                }
+                value.push(' ');
+                chars.next();
+                continue;
             }
             value.push(c);
             chars.next();
         }
 
+        if (strict_release && (in_single || in_double || map.contains_key(&key)))
+            || (unique.contains(&key.as_str()) && map.contains_key(&key))
+        {
+            return Err(format!(
+                "unterminated quote or duplicate assignment for `{key}`"
+            ));
+        }
         let value = trim_wrapping_quotes(value.trim());
         if value.is_empty() {
             return Err(format!("empty value for key `{key}`"));
@@ -204,6 +251,21 @@ pub(super) fn parse_assignments(input: &str) -> Result<ConfigMap, String> {
     }
 
     Ok(map)
+}
+
+fn numeric_list_continues(mut chars: impl Iterator<Item = char>) -> bool {
+    let delimiter = chars.next();
+    let mut chars = chars.skip_while(|c| c.is_whitespace()).peekable();
+    if delimiter != Some(',')
+        || !chars
+            .peek()
+            .is_some_and(|c| c.is_ascii_digit() || matches!(c, '+' | '-' | '.'))
+    {
+        return false;
+    }
+    chars
+        .take_while(|c| !matches!(c, ',' | '\n' | '\r'))
+        .all(|c| c != '=')
 }
 
 fn trim_wrapping_quotes(input: &str) -> &str {

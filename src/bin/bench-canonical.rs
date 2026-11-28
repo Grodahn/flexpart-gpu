@@ -190,19 +190,6 @@ async fn create_driver(
     count: usize,
 ) -> Result<ForwardTimeLoopDriver> {
     let grid = &snapshot.horizontal_grid;
-    let release = ReleaseConfig {
-        name: "BENCH-EARLY-11.1".into(),
-        start_time: "20240101000000".into(),
-        end_time: "20240101000000".into(),
-        lon: s.release_lon_deg,
-        lat: f64::from(s.release_lat_deg),
-        z_min: s.release_z_m,
-        z_max: s.release_z_m,
-        mass_kg: s.mass_kg_per_particle * f64::from(u32::try_from(count)?),
-        particle_count: u64::try_from(count)?,
-        species_masses_kg: None,
-        raw: std::collections::BTreeMap::default(),
-    };
     // The paired pinned run releases the inert gas tracer SPECIES_024 (AIRTRACER,
     // PDENSITY=-0.9E+9). #10 normalizes that sentinel to None and keeps the raw value.
     // Canonical production requires this explicit carrier; forward transport never stops.
@@ -211,10 +198,19 @@ async fn create_driver(
         "raw": { "pdensity": "-0.9E+9" },
     }))
     .context("benchmark gas tracer carrier")?;
+    let source = format!(
+        "NAME=BENCH-EARLY-11.1,START=20240101000000,END=20240101000000,LON={},LAT={},Z1={},Z2={},VERTICAL_REF=agl,MASS_KG={},PARTICLES={},SPECIES=AIRTRACER",
+        s.release_lon_deg, s.release_lat_deg, s.release_z_m, s.release_z_m,
+        s.mass_kg_per_particle * f64::from(u32::try_from(count)?), count
+    );
+    let species = [tracer];
+    let declarations =
+        ReleaseConfig::parse_many(&source, std::path::Path::new("BENCH-EARLY-11.1"))?;
+    let releases = ReleaseConfig::normalize_forward_mass(&declarations, &species)?;
     Ok(ForwardTimeLoopDriver::new(
         ForwardTimeLoopConfig {
             transport_settling: Some(TransportSettlingConfig {
-                species: vec![tracer],
+                species: species.to_vec(),
                 ..TransportSettlingConfig::default()
             }),
             start_timestamp: "20240101000000".into(),
@@ -231,7 +227,8 @@ async fn create_driver(
             initial_philox_counter: s.initial_philox_counter,
             ..ForwardTimeLoopConfig::default()
         },
-        &[release],
+        &releases,
+        &species,
         GridDomain {
             xlon0: grid.xlon0_deg,
             ylat0: grid.ylat0_deg,

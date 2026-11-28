@@ -7,20 +7,21 @@
 //! - inject particles into [`crate::particles::ParticleStore`]
 //! - optionally upload only changed slots to GPU storage buffers
 //!
-//! Multi-species releases distribute per-species masses across particle mass
-//! slots: slot `s` of each emitted particle carries
-//! `species_masses_kg[s] / particle_count` (one row of FLEXPART's
-//! `xmass(numpoint, nspec)` matrix, positionally mapped). Releases without
-//! `species_masses_kg` keep the legacy behavior (all mass into slot 0).
-
-use std::collections::BTreeMap;
-
 use thiserror::Error;
 
-use crate::config::ReleaseConfig;
+mod legacy;
+mod spec;
+
 use crate::coords::{geo_to_grid, GeoCoord, GridDomain};
 use crate::gpu::{GpuBufferError, GpuContext, ParticleBuffers};
 use crate::particles::{Particle, ParticleError, ParticleInit, ParticleStore, MAX_SPECIES};
+pub use legacy::LegacyReleaseConfig;
+pub(crate) use spec::{invalid_release, validate_release_species, GRAMS_PER_KILOGRAM};
+pub use spec::{
+    validate_release_bindings, ReleaseConversion, ReleaseGeometry, ReleaseHeight, ReleaseHeightRef,
+    ReleaseHorizontalRef, ReleaseInventory, ReleaseProfile, ReleaseQuantity, ReleaseSource,
+    ReleaseSpec, ReleaseSpecFields, ReleaseTime,
+};
 
 /// Result of one release step at a given simulation timestamp.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +48,8 @@ pub enum ReleaseError {
     OutOfGridDomain { release: String, lon: f64, lat: f64 },
     #[error("timestamp `{value}` cannot be represented as i32 simulation seconds")]
     TimeOutOfRange { value: String },
+    #[error("release configuration: {0}")]
+    Config(#[from] crate::config::ConfigError),
     #[error("particle release failed: {0}")]
     Particle(#[from] ParticleError),
     #[error("gpu upload failed: {0}")]
@@ -55,7 +58,7 @@ pub enum ReleaseError {
 
 /// Manages source-term activation and particle injection over time.
 ///
-/// Each [`ReleaseConfig`] is tracked independently with a cumulative emitted
+/// Each [`LegacyReleaseConfig`] is tracked independently with a cumulative emitted
 /// count. Calls to [`inject_for_time`](Self::inject_for_time) are deterministic:
 /// the same sequence of timestamps always yields the same particle positions.
 #[derive(Clone)]
@@ -69,14 +72,19 @@ impl ReleaseManager {
     ///
     /// `grid` is used to convert lon/lat source coordinates into particle
     /// relative grid coordinates (`cell_x/cell_y + frac`).
-    pub fn new(releases: &[ReleaseConfig], grid: GridDomain) -> Result<Self, ReleaseError> {
+    pub(crate) fn new_legacy(
+        releases: &[LegacyReleaseConfig],
+        grid: GridDomain,
+    ) -> Result<Self, ReleaseError> {
         let mut states = Vec::with_capacity(releases.len());
         for (release_idx, release) in releases.iter().enumerate() {
             let bounds = ReleaseBounds::from_config(release)?;
             let start_seconds = parse_timestamp_seconds(&release.start_time)?;
             let end_seconds = parse_timestamp_seconds(&release.end_time)?;
             states.push(ReleaseState {
-                config: release.clone(),
+                name: release.name.clone(),
+                particle_count: release.particle_count,
+                masses_kg: release.legacy_mass_row(),
                 bounds,
                 start_seconds,
                 end_seconds,
@@ -88,6 +96,30 @@ impl ReleaseManager {
                 })?,
             });
         }
+        Ok(Self { grid, states })
+    }
+
+    /// Construct the existing schedule from canonical inputs before allocating a particle store.
+    pub(crate) fn from_specs(
+        releases: &[ReleaseSpec],
+        grid: GridDomain,
+    ) -> Result<Self, ReleaseError> {
+        if grid.nx < 2
+            || grid.ny < 2
+            || !grid.xlon0.is_finite()
+            || !grid.ylat0.is_finite()
+            || !grid.dx.is_finite()
+            || !grid.dy.is_finite()
+            || grid.dx <= 0.0
+            || grid.dy <= 0.0
+        {
+            return Err(invalid_release("invalid forward release grid").into());
+        }
+        let states = releases
+            .iter()
+            .enumerate()
+            .map(|(index, source)| ReleaseState::from_spec(source, &grid, index))
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Self { grid, states })
     }
 
@@ -114,17 +146,17 @@ impl ReleaseManager {
             }
 
             let to_emit = target_count - state.released_count;
-            let mass_per_slot = state.mass_per_species_slot(state.config.particle_count);
+            let mass_per_slot = state.mass_per_species_slot(state.particle_count);
 
             for offset in 0..to_emit {
                 let sample_index = state.released_count + offset;
                 let (lon, lat, z_m) = state
                     .bounds
-                    .sample_stratified(sample_index, state.config.particle_count);
+                    .sample_stratified(sample_index, state.particle_count);
                 let grid_coord = geo_to_grid(GeoCoord { lat, lon }, &self.grid);
                 if !self.grid.contains(&grid_coord) {
                     return Err(ReleaseError::OutOfGridDomain {
-                        release: state.config.name.clone(),
+                        release: state.name.clone(),
                         lon,
                         lat,
                     });
@@ -200,7 +232,9 @@ impl ReleaseManager {
 
 #[derive(Clone)]
 struct ReleaseState {
-    config: ReleaseConfig,
+    name: String,
+    particle_count: u64,
+    masses_kg: [f64; MAX_SPECIES],
     bounds: ReleaseBounds,
     start_seconds: i64,
     end_seconds: i64,
@@ -209,44 +243,105 @@ struct ReleaseState {
 }
 
 impl ReleaseState {
+    fn from_spec(
+        release: &ReleaseSpec,
+        grid: &GridDomain,
+        index: usize,
+    ) -> Result<Self, ReleaseError> {
+        let invalid = |message| invalid_release(format!("release `{}`: {message}", release.id));
+        let (datum, z_min, z_max) = release.height.bounds();
+        if datum != ReleaseHeightRef::Agl || z_max > f64::from(f32::MAX) {
+            return Err(
+                invalid("existing scheduler requires AGL heights representable in f32").into(),
+            );
+        }
+        if release.sampling_seed.is_some() {
+            return Err(invalid("explicit sampling seeds require #27").into());
+        }
+        let (lon_min, lon_max, lat_min, lat_max) = release.geometry.bounds();
+        for (lon, lat) in [(lon_min, lat_min), (lon_max, lat_max)] {
+            if !grid.contains(&geo_to_grid(GeoCoord { lat, lon }, grid)) {
+                return Err(ReleaseError::OutOfGridDomain {
+                    release: release.id.clone(),
+                    lon,
+                    lat,
+                });
+            }
+        }
+        let (start, end) = release.profile.bounds();
+        let start_seconds = start.unix_seconds();
+        let end_seconds = end.unix_seconds();
+        if i32::try_from(start_seconds).is_err() || i32::try_from(end_seconds).is_err() {
+            return Err(ReleaseError::TimeOutOfRange {
+                value: release.id.clone(),
+            });
+        }
+        let state = Self {
+            name: release.id.clone(),
+            particle_count: release.particle_count,
+            masses_kg: release_mass_row(release)?,
+            bounds: ReleaseBounds {
+                lon_min,
+                lon_max,
+                lat_min,
+                lat_max,
+                z_min,
+                z_max,
+            },
+            start_seconds,
+            end_seconds,
+            released_count: 0,
+            release_point: i32::try_from(index)
+                .map_err(|_| invalid("index exceeds the particle layout"))?,
+        };
+        if state
+            .mass_per_species_slot(state.particle_count)
+            .iter()
+            .zip(state.masses_kg)
+            .any(|(&mass, total)| !mass.is_finite() || (total > 0.0 && mass == 0.0))
+        {
+            return Err(invalid("inventory outside existing f32 particle mass range").into());
+        }
+        Ok(state)
+    }
+
     fn target_emitted_count(&self, now_seconds: i64) -> u64 {
         if now_seconds < self.start_seconds || now_seconds > self.end_seconds {
             return self.released_count;
         }
         if self.start_seconds == self.end_seconds {
-            return self.config.particle_count;
+            return self.particle_count;
         }
         if now_seconds == self.end_seconds {
-            return self.config.particle_count;
+            return self.particle_count;
         }
 
         let elapsed = (now_seconds - self.start_seconds) as u64;
         let duration = (self.end_seconds - self.start_seconds) as u64;
-        ((u128::from(self.config.particle_count) * u128::from(elapsed)) / u128::from(duration))
-            as u64
+        ((u128::from(self.particle_count) * u128::from(elapsed)) / u128::from(duration)) as u64
     }
 
-    /// Per-particle mass per species slot [kg].
-    ///
-    /// With `species_masses_kg`, slot `s` carries `masses[s] / particle_count`
-    /// (missing trailing slots stay `0`); otherwise all of `mass_kg` goes
-    /// into slot 0 (legacy single-species behavior).
-    ///
-    /// Particle counts always fit `f64`/`f32` exactly in practice (far below
-    /// 2^24 representable integers for the `f32` mass split).
     #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
     fn mass_per_species_slot(&self, particle_count: u64) -> [f32; MAX_SPECIES] {
-        let mut mass = [0.0_f32; MAX_SPECIES];
         let count = particle_count.max(1) as f64;
-        if let Some(species_masses) = &self.config.species_masses_kg {
-            for (slot, slot_mass_kg) in species_masses.iter().enumerate().take(MAX_SPECIES) {
-                mass[slot] = (slot_mass_kg / count) as f32;
-            }
-        } else {
-            mass[0] = (self.config.mass_kg / count) as f32;
-        }
-        mass
+        self.masses_kg.map(|mass| (mass / count) as f32)
     }
+}
+
+pub(crate) fn release_mass_row(
+    spec: &ReleaseSpec,
+) -> Result<[f64; MAX_SPECIES], crate::config::ConfigError> {
+    let mut masses = [0.0; MAX_SPECIES];
+    for item in &spec.inventories {
+        let ReleaseQuantity::Mass { kg } = item.quantity else {
+            return Err(invalid_release(format!(
+                "release `{}`: activity cannot be injected as mass",
+                spec.id
+            )));
+        };
+        masses[usize::from(item.mass_slot)] = kg;
+    }
+    Ok(masses)
 }
 
 #[derive(Clone)]
@@ -260,15 +355,8 @@ struct ReleaseBounds {
 }
 
 impl ReleaseBounds {
-    fn from_config(config: &ReleaseConfig) -> Result<Self, ReleaseError> {
-        let lon_min = parse_optional_raw_f64(&config.raw, &["lon_min", "xpoint1", "xlon1"])
-            .unwrap_or(config.lon);
-        let lon_max = parse_optional_raw_f64(&config.raw, &["lon_max", "xpoint2", "xlon2"])
-            .unwrap_or(config.lon);
-        let lat_min = parse_optional_raw_f64(&config.raw, &["lat_min", "ypoint1", "ylat1"])
-            .unwrap_or(config.lat);
-        let lat_max = parse_optional_raw_f64(&config.raw, &["lat_max", "ypoint2", "ylat2"])
-            .unwrap_or(config.lat);
+    fn from_config(config: &LegacyReleaseConfig) -> Result<Self, ReleaseError> {
+        let (lon_min, lon_max, lat_min, lat_max) = config.legacy_horizontal_bounds();
         let z_min = config.z_min;
         let z_max = config.z_max;
 
@@ -328,70 +416,24 @@ impl ReleaseBounds {
     }
 }
 
-fn parse_optional_raw_f64(raw: &BTreeMap<String, String>, keys: &[&str]) -> Option<f64> {
-    keys.iter()
-        .find_map(|key| raw.get(*key))
-        .and_then(|value| value.parse::<f64>().ok())
-}
-
 fn parse_timestamp_seconds(value: &str) -> Result<i64, ReleaseError> {
-    if value.len() != 14 || !value.chars().all(|c| c.is_ascii_digit()) {
+    if value.len() != 14 {
         return Err(ReleaseError::InvalidTimestamp {
-            value: value.to_string(),
+            value: value.to_owned(),
         });
     }
-
-    let year: i32 = value[0..4]
-        .parse()
+    ReleaseTime::parse_utc(value)
+        .map(ReleaseTime::unix_seconds)
         .map_err(|_| ReleaseError::InvalidTimestamp {
-            value: value.to_string(),
-        })?;
-    let month: u32 = value[4..6]
-        .parse()
-        .map_err(|_| ReleaseError::InvalidTimestamp {
-            value: value.to_string(),
-        })?;
-    let day: u32 = value[6..8]
-        .parse()
-        .map_err(|_| ReleaseError::InvalidTimestamp {
-            value: value.to_string(),
-        })?;
-    let hour: u32 = value[8..10]
-        .parse()
-        .map_err(|_| ReleaseError::InvalidTimestamp {
-            value: value.to_string(),
-        })?;
-    let minute: u32 = value[10..12]
-        .parse()
-        .map_err(|_| ReleaseError::InvalidTimestamp {
-            value: value.to_string(),
-        })?;
-    let second: u32 = value[12..14]
-        .parse()
-        .map_err(|_| ReleaseError::InvalidTimestamp {
-            value: value.to_string(),
-        })?;
-
-    if !(1..=12).contains(&month)
-        || !(1..=31).contains(&day)
-        || hour > 23
-        || minute > 59
-        || second > 59
-    {
-        return Err(ReleaseError::InvalidTimestamp {
-            value: value.to_string(),
-        });
-    }
-
-    let days = days_from_civil(year, month, day);
-    Ok(days * 86_400 + i64::from(hour) * 3_600 + i64::from(minute) * 60 + i64::from(second))
+            value: value.to_owned(),
+        })
 }
 
 /// Gregorian civil date to days since Unix epoch (1970-01-01).
-fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
-    let mut y = i64::from(year);
-    let m = i64::from(month);
-    let d = i64::from(day);
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let mut y = year;
+    let m = month;
+    let d = day;
 
     if m <= 2 {
         y -= 1;
@@ -410,14 +452,14 @@ mod tests {
 
     use super::*;
 
-    fn sample_release() -> ReleaseConfig {
+    fn sample_release() -> LegacyReleaseConfig {
         let mut raw = BTreeMap::new();
         raw.insert("lon_min".to_string(), "10.0".to_string());
         raw.insert("lon_max".to_string(), "12.0".to_string());
         raw.insert("lat_min".to_string(), "45.0".to_string());
         raw.insert("lat_max".to_string(), "46.0".to_string());
 
-        ReleaseConfig {
+        LegacyReleaseConfig {
             name: "r1".to_string(),
             start_time: "20240101010000".to_string(),
             end_time: "20240101020000".to_string(),
@@ -446,7 +488,7 @@ mod tests {
     #[test]
     fn no_release_outside_time_window() {
         let release = sample_release();
-        let mut manager = ReleaseManager::new(&[release], sample_grid()).expect("manager");
+        let mut manager = ReleaseManager::new_legacy(&[release], sample_grid()).expect("manager");
         let mut store = ParticleStore::with_capacity(32);
 
         let before = manager
@@ -464,7 +506,7 @@ mod tests {
     #[test]
     fn correct_count_released_inside_window() {
         let release = sample_release();
-        let mut manager = ReleaseManager::new(&[release], sample_grid()).expect("manager");
+        let mut manager = ReleaseManager::new_legacy(&[release], sample_grid()).expect("manager");
         let mut store = ParticleStore::with_capacity(32);
 
         let quarter = manager
@@ -487,7 +529,7 @@ mod tests {
     #[test]
     fn released_positions_stay_within_bounds() {
         let release = sample_release();
-        let mut manager = ReleaseManager::new(&[release], sample_grid()).expect("manager");
+        let mut manager = ReleaseManager::new_legacy(&[release], sample_grid()).expect("manager");
         let mut store = ParticleStore::with_capacity(32);
 
         let report = manager
@@ -512,7 +554,7 @@ mod tests {
     #[test]
     fn legacy_release_puts_all_mass_into_slot_zero() {
         let release = sample_release();
-        let mut manager = ReleaseManager::new(&[release], sample_grid()).expect("manager");
+        let mut manager = ReleaseManager::new_legacy(&[release], sample_grid()).expect("manager");
         let mut store = ParticleStore::with_capacity(32);
 
         let report = manager
@@ -534,7 +576,7 @@ mod tests {
     fn multi_species_release_distributes_mass_per_slot() {
         let mut release = sample_release();
         release.species_masses_kg = Some(vec![1.0, 0.5, 0.25]);
-        let mut manager = ReleaseManager::new(&[release], sample_grid()).expect("manager");
+        let mut manager = ReleaseManager::new_legacy(&[release], sample_grid()).expect("manager");
         let mut store = ParticleStore::with_capacity(32);
 
         let report = manager

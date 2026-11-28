@@ -12,6 +12,7 @@ pub mod case;
 pub mod input_equivalence;
 /// Versioned forward mass-ledger artifact audit.
 pub mod mass_ledger;
+mod release_adapter;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -560,6 +561,7 @@ impl EtexValidationHarness {
         let mut driver = match pollster::block_on(ForwardTimeLoopDriver::new(
             time_loop_config,
             &simulation_config.releases,
+            &simulation_config.species,
             release_grid,
             particle_capacity,
         )) {

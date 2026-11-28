@@ -1,10 +1,11 @@
 //! Run-owned original settling flag and zero-by-carrier selection for #214.
 
 use super::config::TimeDirection;
-use crate::config::{ReleaseConfig, SpeciesConfig};
+use crate::config::SpeciesConfig;
 use crate::gpu::meteorology::MeteorologyCompositionError;
 use crate::gpu::GpuContext;
 use crate::particles::MAX_SPECIES;
+use crate::release::{release_mass_row, LegacyReleaseConfig, ReleaseSpec};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
@@ -105,7 +106,7 @@ impl TransportSettlingRoute {
     pub(crate) fn new(
         ctx: &GpuContext,
         config: &TransportSettlingConfig,
-        releases: &[ReleaseConfig],
+        releases: &[LegacyReleaseConfig],
         direction: TimeDirection,
     ) -> Result<Self, MeteorologyCompositionError> {
         Self::from_inventory(&ctx.identity, config, releases, direction)
@@ -114,7 +115,7 @@ impl TransportSettlingRoute {
     fn from_inventory(
         context: &Arc<()>,
         config: &TransportSettlingConfig,
-        releases: &[ReleaseConfig],
+        releases: &[LegacyReleaseConfig],
         direction: TimeDirection,
     ) -> Result<Self, MeteorologyCompositionError> {
         let invalid = MeteorologyCompositionError::Incompatible;
@@ -157,7 +158,53 @@ impl TransportSettlingRoute {
             }
             masses.push(original_row);
         }
-        let enabled = original_enabled(&masses, config.species.len(), config.mquasilag);
+        Self::from_mass_rows(context, config, releases, direction, &masses)
+    }
+
+    /// Bind existing settling enablement to the canonical source inventory and its explicit lanes.
+    pub(crate) fn from_specs(
+        ctx: &GpuContext,
+        config: &TransportSettlingConfig,
+        releases: &[ReleaseSpec],
+    ) -> Result<Self, MeteorologyCompositionError> {
+        let invalid = MeteorologyCompositionError::Incompatible;
+        validate_carriers(&config.species)?;
+        let masses = releases
+            .iter()
+            .map(|spec| {
+                let row = release_mass_row(spec)
+                    .map_err(|_| invalid("invalid settling release inventory"))?;
+                #[allow(clippy::cast_possible_truncation)]
+                let row = row[..config.species.len()]
+                    .iter()
+                    .map(|mass| f64::from(*mass as f32))
+                    .collect::<Vec<_>>();
+                if row.iter().any(|mass| !mass.is_finite())
+                    || !row.iter().any(|mass| *mass > f64::from(f32::MIN_POSITIVE))
+                {
+                    return Err(invalid("release mass outside original f32 domain"));
+                }
+                Ok(row)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Self::from_mass_rows(
+            &ctx.identity,
+            config,
+            releases,
+            TimeDirection::Forward,
+            &masses,
+        )
+    }
+
+    fn from_mass_rows(
+        context: &Arc<()>,
+        config: &TransportSettlingConfig,
+        releases: impl serde::Serialize,
+        direction: TimeDirection,
+        masses: &[Vec<f64>],
+    ) -> Result<Self, MeteorologyCompositionError> {
+        let invalid = MeteorologyCompositionError::Incompatible;
+        let enabled = original_enabled(masses, config.species.len(), config.mquasilag);
         if config.mquasilag != 0 || config.domain_fill != 0 || config.restart != 0 {
             return Err(MeteorologyCompositionError::Unsupported(
                 "MQUASILAG/domain-fill/restart settling route",
@@ -243,7 +290,7 @@ mod tests {
             species: vec![gas],
             ..Default::default()
         };
-        let release:ReleaseConfig=serde_json::from_value(serde_json::json!({"name":"source","start_time":"20240101000000","end_time":"20240101000000","lon":0.25,"lat":0.0,"z_min":1.0,"z_max":1.0,"mass_kg":1.0,"particle_count":1,"raw":{}})).expect("release");
+        let release:LegacyReleaseConfig=serde_json::from_value(serde_json::json!({"name":"source","start_time":"20240101000000","end_time":"20240101000000","lon":0.25,"lat":0.0,"z_min":1.0,"z_max":1.0,"mass_kg":1.0,"particle_count":1,"raw":{}})).expect("release");
         let route = TransportSettlingRoute::from_inventory(
             &context,
             &config,

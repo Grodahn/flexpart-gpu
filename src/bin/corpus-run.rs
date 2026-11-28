@@ -14,11 +14,10 @@
 //!   cargo run --release --bin corpus-run -- --case WIND-UNI-002 --seeds 10
 //!   cargo run --release --bin corpus-run -- --all --seeds 2 --out-dir target/corpus/candidate
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use flexpart_gpu::config::ReleaseConfig;
+use flexpart_gpu::config::SpeciesConfig;
 use flexpart_gpu::coords::GridDomain;
 use flexpart_gpu::gpu::{
     advect_particles_gpu_with_sampling, GpuContext, ParticleBuffers, WindBuffers,
@@ -32,8 +31,7 @@ use flexpart_gpu::simulation::{
 };
 use flexpart_gpu::validation::candidate_physics::CandidatePhysicsProfile;
 use flexpart_gpu::validation::case::{
-    CandidatePhiloxDerivation, ReleaseTiming, SimulationDirection, SourceGeometry,
-    ValidationCaseManifest, WindSpec,
+    SimulationDirection, SourceGeometry, ValidationCaseManifest, WindSpec,
 };
 use flexpart_gpu::wind::{SurfaceFields, WindField3D, WindFieldGrid};
 use ndarray::Array1;
@@ -741,6 +739,26 @@ fn validate_candidate_runner_support(
     Ok(())
 }
 
+fn load_release_species(manifest: &ValidationCaseManifest) -> Result<SpeciesConfig, String> {
+    #[derive(serde::Deserialize)]
+    struct SpeciesContract {
+        checked_in_fixture: SpeciesFixture,
+    }
+    #[derive(serde::Deserialize)]
+    struct SpeciesFixture {
+        path: PathBuf,
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let contract_path = root.join(&manifest.release.species.physics_contract.path);
+    let contract: SpeciesContract = serde_json::from_slice(
+        &fs::read(&contract_path)
+            .map_err(|error| format!("{}: {error}", contract_path.display()))?,
+    )
+    .map_err(|error| format!("{}: {error}", contract_path.display()))?;
+    SpeciesConfig::from_file(&root.join(contract.checked_in_fixture.path))
+        .map_err(|error| error.to_string())
+}
+
 #[allow(clippy::too_many_lines)]
 fn run_driver_case(
     case_id: &str,
@@ -760,39 +778,14 @@ fn run_driver_case(
     let nz = usize::try_from(domain.nz)
         .map_err(|_| format!("case {case_id}: domain.nz out of range"))?;
     let heights = domain.wind_heights_m.clone();
-    let release = &manifest.release;
-    let (lon, lat, z_min, z_max) = match &release.geometry {
-        SourceGeometry::Point {
-            lon_deg,
-            lat_deg,
-            z_m,
-        } => (
-            f64::from(*lon_deg),
-            f64::from(*lat_deg),
-            f64::from(*z_m),
-            f64::from(*z_m),
-        ),
-        SourceGeometry::Box {
-            lon_min_deg,
-            lon_max_deg,
-            lat_min_deg,
-            lat_max_deg,
-            z_min_m,
-            z_max_m,
-        } => {
-            if lon_min_deg != lon_max_deg || lat_min_deg != lat_max_deg {
-                return Err(format!("case {case_id}: box lon/lat ranges are not supported by the candidate ReleaseConfig (only vertical ranges)"));
-            }
-            (
-                *lon_min_deg,
-                *lat_min_deg,
-                f64::from(*z_min_m),
-                f64::from(*z_max_m),
-            )
-        }
-    };
-    let count = u64::from(release.particle_count);
-    let mass_total = f64::from(release.inventory.quantity_kg);
+    let species = [load_release_species(manifest)?];
+    let release = manifest
+        .normalize_release(&species)
+        .map_err(|error| error.to_string())?;
+    let (_, _, south, north) = release.geometry.bounds();
+    let lat = (south + north) * 0.5;
+    let count = release.particle_count;
+    let mass_total = f64::from(manifest.release.inventory.quantity_kg);
     let integration = &manifest.integration;
     let start = integration.start.as_str();
     if integration.dt_s.fract() != 0.0 || integration.total_s.fract() != 0.0 {
@@ -821,27 +814,6 @@ fn run_driver_case(
         nx,
         ny,
     };
-    let release_at = match &release.timing {
-        ReleaseTiming::Instant { at } => at.as_str(),
-        ReleaseTiming::Window { .. } => {
-            return Err(format!(
-                "case {case_id}: corpus-run candidate driver supports only instant releases"
-            ));
-        }
-    };
-    let releases = vec![ReleaseConfig {
-        name: case_id.to_string(),
-        start_time: release_at.to_string(),
-        end_time: release_at.to_string(),
-        lon,
-        lat,
-        z_min,
-        z_max,
-        mass_kg: mass_total,
-        particle_count: count,
-        species_masses_kg: None,
-        raw: BTreeMap::new(),
-    }];
     let config = ForwardTimeLoopConfig {
         transport_settling: None, // Explicit legacy diagnostic; no production carrier claim.
         start_timestamp: start.to_string(),
@@ -874,7 +846,8 @@ fn run_driver_case(
     drop(probe);
     let mut driver = pollster::block_on(ForwardTimeLoopDriver::new(
         config,
-        &releases,
+        &[release],
+        &species,
         release_grid,
         count as usize,
     ))
@@ -1089,6 +1062,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flexpart_gpu::validation::case::CandidatePhiloxDerivation;
     use std::path::PathBuf;
 
     fn fixture_path(case_id: &str) -> PathBuf {

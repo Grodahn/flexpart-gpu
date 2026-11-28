@@ -26,7 +26,6 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use flexpart_gpu::config::ReleaseConfig;
 use flexpart_gpu::coords::GridDomain;
 use flexpart_gpu::gpu::{
     advect_particles_gpu_with_sampling, GpuContext, GpuError, ParticleBuffers, WindBuffers,
@@ -38,6 +37,7 @@ use flexpart_gpu::physics::{
     apply_wet_scavenging_mass_step, dry_deposition_probability_step, VelocityToGridScale,
     WetScavengingStep,
 };
+use flexpart_gpu::release::LegacyReleaseConfig;
 use flexpart_gpu::simulation::{
     ForwardStepForcing, ForwardTimeLoopConfig, ForwardTimeLoopDriver, MetTimeBracket,
     ParticleForcingField, TimeLoopError,
@@ -224,7 +224,7 @@ fn neutral_driver(
     let end_hour = total_s / 3600;
     let end_min = (total_s % 3600) / 60;
     let end_ts = format!("20240101{end_hour:02}{end_min:02}00");
-    let releases = vec![ReleaseConfig {
+    let releases = vec![LegacyReleaseConfig {
         name: "corpus-neutral-smoke".to_string(),
         start_time: "20240101000000".to_string(),
         end_time: "20240101000000".to_string(),
@@ -262,7 +262,7 @@ fn neutral_driver(
         nx,
         ny,
     };
-    let driver = pollster::block_on(ForwardTimeLoopDriver::new(
+    let driver = pollster::block_on(ForwardTimeLoopDriver::new_legacy_diagnostic(
         config,
         &releases,
         release_grid,

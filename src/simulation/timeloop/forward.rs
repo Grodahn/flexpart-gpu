@@ -1,6 +1,6 @@
 //! Forward run state, resource lifetime and public lifecycle facade.
 
-use crate::config::ReleaseConfig;
+use crate::config::SpeciesConfig;
 use crate::coords::GridDomain;
 use crate::gpu::advection_resident::ResidentAdvectionKernels;
 #[cfg(test)]
@@ -17,6 +17,7 @@ use crate::io::GribPrefetchHandle;
 use crate::particles::{ParticleStore, MAX_SPECIES};
 use crate::physics::PhiloxCounter;
 use crate::release::ReleaseManager;
+use crate::release::{validate_release_bindings, LegacyReleaseConfig, ReleaseError, ReleaseSpec};
 use crate::simulation::timeloop::config::{validate_config, ForwardTimeLoopConfig};
 use crate::simulation::timeloop::error::TimeLoopError;
 use crate::simulation::timeloop::forcing::ForwardStepForcing;
@@ -142,34 +143,140 @@ pub struct ForwardTimeLoopDriver {
     compaction_buffers: Option<CompactionBuffers>,
 }
 
+#[derive(Clone, Copy)]
+enum ForwardSources<'a> {
+    Canonical(&'a [ReleaseSpec]),
+    LegacyDiagnostic(&'a [LegacyReleaseConfig]),
+}
+
 impl ForwardTimeLoopDriver {
-    /// Create a new forward timeloop driver with empty particle store.
+    /// Construct the forward driver from canonical releases bound to the run species table.
     ///
-    /// All GPU buffers and dispatch kernels are pre-allocated here based on
-    /// `particle_capacity` and `release_grid` dimensions (O-06). This avoids
-    /// per-step lazy-init checks in the hot loop.
+    /// # Errors
+    /// Returns an error if a source is incompatible with the run or GPU initialization fails.
     pub async fn new(
         config: ForwardTimeLoopConfig,
-        releases: &[ReleaseConfig],
+        releases: &[ReleaseSpec],
+        species: &[SpeciesConfig],
+        release_grid: GridDomain,
+        particle_capacity: usize,
+    ) -> Result<Self, TimeLoopError> {
+        validate_release_bindings(releases, species).map_err(ReleaseError::from)?;
+        if let Some(carriers) = &config.transport_settling {
+            if carriers.species != species {
+                return Err(ReleaseError::from(crate::release::invalid_release(
+                    "forward release species table must match the run transport species table",
+                ))
+                .into());
+            }
+        }
+        Self::build(
+            config,
+            ForwardSources::Canonical(releases),
+            release_grid,
+            particle_capacity,
+        )
+        .await
+    }
+
+    /// Construct the transitional driver for callers with programmatic diagnostic source inputs.
+    ///
+    /// # Errors
+    /// Returns an error if a production carrier route is requested or driver initialization fails.
+    pub async fn new_legacy_diagnostic(
+        config: ForwardTimeLoopConfig,
+        releases: &[LegacyReleaseConfig],
+        release_grid: GridDomain,
+        particle_capacity: usize,
+    ) -> Result<Self, TimeLoopError> {
+        if config.transport_settling.is_some() {
+            return Err(ReleaseError::from(crate::release::invalid_release(
+                "canonical forward transport requires ReleaseSpec inputs",
+            ))
+            .into());
+        }
+        Self::build(
+            config,
+            ForwardSources::LegacyDiagnostic(releases),
+            release_grid,
+            particle_capacity,
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn new_legacy_test_sources(
+        config: ForwardTimeLoopConfig,
+        releases: &[LegacyReleaseConfig],
+        release_grid: GridDomain,
+        particle_capacity: usize,
+    ) -> Result<Self, TimeLoopError> {
+        Self::build(
+            config,
+            ForwardSources::LegacyDiagnostic(releases),
+            release_grid,
+            particle_capacity,
+        )
+        .await
+    }
+
+    async fn build(
+        config: ForwardTimeLoopConfig,
+        sources: ForwardSources<'_>,
         release_grid: GridDomain,
         particle_capacity: usize,
     ) -> Result<Self, TimeLoopError> {
         let (start_time_seconds, end_time_seconds) = validate_config(&config)?;
         let initial_philox_counter = config.initial_philox_counter;
         let met_grid_shape = (release_grid.nx, release_grid.ny);
-        let release_manager = ReleaseManager::new(releases, release_grid.clone())?;
+        let release_manager = match sources {
+            ForwardSources::Canonical(releases) => {
+                ReleaseManager::from_specs(releases, release_grid.clone())?
+            }
+            ForwardSources::LegacyDiagnostic(releases) => {
+                ReleaseManager::new_legacy(releases, release_grid.clone())?
+            }
+        };
+        if let ForwardSources::Canonical(releases) = sources {
+            let run_start = crate::release::ReleaseTime::parse_utc(&config.start_timestamp)
+                .map_err(ReleaseError::from)?
+                .unix_seconds();
+            let run_end = crate::release::ReleaseTime::parse_utc(&config.end_timestamp)
+                .map_err(ReleaseError::from)?
+                .unix_seconds();
+            for release in releases {
+                let (start, end) = release.profile.bounds();
+                if start.unix_seconds() < run_start
+                    || end.unix_seconds() > run_end
+                    || (end.unix_seconds() - run_start) % config.timestep_seconds != 0
+                {
+                    return Err(ReleaseError::from(crate::release::invalid_release(format!(
+                        "release `{}` must fit within the run and end on an existing scheduler tick", release.id,
+                    ))).into());
+                }
+            }
+        }
         let particle_store = ParticleStore::with_capacity(particle_capacity);
         let gpu_context = GpuContext::new().await?;
         let transport_settling = config
             .transport_settling
             .as_ref()
-            .map(|options| {
-                super::settling::TransportSettlingRoute::new(
-                    &gpu_context,
-                    options,
-                    releases,
-                    super::config::TimeDirection::Forward,
-                )
+            .map(|options| match sources {
+                ForwardSources::Canonical(releases) => {
+                    super::settling::TransportSettlingRoute::from_specs(
+                        &gpu_context,
+                        options,
+                        releases,
+                    )
+                }
+                ForwardSources::LegacyDiagnostic(releases) => {
+                    super::settling::TransportSettlingRoute::new(
+                        &gpu_context,
+                        options,
+                        releases,
+                        super::config::TimeDirection::Forward,
+                    )
+                }
             })
             .transpose()?;
         let particle_buffers = ParticleBuffers::from_store(&gpu_context, &particle_store);

@@ -1,4 +1,4 @@
-//! Bounded ERA5 Complete GRIB2 input profile for the native ETEX fixture (#237).
+//! Bounded ERA5 Complete GRIB2 input profiles for the native ETEX fixture.
 
 use std::path::Path;
 use thiserror::Error;
@@ -31,11 +31,25 @@ pub enum DecodeError {
     },
     #[error("incomplete model record coverage")]
     Coverage,
-    #[error("ERA5/ETEX v1 has no verified matching surface pressure; the ARCO derivative is not admitted")]
+    #[error(
+        "no verified matching surface pressure was supplied; the ARCO derivative is not admitted"
+    )]
     SurfacePressureUnavailable,
-    #[error("invalid canonical model-level payload: {0}")]
+    #[error("cannot read surface-pressure source: {0}")]
+    SurfaceIo(#[source] std::io::Error),
+    #[error("surface-pressure source does not match the pinned byte count and SHA-256 for the requested time")]
+    SurfaceSourceIdentity,
+    #[error("surface-pressure request does not match the pinned ERA5 model-source lineage")]
+    SurfaceLineage,
+    #[error("unexpected or duplicate surface-pressure record for {0:04} UTC")]
+    SurfaceRecord(i64),
+    #[error("incomplete surface-pressure record coverage")]
+    SurfaceCoverage,
+    #[error("GRIB2 message {message}: invalid log surface pressure at source cell {cell}")]
+    SurfacePressureValue { message: usize, cell: usize },
+    #[error("invalid canonical meteorology payload: {0}")]
     Canonical(#[from] crate::meteorology::ContractError),
-    #[error("cannot serialize diagnostic provenance: {0}")]
+    #[error("cannot process decoder provenance: {0}")]
     Serialization(#[from] serde_json::Error),
 }
 
@@ -44,13 +58,15 @@ use crate::meteorology::Snapshot;
 #[cfg(feature = "eccodes")]
 mod native;
 #[cfg(feature = "eccodes")]
-pub use native::{decode_model_levels, ModelLevelsDiagnostic};
+pub use native::{
+    decode_model_levels, load_snapshot_with_surface, ModelLevelsDiagnostic, VerifiedSnapshot,
+};
 
-/// Request a complete hybrid Snapshot from this profile.
+/// Request a hybrid Snapshot without supplying surface pressure.
 ///
 /// # Errors
-/// The checked-in input profile has no independently verified matching surface
-/// pressure. Invalid model input fails with its decoding error first.
+/// Valid model inputs return a missing-surface error. Invalid inputs fail with
+/// their decoding error first. Supply both files to `load_snapshot_with_surface`.
 #[cfg(feature = "eccodes")]
 pub fn load_snapshot(path: &Path, valid_time_epoch_seconds: i64) -> Result<Snapshot, DecodeError> {
     decode_model_levels(path, valid_time_epoch_seconds)?;

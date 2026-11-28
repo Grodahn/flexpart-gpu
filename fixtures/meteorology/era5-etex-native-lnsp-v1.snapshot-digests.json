@@ -1,0 +1,12 @@
+{
+  "profile": "era5-etex-native-lnsp-pair-v1",
+  "encoding": "serde_json::to_vec(snapshot), compact UTF-8 without newline",
+  "snapshot_sha256_by_epoch": {
+    "782924400": "f53d4422ed7edd5208021b26186c82e8ca06b514a28e046a8bcb4a4dcc5fe273",
+    "782935200": "3b4ad54a5c8a7ee4e70f9e02971dd8b371514859c8c245cee1b54a645703a075",
+    "782946000": "abde6da2040e24df75854ed14b903febcf914824da491d235bb4f21b06f44550",
+    "782956800": "528c158f8369a7a3c37a3671c11c055c513e5234eb73d6e4f39227da0f035f52",
+    "782967600": "34d5f437c5a8b19b5ab1dd224cc4805ffce4c6f0656a19825897d00b4446b08e",
+    "782978400": "b52374f29a83e6e3680cba4ec5f5be47315ae39126d50cb9fd218608a3409282"
+  }
+}

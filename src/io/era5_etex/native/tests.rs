@@ -17,7 +17,7 @@ fn check_message(bytes: Vec<u8>) -> Result<(), DecodeError> {
     Ok(())
 }
 
-fn section_offset(bytes: &[u8], section: u8) -> usize {
+pub(super) fn section_offset(bytes: &[u8], section: u8) -> usize {
     let mut offset = 16;
     while bytes[offset + 4] != section {
         offset += u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;

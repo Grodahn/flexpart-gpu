@@ -30,7 +30,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 
 ## Meteorology
 
-- ERA5/ETEX native GRIB (#237): [provider boundary](../../src/io/era5_etex.rs), [profile and normalization](../../src/io/era5_etex/native.rs), [contract](../era5-etex-native-decoder.md), [focused verification](test-map.md#meteorology).
+- ERA5/ETEX native GRIB (#237/#253): [provider boundary](../../src/io/era5_etex.rs), [model profile](../../src/io/era5_etex/native.rs), [source-matched lnsp](../../src/io/era5_etex/native/surface.rs), [contract](../era5-etex-native-decoder.md), [focused verification](test-map.md#meteorology).
 
 - IFS Open provider audit (#238): [decision](../research/ifs-open-provider-238.md), [30-field contract](../../fixtures/meteorology/ifs-open-audit-v1/provider-contract.json), [source ranges/hashes](../../fixtures/meteorology/ifs-open-audit-v1/retrieval-manifest.json), [fetch](../../scripts/provider/ifs_open_fetch.py), [offline audit](../../scripts/provider/ifs_open_audit.py), [value diagnostics](../../scripts/provider/ifs_open_comparisons.py), [checks](../../scripts/provider/test_ifs_open_audit.py), [canonical lock](../../tests/ifs_open_provider_contract.rs). Research only: pressure-level Open Data is `NO_GO` for existing production consumers; no decoder or GPU change. [Focused verification](test-map.md#meteorology).
 

@@ -3,9 +3,12 @@
 #![cfg(feature = "eccodes")]
 
 use flexpart_gpu::io::era5_etex::{
-    decode_model_levels, load_snapshot, DecodeError, ModelLevelsDiagnostic,
+    decode_model_levels, load_snapshot, load_snapshot_with_surface, DecodeError,
+    ModelLevelsDiagnostic,
 };
-use flexpart_gpu::meteorology::{Calendar, FieldId, Requirements, Snapshot, TemporalKind};
+use flexpart_gpu::meteorology::{
+    Axis, Calendar, ContractError, FieldId, Requirements, Snapshot, TemporalKind, Unit,
+};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -14,6 +17,8 @@ use std::path::Path;
 const NATIVE: &str = "fixtures/etex/native-mini";
 const DAY_ONE: &str = "era5-19941023-151821-ml.grib";
 const DAY_TWO: &str = "era5-19941024-000306-ml.grib";
+const LN_SP_ONE: &str = "era5-19941023-151821-lnsp.grib";
+const LN_SP_TWO: &str = "era5-19941024-000306-lnsp.grib";
 const SURFACE: &str = "era5-surface-19941023-24.npz";
 const REFERENCE_TIME: i64 = 782_924_400;
 
@@ -28,6 +33,151 @@ struct SourceEvidence {
     raw_sha256: String,
     pv_f32_le_sha256: String,
     volumes_by_epoch: BTreeMap<i64, BTreeMap<FieldId, String>>,
+}
+
+#[derive(Deserialize)]
+struct PressureEvidence {
+    sources: Vec<PressureSourceEvidence>,
+}
+
+#[derive(Deserialize)]
+struct PressureSourceEvidence {
+    model_sha256: String,
+    pressure_sha256: String,
+    pressure_request_sha256: String,
+    by_epoch: BTreeMap<i64, PressureGridEvidence>,
+}
+
+#[derive(Deserialize)]
+struct PressureGridEvidence {
+    pressure_f32_le_sha256: String,
+}
+
+#[derive(Deserialize)]
+struct SnapshotEvidence {
+    snapshot_sha256_by_epoch: BTreeMap<i64, String>,
+}
+
+#[test]
+fn test_era5_etex_verified_snapshots_match_all_direct_grib_fields() {
+    let models: ValueEvidence = serde_json::from_str(include_str!(
+        "../fixtures/meteorology/era5-etex-native-v1.value-digests.json"
+    ))
+    .unwrap();
+    let pressures: PressureEvidence = serde_json::from_str(include_str!(
+        "../fixtures/meteorology/era5-etex-native-lnsp-v1.value-digests.json"
+    ))
+    .unwrap();
+    let snapshots: SnapshotEvidence = serde_json::from_str(include_str!(
+        "../fixtures/meteorology/era5-etex-native-lnsp-v1.snapshot-digests.json"
+    ))
+    .unwrap();
+    assert_eq!(models.sources.len(), 2);
+    assert_eq!(pressures.sources.len(), 2);
+    assert_eq!(snapshots.snapshot_sha256_by_epoch.len(), 6);
+    let base = Path::new(NATIVE);
+    for ((model, pressure), pressure_file) in models
+        .sources
+        .iter()
+        .zip(pressures.sources)
+        .zip([LN_SP_ONE, LN_SP_TWO])
+    {
+        assert_eq!(model.raw_sha256, pressure.model_sha256);
+        assert_eq!(pressure.by_epoch.len(), 3);
+        for (&epoch, expected_pressure) in &pressure.by_epoch {
+            let result = load_snapshot_with_surface(
+                &base.join(&model.file),
+                &base.join(pressure_file),
+                epoch,
+            )
+            .unwrap();
+            let snapshot = result.snapshot();
+            snapshot
+                .validate(&Requirements::real_data_native_levels())
+                .unwrap();
+            assert!(matches!(
+                snapshot.validate(&Requirements::advection()),
+                Err(ContractError::MissingRequiredField(
+                    FieldId::VerticalVelocity
+                ))
+            ));
+            assert_eq!(snapshot.fields.len(), 5);
+            let vertical = &snapshot.vertical_coordinate;
+            let a = vertical.hybrid_a_interface_pa.as_ref().unwrap();
+            let b = vertical.hybrid_b_interface.as_ref().unwrap();
+            assert_eq!(vertical.level_values.len(), 137);
+            assert_eq!(vertical.interface_values.as_ref().unwrap().len(), 138);
+            assert_eq!((a.len(), b.len()), (138, 138));
+            assert_eq!(f32_digest(a.iter().chain(b)), model.pv_f32_le_sha256);
+            for field in &snapshot.fields {
+                let expected = if field.id == FieldId::SurfacePressure {
+                    assert_eq!(field.shape, [65, 41]);
+                    assert_eq!(field.axis_order, [Axis::X, Axis::Y]);
+                    assert_eq!(field.unit, Unit::Pascal);
+                    &expected_pressure.pressure_f32_le_sha256
+                } else {
+                    assert_eq!(field.shape, [65, 41, 137]);
+                    &model.volumes_by_epoch[&epoch][&field.id]
+                };
+                assert_eq!(field.time.valid_time_epoch_seconds, epoch);
+                assert_eq!(field.time.calendar, Calendar::Gregorian);
+                assert_eq!(field.time.kind, TemporalKind::Instantaneous);
+                assert_eq!(
+                    &f32_digest(&field.values),
+                    expected,
+                    "{epoch}/{:?}",
+                    field.id
+                );
+            }
+            let payload = serde_json::to_vec(snapshot).unwrap();
+            let digest = format!("{:x}", Sha256::digest(&payload));
+            assert_eq!(digest, snapshots.snapshot_sha256_by_epoch[&epoch]);
+            let provenance = result.provenance();
+            assert_eq!(provenance["valid_time_epoch_seconds"], epoch);
+            assert_eq!(provenance["payload"]["sha256"], digest);
+            assert_eq!(provenance["payload"]["bytes"], payload.len());
+            assert_eq!(
+                provenance["model_levels"]["raw_source"]["verified_sha256"],
+                model.raw_sha256
+            );
+            let source = &provenance["surface_pressure"];
+            assert_eq!(source["request_record"]["sha256"], pressure.pressure_sha256);
+            assert_eq!(
+                source["request_record_sha256"],
+                pressure.pressure_request_sha256
+            );
+        }
+    }
+}
+
+fn f32_digest<'a>(values: impl IntoIterator<Item = &'a f32>) -> String {
+    let mut hash = Sha256::new();
+    for value in values {
+        hash.update(value.to_le_bytes());
+    }
+    format!("{:x}", hash.finalize())
+}
+
+#[test]
+fn test_era5_etex_surface_substitution_and_file_corruption_fail_closed() {
+    let base = Path::new(NATIVE);
+    let model = base.join(DAY_ONE);
+    let load = |path: &Path| load_snapshot_with_surface(&model, path, REFERENCE_TIME);
+    let scratch = tempfile::tempdir().unwrap();
+    let corrupt_path = scratch.path().join(LN_SP_ONE);
+    assert!(matches!(
+        load(&corrupt_path),
+        Err(DecodeError::SurfaceIo(_))
+    ));
+    let mut bytes = std::fs::read(base.join(LN_SP_ONE)).unwrap();
+    bytes[100] ^= 1;
+    std::fs::write(&corrupt_path, bytes).unwrap();
+    for source in [base.join(SURFACE), base.join(LN_SP_TWO), corrupt_path] {
+        assert!(matches!(
+            load(&source),
+            Err(DecodeError::SurfaceSourceIdentity)
+        ));
+    }
 }
 
 #[test]

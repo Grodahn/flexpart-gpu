@@ -47,7 +47,7 @@ fn eta_dot_production_path_remains_fail_closed_after_validation() {
     assert!(matches!(
         error,
         VerticalTransformError::InvalidNativeVerticalMotion {
-            reason: "eta-dot preprocessing is validation-only; production normalization remains disabled until explicitly enabled after #70"
+            reason: "eta-dot preprocessing is validation-only; production requires preprocessed interface pressure velocity"
         }
     ));
 }

@@ -94,11 +94,12 @@ Fail-closed step 2c (#70, calc_etadot preprocessing oracle):
   extracts canonical snapshot/motion/oracle JSONs, runs the
   `eta-dot-column-report` candidate, and compares every grid point x level
   against the oracle field (f32-vs-f64 tolerances, worst attributable
-  relative error ≤ 3e-5). The same pinned executable is then run on a second
-  checked-in ETEX/ERA5 case built from one complete real native-model-level
+  relative tolerance 3e-5 with a 1e-7 Pa/s absolute floor). The same pinned
+  executable runs a checked-in ETEX/ERA5 case built from one complete native-model-level
   column at 48.0 N, 2.0 W. Its raw eta-dot, T/U/V/Q and hybrid A/B coordinate
-  cover all 137 model levels and its surface pressure comes from the matching
-  ERA5 surface snapshot. The selected source column is replicated onto the
+  cover all 137 model levels. Its surface pressure comes from the separate
+  ARCO-ERA5 derivative. The original ECMWF source join remains open under
+  #253. The selected source column is replicated onto the
   pinned 6x6 installation-test work grid; those 36 copies are plumbing, not
   independent ERA5 columns. Because `calc_etadot` requires spectral ln(ps),
   the selected real surface pressure is encoded as a spatially constant
@@ -107,12 +108,29 @@ Fail-closed step 2c (#70, calc_etadot preprocessing oracle):
   real 137-level eta-dot recurrence without zero-filled levels. The real-data
   report must pass all 137 x 6 x 6 = 4932 replicated oracle/candidate
   comparisons and records the single selected source column explicitly. The
-  validated native contract
-  is deliberately narrowed to `positive_eta_increasing`; the opposite sign
-  convention remains fail-closed. The tier records run provenance for both
-  oracle executions with the concrete image ID, compiler, executable hash,
+  admitted sign is `positive_eta_increasing`, as supplied by parameter 77.
+  Two controlled L137 replays prescribe 72000 and 101325 Pa and use a
+  sign-changing, nonuniform synthetic eta-dot profile. The synthetic spectral
+  inputs store T0 in IEEE64 so both the oracle and the candidate receive the
+  prescribed pressure. The candidate receives that pressure directly after
+  verification against the `fort.12` coefficient. The gate also checks
+  `fort.15` pressure packing to one binary32 ULP. Both IEEE32 logarithm
+  packing and using the repacked `fort.15` pressure as candidate input
+  exceeded the absolute floor at two near-zero interfaces at 101325 Pa.
+  Each final replay compares
+  all 4932 values and checks the canonical model-top boundary for exact zero.
+  The tier records run provenance for all executions with the concrete image ID, compiler, executable hash,
   consumed fort.* hashes, source manifests and fort.15 output hash. The
   checkout must stay pristine after the run.
+
+  Run the focused tier in a fresh output directory and regenerate the compact
+  offline fixture with these commands.
+
+  ```sh
+  bash scripts/vertical/flex_extract_etadot_oracle.sh --flex-extract-checkout ../flex_extract --output-dir target/eta-dot-replay
+  python scripts/vertical/freeze_calc_etadot_columns.py target/eta-dot-replay fixtures/vertical/calc-etadot-l137-v1.json
+  cargo test --lib meteorology::vertical::eta_dot::tests
+  ```
 
 Fail-closed step 2d (#71, interpolation oracle contract):
 

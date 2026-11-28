@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ---------------------------------------------------------------------------
 # calc_etadot oracle tier (#70): run the pinned flex_extract 7.1.2
-# Calc_etadot installation example and compare the candidate
+# Calc_etadot installation example and full L137 cases and compare the candidate
 # eta_dot_to_pressure_velocity output against the oracle field.
 #
 # Fail-closed. Keeps the pinned flex_extract checkout pristine by building
@@ -42,6 +42,7 @@ Options:
                                  (default: ../flex_extract relative to the repo).
   --output-dir <dir>             Scratch/output directory
                                  (default: target/ci-gate/flex-extract-oracle).
+                                 Must be empty if it already exists.
   -h, --help                     Show this help.
 EOF
 }
@@ -70,9 +71,13 @@ fail() {
   exit 1
 }
 
-# Never reuse oracle products from an earlier invocation.
-rm -rf "${OUTPUT_DIR}"
+# Never reuse or delete oracle products from an earlier invocation.
 mkdir -p "${OUTPUT_DIR}"
+if [ -n "$(ls -A "${OUTPUT_DIR}")" ]; then
+  fail "output directory must be empty: ${OUTPUT_DIR}"
+fi
+export FLEXEXTRACT_OUTPUT_DIR="$("${HOST_PYTHON}" -c \
+  'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve().as_posix())' "${OUTPUT_DIR}")"
 MANIFEST="${PROJECT_ROOT}/reference/flex-extract.json"
 PINNED_COMMIT="$("${HOST_PYTHON}" -c \
   "import json,sys; print(json.load(open(sys.argv[1]))['pinned_commit'])" \
@@ -99,7 +104,6 @@ fi
 #    directories so the checkout stays byte-for-byte pristine.
 BUILD_DIR="${OUTPUT_DIR}/oracle-build"
 RUN_DIR="${OUTPUT_DIR}/oracle-run"
-rm -rf "${BUILD_DIR}" "${RUN_DIR}"
 mkdir -p "${BUILD_DIR}" "${RUN_DIR}"
 
 docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
@@ -107,14 +111,14 @@ docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
     set -euo pipefail
     src=/workspace/flex_extract/Source/Fortran
     example=/workspace/flex_extract/Testing/Installation/Calc_etadot
-    build=/workspace/target/ci-gate/flex-extract-oracle/oracle-build
-    run=/workspace/target/ci-gate/flex-extract-oracle/oracle-run
+    build=/workspace/etadot-out/oracle-build
+    run=/workspace/etadot-out/oracle-run
 
     cp \"\$src\"/rwgrib2.f90 \"\$src\"/calc_etadot.f90 \"\$src\"/ftrafo.f90 \
        \"\$src\"/grphreal.f90 \"\$src\"/posnam.f90 \"\$src\"/phgrreal.f90 \
        \"\$src\"/makefile_fast \"\$build\"/
     cd \"\$build\"
-    gfortran --version | sed -n '1p' > /workspace/target/ci-gate/flex-extract-oracle/compiler-version.txt
+    gfortran --version | sed -n '1p' > /workspace/etadot-out/compiler-version.txt
     make -f makefile_fast \
       LIB='-Bstatic -leccodes_f90_static -leccodes_static -Bdynamic -lemosR64 -lm -lpng -laec -lopenjp2' \
       INC='-I. -I/usr/lib/x86_64-linux-gnu/fortran/gfortran-mod-15' \
@@ -135,7 +139,7 @@ docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
 
     python3 /workspace/flexpart-gpu/scripts/vertical/extract_calc_etadot_oracle.py \
       --example-dir \"\$run\" \
-      --output-dir /workspace/target/ci-gate/flex-extract-oracle/oracle-json
+      --output-dir /workspace/etadot-out/oracle-json
   " 2>&1 | tee "${OUTPUT_DIR}/oracle-build-run.log" || \
   fail "calc_etadot oracle build/run/extract failed (see oracle-build-run.log)"
 
@@ -199,6 +203,10 @@ payload = {
     "oracle_outputs": {
         "fort.15": {"path": str(run / "fort.15"), "sha256": digest(run / "fort.15")}
     },
+    "decoded_sha256": {
+        name: digest(out / "oracle-json" / name)
+        for name in ("oracle.json", "snapshot.json", "motion.json")
+    },
 }
 (out / "run-provenance.json").write_text(
     json.dumps(payload, indent=2) + "\n", encoding="utf-8"
@@ -247,23 +255,25 @@ print("eta-dot oracle comparison: PASS")
   fail "comparison report failed structural assertion"
 fi
 
-# 5. Run the same pinned calc_etadot executable on one complete real ERA5
-#    native-level case: 137/137 eta-dot levels over the checked-in 65x41 ETEX
-#    native-mini grid at 1994-10-23 15:00 UTC. The selected column at
-#    48N, 2W uses real ERA5 ps, eta-dot, U/V/T/Q and the native 138-interface
-#    A/B coordinate. fort.12 is a mathematically constant spectral ln(ps)
-#    field constructed from that column's real surface pressure.
-REAL_ROOT="${OUTPUT_DIR}/real-era5-137"
+# 5. Replay all 137 levels for the ETEX column with diagnostic ARCO pressure
+#    and for two controlled profiles on the same native A/B interfaces.
+run_full_column() {
+local case_name="$1" classification="$2" origin="$3" synthetic_pressure="${4:-}"
+local pressure_flag=""
+if [ -n "${synthetic_pressure}" ]; then
+  pressure_flag="--synthetic-pressure-pa ${synthetic_pressure}"
+fi
+local REAL_ROOT="${OUTPUT_DIR}/${case_name}"
+local REAL_RUN REAL_JSON
 REAL_RUN="${REAL_ROOT}/oracle-run"
 REAL_JSON="${REAL_ROOT}/oracle-json"
-rm -rf "${REAL_ROOT}"
 mkdir -p "${REAL_RUN}" "${REAL_JSON}"
 
 if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run --rm \
   flex-extract bash -c "
     set -euo pipefail
-    root=/workspace/target/ci-gate/flex-extract-oracle
-    real=\$root/real-era5-137
+    root=/workspace/etadot-out
+    real=\$root/${case_name}
     run=\$real/oracle-run
     json=\$real/oracle-json
     exe=\$root/oracle-build/calc_etadot_fast.out
@@ -272,7 +282,7 @@ if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run -
       --native-dir /workspace/flexpart-gpu/fixtures/etex/native-mini \
       --flex-extract-checkout /workspace/flex_extract \
       --output-dir \$run \
-      --timestamp 1994-10-23T15:00:00
+      --timestamp 1994-10-23T15:00:00 ${pressure_flag}
 
     cd \$run
     ln -sf \$exe calc_etadot
@@ -289,16 +299,16 @@ if ! docker compose -f "${PROJECT_ROOT}/docker/docker-compose.fortran.yml" run -
       --example-dir \$run \
       --output-dir \$json \
       --expected-levels 1/to/137 \
-      --fixture-classification real_era5_native_model_level_full_column \
-      --fixture-origin 'fixtures/etex/native-mini ERA5 Complete 1994-10-23T15:00:00Z' \
+      --fixture-classification '${classification}' \
+      --fixture-origin '${origin}' \
       --source-provenance \$run/source-provenance.json
   " 2>&1 | tee "${REAL_ROOT}/oracle-build-run.log"; then
-  fail "full 137-level real ERA5 eta-dot calc_etadot oracle run failed"
+  fail "full-column calc_etadot run failed: ${case_name}"
 fi
 
-# Bind the real ERA5 run to the same concrete image/compiler/executable identity
+# Bind the full-column run to the same concrete image/compiler/executable identity
 # and to every generated fort.* input plus the independent source provenance.
-if ! "${HOST_PYTHON}" - "${OUTPUT_DIR}" "${DOCKER_IMAGE_ID}" <<'PY'
+if ! "${HOST_PYTHON}" - "${OUTPUT_DIR}" "${DOCKER_IMAGE_ID}" "${case_name}" <<'PY'
 import hashlib
 import json
 import sys
@@ -306,7 +316,7 @@ from pathlib import Path
 
 out = Path(sys.argv[1])
 image_id = sys.argv[2]
-real = out / "real-era5-137"
+real = out / sys.argv[3]
 run = real / "oracle-run"
 exe = out / "oracle-build" / "calc_etadot_fast.out"
 compiler = out / "compiler-version.txt"
@@ -318,18 +328,18 @@ def digest(path):
 for path in [exe, compiler, run / "fort.15", run / "source-provenance.json",
              *(run / name for name in required)]:
     if not path.is_file():
-        raise SystemExit(f"missing real ERA5 provenance artifact: {path}")
+        raise SystemExit(f"missing full-column provenance artifact: {path}")
 
 source = json.loads((run / "source-provenance.json").read_text(encoding="utf-8"))
 if source.get("schema") != "flexpart-gpu.etadot-real-era5-case.v1":
-    raise SystemExit("real ERA5 source provenance schema mismatch")
+    raise SystemExit("full-column source provenance schema mismatch")
 if source.get("vertical", {}).get("model_levels") != 137:
-    raise SystemExit("real ERA5 source provenance is not a 137-level case")
+    raise SystemExit("full-column source provenance is not a 137-level case")
 for name in required:
     generated = source["generated_inputs"].get(name, {}).get("sha256")
     actual = digest(run / name)
     if generated != actual:
-        raise SystemExit(f"generated real ERA5 input hash changed: {name}")
+        raise SystemExit(f"generated full-column input hash changed: {name}")
 
 payload = {
     "schema": "flexpart-gpu.etadot-oracle-run-provenance.v1",
@@ -347,24 +357,28 @@ payload = {
     "oracle_outputs": {
         "fort.15": {"path": str(run / "fort.15"), "sha256": digest(run / "fort.15")}
     },
+    "decoded_sha256": {
+        name: digest(real / "oracle-json" / name)
+        for name in ("oracle.json", "snapshot.json", "motion.json")
+    },
 }
 (real / "run-provenance.json").write_text(
     json.dumps(payload, indent=2) + "\n", encoding="utf-8"
 )
 PY
 then
-  fail "failed to write full real ERA5 calc_etadot provenance"
+  fail "failed to write full-column calc_etadot provenance: ${case_name}"
 fi
 
-test -s "${REAL_JSON}/snapshot.json" || fail "real ERA5 oracle snapshot missing"
-test -s "${REAL_JSON}/motion.json" || fail "real ERA5 oracle motion missing"
-test -s "${REAL_JSON}/oracle.json" || fail "real ERA5 oracle reference missing"
+test -s "${REAL_JSON}/snapshot.json" || fail "${case_name} oracle snapshot missing"
+test -s "${REAL_JSON}/motion.json" || fail "${case_name} oracle motion missing"
+test -s "${REAL_JSON}/oracle.json" || fail "${case_name} oracle reference missing"
 
 if ! cargo run --quiet --bin eta-dot-column-report -- \
   "${REAL_JSON}/snapshot.json" \
   "${REAL_JSON}/motion.json" \
   "${REAL_ROOT}/candidate.json"; then
-  fail "Candidate full real ERA5 eta-dot->Pa/s transform failed"
+  fail "candidate full-column eta-dot->Pa/s transform failed: ${case_name}"
 fi
 
 if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/compare_calc_etadot_oracle.py" \
@@ -376,8 +390,12 @@ if ! "${HOST_PYTHON}" "${PROJECT_ROOT}/scripts/vertical/compare_calc_etadot_orac
   --source-motion "${REAL_JSON}/motion.json" \
   --run-provenance "${REAL_ROOT}/run-provenance.json" \
   --output "${REAL_ROOT}/comparison-report.json"; then
-  fail "full 137-level real ERA5 eta-dot calc_etadot field comparison failed"
+  fail "full-column calc_etadot comparison failed: ${case_name}"
 fi
+}
+
+run_full_column real-era5-137 real_era5_native_model_level_full_column \
+  'ERA5 Complete ETEX 1994-10-23T15:00:00Z with ARCO-ERA5 diagnostic pressure'
 
 if ! "${HOST_PYTHON}" -c '
 import json, sys
@@ -385,6 +403,7 @@ report = json.load(open(sys.argv[1]))
 coverage = report["coverage"]
 assert report["status"] == "PASS", report["status"]
 assert coverage["complete_real_native_column"] is True
+assert coverage["source_matched_surface_pressure"] is False
 assert coverage["levels_compared"] == 137
 assert coverage["points_per_level"] == 6 * 6
 assert coverage["comparisons"] == 137 * 6 * 6
@@ -400,16 +419,22 @@ print(
     "full real ERA5 eta-dot oracle comparison: PASS "
     f"({comparison_count} values)"
 )
-' "${REAL_ROOT}/comparison-report.json"; then
+' "${OUTPUT_DIR}/real-era5-137/comparison-report.json"; then
   fail "full real ERA5 comparison report failed structural assertion"
 fi
 
+for pressure in 72000 101325; do
+  run_full_column "synthetic-${pressure}" synthetic_era5_hybrid_full_column \
+    "Prescribed ${pressure} Pa and nonuniform eta-dot on the ERA5 L137 hybrid coordinate" \
+    "${pressure}"
+done
+
 # 6. The build/run must leave the pinned checkout pristine.
-POST_STATUS="$(git -C "${FLEXEXTRACT_CHECKOUT}" status --porcelain 2>/dev/null || true)"
+POST_STATUS="$(git -C "${FLEXEXTRACT_CHECKOUT}" status --porcelain)"
 if [ -n "${POST_STATUS}" ]; then
   log_error "flex_extract status after run:"
   echo "${POST_STATUS}" | head -20
   fail "flex_extract checkout is dirty after the oracle run"
 fi
 
-log_info "calc_etadot oracle tier: PASS (upstream fixture + complete 137-level real ERA5 case)"
+log_info "calc_etadot oracle tier: PASS (upstream fixture, ETEX diagnostic column and two controlled L137 cases)"

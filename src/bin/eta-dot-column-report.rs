@@ -6,6 +6,7 @@ use flexpart_gpu::meteorology::{
     Snapshot,
 };
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Serialize)]
 struct SchemaIdentityReport {
@@ -17,7 +18,9 @@ struct SchemaIdentityReport {
 struct EtaDotColumnReport {
     schema: SchemaIdentityReport,
     source_snapshot: String,
+    source_snapshot_sha256: String,
     source_motion: String,
+    source_motion_sha256: String,
     result: EtaDotPressureVelocity,
 }
 
@@ -59,7 +62,9 @@ fn main() -> Result<()> {
             version: 1,
         },
         source_snapshot: snapshot_path.to_string_lossy().into_owned(),
+        source_snapshot_sha256: format!("{:x}", Sha256::digest(source.as_bytes())),
         source_motion: motion_path.to_string_lossy().into_owned(),
+        source_motion_sha256: format!("{:x}", Sha256::digest(motion_source.as_bytes())),
         result,
     };
     let encoded = serde_json::to_string_pretty(&report)?;

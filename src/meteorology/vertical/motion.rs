@@ -17,9 +17,8 @@ pub enum NativeVerticalMotionKind {
     PressureVelocityOmega,
     /// Native hybrid-coordinate tendency d(eta)/dt.
     ///
-    /// Recognized at the boundary. Preprocessing is oracle-validated only for
-    /// the positive-eta-increasing convention; production normalization stays
-    /// fail-closed until it is explicitly enabled after #70.
+    /// Recognized at the boundary. The validation-only path admits the
+    /// positive-eta-increasing convention of ECMWF parameter 77.
     EtaCoordinateVelocity,
 }
 
@@ -211,7 +210,7 @@ pub(super) fn normalize_vertical_motion(
         },
         NativeVerticalMotionKind::EtaCoordinateVelocity => {
             return Err(VerticalTransformError::InvalidNativeVerticalMotion {
-                reason: "eta-dot preprocessing is validation-only; production normalization remains disabled until explicitly enabled after #70",
+                reason: "eta-dot preprocessing is validation-only; production requires preprocessed interface pressure velocity",
             });
         }
     };

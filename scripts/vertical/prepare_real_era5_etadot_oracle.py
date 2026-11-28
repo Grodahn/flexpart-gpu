@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""Prepare one complete real ERA5 137-level column for calc_etadot (#70).
+"""Prepare complete L137 diagnostic and controlled columns for calc_etadot (#70).
 
 The checked-in ETEX native-mini fixture contains independent ERA5 Complete
 fields on all 137 hybrid model levels.  We select the real column at
 48.0 N, 2.0 W (the ETEX release-area grid point) and replicate that column on
 flex_extract's small 6x6 installation-test grid.
 
-This is intentional: calc_etadot requires spectral ln(ps) in fort.12. A
-spatially constant field can be represented exactly by the T0 spherical-
-harmonic coefficient, so the selected column's *real* surface pressure can be
-fed to the pristine oracle without an additional grid-to-spectral
-interpolation library. Every vertical value used by the test comes from the
-verified ERA5 source column; replication only supplies calc_etadot's horizontal
-work array.
+calc_etadot requires spectral ln(ps) in fort.12. A spatially constant field
+can be represented by the T0 spherical-harmonic coefficient. The ETEX replay
+combines real ERA5 native levels with separately sourced ARCO-ERA5 pressure
+for the same grid point. Controlled cases prescribe the pressure and eta-dot
+profile, with the same A/B interfaces and auxiliary fields.
 
 No candidate output is used to construct the oracle inputs.
 """
@@ -153,7 +151,7 @@ def read_real_profiles(path: Path, date: int, hhmm: int):
     return profiles, pv
 
 
-def read_real_etadot(path: Path, date: int, hhmm: int):
+def read_real_etadot(path: Path, date: int, hhmm: int, expected_pv: np.ndarray):
     profile = {}
     metadata = None
     with path.open("rb") as source:
@@ -176,6 +174,9 @@ def read_real_etadot(path: Path, date: int, hhmm: int):
                     or ec.codes_get_long(handle, "Nj") != SOURCE_NY
                 ):
                     raise ValueError("native ERA5 eta-dot grid differs from the pinned fixture")
+                if (ec.codes_get(handle, "typeOfLevel") != "hybrid"
+                        or not np.array_equal(ec.codes_get_array(handle, "pv"), expected_pv)):
+                    raise ValueError(f"ERA5 eta-dot level {level} has inconsistent hybrid coefficients")
                 if level in profile:
                     raise ValueError(f"duplicate ERA5 eta-dot level {level}")
                 profile[level] = source_point(ec.codes_get_values(handle))
@@ -280,6 +281,8 @@ def write_constant_spectral_lnsp(
     date: int,
     hhmm: int,
     output_path: Path,
+    *,
+    controlled: bool,
 ):
     handle = ec.codes_new_from_message(template_message)
     try:
@@ -290,6 +293,13 @@ def write_constant_spectral_lnsp(
         ec.codes_set_long(handle, "dataTime", hhmm)
         ec.codes_set_array(handle, "pv", pv)
 
+        if controlled:
+            # The T0 coefficient is in the unpacked spectral subset. IEEE64
+            # keeps exp(ln(ps)) at the prescribed f32-representable pressure.
+            # IEEE32 ln(ps) perturbs the oracle's internal pressure before GRIB
+            # output rounds it again, which is visible after cancellation.
+            ec.codes_set_long(handle, "unpackedSubsetPrecision", 2)
+
         # ECMWF's normalized Y_0^0 basis equals one. Therefore the first real
         # spectral coefficient represents the spatial constant directly; all
         # other real/imaginary coefficients are zero.
@@ -297,6 +307,8 @@ def write_constant_spectral_lnsp(
         coefficients = np.zeros(size, dtype=np.float64)
         coefficients[0] = float(np.log(surface_pressure_pa))
         ec.codes_set_values(handle, coefficients)
+        if controlled and ec.codes_get_values(handle)[0] != coefficients[0]:
+            raise ValueError("synthetic T0 spectral coefficient lost IEEE64 precision")
 
         if ec.codes_get_long(handle, "NV") != 2 * (LEVEL_COUNT + 1):
             raise ValueError("spectral ln(ps) lost the complete 138-interface PV array")
@@ -324,6 +336,7 @@ def main():
     parser.add_argument("--flex-extract-checkout", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--timestamp", default=TIMESTAMP)
+    parser.add_argument("--synthetic-pressure-pa", type=int, choices=(72_000, 101_325))
     args = parser.parse_args()
 
     base = args.native_dir.resolve()
@@ -338,7 +351,7 @@ def main():
 
     date, hhmm = timestamp_parts(args.timestamp)
     profiles, pv = read_real_profiles(base / NATIVE_FILE, date, hhmm)
-    eta_profile, eta_metadata = read_real_etadot(base / ETADOT_FILE, date, hhmm)
+    eta_profile, eta_metadata = read_real_etadot(base / ETADOT_FILE, date, hhmm, pv)
 
     with np.load(base / SURFACE_FILE) as archive:
         times = [
@@ -360,6 +373,15 @@ def main():
         if not np.isfinite(surface_pressure_pa) or surface_pressure_pa <= 0.0:
             raise ValueError("selected real ERA5 surface pressure is invalid")
 
+    if args.synthetic_pressure_pa is not None:
+        surface_pressure_pa = args.synthetic_pressure_pa
+        # Exact binary tendencies vary in magnitude and sign and contain zeros.
+        # Keep native A/B and the auxiliary fields required by the entry point.
+        eta_profile = {
+            level: ((level * 17) % 23 - 11) / 2**20
+            for level in range(1, LEVEL_COUNT + 1)
+        }
+
     regular_template = first_message(example / "fort.21")
     spectral_template = first_message(example / "fort.12")
     write_replicated_levels(regular_template, profiles, pv, date, hhmm, out)
@@ -367,7 +389,8 @@ def main():
         regular_template, eta_profile, pv, date, hhmm, out / "fort.21"
     )
     write_constant_spectral_lnsp(
-        spectral_template, pv, surface_pressure_pa, date, hhmm, out / "fort.12"
+        spectral_template, pv, surface_pressure_pa, date, hhmm, out / "fort.12",
+        controlled=args.synthetic_pressure_pa is not None,
     )
     write_namelist(example / "fort.4", out / "fort.4")
 
@@ -387,9 +410,14 @@ def main():
     selected_profiles["77"] = [eta_profile[level] for level in range(1, LEVEL_COUNT + 1)]
     selected_profiles_sha256 = sha256_json(selected_profiles)
 
+    synthetic = args.synthetic_pressure_pa is not None
     provenance = {
         "schema": "flexpart-gpu.etadot-real-era5-case.v1",
-        "classification": "real_era5_native_model_level_full_column",
+        "classification": (
+            "synthetic_era5_hybrid_full_column" if synthetic
+            else "real_era5_native_model_level_full_column"
+        ),
+        "pressure_source": "prescribed synthetic pressure" if synthetic else "ARCO-ERA5 diagnostic ancillary",
         "timestamp": args.timestamp + "Z",
         "source_grid": {"nx": SOURCE_NX, "ny": SOURCE_NY},
         "selected_column": {
@@ -406,8 +434,12 @@ def main():
         "oracle_grid": {
             "nx": ORACLE_NX,
             "ny": ORACLE_NY,
-            "construction": "selected real ERA5 column replicated horizontally",
+            "construction": (
+                "synthetic eta-dot and pressure replicated horizontally" if synthetic
+                else "selected real ERA5 column replicated horizontally"
+            ),
             "surface_pressure_representation": "constant ln(ps) encoded as T0 spherical-harmonic coefficient",
+            "t0_unpacked_precision_bits": 64 if synthetic else 32,
         },
         "vertical": {
             "model_levels": LEVEL_COUNT,
@@ -426,8 +458,7 @@ def main():
         json.dumps(provenance, indent=2) + "\n", encoding="utf-8"
     )
     print(
-        "Prepared complete real ERA5 column for calc_etadot: "
-        f"{SOURCE_LAT_DEG:.2f}N {SOURCE_LON_DEG:.2f}E, "
+        f"Prepared {provenance['classification']} for calc_etadot: "
         f"{LEVEL_COUNT}/{LEVEL_COUNT} eta-dot levels, replicated to "
         f"{ORACLE_NX}x{ORACLE_NY}"
     )

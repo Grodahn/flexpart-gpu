@@ -1,5 +1,8 @@
 //! Freeze public configuration behavior before the issue #129 structural split.
 
+#[path = "config_contract/release_spec.rs"]
+mod release_spec;
+
 use std::collections::BTreeMap;
 use std::path::Path;
 

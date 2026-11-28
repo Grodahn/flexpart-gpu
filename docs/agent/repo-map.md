@@ -95,7 +95,7 @@ path moves. Markdown links are the machine-readable path surface, audited by
 - Shared handoffs: [file grammar, scalar/timestamp parsing and version policy](../../src/config/parsing.rs), [typed errors](../../src/config/error.rs); [temporary test files](../../src/config/test_support.rs) are test-only.
 - Authority: [pre-move field/default/alias inventory and context comparison](config-decomposition.md), [species compatibility](../species-config.md). #129 preserves the existing schema and behavior; it adds no settings or scientific semantics.
 - Release input: [ReleaseSpec v1](../../src/release/spec.rs), [FLEXPART crosswalk and compatibility](../release-spec.md), and [#51 adapter](../../src/validation/release_adapter.rs).
-- Tests: [ReleaseSpec and production input boundary](../../tests/release_spec.rs), [public facade and aggregate loading](../../tests/config_contract.rs), [pre-move transcript](../../tests/fixtures/config-behavior-v1.json); [verification](test-map.md#configuration).
+- Tests: [ReleaseSpec and production input boundary](../../tests/config_contract/release_spec.rs), [public facade and aggregate loading](../../tests/config_contract.rs), [pre-move transcript](../../tests/fixtures/config-behavior-v1.json); [verification](test-map.md#configuration).
 - Dependencies: file inputs -> config -> [release scheduling](../../src/release/mod.rs), [species mapping](../../src/physics/species.rs), [validation loading](../../src/validation/mod.rs). GPU/runtime and meteorology provider configuration belong to their existing owners; unknown COMMAND keys remain raw assignments.
 
 ## Simulation
